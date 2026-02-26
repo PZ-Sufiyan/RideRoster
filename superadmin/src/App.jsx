@@ -7,13 +7,15 @@ import CompanyReview from './pages/companies/companyReview';
 import SOSPage from './pages/sos/sos';
 import SystemLogs from './pages/systemlogs/systemlogs';
 import Settings from './pages/settings/settings';
+import Login from './pages/auth/login';
 import './App.css';
 
 function App() {
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Navigate to="/dashboard" replace />} />
+        <Route path="/" element={<Navigate to="/login" replace />} />
+        <Route path="/login" element={<Login />} />
         {/* Dashboard Layout wraps any child routes */}
         <Route path="/" element={<DashboardLayout />}>
           <Route path="dashboard" element={<Dashboard />} />
