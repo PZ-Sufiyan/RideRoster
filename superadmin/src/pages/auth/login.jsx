@@ -7,12 +7,31 @@ const Login = () => {
     const [showPassword, setShowPassword] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [emailError, setEmailError] = useState('');
+    const [loginError, setLoginError] = useState('');
     const navigate = useNavigate();
+
+    const validateEmail = (email) => {
+        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+        return re.test(email);
+    };
 
     const handleLogin = (e) => {
         e.preventDefault();
-        // Mock login - since it's UI replica task
-        navigate('/dashboard');
+        setEmailError('');
+        setLoginError('');
+
+        if (!validateEmail(email)) {
+            setEmailError('Please enter a valid email address.');
+            return;
+        }
+
+        // Specific credentials check
+        if (email === 'admin@rideroaster.com' && password === 'Admin@123') {
+            navigate('/dashboard');
+        } else {
+            setLoginError('Invalid email or password. Please try again.');
+        }
     };
 
     return (
@@ -62,11 +81,18 @@ const Login = () => {
                             <input
                                 type="email"
                                 placeholder="admin@rideroster.com"
-                                className="w-full px-4 py-3.5 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-[#1F2937] placeholder:text-[#9CA3AF]"
+                                className={`w-full px-4 py-3.5 bg-[#F9FAFB] border ${emailError ? 'border-red-500' : 'border-[#E5E7EB]'} rounded-lg focus:outline-none focus:ring-2 ${emailError ? 'focus:ring-red-500/20 focus:border-red-500' : 'focus:ring-blue-500/20 focus:border-blue-500'} transition-all text-[#1F2937] placeholder:text-[#9CA3AF]`}
                                 value={email}
-                                onChange={(e) => setEmail(e.target.value)}
+                                onChange={(e) => {
+                                    setEmail(e.target.value.toLowerCase());
+                                    if (emailError) setEmailError('');
+                                    if (loginError) setLoginError('');
+                                }}
                                 required
                             />
+                            {emailError && (
+                                <p className="mt-1 text-xs text-red-500 font-medium">{emailError}</p>
+                            )}
                         </div>
 
                         {/* Password Field */}
@@ -83,7 +109,10 @@ const Login = () => {
                                     placeholder="************"
                                     className="w-full px-4 py-3.5 bg-[#F9FAFB] border border-[#E5E7EB] rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all text-[#1F2937] placeholder:text-[#9CA3AF]"
                                     value={password}
-                                    onChange={(e) => setPassword(e.target.value)}
+                                    onChange={(e) => {
+                                        setPassword(e.target.value);
+                                        if (loginError) setLoginError('');
+                                    }}
                                     required
                                 />
                                 <button
@@ -95,6 +124,13 @@ const Login = () => {
                                 </button>
                             </div>
                         </div>
+
+                        {/* Login Error Message */}
+                        {loginError && (
+                            <div className="p-3 bg-red-50 border border-red-200 rounded-lg">
+                                <p className="text-sm text-red-600 text-center font-medium">{loginError}</p>
+                            </div>
+                        )}
 
                         {/* Remember Me */}
                         <div className="flex items-center gap-2">
