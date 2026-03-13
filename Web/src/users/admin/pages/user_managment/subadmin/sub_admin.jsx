@@ -1,0 +1,372 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+    MdSearch,
+    MdAdd,
+    MdMoreVert,
+    MdChevronLeft,
+    MdChevronRight,
+    MdCheckBoxOutlineBlank,
+    MdCheckBox,
+    MdKeyboardArrowDown,
+    MdFilterList,
+} from 'react-icons/md';
+
+// ─── Dummy Data ───────────────────────────────────────────────
+const allSubAdmins = [
+    {
+        id: 1,
+        name: 'Cameron Williamson',
+        email: 'cameron.w@example.com',
+        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=64&h=64',
+        permissions: 'Job Management, Reporting',
+        status: 'Active',
+        lastLogin: '2025-11-18 18:30 PM',
+    },
+    {
+        id: 2,
+        name: 'Esther Howard',
+        email: 'esther.h@example.com',
+        avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=64&h=64',
+        permissions: 'View Only',
+        status: 'Active',
+        lastLogin: '2025-11-17 09:15 AM',
+    },
+    {
+        id: 3,
+        name: 'Robert Fox',
+        email: 'robert.f@example.com',
+        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=64&h=64',
+        permissions: 'Full Access (Admin Proxy)',
+        status: 'Inactive',
+        lastLogin: '2025-10-22 11:00 AM',
+    },
+    {
+        id: 4,
+        name: 'Guy Hawkins',
+        email: 'guy.h@example.com',
+        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=64&h=64',
+        permissions: 'Job Management',
+        status: 'Active',
+        lastLogin: '2025-11-18 14:20 PM',
+    },
+];
+
+const STATUS_COLORS = {
+    Active: 'bg-green-50 text-green-700 border border-green-200',
+    Inactive: 'bg-red-50 text-red-600 border border-red-200',
+    Suspended: 'bg-orange-50 text-orange-600 border border-orange-200',
+};
+
+const ITEMS_PER_PAGE = 10;
+
+// ─── Component ────────────────────────────────────────────────
+const SubAdminList = () => {
+    const navigate = useNavigate();
+    const [subAdmins, setSubAdmins] = useState(allSubAdmins);
+    const [search, setSearch] = useState('');
+    const [statusFilter, setStatusFilter] = useState('Status: All');
+    const [selectedRows, setSelectedRows] = useState([]);
+    const [openActionId, setOpenActionId] = useState(null);
+    const [isStatusOpen, setIsStatusOpen] = useState(false);
+    const [currentPage, setCurrentPage] = useState(1);
+
+    const actionRef = useRef(null);
+    const statusRef = useRef(null);
+
+    const statuses = ['Status: All', 'Active', 'Inactive', 'Suspended'];
+
+    useEffect(() => {
+        const handler = (e) => {
+            if (actionRef.current && !actionRef.current.contains(e.target)) setOpenActionId(null);
+            if (statusRef.current && !statusRef.current.contains(e.target)) setIsStatusOpen(false);
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    // Filter
+    const filtered = subAdmins.filter((sa) => {
+        const matchSearch = sa.name.toLowerCase().includes(search.toLowerCase()) ||
+            sa.email.toLowerCase().includes(search.toLowerCase());
+        const rawStatus = statusFilter === 'Status: All' ? 'All' : statusFilter;
+        const matchStatus = rawStatus === 'All' || sa.status === rawStatus;
+        return matchSearch && matchStatus;
+    });
+
+    const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
+    const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
+
+    // Reset to page 1 when filters change
+    useEffect(() => { setCurrentPage(1); }, [search, statusFilter]);
+
+    const handleAction = (action, id) => {
+        const statusMap = { Approve: 'Active', Active: 'Active', Reject: 'Inactive', Suspend: 'Suspended' };
+        setSubAdmins((prev) => prev.map((sa) => sa.id === id ? { ...sa, status: statusMap[action] || sa.status } : sa));
+        setOpenActionId(null);
+    };
+
+    const toggleRow = (id) => setSelectedRows((prev) =>
+        prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
+    );
+    const toggleAll = () => {
+        const pageIds = paginated.map((sa) => sa.id);
+        const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedRows.includes(id));
+        setSelectedRows((prev) =>
+            allSelected ? prev.filter((id) => !pageIds.includes(id)) : [...new Set([...prev, ...pageIds])]
+        );
+    };
+    const allPageSelected = paginated.length > 0 && paginated.every((sa) => selectedRows.includes(sa.id));
+
+    const handlePage = (page) => {
+        if (page >= 1 && page <= totalPages) { setCurrentPage(page); setSelectedRows([]); }
+    };
+
+    const startItem = filtered.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const endItem = Math.min(currentPage * ITEMS_PER_PAGE, filtered.length);
+
+    return (
+        <div className="space-y-5">
+            {/* ── Page Header ── */}
+            <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-900">Sub-Admins</h1>
+                    <p className="text-sm text-gray-500 mt-1">Manage users who help with administrative tasks.</p>
+                </div>
+                <button
+                    onClick={() => navigate('/admin/users/subadmins/add')}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm shrink-0"
+                >
+                    <MdAdd size={18} />
+                    Add Sub-Admin
+                </button>
+            </div>
+
+            {/* ── Card ── */}
+            <div className="bg-white border border-gray-100 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-hidden">
+
+                {/* Toolbar */}
+                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border-b border-gray-100">
+                    <div className="flex flex-wrap items-center gap-3">
+                        {/* Search */}
+                        <div className="relative">
+                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                                <MdSearch className="h-4 w-4 text-gray-400" />
+                            </div>
+                            <input
+                                type="text"
+                                placeholder="Search by name or email"
+                                value={search}
+                                onChange={(e) => setSearch(e.target.value)}
+                                className="pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white w-64 transition-colors"
+                            />
+                        </div>
+
+                        {/* Status Filter */}
+                        <div className="relative" ref={statusRef}>
+                            <button
+                                onClick={() => setIsStatusOpen((o) => !o)}
+                                className="flex items-center gap-2 px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-700 font-medium bg-white hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                                <MdFilterList size={16} className="text-gray-500" />
+                                {statusFilter}
+                                <MdKeyboardArrowDown size={18} className="text-gray-400 ml-1" />
+                            </button>
+                            {isStatusOpen && (
+                                <div className="absolute left-0 top-full mt-1 w-44 bg-white border border-gray-100 rounded-lg shadow-lg z-20">
+                                    {statuses.map((s) => (
+                                        <button
+                                            key={s}
+                                            onClick={() => { setStatusFilter(s); setIsStatusOpen(false); }}
+                                            className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg ${statusFilter === s ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
+                                        >
+                                            {s}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    </div>
+
+                    {/* Bulk Actions & Menu */}
+                    <div className="flex items-center gap-2">
+                        <button
+                            disabled
+                            className="px-3 py-2 rounded-lg text-sm font-medium text-gray-400 bg-gray-50 cursor-not-allowed"
+                        >
+                            Bulk Actions
+                        </button>
+                        <button className="p-2 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">
+                            <MdMoreVert size={18} />
+                        </button>
+                    </div>
+                </div>
+
+                {/* Table */}
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm text-left whitespace-nowrap">
+                        <thead className="border-b border-gray-100 bg-gray-50/50">
+                            <tr>
+                                <th className="px-4 py-3.5 w-10">
+                                    <div className="flex items-center cursor-pointer" onClick={toggleAll}>
+                                        {allPageSelected
+                                            ? <MdCheckBox className="text-blue-600 w-5 h-5" />
+                                            : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
+                                    </div>
+                                </th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center shrink-0 w-24 sm:text-left sm:w-auto">Name</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Permissions</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Status</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Last Login</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right pr-6">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {paginated.length > 0 ? paginated.map((sa) => (
+                                <tr key={sa.id} className="hover:bg-gray-50/60 transition-colors">
+                                    {/* Checkbox */}
+                                    <td className="px-4 py-4">
+                                        <div className="flex items-center cursor-pointer" onClick={() => toggleRow(sa.id)}>
+                                            {selectedRows.includes(sa.id)
+                                                ? <MdCheckBox className="text-blue-600 w-5 h-5" />
+                                                : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
+                                        </div>
+                                    </td>
+
+                                    {/* Name + Avatar */}
+                                    <td className="px-4 py-4 sm:pl-4">
+                                        <div
+                                            className="flex flex-col sm:flex-row items-center sm:items-start sm:gap-3 cursor-pointer group"
+                                            onClick={() => navigate(`/admin/users/subadmins/${sa.id}`)}
+                                        >
+                                            <img
+                                                src={sa.avatar}
+                                                alt={sa.name}
+                                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-100 shrink-0 mb-2 sm:mb-0"
+                                            />
+                                            <div className="text-center sm:text-left">
+                                                <p className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors text-xs sm:text-sm">{sa.name}</p>
+                                                <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5">{sa.email}</p>
+                                            </div>
+                                        </div>
+                                    </td>
+
+                                    {/* Permissions */}
+                                    <td className="px-4 py-4 text-gray-600 text-center">
+                                        {sa.permissions}
+                                    </td>
+
+                                    {/* Status */}
+                                    <td className="px-4 py-4 text-center">
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide ${STATUS_COLORS[sa.status] || 'bg-gray-100 text-gray-500'}`}>
+                                            {sa.status}
+                                        </span>
+                                    </td>
+
+                                    {/* Last Login */}
+                                    <td className="px-4 py-4 text-gray-500 text-center">
+                                        {sa.lastLogin}
+                                    </td>
+
+                                    {/* Actions */}
+                                    <td className="px-4 py-4 text-right pr-4">
+                                        <div className="relative inline-block text-left" ref={openActionId === sa.id ? actionRef : null}>
+                                            <button
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setOpenActionId(openActionId === sa.id ? null : sa.id);
+                                                }}
+                                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+                                            >
+                                                <MdMoreVert size={20} />
+                                            </button>
+                                            {openActionId === sa.id && (
+                                                <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-gray-100 rounded-lg shadow-lg z-30 py-1">
+                                                    {['Approve', 'Reject', 'Suspend', 'Active'].map((action) => (
+                                                        <button
+                                                            key={action}
+                                                            onClick={(e) => {
+                                                                e.stopPropagation();
+                                                                handleAction(action, sa.id);
+                                                            }}
+                                                            className={`w-full text-left px-4 py-2 text-sm font-medium transition-colors
+                                                                ${action === 'Approve' ? 'text-green-700 hover:bg-green-50' : ''}
+                                                                ${action === 'Reject' ? 'text-gray-700 hover:bg-red-50 hover:text-red-700' : ''}
+                                                                ${action === 'Suspend' ? 'text-gray-700 hover:bg-orange-50 hover:text-orange-700' : ''}
+                                                                ${action === 'Active' ? 'text-blue-700 hover:bg-blue-50' : ''}
+                                                                ${action !== 'Approve' && action !== 'Active' ? 'text-gray-700 hover:bg-gray-50' : ''}
+                                                            `}
+                                                            style={
+                                                                (action === 'Approve' || action === 'Active' || action === 'Reject' || action === 'Suspend') ? {} : { color: '#374151' }
+                                                            }
+                                                        >
+                                                            {action}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan="6" className="px-6 py-16 text-center text-gray-400 text-sm">
+                                        No sub-admins found.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* Pagination Footer */}
+                <div className="px-5 py-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm">
+                    <span className="text-gray-500">
+                        Showing results{' '}
+                        <span className="font-semibold text-gray-900">{startItem}</span> to{' '}
+                        <span className="font-semibold text-gray-900">{endItem}</span>
+                        {' '}of{' '}
+                        <span className="font-semibold text-gray-900">{filtered.length}</span>
+                    </span>
+
+                    <div className="flex items-center gap-1.5">
+                        <button
+                            onClick={() => handlePage(currentPage - 1)}
+                            disabled={currentPage === 1}
+                            className="p-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <MdChevronLeft size={18} />
+                        </button>
+
+                        {[...Array(totalPages)].map((_, i) => {
+                            const page = i + 1;
+                            return (
+                                <button
+                                    key={page}
+                                    onClick={() => handlePage(page)}
+                                    className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors border
+                                        ${currentPage === page
+                                            ? 'bg-blue-50 text-blue-700 border-blue-200'
+                                            : 'text-gray-600 hover:bg-gray-50 border-gray-200'
+                                        }`}
+                                >
+                                    {page}
+                                </button>
+                            );
+                        })}
+
+                        <button
+                            onClick={() => handlePage(currentPage + 1)}
+                            disabled={currentPage === totalPages}
+                            className="p-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
+                        >
+                            <MdChevronRight size={18} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default SubAdminList;

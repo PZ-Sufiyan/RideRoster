@@ -1,0 +1,433 @@
+import React, { useState, useRef, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import {
+    MdSearch,
+    MdAdd,
+    MdMoreVert,
+    MdChevronLeft,
+    MdChevronRight,
+    MdKeyboardArrowDown,
+    MdCheckBoxOutlineBlank,
+    MdCheckBox,
+    MdNotificationsNone,
+    MdAccessible,
+} from 'react-icons/md';
+
+/* ── Static data ─────────────────────────────────────────── */
+const allPassengers = [
+    {
+        id: 1,
+        name: 'Sarah Jenkins',
+        avatar: 'https://i.pravatar.cc/150?u=sarah-jenkins',
+        contact: '07700 900123',
+        postcode: 'NW1 5BT',
+        school: "St. Mary's Primary",
+        time: '08:15 AM',
+        wheelchair: true,
+        route: 'Route A-12',
+        status: 'Active',
+    },
+    {
+        id: 2,
+        name: 'James Wilson',
+        avatar: 'https://i.pravatar.cc/150?u=james-wilson',
+        contact: '07700 900456',
+        postcode: 'SE1 2TY',
+        school: 'Bridge Academy',
+        time: '07:45 AM',
+        wheelchair: false,
+        route: 'Route B-04',
+        status: 'Active',
+    },
+    {
+        id: 3,
+        name: 'Emily Davis',
+        avatar: 'https://i.pravatar.cc/150?u=emily-davis',
+        contact: '07700 900789',
+        postcode: 'E1 6AN',
+        school: 'Central High',
+        time: '08:30 AM',
+        wheelchair: false,
+        route: null, // Unassigned
+        status: 'Pending',
+    },
+    {
+        id: 4,
+        name: 'Thomas Brown',
+        avatar: 'https://i.pravatar.cc/150?u=thomas-brown',
+        contact: '07700 900111',
+        postcode: 'SW4 0AL',
+        school: 'Green Valley',
+        time: '08:00 AM',
+        wheelchair: true,
+        route: 'Route C-21',
+        status: 'Inactive',
+    },
+];
+
+const STATUS_STYLES = {
+    Active:   'text-green-600 font-bold text-[11px] uppercase tracking-wide',
+    Pending:  'text-yellow-500 font-bold text-[11px] uppercase tracking-wide',
+    Inactive: 'text-gray-400 font-bold text-[11px] uppercase tracking-wide',
+};
+
+/* ── Component ───────────────────────────────────────────── */
+const PassengersPage = () => {
+    const navigate = useNavigate();
+
+    const [search, setSearch]               = useState('');
+    const [pickupFilter, setPickupFilter]   = useState('All Pickups');
+    const [wcFilter, setWcFilter]           = useState('All');
+    const [statusFilter, setStatusFilter]   = useState('All');
+    const [selectedRows, setSelectedRows]   = useState([]);
+    const [openActionId, setOpenActionId]   = useState(null);
+    const [rowsPerPage]                     = useState(10);
+
+    // dropdown open states
+    const [pickupOpen, setPickupOpen]   = useState(false);
+    const [wcOpen, setWcOpen]           = useState(false);
+    const [statusOpen, setStatusOpen]   = useState(false);
+
+    const actionRef = useRef(null);
+
+    // Close dropdowns / action menus on outside click
+    useEffect(() => {
+        const handler = (e) => {
+            if (actionRef.current && !actionRef.current.contains(e.target)) {
+                setOpenActionId(null);
+            }
+        };
+        document.addEventListener('mousedown', handler);
+        return () => document.removeEventListener('mousedown', handler);
+    }, []);
+
+    /* ── Filtering ── */
+    const filtered = allPassengers.filter((p) => {
+        const matchSearch =
+            p.name.toLowerCase().includes(search.toLowerCase()) ||
+            p.postcode.toLowerCase().includes(search.toLowerCase());
+        const matchWc =
+            wcFilter === 'All' ||
+            (wcFilter === 'Yes' && p.wheelchair) ||
+            (wcFilter === 'No' && !p.wheelchair);
+        const matchStatus =
+            statusFilter === 'All' || p.status === statusFilter;
+        return matchSearch && matchWc && matchStatus;
+    });
+
+    /* ── Selection helpers ── */
+    const toggleRow = (id) =>
+        setSelectedRows((prev) =>
+            prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
+        );
+
+    const toggleAll = () => {
+        const ids = filtered.map((p) => p.id);
+        const allSel = ids.every((id) => selectedRows.includes(id));
+        setSelectedRows((prev) =>
+            allSel ? prev.filter((id) => !ids.includes(id)) : [...new Set([...prev, ...ids])]
+        );
+    };
+
+    const allSel = filtered.length > 0 && filtered.every((p) => selectedRows.includes(p.id));
+
+    /* ── Reset ── */
+    const handleReset = () => {
+        setSearch('');
+        setPickupFilter('All Pickups');
+        setWcFilter('All');
+        setStatusFilter('All');
+    };
+
+    /* ── Tiny dropdown helper ── */
+    const Dropdown = ({ label, options, value, open, setOpen, onChange }) => (
+        <div className="relative">
+            <button
+                onClick={() => setOpen((o) => !o)}
+                className="flex items-center gap-1 px-3 py-2 border border-gray-200 rounded-lg text-[13px] text-gray-700 bg-white hover:bg-gray-50 transition-colors whitespace-nowrap"
+            >
+                {label}: <span className="font-medium">{value}</span>
+                <MdKeyboardArrowDown className="text-gray-400 ml-0.5" size={16} />
+            </button>
+            {open && (
+                <div className="absolute left-0 top-full mt-1 min-w-[120px] bg-white border border-gray-100 rounded-lg shadow-lg z-30">
+                    {options.map((opt) => (
+                        <button
+                            key={opt}
+                            onClick={() => { onChange(opt); setOpen(false); }}
+                            className={`w-full text-left px-4 py-2.5 text-[13px] hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg ${value === opt ? 'font-semibold text-[#004D6D]' : 'text-gray-700'}`}
+                        >
+                            {opt}
+                        </button>
+                    ))}
+                </div>
+            )}
+        </div>
+    );
+
+    return (
+        <div className="space-y-5">
+
+            {/* ── Page Header ── */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-[22px] font-bold text-gray-900">Passengers</h1>
+                    <p className="text-[13px] text-gray-400 mt-0.5">Manage registered passengers</p>
+                </div>
+                <div className="flex items-center gap-3">
+                    <button className="relative p-2 text-gray-400 hover:text-gray-600 transition-colors">
+                        <MdNotificationsNone size={22} />
+                        <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-orange-500 rounded-full border-2 border-white"></span>
+                    </button>
+                    <button
+                        onClick={() => navigate('/admin/users/passengers/add')}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm"
+                    >
+                        <MdAdd size={18} />
+                        Add Passenger
+                    </button>
+                </div>
+            </div>
+
+            {/* ── Filter Bar ── */}
+            <div className="flex flex-wrap items-center gap-3 bg-white px-4 py-3 rounded-xl border border-gray-100 shadow-sm">
+                {/* Search */}
+                <div className="relative flex-1 min-w-[220px]">
+                    <MdSearch className="absolute left-3 top-2.5 text-gray-400" size={18} />
+                    <input
+                        type="text"
+                        placeholder="Search by Name or Post Code..."
+                        value={search}
+                        onChange={(e) => setSearch(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 text-[13px] text-gray-700 placeholder-gray-400 border border-gray-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
+                    />
+                </div>
+
+                {/* All Pickups */}
+                <Dropdown
+                    label=""
+                    options={['All Pickups', 'Morning', 'Afternoon']}
+                    value={pickupFilter}
+                    open={pickupOpen}
+                    setOpen={setPickupOpen}
+                    onChange={setPickupFilter}
+                />
+
+                {/* Wheelchair */}
+                <Dropdown
+                    label="Wheelchair"
+                    options={['All', 'Yes', 'No']}
+                    value={wcFilter}
+                    open={wcOpen}
+                    setOpen={setWcOpen}
+                    onChange={setWcFilter}
+                />
+
+                {/* Status */}
+                <Dropdown
+                    label="Status"
+                    options={['All', 'Active', 'Pending', 'Inactive']}
+                    value={statusFilter}
+                    open={statusOpen}
+                    setOpen={setStatusOpen}
+                    onChange={setStatusFilter}
+                />
+
+                {/* Reset Filters */}
+                <button
+                    onClick={handleReset}
+                    className="text-[13px] font-semibold text-[#004D6D] hover:underline underline-offset-2 transition-all whitespace-nowrap"
+                >
+                    Reset Filters
+                </button>
+            </div>
+
+            {/* ── Bulk Action Bar (shown when rows selected) ── */}
+            <div className="flex items-center justify-between bg-blue-50/60 border border-blue-100 px-4 py-2.5 rounded-xl">
+                <div className="flex items-center gap-3">
+                    <div className="cursor-pointer" onClick={toggleAll}>
+                        {allSel
+                            ? <MdCheckBox className="text-[#004D6D] w-5 h-5" />
+                            : <MdCheckBoxOutlineBlank className="text-gray-400 w-5 h-5" />
+                        }
+                    </div>
+                    <span className="text-[13px] font-medium text-gray-700">
+                        {selectedRows.length > 0 ? `${selectedRows.length} selected` : '3 selected'}
+                    </span>
+                </div>
+                <div className="flex items-center gap-2">
+                    <button 
+                        onClick={() => navigate('/admin/users/passengers/assign')}
+                        className="px-4 py-1.5 border border-[#004D6D] text-[#004D6D] rounded-lg text-[12px] font-semibold hover:bg-[#004D6D] hover:text-white transition-all"
+                    >
+                        Bulk Assign Route
+                    </button>
+                    <button className="px-4 py-1.5 border border-red-500 text-red-500 rounded-lg text-[12px] font-semibold hover:bg-red-500 hover:text-white transition-all">
+                        Bulk Deactivate
+                    </button>
+                </div>
+            </div>
+
+            {/* ── Table ── */}
+            <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-hidden">
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[13px]">
+                        <thead className="border-b border-gray-100">
+                            <tr>
+                                <th className="px-4 py-3.5 w-10">
+                                    <div className="cursor-pointer" onClick={toggleAll}>
+                                        {allSel
+                                            ? <MdCheckBox className="text-[#004D6D] w-5 h-5" />
+                                            : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />
+                                        }
+                                    </div>
+                                </th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Passenger Name</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pickup/Drop-off</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Time</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">W/C</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pickup/Drop-off</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {filtered.length > 0 ? filtered.map((p) => (
+                                <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
+
+                                    {/* Checkbox */}
+                                    <td className="px-4 py-4">
+                                        <div className="cursor-pointer" onClick={() => toggleRow(p.id)}>
+                                            {selectedRows.includes(p.id)
+                                                ? <MdCheckBox className="text-[#004D6D] w-5 h-5" />
+                                                : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />
+                                            }
+                                        </div>
+                                    </td>
+
+                                    {/* Name + Avatar */}
+                                    <td className="px-4 py-4">
+                                        <div
+                                            className="flex items-center gap-3 cursor-pointer group"
+                                            onClick={() => navigate(`/admin/users/passengers/${p.id}`)}
+                                        >
+                                            <img
+                                                src={p.avatar}
+                                                alt={p.name}
+                                                className="w-8 h-8 rounded-full object-cover border border-gray-100 shrink-0"
+                                            />
+                                            <span className="font-medium text-gray-900 whitespace-nowrap group-hover:text-[#004D6D] transition-colors">
+                                                {p.name}
+                                            </span>
+                                        </div>
+                                    </td>
+
+                                    {/* Contact */}
+                                    <td className="px-4 py-4 text-gray-500 whitespace-nowrap">{p.contact}</td>
+
+                                    {/* Pickup/Drop-off address */}
+                                    <td className="px-4 py-4">
+                                        <div className="font-medium text-gray-800">{p.postcode}</div>
+                                        <div className="text-[11px] text-gray-400 mt-0.5">{p.school}</div>
+                                    </td>
+
+                                    {/* Time */}
+                                    <td className="px-4 py-4 text-gray-600 whitespace-nowrap">{p.time}</td>
+
+                                    {/* W/C */}
+                                    <td className="px-4 py-4">
+                                        {p.wheelchair
+                                            ? <MdAccessible size={20} className="text-blue-500" />
+                                            : <span className="text-gray-400 font-bold text-base">—</span>
+                                        }
+                                    </td>
+
+                                    {/* Route */}
+                                    <td className="px-4 py-4">
+                                        {p.route
+                                            ? <span className="text-gray-700 font-medium">{p.route}</span>
+                                            : <span className="text-gray-400 italic">Unassigned</span>
+                                        }
+                                    </td>
+
+                                    {/* Status */}
+                                    <td className="px-4 py-4">
+                                        <span className={STATUS_STYLES[p.status] || 'text-gray-500 text-[11px] font-bold uppercase'}>
+                                            {p.status.toUpperCase()}
+                                        </span>
+                                    </td>
+
+                                    {/* Actions ⋮ */}
+                                    <td className="px-4 py-4">
+                                        <div className="relative" ref={openActionId === p.id ? actionRef : null}>
+                                            <button
+                                                onClick={() => setOpenActionId(openActionId === p.id ? null : p.id)}
+                                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+                                            >
+                                                <MdMoreVert size={18} />
+                                            </button>
+                                            {openActionId === p.id && (
+                                                <div className="absolute right-0 top-8 w-36 bg-white border border-gray-100 rounded-lg shadow-lg z-30">
+                                                    {['View', 'Edit', 'Deactivate'].map((action) => (
+                                                        <button
+                                                            key={action}
+                                                            onClick={() => {
+                                                                if (action === 'View') navigate(`/admin/users/passengers/${p.id}`);
+                                                                setOpenActionId(null);
+                                                            }}
+                                                            className={`w-full text-left px-4 py-2.5 text-[13px] hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg
+                                                                ${action === 'Deactivate' ? 'text-red-600 hover:bg-red-50' : 'text-gray-700'}`}
+                                                        >
+                                                            {action}
+                                                        </button>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
+                                </tr>
+                            )) : (
+                                <tr>
+                                    <td colSpan="9" className="px-6 py-16 text-center text-gray-400 text-sm">
+                                        No passengers found.
+                                    </td>
+                                </tr>
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+
+                {/* ── Footer / Pagination ── */}
+                <div className="px-4 py-3.5 border-t border-gray-100 flex items-center justify-between gap-3">
+                    {/* Rows per page */}
+                    <div className="flex items-center gap-2 text-[13px] text-gray-500">
+                        <span>Rows per page:</span>
+                        <div className="flex items-center gap-0.5 border border-gray-200 rounded-lg px-2 py-1 text-gray-700 text-[13px]">
+                            {rowsPerPage}
+                            <MdKeyboardArrowDown size={16} className="text-gray-400 ml-0.5" />
+                        </div>
+                    </div>
+
+                    {/* Page info + nav */}
+                    <div className="flex items-center gap-2 text-[13px] text-gray-500">
+                        <span>1-10 of 248 items</span>
+                        <button className="p-1 hover:bg-gray-100 rounded transition-colors disabled:opacity-40" disabled>
+                            <MdChevronLeft size={18} />
+                        </button>
+                        {[2, 3].map((n) => (
+                            <button key={n} className="w-7 h-7 flex items-center justify-center rounded text-[13px] font-medium text-gray-600 hover:bg-gray-100 transition-colors">
+                                {n}
+                            </button>
+                        ))}
+                        <button className="p-1 hover:bg-gray-100 rounded transition-colors">
+                            <MdChevronRight size={18} />
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+export default PassengersPage;

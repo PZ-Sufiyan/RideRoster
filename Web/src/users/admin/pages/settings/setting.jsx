@@ -1,0 +1,280 @@
+import React, { useState, useRef } from 'react';
+
+// ─── Reusable Toggle ─────────────────────────────────────────
+const Toggle = ({ checked, onChange }) => (
+    <button
+        type="button"
+        onClick={() => onChange(!checked)}
+        className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors duration-200 ease-in-out focus:outline-none focus:ring-2 focus:ring-[#005580] focus:ring-offset-2 ${checked ? 'bg-[#005580]' : 'bg-gray-200'}`}
+        role="switch"
+        aria-checked={checked}
+    >
+        <span
+            className={`pointer-events-none inline-block h-5 w-5 transform rounded-full bg-white shadow ring-0 transition duration-200 ease-in-out ${checked ? 'translate-x-5' : 'translate-x-0'}`}
+        />
+    </button>
+);
+
+// ─── Reusable Input Field ─────────────────────────────────────
+const InputField = ({ label, value, onChange, type = 'text', placeholder = '' }) => (
+    <div className="flex flex-col gap-1.5">
+        {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
+        <input
+            type={type}
+            value={value}
+            onChange={onChange}
+            placeholder={placeholder}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] transition-colors bg-white"
+        />
+    </div>
+);
+
+// ─── Toggle Row ───────────────────────────────────────────────
+const ToggleRow = ({ label, description, checked, onChange }) => (
+    <div className="flex items-center justify-between py-5 border-b border-gray-100 last:border-0">
+        <div className="pr-8">
+            <p className="text-sm font-semibold text-gray-900">{label}</p>
+            <p className="text-sm text-gray-500 mt-0.5">{description}</p>
+        </div>
+        <Toggle checked={checked} onChange={onChange} />
+    </div>
+);
+
+const TABS = ['Company Profile', 'Notifications', 'Security'];
+
+// ─── Main Component ───────────────────────────────────────────
+const AdminSettings = () => {
+    const [activeTab, setActiveTab] = useState('Company Profile');
+    const logoRef = useRef();
+    const [logoPreview, setLogoPreview] = useState('https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?auto=format&fit=crop&w=64&h=64');
+
+    // Company Profile
+    const [companyName, setCompanyName] = useState('Bright Horizons Transport');
+    const [contactEmail, setContactEmail] = useState('contact@brighthorizons.com');
+    const [companyAddr, setCompanyAddr] = useState('123 Market St, San Francisco, CA 94103');
+
+    // Notifications
+    const [notifs, setNotifs] = useState({
+        newJobAssignments: true,
+        jobCancellations: true,
+        driverDocExpiry: false,
+        sosAlerts: true,
+        newCounterOffers: true,
+        vehicleCheckCompliance: true,
+        systemUpdates: false,
+    });
+    const setNotif = (key) => (val) => setNotifs(prev => ({ ...prev, [key]: val }));
+
+    // Security
+    const [currentPwd, setCurrentPwd] = useState('');
+    const [newPwd, setNewPwd] = useState('');
+    const [confirmPwd, setConfirmPwd] = useState('');
+
+    const handleLogoChange = (file) => {
+        if (!file) return;
+        setLogoPreview(URL.createObjectURL(file));
+    };
+
+    return (
+        <div className="space-y-0">
+
+            <div className="mb-5">
+                <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
+                <p className="text-sm text-gray-500 mt-1">Manage your company profile, notifications, and security settings.</p>
+            </div>
+
+
+            {/* ── Tabs ── */}
+            <div className="flex items-center border-b border-gray-200 mb-6">
+                {TABS.map(tab => (
+                    <button
+                        key={tab}
+                        onClick={() => setActiveTab(tab)}
+                        className={`px-5 py-3 text-sm font-medium whitespace-nowrap transition-colors border-b-2 -mb-px
+                            ${activeTab === tab
+                                ? 'text-[#005580] border-[#005580]'
+                                : 'text-gray-500 border-transparent hover:text-gray-700 hover:border-gray-300'
+                            }`}
+                    >
+                        {tab}
+                    </button>
+                ))}
+            </div>
+
+            {/* ══════════════════════════════════════════════════ */}
+            {/* TAB: Company Profile                              */}
+            {/* ══════════════════════════════════════════════════ */}
+            {activeTab === 'Company Profile' && (
+                <div className="bg-white border border-gray-100 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-hidden">
+                    {/* Section Header */}
+                    <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+                        <h2 className="text-lg font-bold text-gray-900">Company Profile</h2>
+                        <p className="text-sm text-gray-500 mt-0.5">Update your company's information and branding.</p>
+                    </div>
+
+                    <div className="px-6 py-5 space-y-5">
+                        {/* Logo Row */}
+                        <div className="flex items-center gap-4 py-2">
+                            <img
+                                src={logoPreview}
+                                alt="Company Logo"
+                                className="w-14 h-14 rounded-lg object-cover border border-gray-100"
+                            />
+                            <div>
+                                <div className="flex items-center gap-3">
+                                    <button
+                                        onClick={() => logoRef.current.click()}
+                                        className="px-4 py-2 bg-[#005580] text-white text-sm font-medium rounded-lg hover:bg-sky-900 transition-colors"
+                                    >
+                                        Upload Logo
+                                    </button>
+                                    <button
+                                        onClick={() => setLogoPreview('')}
+                                        className="px-4 py-2 border border-gray-200 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
+                                    >
+                                        Remove
+                                    </button>
+                                </div>
+                                <p className="text-xs text-gray-400 mt-2">Recommended size: 200x200px, PNG or JPG.</p>
+                            </div>
+                            <input
+                                ref={logoRef}
+                                type="file"
+                                accept="image/*"
+                                className="hidden"
+                                onChange={(e) => handleLogoChange(e.target.files[0])}
+                            />
+                        </div>
+
+                        {/* Form Fields */}
+                        <div className="border-t border-gray-100 pt-5 space-y-4">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                <InputField label="Company Name" value={companyName} onChange={e => setCompanyName(e.target.value)} />
+                                <InputField label="Contact Email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} type="email" />
+                            </div>
+                            <InputField label="Company Address" value={companyAddr} onChange={e => setCompanyAddr(e.target.value)} />
+                        </div>
+
+                        {/* Save Button */}
+                        <div className="pt-1">
+                            <button className="px-5 py-2.5 bg-[#005580] text-white text-sm font-semibold rounded-lg hover:bg-sky-900 transition-colors shadow-sm">
+                                Save Changes
+                            </button>
+                        </div>
+                    </div>
+
+                    {/* Security Section within Company Profile tab */}
+                    <div className="border-t border-gray-100">
+                        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+                            <h2 className="text-lg font-bold text-gray-900">Security</h2>
+                            <p className="text-sm text-gray-500 mt-0.5">Change your password and manage two-factor authentication.</p>
+                        </div>
+                        <div className="px-6 py-5">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+                                {/* Left description */}
+                                <div>
+                                    <h3 className="text-sm font-bold text-gray-900">Change Password</h3>
+                                    <p className="text-sm text-gray-500 mt-1 leading-relaxed">
+                                        It's a good idea to use a strong password that you're not using elsewhere.
+                                    </p>
+                                </div>
+                                {/* Right fields */}
+                                <div className="space-y-4">
+                                    <InputField label="Current Password" type="password" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} />
+                                    <InputField label="New Password" type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} />
+                                </div>
+                            </div>
+                            <div className="mt-5 pt-4 border-t border-gray-100">
+                                <button className="px-5 py-2.5 bg-[#005580] text-white text-sm font-semibold rounded-lg hover:bg-sky-900 transition-colors shadow-sm">
+                                    Update Security Settings
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ══════════════════════════════════════════════════ */}
+            {/* TAB: Notifications                                */}
+            {/* ══════════════════════════════════════════════════ */}
+            {activeTab === 'Notifications' && (
+                <div className="bg-white border border-gray-100 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-hidden">
+                    {/* Email Notifications */}
+                    <div className="px-6 pt-6 pb-2 border-b border-gray-100">
+                        <h2 className="text-lg font-bold text-gray-900">Email Notifications</h2>
+                        <p className="text-sm text-gray-500 mt-0.5">Receive emails for important events. You can manage them here.</p>
+                    </div>
+                    <div className="px-6">
+                        <ToggleRow label="New Job Assignments" description="Get notified when a new job is assigned to one of your drivers." checked={notifs.newJobAssignments} onChange={setNotif('newJobAssignments')} />
+                        <ToggleRow label="Job Cancellations" description="Receive an email when a client cancels a scheduled job." checked={notifs.jobCancellations} onChange={setNotif('jobCancellations')} />
+                        <ToggleRow label="Driver Document Expiry" description="Get a weekly summary of driver documents that are about to expire." checked={notifs.driverDocExpiry} onChange={setNotif('driverDocExpiry')} />
+                        <ToggleRow label="SOS Alerts" description="Receive an immediate email notification for any SOS alert triggered by your drivers." checked={notifs.sosAlerts} onChange={setNotif('sosAlerts')} />
+                    </div>
+
+                    {/* In-App Notifications */}
+                    <div className="border-t border-gray-100">
+                        <div className="px-6 pt-6 pb-2 border-b border-gray-100">
+                            <h2 className="text-lg font-bold text-gray-900">In-App Notifications</h2>
+                            <p className="text-sm text-gray-500 mt-0.5">Manage notifications you see within the RideRoster web portal.</p>
+                        </div>
+                        <div className="px-6">
+                            <ToggleRow label="New Counter-Offers" description="Show a notification when a client submits a counter-offer for a job." checked={notifs.newCounterOffers} onChange={setNotif('newCounterOffers')} />
+                            <ToggleRow label="Vehicle Check Compliance" description="Notify me when a vehicle fails its pre-journey check." checked={notifs.vehicleCheckCompliance} onChange={setNotif('vehicleCheckCompliance')} />
+                            <ToggleRow label="System Updates" description="Show announcements about new features and system maintenance." checked={notifs.systemUpdates} onChange={setNotif('systemUpdates')} />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ══════════════════════════════════════════════════ */}
+            {/* TAB: Security                                     */}
+            {/* ══════════════════════════════════════════════════ */}
+            {activeTab === 'Security' && (
+                <div className="bg-white border border-gray-100 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-hidden">
+                    <div className="px-6 pt-6 pb-4 border-b border-gray-100">
+                        <h2 className="text-lg font-bold text-gray-900">Change Password</h2>
+                        <p className="text-sm text-gray-500 mt-0.5">For your security, we recommend choosing a strong password that you don't use elsewhere.</p>
+                    </div>
+
+                    <div className="px-6 py-5 border-t border-gray-100 space-y-4 max-w-md">
+                        <InputField
+                            label="Current Password"
+                            type="password"
+                            placeholder="Enter your current password"
+                            value={currentPwd}
+                            onChange={e => setCurrentPwd(e.target.value)}
+                        />
+                        <InputField
+                            label="New Password"
+                            type="password"
+                            placeholder="Enter a new password"
+                            value={newPwd}
+                            onChange={e => setNewPwd(e.target.value)}
+                        />
+                        <InputField
+                            label="Confirm New Password"
+                            type="password"
+                            placeholder="Confirm your new password"
+                            value={confirmPwd}
+                            onChange={e => setConfirmPwd(e.target.value)}
+                        />
+                    </div>
+
+                    <div className="px-6 pb-6 flex items-center gap-3">
+                        <button
+                            onClick={() => { setCurrentPwd(''); setNewPwd(''); setConfirmPwd(''); }}
+                            className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                        >
+                            Cancel
+                        </button>
+                        <button className="px-5 py-2.5 bg-[#005580] text-white text-sm font-semibold rounded-lg hover:bg-sky-900 transition-colors shadow-sm">
+                            Update Password
+                        </button>
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+export default AdminSettings;
