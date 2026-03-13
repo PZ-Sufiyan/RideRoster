@@ -95,7 +95,10 @@ const ActiveJobs = () => {
                         <MdEventNote size={18} />
                         View Calendar
                     </button>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[14px] font-semibold hover:bg-[#003c55] transition-all shadow-sm">
+                    <button 
+                        onClick={() => navigate('/admin/jobs/create-step1')}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[14px] font-semibold hover:bg-[#003c55] transition-all shadow-sm"
+                    >
                         <MdAdd size={20} />
                         Create New Job
                     </button>

@@ -21,6 +21,9 @@ import Admin_AddSubAdmin from './users/admin/pages/user_managment/subadmin/add_s
 import Admin_SubAdminDetail from './users/admin/pages/user_managment/subadmin/sub_admin_detail';
 import Admin_JobsList from './users/admin/pages/job_managment/jobs_list';
 import Admin_JobCalendar from './users/admin/pages/job_managment/job_calender';
+import Admin_AddJobStep1 from './users/admin/pages/job_managment/add_new_job_step1';
+import Admin_AddJobStep2 from './users/admin/pages/job_managment/add_new_job_step2';
+import Admin_AddJobStep3 from './users/admin/pages/job_managment/add_new_job_step3';
 import Admin_Passengers from './users/admin/pages/user_managment/passenger/passengers';
 import Admin_AddPassenger from './users/admin/pages/user_managment/passenger/add_new_passenger';
 import Admin_PassengerDetail from './users/admin/pages/user_managment/passenger/passenger_detail';
@@ -103,6 +106,9 @@ function App() {
               <Route path="/admin/users/passengers/:id" element={<Admin_PassengerDetail />} />
               <Route path="/admin/jobs" element={<Admin_JobsList />} />
               <Route path="/admin/jobs/calendar" element={<Admin_JobCalendar />} />
+              <Route path="/admin/jobs/create-step1" element={<Admin_AddJobStep1 />} />
+              <Route path="/admin/jobs/create-step2" element={<Admin_AddJobStep2 />} />
+              <Route path="/admin/jobs/create-step3" element={<Admin_AddJobStep3 />} />
               <Route path="/admin/notifications" element={<Admin_Notifications />} />
               <Route path="/admin/reports" element={<Admin_Report />} />
               <Route path="/admin/reports/driver-performance" element={<Admin_DriverReport />} />

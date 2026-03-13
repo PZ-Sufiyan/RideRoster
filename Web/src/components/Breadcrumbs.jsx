@@ -99,7 +99,11 @@ const ROUTE_CRUMB_MAP = [
         match: /^\/admin\/jobs\/([^/]+)$/,
         crumbs: (_, [id]) => [
             { label: 'Job Management', to: '/admin/jobs' },
-            { label: id === 'calendar' ? 'Job Calendar' : decodeURIComponent(id) },
+            { label: id === 'calendar' ? 'Job Calendar' : 
+                     id === 'create-step1' ? 'Create New Job' :
+                     id === 'create-step2' ? 'Pickups & Drop-offs' :
+                     id === 'create-step3' ? 'Timings & Compensation' :
+                     decodeURIComponent(id) },
         ],
     },
     {
