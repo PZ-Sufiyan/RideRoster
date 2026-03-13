@@ -77,7 +77,7 @@ const AddNewJobStep1 = () => {
                 </div>
 
                 {/* Connecting Lines */}
-                <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 -z-0">
+                <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 z-0">
                     <div className="h-full bg-[#004D6D] w-1/2"></div>
                 </div>
             </div>
@@ -198,7 +198,7 @@ const AddNewJobStep1 = () => {
                                         <div className="w-6 h-6 bg-red-500 rounded-full border-2 border-white shadow-md flex items-center justify-center">
                                             <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
                                         </div>
-                                        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-[8px] border-t-red-500"></div>
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-8 border-t-red-500"></div>
                                     </div>
                                 </div>
                             ))}
@@ -235,7 +235,7 @@ const AddNewJobStep1 = () => {
                     </button>
                     <button 
                         onClick={handleNext}
-                        className="flex items-center gap-2 px-6 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/20 active:scale-95 px-8"
+                        className="flex items-center gap-2 px-8 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/20 active:scale-95"
                     >
                         Next: Pickups & Drop-offs
                         <MdTrendingFlat size={20} />

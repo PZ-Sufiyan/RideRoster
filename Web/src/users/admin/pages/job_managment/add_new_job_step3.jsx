@@ -69,7 +69,7 @@ const AddNewJobStep3 = () => {
                 </div>
 
                 {/* Connecting Lines */}
-                <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 -z-0">
+                <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 z-0">
                     <div className="h-full bg-[#004D6D] w-full"></div>
                 </div>
             </div>

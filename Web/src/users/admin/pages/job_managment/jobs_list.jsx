@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdEventNote,
@@ -13,12 +13,32 @@ import {
     MdKeyboardArrowDown,
     MdPeopleAlt,
     MdChevronLeft,
-    MdChevronRight
+    MdChevronRight,
+    MdSearch,
+    MdClose,
+    MdCheck,
+    MdPersonAddAlt1
 } from 'react-icons/md';
 
 const ActiveJobs = () => {
     const navigate = useNavigate();
     const [selectedRows, setSelectedRows] = useState([]);
+    const [activeMenu, setActiveMenu] = useState(null);
+    const [showAssignDriver, setShowAssignDriver] = useState(false);
+    const [showAssignPA, setShowAssignPA] = useState(false);
+    const [selectedJob, setSelectedJob] = useState(null);
+
+    const menuRef = useRef(null);
+
+    useEffect(() => {
+        const handleClickOutside = (event) => {
+            if (menuRef.current && !menuRef.current.contains(event.target)) {
+                setActiveMenu(null);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
+    }, []);
 
     const jobs = [
         {
@@ -31,7 +51,8 @@ const ActiveJobs = () => {
             vehicle: 'BUS-101',
             passengers: '12 / 15',
             status: 'In Progress',
-            statusColor: 'bg-green-50 text-green-600 border-green-100'
+            statusColor: 'bg-green-50 text-green-600 border-green-100',
+            dateTimeStr: 'Nov 19, 2025 at 07:15 AM'
         },
         {
             id: '#J-789124',
@@ -43,7 +64,8 @@ const ActiveJobs = () => {
             vehicle: 'VAN-302',
             passengers: '4 / 6',
             status: 'Upcoming',
-            statusColor: 'bg-blue-50 text-blue-600 border-blue-100'
+            statusColor: 'bg-blue-50 text-blue-600 border-blue-100',
+            dateTimeStr: 'Nov 19, 2025 at 09:00 AM'
         },
         {
             id: '#J-789125',
@@ -55,7 +77,8 @@ const ActiveJobs = () => {
             vehicle: null,
             passengers: '22 / 25',
             status: 'Unassigned',
-            statusColor: 'bg-orange-50 text-orange-600 border-orange-100'
+            statusColor: 'bg-orange-50 text-orange-600 border-orange-100',
+            dateTimeStr: 'Nov 19, 2025 at 02:45 PM'
         },
         {
             id: '#J-789126',
@@ -67,7 +90,8 @@ const ActiveJobs = () => {
             vehicle: 'SHUTTLE-04',
             passengers: '8 / 10',
             status: 'Upcoming',
-            statusColor: 'bg-blue-50 text-blue-600 border-blue-100'
+            statusColor: 'bg-blue-50 text-blue-600 border-blue-100',
+            dateTimeStr: 'Nov 19, 2025 at 03:30 PM'
         }
     ];
 
@@ -77,6 +101,18 @@ const ActiveJobs = () => {
         } else {
             setSelectedRows([...selectedRows, id]);
         }
+    };
+
+    const handleAssignDriver = (job) => {
+        setSelectedJob(job);
+        setShowAssignDriver(true);
+        setActiveMenu(null);
+    };
+
+    const handleAssignPA = (job) => {
+        setSelectedJob(job);
+        setShowAssignPA(true);
+        setActiveMenu(null);
     };
 
     return (
@@ -201,7 +237,10 @@ const ActiveJobs = () => {
                                                 </div>
                                             </div>
                                         ) : (
-                                            <button className="mx-auto px-4 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-[11px] font-bold border border-orange-100 hover:bg-orange-100 transition-all">
+                                            <button 
+                                                onClick={() => handleAssignDriver(job)}
+                                                className="mx-auto px-4 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-[11px] font-bold border border-orange-100 hover:bg-orange-100 transition-all"
+                                            >
                                                 Assign Driver
                                             </button>
                                         )}
@@ -217,10 +256,36 @@ const ActiveJobs = () => {
                                             {job.status}
                                         </span>
                                     </td>
-                                    <td className="px-6 py-5 text-right pr-6">
-                                        <button className="p-1.5 text-gray-400 hover:text-gray-600 transition-all">
+                                    <td className="px-6 py-5 text-right pr-6 relative">
+                                        <button 
+                                            onClick={() => setActiveMenu(activeMenu === idx ? null : idx)}
+                                            className="p-1.5 text-gray-400 hover:text-gray-600 transition-all rounded-full hover:bg-gray-100"
+                                        >
                                             <MdMoreVert size={20} />
                                         </button>
+
+                                        {/* Action Dropdown */}
+                                        {activeMenu === idx && (
+                                            <div 
+                                                ref={menuRef}
+                                                className="absolute right-12 top-5 w-48 bg-white border border-gray-100 rounded-xl shadow-xl z-20 overflow-hidden"
+                                            >
+                                                <div className="py-1">
+                                                    <button 
+                                                        onClick={() => handleAssignDriver(job)}
+                                                        className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
+                                                    >
+                                                        Add Driver
+                                                    </button>
+                                                    <button 
+                                                        onClick={() => handleAssignPA(job)}
+                                                        className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium border-t border-gray-50"
+                                                    >
+                                                        Add PA
+                                                    </button>
+                                                </div>
+                                            </div>
+                                        )}
                                     </td>
                                 </tr>
                             ))}
@@ -246,6 +311,195 @@ const ActiveJobs = () => {
                     </div>
                 </div>
             </div>
+
+            {/* ── Assign Driver Modal ── */}
+            {showAssignDriver && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAssignDriver(false)}></div>
+                    <div className="relative w-full max-w-[620px] bg-white rounded-[24px] shadow-2xl overflow-hidden">
+                        {/* Modal Header */}
+                        <div className="px-8 py-6 flex items-center justify-between border-b border-gray-100">
+                            <h2 className="text-[20px] font-bold text-gray-900">Assign Driver to Job</h2>
+                            <button 
+                                onClick={() => setShowAssignDriver(false)}
+                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
+                            >
+                                <MdClose size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            {/* Job Info Card */}
+                            <div className="bg-[#F9FAFB] border border-gray-100 rounded-2xl p-6 flex justify-between items-start">
+                                <div>
+                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Job ID: {selectedJob?.id}</p>
+                                    <p className="text-[16px] font-bold text-gray-900 mt-1">{selectedJob?.route}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Date & Time</p>
+                                    <p className="text-[14px] font-bold text-gray-900 mt-1">{selectedJob?.dateTimeStr}</p>
+                                </div>
+                            </div>
+
+                            {/* Search and Tabs */}
+                            <div className="flex flex-col sm:flex-row items-center gap-4">
+                                <div className="relative flex-1 w-full">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search driver by name or vehicle..."
+                                        className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D] transition-all"
+                                    />
+                                    <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                </div>
+                                <div className="flex items-center bg-gray-100 p-1 rounded-xl">
+                                    <button className="px-4 py-2 text-[12px] font-bold text-[#004D6D] bg-white rounded-lg shadow-sm">Recommended</button>
+                                    <button className="px-4 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-700">Nearby</button>
+                                    <button className="px-4 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-700">Available</button>
+                                </div>
+                            </div>
+
+                            {/* Driver List */}
+                            <div className="space-y-3">
+                                {[
+                                    { name: 'Johnathan Smith', vehicle: 'Ford Transit - 12 Seater', label: 'Recommended', labelColor: 'text-green-600 bg-green-50', avatar: 'https://i.pravatar.cc/150?u=johnathan' },
+                                    { name: 'Esther Howard', vehicle: 'Mercedes Sprinter - 15 Seater', label: '5 mi away', labelColor: 'text-orange-600 bg-orange-50', avatar: 'https://i.pravatar.cc/150?u=esther', selected: true },
+                                    { name: 'Robert Fox', vehicle: 'Toyota Sienna - 7 Seater', label: 'Available', labelColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=robert' },
+                                    { name: 'Kristin Watson', vehicle: 'Ford Transit - 12 Seater', label: 'Available', labelColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=kristin' },
+                                ].map((driver, idx) => (
+                                    <div key={idx} className={`p-4 border rounded-2xl flex items-center justify-between transition-all ${driver.selected ? 'bg-[#F4F9FF] border-[#004D6D]/20' : 'bg-white border-gray-100 hover:border-gray-200'}`}>
+                                        <div className="flex items-center gap-4">
+                                            <img src={driver.avatar} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" />
+                                            <div>
+                                                <p className="text-[14px] font-bold text-gray-900">{driver.name}</p>
+                                                <p className="text-[12px] text-gray-400 font-medium mt-0.5">{driver.vehicle}</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${driver.labelColor}`}>
+                                                {driver.label}
+                                            </span>
+                                            {driver.selected ? (
+                                                <button className="flex items-center gap-1.5 px-4 py-2 bg-[#004D6D] text-white rounded-xl text-[12px] font-bold shadow-sm">
+                                                    <MdCheck size={16} />
+                                                    Selected
+                                                </button>
+                                            ) : (
+                                                <button className="px-4 py-2 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-xl text-[12px] font-bold transition-all">
+                                                    Assign
+                                                </button>
+                                            )}
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-8 py-6 bg-gray-50/50 flex items-center justify-between border-t border-gray-100">
+                            <button 
+                                onClick={() => setShowAssignDriver(false)}
+                                className="px-6 py-2.5 text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button className="flex items-center gap-2 px-6 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/10">
+                                <MdPersonAddAlt1 size={20} />
+                                Invite Driver
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* ── Assign PA Modal (Same structure) ── */}
+            {showAssignPA && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAssignPA(false)}></div>
+                    <div className="relative w-full max-w-[620px] bg-white rounded-[24px] shadow-2xl overflow-hidden">
+                        {/* Modal Header */}
+                        <div className="px-8 py-6 flex items-center justify-between border-b border-gray-100">
+                            <h2 className="text-[20px] font-bold text-gray-900">Assign PA to Job</h2>
+                            <button 
+                                onClick={() => setShowAssignPA(false)}
+                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
+                            >
+                                <MdClose size={24} />
+                            </button>
+                        </div>
+
+                        <div className="p-8 space-y-6">
+                            {/* Job Info Card */}
+                            <div className="bg-[#F9FAFB] border border-gray-100 rounded-2xl p-6 flex justify-between items-start">
+                                <div>
+                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Job ID: {selectedJob?.id}</p>
+                                    <p className="text-[16px] font-bold text-gray-900 mt-1">{selectedJob?.route}</p>
+                                </div>
+                                <div className="text-right">
+                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Date & Time</p>
+                                    <p className="text-[14px] font-bold text-gray-900 mt-1">{selectedJob?.dateTimeStr}</p>
+                                </div>
+                            </div>
+
+                            {/* Search and Tabs */}
+                            <div className="flex flex-col sm:flex-row items-center gap-4">
+                                <div className="relative flex-1 w-full">
+                                    <input 
+                                        type="text" 
+                                        placeholder="Search PA by name..."
+                                        className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D] transition-all"
+                                    />
+                                    <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
+                                </div>
+                                <div className="flex items-center bg-gray-100 p-1 rounded-xl">
+                                    <button className="px-4 py-2 text-[12px] font-bold text-[#004D6D] bg-white rounded-lg shadow-sm">Recommended</button>
+                                    <button className="px-4 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-700">Nearby</button>
+                                    <button className="px-4 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-700">Available</button>
+                                </div>
+                            </div>
+
+                            {/* PA List */}
+                            <div className="space-y-3">
+                                {[
+                                    { name: 'Sarah Wilson', label: 'Recommended', labelColor: 'text-green-600 bg-green-50', avatar: 'https://i.pravatar.cc/150?u=sarah' },
+                                    { name: 'David Miller', label: 'Available', labelColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=david' },
+                                ].map((pa, idx) => (
+                                    <div key={idx} className="p-4 bg-white border border-gray-100 rounded-2xl flex items-center justify-between transition-all hover:border-gray-200">
+                                        <div className="flex items-center gap-4">
+                                            <img src={pa.avatar} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" />
+                                            <div>
+                                                <p className="text-[14px] font-bold text-gray-900">{pa.name}</p>
+                                                <p className="text-[12px] text-gray-400 font-medium mt-0.5">Passenger Assistant</p>
+                                            </div>
+                                        </div>
+                                        <div className="flex items-center gap-4">
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${pa.labelColor}`}>
+                                                {pa.label}
+                                            </span>
+                                            <button className="px-4 py-2 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-xl text-[12px] font-bold transition-all">
+                                                Assign
+                                            </button>
+                                        </div>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="px-8 py-6 bg-gray-50/50 flex items-center justify-between border-t border-gray-100">
+                            <button 
+                                onClick={() => setShowAssignPA(false)}
+                                className="px-6 py-2.5 text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors"
+                            >
+                                Cancel
+                            </button>
+                            <button className="flex items-center gap-2 px-6 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/10">
+                                <MdPersonAddAlt1 size={20} />
+                                Invite PA
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
