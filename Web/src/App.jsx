@@ -20,6 +20,8 @@ import SubAdminList from './users/admin/pages/user_managment/subadmin/sub_admin'
 import Admin_AddSubAdmin from './users/admin/pages/user_managment/subadmin/add_sub_admin';
 import Admin_SubAdminDetail from './users/admin/pages/user_managment/subadmin/sub_admin_detail';
 import Admin_JobsList from './users/admin/pages/job_managment/jobs_list';
+import Admin_JobDetail from './users/admin/pages/job_managment/job_detail';
+import Admin_EditJob from './users/admin/pages/job_managment/edit_job';
 import Admin_JobCalendar from './users/admin/pages/job_managment/job_calender';
 import Admin_AddJobStep1 from './users/admin/pages/job_managment/add_new_job_step1';
 import Admin_AddJobStep2 from './users/admin/pages/job_managment/add_new_job_step2';
@@ -38,6 +40,11 @@ import Admin_Report from './users/admin/pages/reports/report';
 import Admin_DriverReport from './users/admin/pages/reports/driver_report';
 import Admin_PAReport from './users/admin/pages/reports/pa_report';
 import SubAdmin_Login from './users/subAdmin/pages/auth/login';
+import Admin_Register_BasicInfo from './users/register_company/basic_info';
+import Admin_Register_Contact from './users/register_company/contact';
+import Admin_Register_AdminScale from './users/register_company/admin_detail';
+import Admin_Register_ComplianceDocs from './users/register_company/compliance';
+import Admin_Register_Review from './users/register_company/review';
 import Home from './home';
 import './App.css';
 
@@ -69,7 +76,11 @@ function App() {
         <Route path="/superadmin/login" element={<SuperAdmin_Login />} />
         <Route path="/admin/login" element={<Admin_Login />} />
         <Route path="/subadmin/login" element={<SubAdmin_Login />} />
-        <Route path="/admin/register" element={<div className="p-10 text-white bg-slate-900 min-h-screen">Admin Company Registration (Coming Soon)</div>} />
+        <Route path="/admin/register" element={<Admin_Register_BasicInfo />} />
+        <Route path="/admin/register/contact" element={<Admin_Register_Contact />} />
+        <Route path="/admin/register/admin-scale" element={<Admin_Register_AdminScale />} />
+        <Route path="/admin/register/compliance-docs" element={<Admin_Register_ComplianceDocs />} />
+        <Route path="/admin/register/review" element={<Admin_Register_Review />} />
 
         {/* Dashboard Pages - Protected */}
         <Route element={<ProtectedRoute />}>
@@ -109,6 +120,8 @@ function App() {
               <Route path="/admin/jobs/create-step1" element={<Admin_AddJobStep1 />} />
               <Route path="/admin/jobs/create-step2" element={<Admin_AddJobStep2 />} />
               <Route path="/admin/jobs/create-step3" element={<Admin_AddJobStep3 />} />
+              <Route path="/admin/jobs/:id/edit" element={<Admin_EditJob />} />
+              <Route path="/admin/jobs/:id" element={<Admin_JobDetail />} />
               <Route path="/admin/notifications" element={<Admin_Notifications />} />
               <Route path="/admin/reports" element={<Admin_Report />} />
               <Route path="/admin/reports/driver-performance" element={<Admin_DriverReport />} />

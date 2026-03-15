@@ -96,15 +96,23 @@ const ROUTE_CRUMB_MAP = [
         ],
     },
     {
-        match: /^\/admin\/jobs\/([^/]+)$/,
-        crumbs: (_, [id]) => [
-            { label: 'Job Management', to: '/admin/jobs' },
-            { label: id === 'calendar' ? 'Job Calendar' : 
-                     id === 'create-step1' ? 'Create New Job' :
-                     id === 'create-step2' ? 'Pickups & Drop-offs' :
-                     id === 'create-step3' ? 'Timings & Compensation' :
-                     decodeURIComponent(id) },
-        ],
+        match: /^\/admin\/jobs\/([^/]+)(?:\/edit)?$/,
+        crumbs: (_, [id, editAction]) => {
+            const pathSegments = _.split('/');
+            const isEditing = pathSegments[pathSegments.length - 1] === 'edit';
+            return [
+                { label: 'Job Management', to: '/admin/jobs' },
+                { 
+                    label: id === 'calendar' ? 'Job Calendar' : 
+                         id === 'create-step1' ? 'Create New Job' :
+                         id === 'create-step2' ? 'Pickups & Drop-offs' :
+                         id === 'create-step3' ? 'Timings & Compensation' :
+                         decodeURIComponent(id),
+                    to: isEditing && id && !id.startsWith('create') && id !== 'calendar' ? `/admin/jobs/${id}` : undefined
+                },
+                ...(isEditing ? [{ label: 'Edit Job' }] : [])
+            ];
+        },
     },
     {
         match: /^\/admin\/reports\/([^/]+)$/,

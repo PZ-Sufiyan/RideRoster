@@ -272,6 +272,12 @@ const ActiveJobs = () => {
                                             >
                                                 <div className="py-1">
                                                     <button 
+                                                        onClick={() => navigate(`/admin/jobs/${job.id.replace('#', '')}`)}
+                                                        className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium border-b border-gray-50"
+                                                    >
+                                                        View Details
+                                                    </button>
+                                                    <button 
                                                         onClick={() => handleAssignDriver(job)}
                                                         className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
                                                     >
