@@ -10,24 +10,12 @@ import {
     MdCheckBoxOutlineBlank,
     MdCheckBox
 } from 'react-icons/md';
+import { getAllCompanies } from '../../../../services/companyService' // added
 
 const Companies = () => {
-    // Extended Dummy Data for Pagination
-    const [companies, setCompanies] = useState([
-        { id: 1, name: 'Bright Horizons Transport', initials: 'BH', initialsColor: 'text-blue-700', bgColor: 'bg-blue-50', contact: 'admin@brighthorizons.com', location: 'San Francisco, CA', status: 'Active', dateJoined: '2025-10-22' },
-        { id: 2, name: 'Safe Journey Logistics', initials: 'SJ', initialsColor: 'text-orange-700', bgColor: 'bg-orange-50', contact: 'contact@safejourney.io', location: 'New York, NY', status: 'Pending', dateJoined: '2025-11-17' },
-        { id: 3, name: 'NextGen Shuttles', initials: 'NG', initialsColor: 'text-blue-700', bgColor: 'bg-blue-50', contact: 'ceo@nextgenshuttles.com', location: 'Austin, TX', status: 'Active', dateJoined: '2025-09-15' },
-        { id: 4, name: 'Metro Transit Solutions', initials: 'MT', initialsColor: 'text-red-700', bgColor: 'bg-red-50', contact: 'support@metrotransit.org', location: 'Chicago, IL', status: 'Rejected', dateJoined: '2025-11-16' },
-        { id: 5, name: 'CityWide Transports', initials: 'CT', initialsColor: 'text-emerald-700', bgColor: 'bg-emerald-50', contact: 'info@citywide.co', location: 'Miami, FL', status: 'Inactive', dateJoined: '2025-08-01' },
-        { id: 6, name: 'Global Logistics', initials: 'GL', initialsColor: 'text-purple-700', bgColor: 'bg-purple-50', contact: 'ops@globallogistics.com', location: 'London, UK', status: 'Active', dateJoined: '2025-07-12' },
-        { id: 7, name: 'Urban Shuttles', initials: 'US', initialsColor: 'text-amber-700', bgColor: 'bg-amber-50', contact: 'hello@urbanshuttles.net', location: 'Seattle, WA', status: 'Pending', dateJoined: '2025-11-05' },
-        { id: 8, name: 'Fast Track Logistics', initials: 'FT', initialsColor: 'text-cyan-700', bgColor: 'bg-cyan-50', contact: 'fast@track.com', location: 'Denver, CO', status: 'Active', dateJoined: '2025-06-20' },
-        { id: 9, name: 'Blue Ridge Transit', initials: 'BR', initialsColor: 'text-indigo-700', bgColor: 'bg-indigo-50', contact: 'info@blueridge.org', location: 'Charlotte, NC', status: 'Rejected', dateJoined: '2025-05-15' },
-        { id: 10, name: 'Apex Movers', initials: 'AM', initialsColor: 'text-rose-700', bgColor: 'bg-rose-50', contact: 'movers@apex.com', location: 'Las Vegas, NV', status: 'Active', dateJoined: '2025-04-10' },
-        { id: 11, name: 'Skyline Shuttles', initials: 'SS', initialsColor: 'text-sky-700', bgColor: 'bg-sky-50', contact: 'sky@lineshuttles.com', location: 'Phoenix, AZ', status: 'Inactive', dateJoined: '2025-03-05' },
-        { id: 12, name: 'Oceanic Freight', initials: 'OF', initialsColor: 'text-teal-700', bgColor: 'bg-teal-50', contact: 'freight@oceanic.io', location: 'Portland, OR', status: 'Active', dateJoined: '2025-02-28' },
-        { id: 13, name: 'Silver Star Motors', initials: 'S*', initialsColor: 'text-gray-700', bgColor: 'bg-gray-50', contact: 'silver@star.com', location: 'Dallas, TX', status: 'Pending', dateJoined: '2025-01-15' },
-    ]);
+    // replaced hardcoded dummy -> fetch from backend
+    const [companies, setCompanies] = useState([]);
+    const [loading, setLoading] = useState(false);
 
     const [selectedRows, setSelectedRows] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
@@ -37,6 +25,53 @@ const Companies = () => {
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
+
+    // fetch on mount
+    useEffect(() => {
+        const load = async () => {
+            setLoading(true)
+            try {
+                const data = await getAllCompanies()
+                // map DB columns -> UI shape used in this component
+                const mapped = (data || []).map((c) => ({
+                    id: c.id,
+                    name: c.company_name || '—',
+                    initials: getInitials(c.company_name || ''),
+                    initialsColor: 'text-blue-700',
+                    bgColor: 'bg-blue-50',
+                    contact: c.company_email || '',
+                    location: c.company_address || '',
+                    status: capitalizeStatus(c.status || ''),
+                    dateJoined: formatDate(c.created_at)
+                }))
+                setCompanies(mapped)
+            } catch (err) {
+                console.error('load companies', err)
+            } finally {
+                setLoading(false)
+            }
+        }
+        load()
+    }, [])
+
+    // helpers
+    const getInitials = (name = '') => {
+        const parts = name.trim().split(/\s+/)
+        if (parts.length === 0) return ''
+        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
+        return (parts[0][0] + parts[1][0]).toUpperCase()
+    }
+    const formatDate = (d) => {
+        if (!d) return ''
+        const dt = new Date(d)
+        if (Number.isNaN(dt.getTime())) return ''
+        return dt.toISOString().slice(0, 10) // YYYY-MM-DD
+    }
+    const capitalizeStatus = (s) => {
+        if (!s) return ''
+        const v = s.toString()
+        return v.charAt(0).toUpperCase() + v.slice(1)
+    }
 
     // Filter Logic
     const filteredCompanies = useMemo(() => {
@@ -172,7 +207,13 @@ const Companies = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {pagedCompanies.length > 0 ? (
+                            {loading ? (
+                                <tr>
+                                    <td colSpan="7" className="px-6 py-20 text-center text-gray-500">
+                                        Loading...
+                                    </td>
+                                </tr>
+                            ) : pagedCompanies.length > 0 ? (
                                 pagedCompanies.map((company) => (
                                     <tr key={company.id} className="hover:bg-gray-50/80 transition-colors">
                                         <td className="px-6 py-4">
