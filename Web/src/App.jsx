@@ -1,5 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import DashboardLayout from './layouts/DashboardLayout';
+
 import SuperAdmin_Dashboard from './users/superAdmin/pages/dashboard/dashboard';
 import SuperAdmin_PendingCompanies from './users/superAdmin/pages/companies/pendingcompanies';
 import SuperAdmin_Companies from './users/superAdmin/pages/companies/companies';
@@ -8,6 +9,7 @@ import SuperAdmin_SOSPage from './users/superAdmin/pages/sos/sos';
 import SuperAdmin_SystemLogs from './users/superAdmin/pages/systemlogs/systemlogs';
 import SuperAdmin_Settings from './users/superAdmin/pages/settings/settings';
 import SuperAdmin_Login from './users/superAdmin/pages/auth/login';
+
 import Admin_Login from './users/admin/pages/auth/login';
 import Admin_Dashboard from './users/admin/pages/dashboard/dashboard';
 import Admin_Drivers from './users/admin/pages/user_managment/driver/drivers';
@@ -39,12 +41,9 @@ import Admin_Settings from './users/admin/pages/settings/setting';
 import Admin_Report from './users/admin/pages/reports/report';
 import Admin_DriverReport from './users/admin/pages/reports/driver_report';
 import Admin_PAReport from './users/admin/pages/reports/pa_report';
+
+import RegistrationFlow from './users/register_company/registration_flow'
 import SubAdmin_Login from './users/subAdmin/pages/auth/login';
-import Admin_Register_BasicInfo from './users/register_company/basic_info';
-import Admin_Register_Contact from './users/register_company/contact';
-import Admin_Register_AdminScale from './users/register_company/admin_detail';
-import Admin_Register_ComplianceDocs from './users/register_company/compliance';
-import Admin_Register_Review from './users/register_company/review';
 import Home from './home';
 import './App.css';
 
@@ -76,11 +75,7 @@ function App() {
         <Route path="/superadmin/login" element={<SuperAdmin_Login />} />
         <Route path="/admin/login" element={<Admin_Login />} />
         <Route path="/subadmin/login" element={<SubAdmin_Login />} />
-        <Route path="/admin/register" element={<Admin_Register_BasicInfo />} />
-        <Route path="/admin/register/contact" element={<Admin_Register_Contact />} />
-        <Route path="/admin/register/admin-scale" element={<Admin_Register_AdminScale />} />
-        <Route path="/admin/register/compliance-docs" element={<Admin_Register_ComplianceDocs />} />
-        <Route path="/admin/register/review" element={<Admin_Register_Review />} />
+        <Route path="/admin/register" element={<RegistrationFlow />} />
 
         {/* Dashboard Pages - Protected */}
         <Route element={<ProtectedRoute />}>
