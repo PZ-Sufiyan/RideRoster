@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useMemo, useEffect, useRef, useState } from 'react';
 import {
     MdFileDownload,
     MdDateRange,
@@ -8,39 +8,16 @@ import {
     MdChevronRight
 } from 'react-icons/md';
 import { exportToExcel } from '../../../../utils/exportUtils';
+import { getSystemLogs, getSystemLogsPage } from '../../../../services/systemLogService';
 
 const SystemLogs = () => {
-    // Extended Dummy Data for Pagination
-    const allLogs = useMemo(() => {
-        const baseLogs = [
-            { id: 1, timestamp: "2025-11-18 20:15:33 UTC", user: { name: "Jacob Jones", avatar: "https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=64&h=64" }, actionType: "APPROVED", actionDetail: "company 'Bright Horizons'", status: "Success", ip: "192.168.1.101" },
-            { id: 2, timestamp: "2025-11-18 19:45:01 UTC", user: { name: "Eleanor Pena", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=64&h=64" }, actionType: "EXPORTED", actionDetail: "user report", status: "Success", ip: "78.12.55.203" },
-            { id: 3, timestamp: "2025-11-18 18:30:12 UTC", user: { name: "Cameron Williamson", avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=64&h=64" }, actionType: "LOGIN", actionDetail: "attempt failed", status: "Failure", ip: "104.28.210.117" },
-            { id: 4, timestamp: "2025-11-18 17:55:48 UTC", user: { name: "Robert Fox", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=64&h=64" }, actionType: "APPROVED", actionDetail: "company 'Elf Cafe'", status: "Success", ip: "208.80.154.224" },
-            { id: 5, timestamp: "2025-11-17 14:02:19 UTC", user: { name: "Jenny Wilson", avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=64&h=64" }, actionType: "DELETED", actionDetail: "user 'temp_user@acme.com'", status: "Success", ip: "151.101.194.133" },
-            { id: 6, timestamp: "2025-11-17 12:45:10 UTC", user: { name: "Albert Flores", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=64&h=64" }, actionType: "LOGIN", actionDetail: "admin login", status: "Success", ip: "203.0.113.15" },
-            { id: 7, timestamp: "2025-11-17 10:20:05 UTC", user: { name: "Kristin Watson", avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=64&h=64" }, actionType: "UPDATED", actionDetail: "system settings", status: "Success", ip: "10.0.0.42" },
-            { id: 8, timestamp: "2025-11-16 16:15:33 UTC", user: { name: "Bessie Cooper", avatar: "https://images.unsplash.com/photo-1531746020798-e795c5399c7c?auto=format&fit=crop&w=64&h=64" }, actionType: "APPROVED", actionDetail: "driver 'Mike Smith'", status: "Success", ip: "192.168.1.102" },
-            { id: 9, timestamp: "2025-11-16 15:30:12 UTC", user: { name: "Marvin McKinney", avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=64&h=64" }, actionType: "LOGIN", actionDetail: "attempt failed", status: "Failure", ip: "45.12.110.89" },
-            { id: 10, timestamp: "2025-11-16 14:10:48 UTC", user: { name: "Cody Fisher", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=64&h=64" }, actionType: "EXPORTED", actionDetail: "revenue report", status: "Success", ip: "92.168.1.1" },
-            { id: 11, timestamp: "2025-11-15 09:12:33 UTC", user: { name: "Guy Hawkins", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=64&h=64" }, actionType: "DELETED", actionDetail: "expired logs", status: "Success", ip: "192.168.0.25" },
-            { id: 12, timestamp: "2025-11-15 08:45:01 UTC", user: { name: "Theresa Webb", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64" }, actionType: "UPDATED", actionDetail: "pricing model", status: "Success", ip: "172.16.0.10" },
-            { id: 13, timestamp: "2025-11-14 20:15:33 UTC", user: { name: "Ronald Richards", avatar: "https://images.unsplash.com/photo-1527980965255-d3b416303d12?auto=format&fit=crop&w=64&h=64" }, actionType: "APPROVED", actionDetail: "company 'Swift Cabs'", status: "Success", ip: "192.168.1.104" },
-            { id: 14, timestamp: "2025-11-14 19:45:01 UTC", user: { name: "Jane Cooper", avatar: "https://images.unsplash.com/photo-1554151228-14d9def656e4?auto=format&fit=crop&w=64&h=64" }, actionType: "LOGIN", actionDetail: "admin login", status: "Success", ip: "78.12.55.205" },
-            { id: 15, timestamp: "2025-11-14 18:30:12 UTC", user: { name: "Arlene McCoy", avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=64&h=64" }, actionType: "EXPORTED", actionDetail: "compliance report", status: "Success", ip: "104.28.210.119" },
-            { id: 16, timestamp: "2025-11-13 17:55:48 UTC", user: { name: "Robert Fox", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=64&h=64" }, actionType: "APPROVED", actionDetail: "driver 'Sam Wilson'", status: "Success", ip: "208.80.154.226" },
-            { id: 17, timestamp: "2025-11-13 14:02:19 UTC", user: { name: "Dianne Russell", avatar: "https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=64&h=64" }, actionType: "LOGIN", actionDetail: "attempt failed", status: "Failure", ip: "151.101.194.135" },
-            { id: 18, timestamp: "2025-11-13 12:45:10 UTC", user: { name: "Ralph Edwards", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=64&h=64" }, actionType: "UPDATED", actionDetail: "user roles", status: "Success", ip: "203.0.113.18" },
-            { id: 19, timestamp: "2025-11-12 10:20:05 UTC", user: { name: "Kristin Watson", avatar: "https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=64&h=64" }, actionType: "DELETED", actionDetail: "orphaned records", status: "Success", ip: "10.0.0.45" },
-            { id: 20, timestamp: "2025-11-12 09:12:33 UTC", user: { name: "Bessie Cooper", avatar: "https://images.unsplash.com/photo-1531746020798-e795c5399c7c?auto=format&fit=crop&w=64&h=64" }, actionType: "APPROVED", actionDetail: "company 'Taxi Pro'", status: "Success", ip: "192.168.1.105" },
-            { id: 21, timestamp: "2025-11-12 08:45:01 UTC", user: { name: "Marvin McKinney", avatar: "https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=64&h=64" }, actionType: "LOGIN", actionDetail: "attempt failed", status: "Failure", ip: "45.12.110.92" },
-            { id: 22, timestamp: "2025-11-11 16:15:33 UTC", user: { name: "Cody Fisher", avatar: "https://images.unsplash.com/photo-1472099645785-5658abf4ff4e?auto=format&fit=crop&w=64&h=64" }, actionType: "EXPORTED", actionDetail: "asset log", status: "Success", ip: "92.168.1.5" },
-            { id: 23, timestamp: "2025-11-11 15:30:12 UTC", user: { name: "Guy Hawkins", avatar: "https://images.unsplash.com/photo-1506794778202-cad84cf45f1d?auto=format&fit=crop&w=64&h=64" }, actionType: "DELETED", actionDetail: "test data", status: "Success", ip: "192.168.0.28" },
-            { id: 24, timestamp: "2025-11-11 14:10:48 UTC", user: { name: "Theresa Webb", avatar: "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64" }, actionType: "UPDATED", actionDetail: "notification template", status: "Success", ip: "172.16.0.15" },
-            { id: 25, timestamp: "2025-11-11 09:12:33 UTC", user: { name: "Albert Flores", avatar: "https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=64&h=64" }, actionType: "LOGIN", actionDetail: "superadmin login", status: "Success", ip: "203.0.113.20" },
-        ];
-        return baseLogs;
-    }, []);
+    const itemsPerPage = 6;
+
+    // Data State (Supabase)
+    const [logs, setLogs] = useState([]);
+    const [totalItems, setTotalItems] = useState(0);
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
 
     // Filter State
     const [searchUser, setSearchUser] = useState('');
@@ -50,24 +27,6 @@ const SystemLogs = () => {
 
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 6;
-
-    // Filter Logic
-    const filteredLogs = useMemo(() => {
-        return allLogs.filter(log => {
-            const matchesUser = log.user.name.toLowerCase().includes(searchUser.toLowerCase());
-            const matchesAction = filterAction === 'All Actions' || log.actionType === filterAction.toUpperCase();
-            const matchesStatus = filterStatus === 'Any Status' || log.status === filterStatus;
-
-            // Simple date range check (matching parts of the timestamp string for this mock)
-            const matchesDate = !dateRange || log.timestamp.includes(dateRange);
-
-            return matchesUser && matchesAction && matchesStatus && matchesDate;
-        });
-    }, [allLogs, searchUser, filterAction, filterStatus, dateRange]);
-
-    // Derived Pagination Values
-    const totalItems = filteredLogs.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
 
     // Reset to page 1 when filters change
@@ -75,14 +34,139 @@ const SystemLogs = () => {
         setCurrentPage(1);
     }, [searchUser, filterAction, filterStatus, dateRange]);
 
-    // Get Current Page Logs
-    const currentLogs = useMemo(() => {
-        const startIndex = (currentPage - 1) * itemsPerPage;
-        return filteredLogs.slice(startIndex, startIndex + itemsPerPage);
-    }, [filteredLogs, currentPage, itemsPerPage]);
+    const getIsoRangeFromDateInput = (value) => {
+        const trimmed = (value || '').trim();
+        if (!trimmed) return { from: null, to: null };
+        // Expecting YYYY-MM-DD (local timezone). Convert to ISO range for that day.
+        const start = new Date(`${trimmed}T00:00:00`);
+        if (Number.isNaN(start.getTime())) return { from: null, to: null };
+        const end = new Date(`${trimmed}T23:59:59.999`);
+        return { from: start.toISOString(), to: end.toISOString() };
+    };
+
+    const formatTimestampUtc = (iso) => {
+        if (!iso) return '';
+        const d = new Date(iso);
+        if (Number.isNaN(d.getTime())) return String(iso);
+        const parts = new Intl.DateTimeFormat('en-GB', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false,
+            timeZone: 'UTC'
+        }).formatToParts(d);
+        const get = (type) => parts.find(p => p.type === type)?.value || '';
+        return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')} UTC`;
+    };
+
+    const parseAction = (action) => {
+        const raw = (action || '').trim();
+        if (!raw) return { type: '-', detail: '' };
+        const firstToken = raw.split(/\s+/)[0] || raw;
+        const type = firstToken.toUpperCase();
+        const detail = raw.slice(firstToken.length).trim();
+        return { type, detail };
+    };
+
+    const abortRef = useRef(null);
+
+    const queryParams = useMemo(() => {
+        const { from, to } = getIsoRangeFromDateInput(dateRange);
+        const status = filterStatus === 'Any Status' ? null : filterStatus;
+        const actionType = filterAction === 'All Actions' ? null : filterAction.toUpperCase();
+        const userName = (searchUser || '').trim() ? searchUser.trim() : null;
+        return { from, to, status, actionType, userName };
+    }, [dateRange, filterAction, filterStatus, searchUser]);
+
+    useEffect(() => {
+        let cancelled = false;
+        setError('');
+
+        if (abortRef.current) abortRef.current.abort();
+        const controller = new AbortController();
+        abortRef.current = controller;
+
+        const offset = (currentPage - 1) * itemsPerPage;
+
+        // Debounce typing a bit (especially user filter).
+        const t = setTimeout(async () => {
+            try {
+                if (cancelled || controller.signal.aborted) return;
+                setLoading(true);
+
+                const { data, count } = await getSystemLogsPage({
+                    ...queryParams,
+                    limit: itemsPerPage,
+                    offset,
+                    orderBy: 'timestamp',
+                    order: 'desc'
+                });
+
+                if (cancelled || controller.signal.aborted) return;
+
+                const mapped = (data || []).map((row) => {
+                    const parsed = parseAction(row.action);
+                    return {
+                        id: row.id,
+                        timestamp: formatTimestampUtc(row.timestamp),
+                        user: {
+                            name: row.user_name || 'System',
+                            avatar: null
+                        },
+                        actionType: parsed.type,
+                        actionDetail: parsed.detail,
+                        status: row.status,
+                        ip: row.ip_address || '-',
+                        _raw: row
+                    };
+                });
+
+                setLogs(mapped);
+                setTotalItems(count || 0);
+            } catch (e) {
+                if (cancelled || controller.signal.aborted) return;
+                setLogs([]);
+                setTotalItems(0);
+                setError(e?.message || 'Failed to load system logs.');
+            } finally {
+                if (!cancelled && !controller.signal.aborted) setLoading(false);
+            }
+        }, 300);
+
+        return () => {
+            cancelled = true;
+            clearTimeout(t);
+            controller.abort();
+        };
+    }, [currentPage, itemsPerPage, queryParams]);
 
     const handleExport = () => {
-        exportToExcel(filteredLogs, 'Filtered_SystemLogs', 'System Logs');
+        (async () => {
+            try {
+                setError('');
+                const rows = await getSystemLogs({
+                    ...queryParams,
+                    // For export we pull a bigger chunk (adjust if you expect more).
+                    limit: 5000,
+                    offset: 0,
+                    orderBy: 'timestamp',
+                    order: 'desc'
+                });
+                const exportRows = (rows || []).map((row) => ({
+                    timestamp: row.timestamp,
+                    user_name: row.user_name || 'System',
+                    action: row.action,
+                    status: row.status,
+                    ip_address: row.ip_address || ''
+                }));
+                exportToExcel(exportRows, 'Filtered_SystemLogs', 'System Logs');
+            } catch (e) {
+                setError(e?.message || 'Failed to export system logs.');
+            }
+        })();
     };
 
     const handlePageChange = (page) => {
@@ -106,9 +190,15 @@ const SystemLogs = () => {
                     className="flex items-center gap-2 px-4 py-2 bg-white border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 shadow-sm transition-colors active:scale-95"
                 >
                     <MdFileDownload className="w-5 h-5 text-blue-600" />
-                    Export {filteredLogs.length !== allLogs.length ? 'Filtered' : ''} Excel
+                    Export Excel
                 </button>
             </div>
+
+            {error ? (
+                <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {error}
+                </div>
+            ) : null}
 
             {/* Main Content Card */}
             <div className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col min-h-[600px]">
@@ -205,19 +295,23 @@ const SystemLogs = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {currentLogs.length > 0 ? (
-                                currentLogs.map((log) => (
+                            {loading ? (
+                                <tr>
+                                    <td colSpan="6" className="px-6 py-20 text-center text-gray-500">
+                                        Loading logs...
+                                    </td>
+                                </tr>
+                            ) : logs.length > 0 ? (
+                                logs.map((log) => (
                                     <tr key={log.id} className="hover:bg-gray-50/60 transition-colors">
                                         <td className="px-6 py-4 text-gray-500 font-medium font-mono text-xs">
                                             {log.timestamp}
                                         </td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                <img
-                                                    src={log.user.avatar}
-                                                    alt={log.user.name}
-                                                    className="w-8 h-8 rounded-full border border-gray-200 object-cover"
-                                                />
+                                                <div className="w-8 h-8 rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center text-xs font-bold text-gray-700">
+                                                    {(log.user.name || 'S').trim().slice(0, 1).toUpperCase()}
+                                                </div>
                                                 <span className="font-semibold text-gray-900">{log.user.name}</span>
                                             </div>
                                         </td>

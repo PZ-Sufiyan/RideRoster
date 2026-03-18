@@ -14,6 +14,50 @@ const STEPS = [
     { id: 5, label: 'Review' },
 ];
 
+const initialRegistrationState = {
+    company: {
+        company_name: '',
+        company_registration_number: '',
+        company_type: '',
+        vat_number: '',
+        primary_business_activity: '',
+
+        company_address: '',
+        company_operating_address: '',
+        company_email: '',
+        company_phone: '',
+        company_website: '',
+        company_preferred_language: 'English (UK)',
+
+        driver_estimate: '',
+
+        operator_licence_number: '',
+        operator_licence_issuing_authority: '',
+
+        // Certificate of Incorporation or equivalent
+        coioe_registration_number: '',
+        coioe_issue_date: '',
+
+        // Commercial Insurance Certificate
+        cic_policy_number: '',
+        cic_coverage_amount: '',
+        cic_expiry_date: '',
+    },
+    admin: {
+        full_name: '',
+        email: '',
+        phone: '',
+    },
+    documents: {
+        operator_license: null,
+        public_liability_insurance: null,
+        certificate_of_incorporation: null,
+        commercial_insurance_certificate: null,
+        vat_certificate: null,
+        primary_admin_id: null,
+    },
+};
+
 // ─── StepBubble ──────────────────────────────────────────────────────────────
 // Isolated so className logic stays clean and non-conflicting
 const StepBubble = ({ stepId, active, completed }) => {
@@ -49,6 +93,7 @@ const StepLabel = ({ label, active, completed }) => {
 // ─── RegistrationFlow ────────────────────────────────────────────────────────
 const RegistrationFlow = () => {
     const [activeStep, setActiveStep] = useState(1);
+    const [registration, setRegistration] = useState(initialRegistrationState);
 
     /**
      * maxUnlocked tracks the furthest step the user has progressed to.
@@ -124,19 +169,42 @@ const RegistrationFlow = () => {
 
                 {/* ── Active Step ── */}
                 {activeStep === 1 && (
-                    <Admin_Register_BasicInfo onNext={goNext} />
+                    <Admin_Register_BasicInfo
+                        value={registration}
+                        onChange={setRegistration}
+                        onNext={goNext}
+                    />
                 )}
                 {activeStep === 2 && (
-                    <Admin_Register_Contact onNext={goNext} onPrev={goPrev} />
+                    <Admin_Register_Contact
+                        value={registration}
+                        onChange={setRegistration}
+                        onNext={goNext}
+                        onPrev={goPrev}
+                    />
                 )}
                 {activeStep === 3 && (
-                    <Admin_Register_AdminScale onNext={goNext} onPrev={goPrev} />
+                    <Admin_Register_AdminScale
+                        value={registration}
+                        onChange={setRegistration}
+                        onNext={goNext}
+                        onPrev={goPrev}
+                    />
                 )}
                 {activeStep === 4 && (
-                    <Admin_Register_ComplianceDocs onNext={goNext} onPrev={goPrev} />
+                    <Admin_Register_ComplianceDocs
+                        value={registration}
+                        onChange={setRegistration}
+                        onNext={goNext}
+                        onPrev={goPrev}
+                    />
                 )}
                 {activeStep === 5 && (
-                    <Admin_Register_Review onPrev={goPrev} />
+                    <Admin_Register_Review
+                        value={registration}
+                        onChange={setRegistration}
+                        onPrev={goPrev}
+                    />
                 )}
 
             </div>
