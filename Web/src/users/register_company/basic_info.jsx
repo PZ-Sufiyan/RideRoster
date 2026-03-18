@@ -6,8 +6,21 @@ import {
     MdVisibility,
     MdDeleteOutline,
     MdKeyboardArrowDown,
+    MdErrorOutline,
 } from 'react-icons/md';
-import { formatBytes } from '../../services/storageService';
+import { AiOutlineLoading3Quarters } from 'react-icons/ai';
+import {
+    uploadCompanyDocument,
+    removeCompanyDocument,
+} from '../../services/storageService';
+
+// ─── Constants ────────────────────────────────────────────────────────────────
+
+const COMPANY_TYPES = [
+    { value: 'small', label: 'Small company' },
+    { value: 'medium', label: 'Medium company' },
+    { value: 'large',         label: 'Large company' },
+];
 
 const ACTIVITIES = [
     'General Private Hire',
@@ -16,54 +29,290 @@ const ACTIVITIES = [
     'Corporate / Contract Services',
 ];
 
+/**
+ * ─── BUCKET NAME ──────────────────────────────────────────────────────────────
+ * Open Supabase Studio → Storage → and copy the exact bucket name you created.
+ * Common mistakes: spaces, capitalisation, hyphens vs underscores.
+ * Examples:  'company-documents'  /  'company_documents'  /  'documents'
+ *
+ * This constant is the single place to fix it.
+ */
+const STORAGE_BUCKET = 'company-documents'; // ← change to match your bucket name
+const EMPTY_COMPANY = Object.freeze({});
+
+/**
+ * Temporary company ID used as the storage path prefix.
+ * Replace with a stable UUID from your registration context once available.
+ */
+const TEMP_COMPANY_ID = 'registration-temp';
+
+// ─── DocumentUploadSlot ───────────────────────────────────────────────────────
+/**
+ * Self-contained upload row with three visual states:
+ *   Idle      → dashed clickable card
+ *   Uploading → spinner, card disabled
+ *   Uploaded  → solid card with filename + View / Delete actions
+ *
+ * Stored doc shape: { file_name, file_path, file_url, bucket }
+ */
+const DocumentUploadSlot = ({
+    label,
+    hint,
+    docKey,
+    documentType,
+    value,
+    onChange,
+    required = false,
+    showError = false,   // controlled by parent — show "required" error after submit attempt
+}) => {
+    const inputRef = useRef(null);
+    const [uploading, setUploading] = useState(false);
+    const [uploadError, setUploadError] = useState('');
+
+    const doc = value?.documents?.[docKey] ?? null;
+
+    const setDoc = (docData) =>
+        onChange((prev) => ({
+            ...prev,
+            documents: { ...prev.documents, [docKey]: docData },
+        }));
+
+    // ── Upload ──
+    const handleFileChange = async (e) => {
+        const file = e.target.files?.[0];
+        e.target.value = ''; // allow re-selection of same file after delete
+        if (!file) return;
+
+        setUploadError('');
+        setUploading(true);
+        try {
+            const result = await uploadCompanyDocument({
+                companyId: TEMP_COMPANY_ID,
+                documentType,
+                file,
+                bucket: STORAGE_BUCKET,
+            });
+            setDoc(result);
+        } catch (err) {
+            // Surface the raw error so the developer can see the exact bucket/permission message
+            setUploadError(err.message || 'Upload failed. Please try again.');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    // ── Delete ──
+    const handleDelete = async () => {
+        if (!doc) return;
+        setUploadError('');
+        setUploading(true);
+        try {
+            await removeCompanyDocument({ filePath: doc.file_path, bucket: doc.bucket });
+            setDoc(null);
+        } catch (err) {
+            setUploadError(err.message || 'Could not remove file. Please try again.');
+        } finally {
+            setUploading(false);
+        }
+    };
+
+    // ── View ──
+    const handleView = () => {
+        if (doc?.file_url) window.open(doc.file_url, '_blank', 'noopener,noreferrer');
+    };
+
+    // Show "required" nudge when parent triggers validation and doc is missing
+    const showRequiredError = showError && required && !doc && !uploading;
+
+    return (
+        <div className="space-y-1.5">
+            <input
+                ref={inputRef}
+                type="file"
+                accept="application/pdf,image/jpeg,image/png"
+                className="hidden"
+                onChange={handleFileChange}
+            />
+
+            {!doc ? (
+                // ── Idle / not uploaded ──
+                <div
+                    onClick={() => !uploading && inputRef.current?.click()}
+                    className={[
+                        'border border-dashed rounded-2xl p-5 flex items-center justify-between transition-colors',
+                        showRequiredError ? 'border-red-300 bg-red-50/30' : 'border-gray-300',
+                        uploading
+                            ? 'opacity-60 cursor-wait'
+                            : 'hover:bg-gray-50 cursor-pointer group',
+                    ].join(' ')}
+                >
+                    <div className="flex items-center gap-4">
+                        <div className="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-white border border-gray-100 shrink-0">
+                            <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 className="text-[14px] font-bold text-[#1e293b]">
+                                {label}
+                                {required && <span className="text-red-500 ml-0.5">*</span>}
+                            </h3>
+                            <p className="text-[12px] text-gray-400 font-medium mt-0.5">{hint}</p>
+                        </div>
+                    </div>
+                    <div className="w-8 h-8 rounded-full flex items-center justify-center text-[#2f6b8f] bg-blue-50/50 shrink-0">
+                        {uploading
+                            ? <AiOutlineLoading3Quarters size={18} className="animate-spin" />
+                            : <MdFileUpload size={20} />
+                        }
+                    </div>
+                </div>
+            ) : (
+                // ── Uploaded ──
+                <div className="border border-gray-100 bg-gray-50/50 rounded-2xl p-5 flex items-center justify-between">
+                    <div className="flex items-center gap-4 min-w-0">
+                        <div className="w-10 h-10 rounded-lg bg-green-50 text-green-500 flex items-center justify-center border border-green-100 shrink-0">
+                            {uploading
+                                ? <AiOutlineLoading3Quarters size={18} className="animate-spin text-gray-400" />
+                                : <MdCheck size={20} />
+                            }
+                        </div>
+                        <div className="min-w-0">
+                            <h3 className="text-[14px] font-bold text-[#1e293b]">
+                                {label}
+                                {required && <span className="text-red-500 ml-0.5">*</span>}
+                            </h3>
+                            <p className="text-[12px] text-gray-400 font-medium mt-0.5 truncate">
+                                {doc.file_name}
+                            </p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-2 text-gray-400 shrink-0 ml-3">
+                        <button
+                            type="button"
+                            onClick={handleView}
+                            disabled={uploading}
+                            title="View document"
+                            className="p-1.5 hover:text-[#2f6b8f] transition-colors disabled:opacity-40 rounded-lg hover:bg-blue-50"
+                        >
+                            <MdVisibility size={20} />
+                        </button>
+                        <button
+                            type="button"
+                            onClick={handleDelete}
+                            disabled={uploading}
+                            title="Remove document"
+                            className="p-1.5 hover:text-red-500 transition-colors disabled:opacity-40 rounded-lg hover:bg-red-50"
+                        >
+                            {uploading
+                                ? <AiOutlineLoading3Quarters size={18} className="animate-spin" />
+                                : <MdDeleteOutline size={20} />
+                            }
+                        </button>
+                    </div>
+                </div>
+            )}
+
+            {/* Upload / delete error */}
+            {uploadError && (
+                <p className="flex items-center gap-1.5 text-[12px] text-red-500 font-bold pl-1 pt-0.5">
+                    <MdErrorOutline size={13} /> {uploadError}
+                </p>
+            )}
+
+            {/* Required-but-missing error (triggered by parent on submit attempt) */}
+            {showRequiredError && (
+                <p className="flex items-center gap-1.5 text-[12px] text-red-500 font-bold pl-1 pt-0.5">
+                    <MdErrorOutline size={13} /> This document is required before continuing.
+                </p>
+            )}
+        </div>
+    );
+};
+
+// ─── Admin_Register_BasicInfo ─────────────────────────────────────────────────
+
 const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
     const [touched, setTouched] = useState({});
-    const operatorInputRef = useRef(null);
-    const pliInputRef = useRef(null);
+    // Tracks whether user has attempted to proceed (triggers doc-required errors)
+    const [submitAttempted, setSubmitAttempted] = useState(false);
 
-    const company = value?.company || {};
-    const documents = value?.documents || {};
+    const company = useMemo(() => value?.company ?? EMPTY_COMPANY, [value?.company]);
+    const documents = value?.documents ?? {};
 
-    const errors = useMemo(() => {
+    // ── Field validation ──
+    const fieldErrors = useMemo(() => {
         const e = {};
-        if (!company.company_name?.trim()) e.company_name = 'Company name is required';
-        if (!company.company_registration_number?.trim()) e.company_registration_number = 'Registration number is required';
-        if (!company.company_type?.trim()) e.company_type = 'Company type is required';
-        if (!company.primary_business_activity?.trim()) e.primary_business_activity = 'Primary business activity is required';
+        if (!company.company_name?.trim())
+            e.company_name = 'Company name is required';
+        if (!company.company_registration_number?.trim())
+            e.company_registration_number = 'Registration number is required';
+        if (!company.company_type?.trim())
+            e.company_type = 'Company type is required';
+        if (!company.primary_business_activity?.trim())
+            e.primary_business_activity = 'Primary business activity is required';
         return e;
     }, [company]);
 
-    const canContinue = Object.keys(errors).length === 0;
+    // ── Document validation ──
+    // Both docs are required before the user can proceed
+    const docsValid =
+        documents.operator_license != null &&
+        documents.public_liability_insurance != null;
 
-    const setCompanyField = (field, v) => {
-        onChange((prev) => ({
-            ...prev,
-            company: { ...prev.company, [field]: v },
-        }));
-    };
+    const canContinue = Object.keys(fieldErrors).length === 0 && docsValid;
 
-    const setDoc = (docType, file) => {
-        onChange((prev) => ({
-            ...prev,
-            documents: { ...prev.documents, [docType]: file || null },
-        }));
-    };
+    // ── Helpers ──
+    const setCompanyField = (field, v) =>
+        onChange((prev) => ({ ...prev, company: { ...prev.company, [field]: v } }));
 
-    const onContinue = () => {
+    const touch = (key) => setTouched((p) => ({ ...p, [key]: true }));
+
+    const touchAll = () =>
         setTouched({
             company_name: true,
             company_registration_number: true,
             company_type: true,
             primary_business_activity: true,
         });
-        if (!canContinue) return;
-        onNext();
+
+    const onContinue = () => {
+        touchAll();
+        setSubmitAttempted(true);
+        if (canContinue) onNext();
     };
 
+    // ── Dynamic class builders ──
+    const inputClass = (key) =>
+        [
+            'w-full px-4 py-3 bg-white border rounded-xl text-[14px] text-gray-900',
+            'placeholder:text-gray-400 focus:outline-none focus:ring-2 transition-all',
+            touched[key] && fieldErrors[key]
+                ? 'border-red-400 focus:ring-red-400/20 focus:border-red-400'
+                : 'border-gray-200 focus:ring-[#2f6b8f]/20 focus:border-[#2f6b8f]',
+        ].join(' ');
+
+    const selectClass = (key) =>
+        [
+            'w-full px-4 py-3 bg-white border rounded-xl text-[14px] text-gray-900',
+            'focus:outline-none focus:ring-2 transition-all appearance-none cursor-pointer',
+            touched[key] && fieldErrors[key]
+                ? 'border-red-400 focus:ring-red-400/20 focus:border-red-400'
+                : 'border-gray-200 focus:ring-[#2f6b8f]/20 focus:border-[#2f6b8f]',
+        ].join(' ');
+
+    const fieldError = (key) =>
+        touched[key] && fieldErrors[key] ? (
+            <p className="flex items-center gap-1 text-[12px] text-red-500 font-bold mt-1">
+                <MdErrorOutline size={13} /> {fieldErrors[key]}
+            </p>
+        ) : null;
+
+    // ── Render ──
     return (
         <div className="flex flex-col lg:flex-row gap-6 items-start">
 
-            {/* ── Left Column: Forms ── */}
+            {/* ── Left Column ── */}
             <div className="flex-1 space-y-6 min-w-0">
 
                 {/* Basic Company Information */}
@@ -76,7 +325,9 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                     </div>
 
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-8">
-                        <div className="space-y-2">
+
+                        {/* Company Name */}
+                        <div className="space-y-1.5">
                             <label className="block text-[14px] font-bold text-[#1e293b]">
                                 Company Name <span className="text-red-500">*</span>
                             </label>
@@ -85,18 +336,17 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                                 placeholder="Legal trading name"
                                 value={company.company_name || ''}
                                 onChange={(e) => setCompanyField('company_name', e.target.value)}
-                                onBlur={() => setTouched((p) => ({ ...p, company_name: true }))}
-                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2f6b8f]/20 focus:border-[#2f6b8f] transition-all"
+                                onBlur={() => touch('company_name')}
+                                className={inputClass('company_name')}
                             />
-                            {touched.company_name && errors.company_name && (
-                                <p className="text-[12px] text-red-500 font-bold">{errors.company_name}</p>
-                            )}
+                            {fieldError('company_name')}
                             <p className="text-[12px] text-gray-400 font-medium">
                                 Official name as registered with regulatory bodies.
                             </p>
                         </div>
 
-                        <div className="space-y-2">
+                        {/* Registration Number */}
+                        <div className="space-y-1.5">
                             <label className="block text-[14px] font-bold text-[#1e293b]">
                                 Company Registration Number <span className="text-red-500">*</span>
                             </label>
@@ -105,18 +355,17 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                                 placeholder="e.g. 12345678"
                                 value={company.company_registration_number || ''}
                                 onChange={(e) => setCompanyField('company_registration_number', e.target.value)}
-                                onBlur={() => setTouched((p) => ({ ...p, company_registration_number: true }))}
-                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2f6b8f]/20 focus:border-[#2f6b8f] transition-all"
+                                onBlur={() => touch('company_registration_number')}
+                                className={inputClass('company_registration_number')}
                             />
-                            {touched.company_registration_number && errors.company_registration_number && (
-                                <p className="text-[12px] text-red-500 font-bold">{errors.company_registration_number}</p>
-                            )}
+                            {fieldError('company_registration_number')}
                             <p className="text-[12px] text-gray-400 font-medium">
                                 UK Companies House number or equivalent.
                             </p>
                         </div>
 
-                        <div className="space-y-2">
+                        {/* Company Type */}
+                        <div className="space-y-1.5">
                             <label className="block text-[14px] font-bold text-[#1e293b]">
                                 Company Type <span className="text-red-500">*</span>
                             </label>
@@ -124,26 +373,25 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                                 <select
                                     value={company.company_type || ''}
                                     onChange={(e) => setCompanyField('company_type', e.target.value)}
-                                    onBlur={() => setTouched((p) => ({ ...p, company_type: true }))}
-                                    className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2f6b8f]/20 focus:border-[#2f6b8f] transition-all appearance-none cursor-pointer"
+                                    onBlur={() => touch('company_type')}
+                                    className={selectClass('company_type')}
                                 >
                                     <option value="">Select Type</option>
-                                    <option value="small">Small company</option>
-                                    <option value="medium">Medium company</option>
-                                    <option value="large">Large company</option>
+                                    {COMPANY_TYPES.map((t) => (
+                                        <option key={t.value} value={t.value}>{t.label}</option>
+                                    ))}
                                 </select>
-                                <MdKeyboardArrowDown 
-                                    className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" 
-                                    size={20} 
-                                />
+                                <MdKeyboardArrowDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={20} />
                             </div>
-                            {touched.company_type && errors.company_type && (
-                                <p className="text-[12px] text-red-500 font-bold">{errors.company_type}</p>
-                            )}
+                            {fieldError('company_type')}
                         </div>
 
-                        <div className="space-y-2">
-                            <label className="block text-[14px] font-bold text-[#1e293b]">VAT Number (Optional)</label>
+                        {/* VAT Number */}
+                        <div className="space-y-1.5">
+                            <label className="block text-[14px] font-bold text-[#1e293b]">
+                                VAT Number{' '}
+                                <span className="text-gray-400 font-normal text-[13px]">(Optional)</span>
+                            </label>
                             <input
                                 type="text"
                                 placeholder="GB 123 4567 89"
@@ -153,7 +401,8 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                             />
                         </div>
 
-                        <div className="space-y-2 md:col-span-2">
+                        {/* Primary Business Activity */}
+                        <div className="space-y-1.5 md:col-span-2">
                             <label className="block text-[14px] font-bold text-[#1e293b]">
                                 Primary Business Activity <span className="text-red-500">*</span>
                             </label>
@@ -161,8 +410,8 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                                 <select
                                     value={company.primary_business_activity || ''}
                                     onChange={(e) => setCompanyField('primary_business_activity', e.target.value)}
-                                    onBlur={() => setTouched((p) => ({ ...p, primary_business_activity: true }))}
-                                    className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-gray-900 focus:outline-none focus:ring-2 focus:ring-[#2f6b8f]/20 focus:border-[#2f6b8f] transition-all appearance-none cursor-pointer"
+                                    onBlur={() => touch('primary_business_activity')}
+                                    className={selectClass('primary_business_activity')}
                                 >
                                     <option value="">Select Activity</option>
                                     {ACTIVITIES.map((a) => (
@@ -171,9 +420,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                                 </select>
                                 <MdKeyboardArrowDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" size={20} />
                             </div>
-                            {touched.primary_business_activity && errors.primary_business_activity && (
-                                <p className="text-[12px] text-red-500 font-bold">{errors.primary_business_activity}</p>
-                            )}
+                            {fieldError('primary_business_activity')}
                         </div>
                     </div>
 
@@ -189,114 +436,36 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                     </div>
                 </div>
 
-                {/* Initial Document Verification */}
+                {/* Document Verification */}
                 <div className="bg-white border border-gray-200 rounded-3xl p-8 shadow-sm">
-                    <h2 className="text-[20px] font-bold text-[#1e293b] mb-6">Initial Document Verification</h2>
+                    <h2 className="text-[20px] font-bold text-[#1e293b] mb-1">
+                        Initial Document Verification
+                    </h2>
+                    <p className="text-[13px] text-gray-400 font-medium mb-6">
+                        Both documents are required before continuing. Accepted: PDF, JPG, PNG — max 10 MB.
+                    </p>
 
                     <div className="space-y-4">
-                        {/* Upload box */}
-                        <input
-                            ref={operatorInputRef}
-                            type="file"
-                            accept="application/pdf,image/jpeg,image/png"
-                            className="hidden"
-                            onChange={(e) => setDoc('operator_license', e.target.files?.[0] || null)}
+                        <DocumentUploadSlot
+                            label="Operator License"
+                            hint="Upload valid O-License copy (PDF, JPG)"
+                            docKey="operator_license"
+                            documentType="operator_license"
+                            value={value}
+                            onChange={onChange}
+                            required
+                            showError={submitAttempted}
                         />
-                        <div
-                            onClick={() => operatorInputRef.current?.click()}
-                            className="border border-dashed border-gray-300 rounded-2xl p-5 flex items-center justify-between hover:bg-gray-50 transition-colors cursor-pointer group"
-                        >
-                            <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-lg bg-gray-50 flex items-center justify-center text-gray-400 group-hover:bg-white border border-gray-100">
-                                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
-                                        <path fillRule="evenodd" d="M4 4a2 2 0 012-2h4.586A2 2 0 0112 2.586L15.414 6A2 2 0 0116 7.414V16a2 2 0 01-2 2H6a2 2 0 01-2-2V4zm2 6a1 1 0 011-1h6a1 1 0 110 2H7a1 1 0 01-1-1zm1 3a1 1 0 100 2h6a1 1 0 100-2H7z" clipRule="evenodd" />
-                                    </svg>
-                                </div>
-                                <div>
-                                    <h3 className="text-[14px] font-bold text-[#1e293b]">Operator License</h3>
-                                    <p className="text-[12px] text-gray-400 font-medium mt-0.5">Upload valid O-License copy (PDF, JPG)</p>
-                                </div>
-                            </div>
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-[#2f6b8f] bg-blue-50/50">
-                                <MdFileUpload size={20} />
-                            </div>
-                        </div>
-
-                        {/* Uploaded item */}
-                        <input
-                            ref={pliInputRef}
-                            type="file"
-                            accept="application/pdf,image/jpeg,image/png"
-                            className="hidden"
-                            onChange={(e) => setDoc('public_liability_insurance', e.target.files?.[0] || null)}
+                        <DocumentUploadSlot
+                            label="Public Liability Insurance"
+                            hint="Current year insurance certificate (PDF, JPG)"
+                            docKey="public_liability_insurance"
+                            documentType="public_liability_insurance"
+                            value={value}
+                            onChange={onChange}
+                            required
+                            showError={submitAttempted}
                         />
-                        <div className="border border-gray-100 bg-gray-50/50 rounded-2xl p-5 flex items-center justify-between">
-                            <div className="flex items-center gap-4">
-                                <div className="w-10 h-10 rounded-lg bg-green-50 text-green-500 flex items-center justify-center border border-green-100">
-                                    <MdCheck size={20} />
-                                </div>
-                                <div>
-                                    <h3 className="text-[14px] font-bold text-[#1e293b]">Public Liability Insurance</h3>
-                                    <p className="text-[12px] text-gray-400 font-medium mt-0.5">
-                                        {documents.public_liability_insurance
-                                            ? `${documents.public_liability_insurance.name} (${formatBytes(documents.public_liability_insurance.size)})`
-                                            : 'No file selected'}
-                                    </p>
-                                </div>
-                            </div>
-                            <div className="flex items-center gap-3 text-gray-400">
-                                <button
-                                    type="button"
-                                    onClick={() => pliInputRef.current?.click()}
-                                    className="hover:text-gray-600 transition-colors p-1"
-                                    title="Select file"
-                                >
-                                    <MdVisibility size={20} />
-                                </button>
-                                <button
-                                    type="button"
-                                    onClick={() => setDoc('public_liability_insurance', null)}
-                                    className="hover:text-red-500 transition-colors p-1"
-                                    title="Remove"
-                                >
-                                    <MdDeleteOutline size={20} />
-                                </button>
-                            </div>
-                        </div>
-
-                        {documents.operator_license && (
-                            <div className="border border-gray-100 bg-gray-50/50 rounded-2xl p-5 flex items-center justify-between">
-                                <div className="flex items-center gap-4">
-                                    <div className="w-10 h-10 rounded-lg bg-green-50 text-green-500 flex items-center justify-center border border-green-100">
-                                        <MdCheck size={20} />
-                                    </div>
-                                    <div>
-                                        <h3 className="text-[14px] font-bold text-[#1e293b]">Operator License</h3>
-                                        <p className="text-[12px] text-gray-400 font-medium mt-0.5">
-                                            {documents.operator_license.name} ({formatBytes(documents.operator_license.size)})
-                                        </p>
-                                    </div>
-                                </div>
-                                <div className="flex items-center gap-3 text-gray-400">
-                                    <button
-                                        type="button"
-                                        onClick={() => operatorInputRef.current?.click()}
-                                        className="hover:text-gray-600 transition-colors p-1"
-                                        title="Change"
-                                    >
-                                        <MdVisibility size={20} />
-                                    </button>
-                                    <button
-                                        type="button"
-                                        onClick={() => setDoc('operator_license', null)}
-                                        className="hover:text-red-500 transition-colors p-1"
-                                        title="Remove"
-                                    >
-                                        <MdDeleteOutline size={20} />
-                                    </button>
-                                </div>
-                            </div>
-                        )}
                     </div>
                 </div>
 
@@ -304,9 +473,11 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                 <div className="flex items-center justify-end pt-4 pb-10">
                     <button
                         onClick={onContinue}
+                        disabled={!canContinue}
+                        title={!canContinue ? 'Please complete all required fields and upload both documents' : undefined}
                         className={[
                             'px-6 py-3 text-white rounded-xl text-[14px] font-bold transition-all shadow-sm',
-                            canContinue ? 'hover:opacity-90' : 'opacity-60 cursor-not-allowed',
+                            canContinue ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed',
                         ].join(' ')}
                         style={{ backgroundColor: '#2f6b8f' }}
                     >
