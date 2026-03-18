@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
     MdSearch,
     MdFilterList,
@@ -13,55 +13,45 @@ import {
 } from 'react-icons/md';
 
 import { Link } from 'react-router-dom';
+import { getPendingCompaniesWithAdminNames } from '../../../../services/companyService';
 
 const PendingCompanies = () => {
-    // Dummy Data
-    const [companies, setCompanies] = useState([
-        {
-            id: 1,
-            name: 'Bright Horizons Transport',
-            submitted: '2025-11-18',
-            contact: { name: 'Esther Howard', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64' },
-            location: 'San Francisco, CA',
-            status: 'Pending Review'
-        },
-        {
-            id: 2,
-            name: 'Safe Journey Logistics',
-            submitted: '2025-11-17',
-            contact: { name: 'Cameron Williamson', avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=64&h=64' },
-            location: 'New York, NY',
-            status: 'Pending Review'
-        },
-        {
-            id: 3,
-            name: 'NextGen Shuttles',
-            submitted: '2025-11-17',
-            contact: { name: 'Jane Cooper', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=64&h=64' },
-            location: 'Austin, TX',
-            status: 'Pending Review'
-        },
-        {
-            id: 4,
-            name: 'Metro Transit Solutions',
-            submitted: '2025-11-16',
-            contact: { name: 'Robert Fox', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=64&h=64' },
-            location: 'Chicago, IL',
-            status: 'Pending Review'
-        },
-        {
-            id: 5,
-            name: 'Urban Mobility Inc.',
-            submitted: '2025-11-15',
-            contact: { name: 'Kristin Watson', avatar: 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&w=64&h=64' },
-            location: 'Miami, FL',
-            status: 'Pending Review'
-        },
-    ]);
-
+    const [companies, setCompanies] = useState([]);
     const [selectedRows, setSelectedRows] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isBulkActionOpen, setIsBulkActionOpen] = useState(false);
+
+    useEffect(() => {
+        const fetchPendingCompanies = async () => {
+            try {
+                const data = await getPendingCompaniesWithAdminNames();
+
+                const mappedCompanies = (data || []).map((company) => ({
+                    id: company.id,
+                    name: company.company_name || '',
+                    submitted: company.created_at
+                        ? new Date(company.created_at).toISOString().split('T')[0]
+                        : '',
+                    contact: {
+                        name:
+                            company.admin_full_names?.[0] ||
+                            company.company_admins?.[0]?.full_name ||
+                            '',
+                        avatar: null
+                    },
+                    location: company.company_address || '',
+                    status: company.status || ''
+                }));
+
+                setCompanies(mappedCompanies);
+            } catch (error) {
+                console.error('Error fetching pending companies:', error);
+                setCompanies([]);
+            }
+        };
+
+        fetchPendingCompanies();
+    }, []);
 
     // Filter companies based on search query
     const filteredCompanies = companies.filter(company =>
@@ -87,8 +77,7 @@ const PendingCompanies = () => {
     const handleBulkAction = (action) => {
         if (selectedRows.length === 0) return;
 
-        // In a real app, this would be an API call
-        // For now, we just remove them from the list to simulate processing
+        // Keep existing functionality unchanged: remove selected rows locally
         const remainingCompanies = companies.filter(c => !selectedRows.includes(c.id));
         setCompanies(remainingCompanies);
         setSelectedRows([]);
@@ -169,10 +158,6 @@ const PendingCompanies = () => {
                                 </div>
                             )}
                         </div>
-                        <button className="flex items-center gap-2 px-4 py-2 bg-[#005580] rounded-lg text-sm font-medium text-white hover:bg-sky-900 transition-colors shadow-sm">
-                            <MdAdd size={18} />
-                            Add Company
-                        </button>
                     </div>
                 </div>
 
@@ -231,17 +216,21 @@ const PendingCompanies = () => {
                                         <td className="px-6 py-4 text-gray-500">{company.submitted}</td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
-                                                <img
-                                                    src={company.contact.avatar}
-                                                    alt={company.contact.name}
-                                                    className="w-8 h-8 rounded-full object-cover border border-gray-100"
-                                                />
+                                                {company.contact.avatar ? (
+                                                    <img
+                                                        src={company.contact.avatar}
+                                                        alt={company.contact.name}
+                                                        className="w-8 h-8 rounded-full object-cover border border-gray-100"
+                                                    />
+                                                ) : (
+                                                    <div className="w-8 h-8 rounded-full border border-gray-100 bg-gray-100" />
+                                                )}
                                                 <span className="text-gray-700 font-medium">{company.contact.name}</span>
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 text-gray-500">{company.location}</td>
                                         <td className="px-6 py-4">
-                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-100">
+                                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-100 capitalize">
                                                 {company.status}
                                             </span>
                                         </td>
@@ -272,7 +261,6 @@ const PendingCompanies = () => {
                         Showing results <span className="font-medium text-gray-900">1</span> to <span className="font-medium text-gray-900">{filteredCompanies.length}</span> of <span className="font-medium text-gray-900">{companies.length}</span>
                     </span>
 
-                    {/* Pagination controls (static for now) */}
                     <div className="flex items-center gap-2">
                         <button className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500 disabled:opacity-50">
                             <MdChevronLeft size={20} />

@@ -182,3 +182,62 @@ export const deleteCompanyDocument = async (docId) => {
   if (error) throw error
   return data
 }
+
+/**
+ * Get companies filtered by status.
+ * Returns companies and their related company_admins (only full_name) and company_documents.
+ */
+export const getCompaniesByStatus = async (status = '') => {
+  const { data, error } = await supabase
+    .from('companies')
+    .select(`
+      *,
+      company_admins(full_name),
+      company_documents(*)
+    `)
+    .eq('status', status)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+/**
+ * Return array of admin full_name values for a given company_id.
+ * If companyId is null/undefined returns an empty array.
+ */
+export const getCompanyAdminNamesByCompanyId = async (companyId) => {
+  if (!companyId) return []
+  const { data, error } = await supabase
+    .from('company_admins')
+    .select('full_name')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+  return (data || []).map(a => a.full_name)
+}
+
+/**
+ * Get all pending companies and include admin full names for each company.
+ * Returns companies with nested company_admins array (each item has full_name).
+ * Also returns a flattened admin_full_names array on each company for convenience.
+ */
+export const getPendingCompaniesWithAdminNames = async () => {
+  const { data, error } = await supabase
+    .from('companies')
+    .select(`
+      *,
+      company_admins(full_name)
+    `)
+    .eq('status', 'pending')
+    .order('created_at', { ascending: false })
+
+  if (error) throw error
+
+  // Add a convenience array of admin full names per company
+  return (data || []).map(c => ({
+    ...c,
+    admin_full_names: (c.company_admins || []).map(a => a.full_name)
+  }))
+}
