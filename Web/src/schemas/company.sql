@@ -47,8 +47,6 @@ create table public.company_admins (
 create type document_type as enum (
     'operator_license',
     'public_liability_insurance',
-    'business_license',
-    'insurance_liability',
     'certificate_of_incorporation',
     'commercial_insurance_certificate',
     'vat_certificate',

@@ -7,7 +7,7 @@ create table if not exists public.passenger_bookings (
     on delete cascade,
 
   passenger_id uuid not null
-    references public.passenger_info(id)
+    references public.passenger(id)
     on delete cascade,
 
   -- passenger details

@@ -1,4 +1,4 @@
-create table if not exists public.passenger_info (
+create table if not exists public.passenger_assistant (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies(id) on delete cascade,
 
@@ -17,8 +17,8 @@ create table if not exists public.passenger_info (
   updated_at timestamptz not null default now()
 );
 
-create index if not exists idx_passenger_info_company
-on public.passenger_info(company_id);
+create index if not exists idx_passenger_assistant_company
+on public.passenger_assistant(company_id);
 
 -- Safe enum creation
 do $$
@@ -33,11 +33,11 @@ begin
   end if;
 end$$;
 
-create table if not exists public.passenger_info_documents (
+create table if not exists public.passenger_assistant_documents (
   id uuid primary key default gen_random_uuid(),
 
-  passenger_id uuid not null
-    references public.passenger_info(id)
+  passenger_assistant_id uuid not null
+    references public.passenger_assistant(id)
     on delete cascade,
 
   document_type public.assistant_document_type not null,
@@ -51,12 +51,12 @@ create table if not exists public.passenger_info_documents (
   uploaded_at timestamptz not null default now()
 );
 
-create index if not exists idx_passenger_info_documents_passenger_id
-on public.passenger_info_documents(passenger_id);
+create index if not exists idx_passenger_assistant_documents_passenger_id
+on public.passenger_assistant_documents(passenger_assistant_id);
 
-create index if not exists idx_passenger_info_documents_type
-on public.passenger_info_documents(document_type);
+create index if not exists idx_passenger_assistant_documents_type
+on public.passenger_assistant_documents(document_type);
 
 -- Optional: one doc per type per passenger
 create unique index if not exists uq_passenger_doc_per_type
-on public.passenger_info_documents(passenger_id, document_type);
+on public.passenger_assistant_documents(passenger_assistant_id, document_type);
