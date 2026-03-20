@@ -1,9 +1,14 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import Admin_Register_BasicInfo from './basic_info';
 import Admin_Register_Contact from './contact';
 import Admin_Register_AdminScale from './admin_detail';
 import Admin_Register_ComplianceDocs from './compliance';
 import Admin_Register_Review from './review';
+import {
+    createTempCompanyId,
+    loadCompanyRegistrationDraft,
+    saveCompanyRegistrationDraft,
+} from '../../services/registrationDraftService';
 
 // ─── Step definitions ────────────────────────────────────────────────────────
 const STEPS = [
@@ -29,7 +34,7 @@ const initialRegistrationState = {
         company_website: '',
         company_preferred_language: 'English (UK)',
 
-        driver_estimate: '',
+        driver_estimate: null,
 
         operator_licence_number: '',
         operator_licence_issuing_authority: '',
@@ -92,8 +97,13 @@ const StepLabel = ({ label, active, completed }) => {
 
 // ─── RegistrationFlow ────────────────────────────────────────────────────────
 const RegistrationFlow = () => {
-    const [activeStep, setActiveStep] = useState(1);
-    const [registration, setRegistration] = useState(initialRegistrationState);
+    const loadedDraft = useMemo(() => loadCompanyRegistrationDraft(), []);
+
+    const [activeStep, setActiveStep] = useState(() => loadedDraft?.activeStep ?? 1);
+    const [maxUnlocked, setMaxUnlocked] = useState(() => loadedDraft?.maxUnlocked ?? 1);
+
+    const [tempCompanyId, setTempCompanyId] = useState(() => loadedDraft?.tempCompanyId ?? createTempCompanyId());
+    const [registration, setRegistration] = useState(() => loadedDraft?.registration ?? initialRegistrationState);
 
     /**
      * maxUnlocked tracks the furthest step the user has progressed to.
@@ -101,8 +111,6 @@ const RegistrationFlow = () => {
      * Users can freely navigate between all unlocked steps via the stepper.
      * Only goNext() advances maxUnlocked — clicking the stepper alone does not.
      */
-    const [maxUnlocked, setMaxUnlocked] = useState(1);
-
     const goToStep = (stepId) => {
         if (stepId <= maxUnlocked) {
             setActiveStep(stepId);
@@ -122,6 +130,16 @@ const RegistrationFlow = () => {
             setActiveStep((prev) => prev - 1);
         }
     };
+
+    // Persist draft to localStorage on changes (form fields + uploaded document metadata).
+    useEffect(() => {
+        saveCompanyRegistrationDraft({
+            registration,
+            tempCompanyId,
+            activeStep,
+            maxUnlocked,
+        })
+    }, [registration, tempCompanyId, activeStep, maxUnlocked])
 
     return (
         <div className="min-h-screen bg-slate-50 p-6 lg:p-10 font-sans text-gray-900">
@@ -173,6 +191,7 @@ const RegistrationFlow = () => {
                         value={registration}
                         onChange={setRegistration}
                         onNext={goNext}
+                        tempCompanyId={tempCompanyId}
                     />
                 )}
                 {activeStep === 2 && (
@@ -197,6 +216,7 @@ const RegistrationFlow = () => {
                         onChange={setRegistration}
                         onNext={goNext}
                         onPrev={goPrev}
+                        tempCompanyId={tempCompanyId}
                     />
                 )}
                 {activeStep === 5 && (

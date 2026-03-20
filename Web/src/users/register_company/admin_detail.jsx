@@ -75,7 +75,11 @@ const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev }) => {
             e.phone = 'Admin phone is required';
         else if (!isValidPhone(admin.phone))
             e.phone = 'Enter a valid phone number';
-        if (!company.driver_estimate?.trim())
+        if (
+            company.driver_estimate === null
+            || company.driver_estimate === undefined
+            || String(company.driver_estimate).trim().length === 0
+        )
             e.driver_estimate = 'Fleet size is required';
         return e;
     }, [admin, company]);
@@ -216,8 +220,11 @@ const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev }) => {
                             </label>
                             <div className="relative">
                                 <select
-                                    value={company.driver_estimate || ''}
-                                    onChange={(e) => setCompanyField('driver_estimate', e.target.value)}
+                                    value={company.driver_estimate ?? ''}
+                                    onChange={(e) => {
+                                        const raw = e.target.value
+                                        setCompanyField('driver_estimate', raw ? Number(raw) : null)
+                                    }}
                                     onBlur={() => touch('driver_estimate')}
                                     className={selectClass('driver_estimate')}
                                 >

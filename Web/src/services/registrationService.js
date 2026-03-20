@@ -27,11 +27,32 @@ function toNullableInt(v) {
  * {
  *   company: { company_name, company_registration_number, company_type, vat_number, primary_business_activity, ...contact fields... , driver_estimate, operator_licence_number, operator_licence_issuing_authority, coioe_registration_number, coioe_issue_date, cic_policy_number, cic_coverage_amount, cic_expiry_date }
  *   admin: { full_name, email, phone }
- *   documents: { [document_type]: File | null }
+ *   documents: { [document_type]: File | uploadedDocMeta | null }
  * }
  */
+function isUploadedDocMeta(v) {
+  return (
+    v &&
+    typeof v === 'object' &&
+    typeof v.file_path === 'string' &&
+    typeof v.file_url === 'string' &&
+    typeof v.file_name === 'string'
+  )
+}
+
+function isFileLike(v) {
+  return (
+    v &&
+    typeof v === 'object' &&
+    typeof v.size === 'number' &&
+    typeof v.type === 'string' &&
+    typeof v.name === 'string'
+  )
+}
+
 export async function submitCompanyRegistration(registrationData) {
   const uploaded = []
+  const newlyUploaded = []
   let createdCompany = null
 
   try {
@@ -74,14 +95,25 @@ export async function submitCompanyRegistration(registrationData) {
     })
 
     const docs = registrationData?.documents || {}
-    const entries = Object.entries(docs).filter(([, file]) => !!file)
+    const entries = Object.entries(docs).filter(([, doc]) => !!doc)
 
-    for (const [documentType, file] of entries) {
-      const uploadedMeta = await uploadCompanyDocument({
-        companyId: createdCompany.id,
-        documentType,
-        file,
-      })
+    for (const [documentType, doc] of entries) {
+      let uploadedMeta = null
+
+      // The UI currently uploads documents immediately and stores the returned metadata in `registrationData.documents`.
+      // On submit, we therefore mostly get `uploadedDocMeta` objects, but we still support `File` inputs.
+      if (isUploadedDocMeta(doc)) {
+        uploadedMeta = doc
+      } else if (isFileLike(doc)) {
+        uploadedMeta = await uploadCompanyDocument({
+          companyId: createdCompany.id,
+          documentType,
+          file: doc,
+        })
+        newlyUploaded.push(uploadedMeta)
+      } else {
+        throw new Error(`Unsupported document value for "${documentType}".`)
+      }
 
       uploaded.push(uploadedMeta)
 
@@ -102,7 +134,7 @@ export async function submitCompanyRegistration(registrationData) {
     // Best-effort rollback
     try {
       await Promise.allSettled(
-        uploaded.map((u) => removeCompanyDocument({ filePath: u.file_path, bucket: u.bucket }))
+        newlyUploaded.map((u) => removeCompanyDocument({ filePath: u.file_path, bucket: u.bucket }))
       )
     } catch {
       // ignore rollback failure

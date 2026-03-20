@@ -37,14 +37,7 @@ const ACTIVITIES = [
  *
  * This constant is the single place to fix it.
  */
-const STORAGE_BUCKET = 'company-documents'; // ← change to match your bucket name
 const EMPTY_COMPANY = Object.freeze({});
-
-/**
- * Temporary company ID used as the storage path prefix.
- * Replace with a stable UUID from your registration context once available.
- */
-const TEMP_COMPANY_ID = 'registration-temp';
 
 // ─── DocumentUploadSlot ───────────────────────────────────────────────────────
 /**
@@ -62,6 +55,7 @@ const DocumentUploadSlot = ({
     documentType,
     value,
     onChange,
+    tempCompanyId,
     required = false,
     showError = false,   // controlled by parent — show "required" error after submit attempt
 }) => {
@@ -87,10 +81,9 @@ const DocumentUploadSlot = ({
         setUploading(true);
         try {
             const result = await uploadCompanyDocument({
-                companyId: TEMP_COMPANY_ID,
+                companyId: tempCompanyId,
                 documentType,
                 file,
-                bucket: STORAGE_BUCKET,
             });
             setDoc(result);
         } catch (err) {
@@ -232,7 +225,7 @@ const DocumentUploadSlot = ({
 
 // ─── Admin_Register_BasicInfo ─────────────────────────────────────────────────
 
-const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
+const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) => {
     const [touched, setTouched] = useState({});
     // Tracks whether user has attempted to proceed (triggers doc-required errors)
     const [submitAttempted, setSubmitAttempted] = useState(false);
@@ -453,6 +446,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                             documentType="operator_license"
                             value={value}
                             onChange={onChange}
+                                tempCompanyId={tempCompanyId}
                             required
                             showError={submitAttempted}
                         />
@@ -463,6 +457,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext }) => {
                             documentType="public_liability_insurance"
                             value={value}
                             onChange={onChange}
+                                tempCompanyId={tempCompanyId}
                             required
                             showError={submitAttempted}
                         />

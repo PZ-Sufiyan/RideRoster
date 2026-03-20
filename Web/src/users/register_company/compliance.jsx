@@ -22,8 +22,6 @@ import {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const STORAGE_BUCKET = 'company-documents';
-const TEMP_COMPANY_ID = 'registration-temp';
 const EMPTY_COMPANY = Object.freeze({});
 const EMPTY_DOCUMENTS = Object.freeze({});
 
@@ -59,7 +57,14 @@ const STATUS_BADGE = {
  * Reusable upload zone used inside each document block.
  * Handles upload, delete, view — stores result shape { file_name, file_path, file_url, bucket }
  */
-const FileUploadZone = ({ docKey, documentType, value, onChange, showError = false }) => {
+const FileUploadZone = ({
+    docKey,
+    documentType,
+    value,
+    onChange,
+    showError = false,
+    tempCompanyId,
+}) => {
     const inputRef = useRef(null);
     const [uploading, setUploading] = useState(false);
     const [uploadError, setUploadError] = useState('');
@@ -80,10 +85,9 @@ const FileUploadZone = ({ docKey, documentType, value, onChange, showError = fal
         setUploading(true);
         try {
             const result = await uploadCompanyDocument({
-                companyId: TEMP_COMPANY_ID,
+                companyId: tempCompanyId,
                 documentType,
                 file,
-                bucket: STORAGE_BUCKET,
             });
             setDoc(result);
         } catch (err) {
@@ -200,7 +204,15 @@ const FileUploadZone = ({ docKey, documentType, value, onChange, showError = fal
 /**
  * Sidebar optional document — collapses to an upload zone when expanded.
  */
-const OptionalDocSlot = ({ label, description, docKey, documentType, value, onChange }) => {
+const OptionalDocSlot = ({
+    label,
+    description,
+    docKey,
+    documentType,
+    value,
+    onChange,
+    tempCompanyId,
+}) => {
     const [expanded, setExpanded] = useState(false);
     const doc = value?.documents?.[docKey] ?? null;
 
@@ -232,6 +244,7 @@ const OptionalDocSlot = ({ label, description, docKey, documentType, value, onCh
                         documentType={documentType}
                         value={value}
                         onChange={onChange}
+                        tempCompanyId={tempCompanyId}
                     />
                 </div>
             )}
@@ -241,7 +254,7 @@ const OptionalDocSlot = ({ label, description, docKey, documentType, value, onCh
 
 // ─── Admin_Register_ComplianceDocs ────────────────────────────────────────────
 
-const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev }) => {
+const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCompanyId }) => {
     const [touched, setTouched]                = useState({});
     const [submitAttempted, setSubmitAttempted] = useState(false);
 
@@ -426,6 +439,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev }) => {
                             value={value}
                             onChange={onChange}
                             showError={submitAttempted}
+                            tempCompanyId={tempCompanyId}
                         />
                     </div>
 
@@ -499,6 +513,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev }) => {
                             value={value}
                             onChange={onChange}
                             showError={submitAttempted}
+                            tempCompanyId={tempCompanyId}
                         />
                     </div>
 
@@ -597,6 +612,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev }) => {
                                 documentType="vat_certificate"
                                 value={value}
                                 onChange={onChange}
+                                tempCompanyId={tempCompanyId}
                             />
                             <OptionalDocSlot
                                 label="Primary Admin ID"
@@ -605,6 +621,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev }) => {
                                 documentType="primary_admin_id"
                                 value={value}
                                 onChange={onChange}
+                                tempCompanyId={tempCompanyId}
                             />
                         </div>
                     </div>

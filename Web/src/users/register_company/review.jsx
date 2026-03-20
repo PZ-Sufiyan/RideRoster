@@ -13,6 +13,8 @@ import {
     MdSend,
 } from 'react-icons/md';
 import { AiOutlineLoading3Quarters } from 'react-icons/ai';
+import { submitCompanyRegistration } from '../../services/registrationService';
+import { clearCompanyRegistrationDraft } from '../../services/registrationDraftService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -25,11 +27,11 @@ const COMPANY_TYPE_LABELS = {
 };
 
 const FLEET_SIZE_LABELS = {
-    '1-5':    '1–5 vehicles (Micro)',
-    '6-15':   '6–15 vehicles (Small)',
-    '16-50':  '16–50 vehicles (Medium)',
-    '51-100': '51–100 vehicles (Large)',
-    '100+':   '100+ vehicles (Enterprise)',
+    1:   '1–5 vehicles (Micro)',
+    6:   '6–15 vehicles (Small)',
+    16:  '16–50 vehicles (Medium)',
+    51:  '51–100 vehicles (Large)',
+    100: '100+ vehicles (Enterprise)',
 };
 
 // All documents that must be present before submission
@@ -203,13 +205,8 @@ const Admin_Register_Review = ({ value, onPrev }) => {
         setSubmitError('');
         setSubmitting(true);
         try {
-            // ── TODO: replace with real API call ──────────────────────────────
-            // const { data, error } = await supabase
-            //   .from('companies')
-            //   .insert({ ...company, admin, documents })
-            // if (error) throw error
-            // ─────────────────────────────────────────────────────────────────
-            await new Promise((r) => setTimeout(r, 1500)); // simulate network
+            await submitCompanyRegistration(value);
+            clearCompanyRegistrationDraft();
             setSubmitted(true);
         } catch (err) {
             setSubmitError(err.message || 'Submission failed. Please try again.');
@@ -475,7 +472,7 @@ const Admin_Register_Review = ({ value, onPrev }) => {
                             >
                                 {submitting
                                     ? <><AiOutlineLoading3Quarters size={16} className="animate-spin" /> Submitting…</>
-                                    : <><MdSend size={16} /> Submit to Approval</>
+                        : <><MdSend size={16} /> Register Company</>
                                 }
                             </button>
                         </div>
