@@ -45,6 +45,7 @@ import Admin_PAReport from './users/admin/pages/reports/pa_report';
 import RegistrationFlow from './users/register_company/registration_flow'
 import SubAdmin_Login from './users/subAdmin/pages/auth/login';
 import SubAdmin_Dashboard from './users/subAdmin/pages/dashboard/dashboard';
+import SubAdmin_Approvals from './users/subAdmin/pages/approvals/approvals';
 import SubAdmin_Drivers from './users/subAdmin/pages/drivers/drivers';
 import SubAdmin_DriverProfile from './users/subAdmin/pages/drivers/driver-profile';
 import SubAdmin_Jobs from './users/subAdmin/pages/jobs/jobs';
@@ -136,7 +137,7 @@ function App() {
             {/* Subadmin Group */}
             <Route element={<ProtectedRoute allowedRoles={['subadmin']} />}>
               <Route path="/subadmin/dashboard" element={<SubAdmin_Dashboard />} />
-              <Route path="/subadmin/approvals" element={<div className="p-10">Approvals (Coming Soon)</div>} />
+              <Route path="/subadmin/approvals" element={<SubAdmin_Approvals />} />
               <Route path="/subadmin/drivers" element={<SubAdmin_Drivers />} />
               <Route path="/subadmin/drivers/:id" element={<SubAdmin_DriverProfile />} />
               <Route path="/subadmin/jobs" element={<SubAdmin_Jobs />} />
