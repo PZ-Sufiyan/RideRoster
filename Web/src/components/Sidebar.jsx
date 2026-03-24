@@ -70,7 +70,8 @@ const Sidebar = ({ isOpen, onClose }) => {
                 { name: 'Dashboard', path: '/subadmin/dashboard', icon: <MdDashboard size={20} /> },
                 { name: 'Approval', path: '/subadmin/approvals', icon: <MdCheckCircle size={20} /> },
                 { name: 'Drivers', path: '/subadmin/drivers', icon: <MdPeopleOutline size={20} /> },
-                { name: 'Job Notification', path: '/subadmin/job-notifications', icon: <MdNotifications size={20} /> },
+                { name: 'Jobs', path: '/subadmin/jobs', icon: <MdWork size={20} /> },
+                { name: 'Notification', path: '/subadmin/notifications', icon: <MdNotifications size={20} /> },
             ],
             bottom: [
                 { name: 'Settings', path: '/subadmin/settings', icon: <MdSettings size={20} /> },

@@ -44,6 +44,13 @@ import Admin_PAReport from './users/admin/pages/reports/pa_report';
 
 import RegistrationFlow from './users/register_company/registration_flow'
 import SubAdmin_Login from './users/subAdmin/pages/auth/login';
+import SubAdmin_Dashboard from './users/subAdmin/pages/dashboard/dashboard';
+import SubAdmin_Drivers from './users/subAdmin/pages/drivers/drivers';
+import SubAdmin_DriverProfile from './users/subAdmin/pages/drivers/driver-profile';
+import SubAdmin_Jobs from './users/subAdmin/pages/jobs/jobs';
+import SubAdmin_NewJob from './users/subAdmin/pages/jobs/new-job';
+import SubAdmin_Notifications from './users/subAdmin/pages/notifications/notification';
+import SubAdmin_Settings from './users/subAdmin/pages/settings/settings';
 import Home from './home';
 import './App.css';
 
@@ -128,11 +135,14 @@ function App() {
 
             {/* Subadmin Group */}
             <Route element={<ProtectedRoute allowedRoles={['subadmin']} />}>
-              <Route path="/subadmin/dashboard" element={<div className="p-10">Subadmin Dashboard (Coming Soon)</div>} />
+              <Route path="/subadmin/dashboard" element={<SubAdmin_Dashboard />} />
               <Route path="/subadmin/approvals" element={<div className="p-10">Approvals (Coming Soon)</div>} />
-              <Route path="/subadmin/drivers" element={<div className="p-10">Drivers (Coming Soon)</div>} />
-              <Route path="/subadmin/job-notifications" element={<div className="p-10">Job Notifications (Coming Soon)</div>} />
-              <Route path="/subadmin/settings" element={<div className="p-10">Subadmin Settings (Coming Soon)</div>} />
+              <Route path="/subadmin/drivers" element={<SubAdmin_Drivers />} />
+              <Route path="/subadmin/drivers/:id" element={<SubAdmin_DriverProfile />} />
+              <Route path="/subadmin/jobs" element={<SubAdmin_Jobs />} />
+              <Route path="/subadmin/jobs/create" element={<SubAdmin_NewJob />} />
+              <Route path="/subadmin/notifications" element={<SubAdmin_Notifications />} />
+              <Route path="/subadmin/settings" element={<SubAdmin_Settings />} />
             </Route>
 
           </Route>

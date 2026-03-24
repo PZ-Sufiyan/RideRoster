@@ -24,7 +24,9 @@ const SIDEBAR_PATHS = new Set([
     '/subadmin/dashboard',
     '/subadmin/approvals',
     '/subadmin/drivers',
+    '/subadmin/jobs',
     '/subadmin/job-notifications',
+    '/subadmin/notifications',
     '/subadmin/settings',
 ]);
 
@@ -141,7 +143,7 @@ const ROUTE_CRUMB_MAP = [
         match: /^\/subadmin\/drivers\/([^/]+)$/,
         crumbs: (_, [id]) => [
             { label: 'Drivers', to: '/subadmin/drivers' },
-            { label: decodeURIComponent(id) },
+            { label: 'Driver Profile' },
         ],
     },
     {

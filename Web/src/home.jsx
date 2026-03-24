@@ -30,7 +30,7 @@ const Home = () => {
             title: 'Sub Admin',
             description: 'Staff member and coordinator portal',
             icon: '👥',
-            path: '/sub-admin/login',
+            path: '/subadmin/login',
             color: 'from-orange-500 to-amber-600'
         }
     ];
