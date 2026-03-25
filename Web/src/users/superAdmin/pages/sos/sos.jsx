@@ -61,6 +61,35 @@ const SOSPage = () => {
   const [activeSosAlerts, setActiveSosAlerts] = useState([])
   const [selectedSosId, setSelectedSosId] = useState(null)
 
+  // View/filter state
+  const [showAllSos, setShowAllSos] = useState(true)
+  const [companyFilter, setCompanyFilter] = useState('')
+  const [driverFilter, setDriverFilter] = useState('')
+  const [paFilter, setPaFilter] = useState('')
+
+  const normalizeQuery = (value) =>
+    (value ?? '').toString().trim().toLowerCase()
+
+  const visibleSosAlerts = useMemo(() => {
+    if (showAllSos) return activeSosAlerts
+
+    const companyQuery = normalizeQuery(companyFilter)
+    const driverQuery = normalizeQuery(driverFilter)
+    const paQuery = normalizeQuery(paFilter)
+
+    return activeSosAlerts.filter((alert) => {
+      const company = normalizeQuery(alert.company_name)
+      const driver = normalizeQuery(alert.driver_label)
+      const pa = normalizeQuery(alert.passenger_assistant_label)
+
+      const matchesCompany = !companyQuery || company.includes(companyQuery)
+      const matchesDriver = !driverQuery || driver.includes(driverQuery)
+      const matchesPa = !paQuery || pa.includes(paQuery)
+
+      return matchesCompany && matchesDriver && matchesPa
+    })
+  }, [activeSosAlerts, showAllSos, companyFilter, driverFilter, paFilter])
+
   useEffect(() => {
     let isMounted = true
 
@@ -88,19 +117,30 @@ const SOSPage = () => {
     }
   }, [])
 
+  // Keep selection valid when filtering changes.
+  useEffect(() => {
+    if (!visibleSosAlerts.length) {
+      setSelectedSosId(null)
+      return
+    }
+
+    const isSelectedVisible = visibleSosAlerts.some((a) => a.id === selectedSosId)
+    if (!isSelectedVisible) setSelectedSosId(visibleSosAlerts[0].id)
+  }, [visibleSosAlerts, selectedSosId])
+
   const mapCenter = useMemo(() => {
-    if (!activeSosAlerts.length) return DEFAULT_CENTER
+    if (!visibleSosAlerts.length) return DEFAULT_CENTER
 
     const avgLat =
-      activeSosAlerts.reduce((sum, a) => sum + (Number.isFinite(a.latitude) ? a.latitude : 0), 0) /
-      activeSosAlerts.length
+      visibleSosAlerts.reduce((sum, a) => sum + (Number.isFinite(a.latitude) ? a.latitude : 0), 0) /
+      visibleSosAlerts.length
     const avgLng =
-      activeSosAlerts.reduce((sum, a) => sum + (Number.isFinite(a.longitude) ? a.longitude : 0), 0) /
-      activeSosAlerts.length
+      visibleSosAlerts.reduce((sum, a) => sum + (Number.isFinite(a.longitude) ? a.longitude : 0), 0) /
+      visibleSosAlerts.length
 
     if (!Number.isFinite(avgLat) || !Number.isFinite(avgLng)) return DEFAULT_CENTER
     return [avgLat, avgLng]
-  }, [activeSosAlerts])
+  }, [visibleSosAlerts])
 
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
@@ -122,7 +162,7 @@ const SOSPage = () => {
               url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
             />
 
-            {activeSosAlerts.map((alert) => (
+            {visibleSosAlerts.map((alert) => (
               <Marker
                 key={alert.id}
                 position={[alert.latitude, alert.longitude]}
@@ -155,8 +195,79 @@ const SOSPage = () => {
           <div className="p-6 border-b border-gray-100">
             <h2 className="text-lg font-bold text-gray-800">Active SOS Alerts</h2>
             <p className="text-sm text-gray-500 mt-1">
-              {loading ? 'Loading...' : `${activeSosAlerts.length} incidents require attention.`}
+              {loading
+                ? 'Loading...'
+                : showAllSos
+                  ? `${activeSosAlerts.length} incidents require attention.`
+                  : `${visibleSosAlerts.length} incidents match your filter.`}
             </p>
+
+            <div className="mt-4">
+              <div className="flex items-center gap-4">
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="sosView"
+                    checked={showAllSos}
+                    onChange={() => setShowAllSos(true)}
+                  />
+                  All SOS
+                </label>
+                <label className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer select-none">
+                  <input
+                    type="radio"
+                    name="sosView"
+                    checked={!showAllSos}
+                    onChange={() => setShowAllSos(false)}
+                  />
+                  Filtered
+                </label>
+              </div>
+
+              <div className={`mt-4 grid grid-cols-1 gap-3 ${showAllSos ? 'opacity-60' : ''}`}>
+                <input
+                  type="text"
+                  value={companyFilter}
+                  onChange={(e) => setCompanyFilter(e.target.value)}
+                  disabled={showAllSos}
+                  placeholder="Company name"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0088CC]/20 focus:border-[#0088CC]"
+                />
+
+                <input
+                  type="text"
+                  value={driverFilter}
+                  onChange={(e) => setDriverFilter(e.target.value)}
+                  disabled={showAllSos}
+                  placeholder="Driver name"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0088CC]/20 focus:border-[#0088CC]"
+                />
+
+                <input
+                  type="text"
+                  value={paFilter}
+                  onChange={(e) => setPaFilter(e.target.value)}
+                  disabled={showAllSos}
+                  placeholder="PA name"
+                  className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm outline-none focus:ring-2 focus:ring-[#0088CC]/20 focus:border-[#0088CC]"
+                />
+
+                <div className="flex justify-end">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCompanyFilter('')
+                      setDriverFilter('')
+                      setPaFilter('')
+                    }}
+                    disabled={showAllSos}
+                    className="text-sm font-medium text-gray-600 hover:text-gray-900 disabled:opacity-50 disabled:hover:text-gray-600 transition-colors"
+                  >
+                    Clear filters
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
 
           {error && (
@@ -166,7 +277,7 @@ const SOSPage = () => {
           )}
 
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {activeSosAlerts.map((alert) => {
+            {visibleSosAlerts.map((alert) => {
               const driverLabel = alert.driver_label || '—'
               const paLabel = alert.passenger_assistant_label || '—'
 
@@ -213,9 +324,11 @@ const SOSPage = () => {
               )
             })}
 
-            {!loading && activeSosAlerts.length === 0 && (
+            {!loading && visibleSosAlerts.length === 0 && (
               <div className="pt-8 text-center">
-                <p className="text-sm text-gray-400">No active SOS alerts.</p>
+                <p className="text-sm text-gray-400">
+                  {showAllSos ? 'No active SOS alerts.' : 'No SOS alerts match your filter.'}
+                </p>
               </div>
             )}
           </div>

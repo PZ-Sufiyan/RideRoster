@@ -227,11 +227,8 @@ const DocumentUploadSlot = ({
 
 const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) => {
     const [touched, setTouched] = useState({});
-    // Tracks whether user has attempted to proceed (triggers doc-required errors)
-    const [submitAttempted, setSubmitAttempted] = useState(false);
 
     const company = useMemo(() => value?.company ?? EMPTY_COMPANY, [value?.company]);
-    const documents = value?.documents ?? {};
 
     // ── Field validation ──
     const fieldErrors = useMemo(() => {
@@ -247,13 +244,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
         return e;
     }, [company]);
 
-    // ── Document validation ──
-    // Both docs are required before the user can proceed
-    const docsValid =
-        documents.operator_license != null &&
-        documents.public_liability_insurance != null;
-
-    const canContinue = Object.keys(fieldErrors).length === 0 && docsValid;
+    const canContinue = Object.keys(fieldErrors).length === 0;
 
     // ── Helpers ──
     const setCompanyField = (field, v) =>
@@ -271,7 +262,6 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
 
     const onContinue = () => {
         touchAll();
-        setSubmitAttempted(true);
         if (canContinue) onNext();
     };
 
@@ -435,7 +425,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
                         Initial Document Verification
                     </h2>
                     <p className="text-[13px] text-gray-400 font-medium mb-6">
-                        Both documents are required before continuing. Accepted: PDF, JPG, PNG — max 10 MB.
+                        Optional uploads. Accepted: PDF, JPG, PNG — max 10 MB.
                     </p>
 
                     <div className="space-y-4">
@@ -446,9 +436,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
                             documentType="operator_license"
                             value={value}
                             onChange={onChange}
-                                tempCompanyId={tempCompanyId}
-                            required
-                            showError={submitAttempted}
+                            tempCompanyId={tempCompanyId}
                         />
                         <DocumentUploadSlot
                             label="Public Liability Insurance"
@@ -457,9 +445,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
                             documentType="public_liability_insurance"
                             value={value}
                             onChange={onChange}
-                                tempCompanyId={tempCompanyId}
-                            required
-                            showError={submitAttempted}
+                            tempCompanyId={tempCompanyId}
                         />
                     </div>
                 </div>
@@ -469,7 +455,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
                     <button
                         onClick={onContinue}
                         disabled={!canContinue}
-                        title={!canContinue ? 'Please complete all required fields and upload both documents' : undefined}
+                        title={!canContinue ? 'Please complete all required fields' : undefined}
                         className={[
                             'px-6 py-3 text-white rounded-xl text-[14px] font-bold transition-all shadow-sm',
                             canContinue ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed',

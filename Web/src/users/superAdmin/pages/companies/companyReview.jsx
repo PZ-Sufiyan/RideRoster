@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
     MdOutlineZoomIn,
     MdOutlineZoomOut,
@@ -7,47 +7,75 @@ import {
     MdOutlineCancel,
     MdCheck
 } from 'react-icons/md';
+import { useLocation, useParams } from 'react-router-dom';
+import { getCompanyById, updateCompany } from '../../../../services/companyService';
 
-// PDF Imports
-import businessLicensePdf from '../../../../assets/dummypdf/Business_License.pdf';
-import insuranceCertificatePdf from '../../../../assets/dummypdf/Insurance_Certificate.pdf';
-import vehicleRegistrationsPdf from '../../../../assets/dummypdf/Vehicle_Registrations.pdf';
-import safetyCompliancePdf from '../../../../assets/dummypdf/Safety_Compliance_Form.pdf';
-import taxIdPdf from '../../../../assets/dummypdf/Tax_ID_Form_W9.pdf';
+const DOCUMENT_TYPE_LABELS = {
+    operator_license: 'Operator License',
+    public_liability_insurance: 'Public Liability Insurance',
+    certificate_of_incorporation: 'Certificate of Incorporation',
+    commercial_insurance_certificate: 'Commercial Insurance Certificate',
+    vat_certificate: 'VAT Certificate',
+    primary_admin_id: 'Primary Admin ID'
+};
+
+const toDocumentLabel = (doc) => {
+    if (doc?.file_name?.trim()) return doc.file_name;
+    return DOCUMENT_TYPE_LABELS[doc?.document_type] || 'Company Document';
+};
 
 const CompanyReview = () => {
-    // Company Info Dummy Data
-    const companyInfo = {
-        name: "Bright Horizons Transport",
-        contact: "Cody Fisher",
-        email: "cody.fisher@bhtransport.com",
-        phone: "(415) 555-0199",
-        address: "123 Market St, San Francisco, CA 94103"
-    };
+    const { id: routeCompanyId } = useParams();
+    const location = useLocation();
+    const companyId = location.state?.companyId || routeCompanyId;
 
-    // Document Mapping with unique PDF files
-    const documents = [
-        { id: 1, name: "Business License", file: businessLicensePdf },
-        { id: 2, name: "Insurance Certificate", file: insuranceCertificatePdf },
-        { id: 3, name: "Vehicle Registrations", file: vehicleRegistrationsPdf },
-        { id: 4, name: "Safety Compliance Form", file: safetyCompliancePdf },
-        { id: 5, name: "Tax ID Form (W-9)", file: taxIdPdf }
-    ];
-
-    const [verificationItems, setVerificationItems] = useState([
-        { id: 1, text: "Business License Verified", checked: false },
-        { id: 2, text: "Insurance Policy Valid", checked: false },
-        { id: 3, text: "Vehicle Registrations Match", checked: false },
-        { id: 4, text: "Contact Info Confirmed", checked: false }
-    ]);
-
-    // State
-    const [selectedDocId, setSelectedDocId] = useState(documents[0].id);
-    const [note, setNote] = useState("");
+    const [company, setCompany] = useState(null);
+    const [documents, setDocuments] = useState([]);
+    const [selectedDocId, setSelectedDocId] = useState(null);
+    const [note, setNote] = useState('');
+    const [noteError, setNoteError] = useState('');
+    const [loadError, setLoadError] = useState('');
     const [isSavingNote, setIsSavingNote] = useState(false);
+    const [isStatusUpdating, setIsStatusUpdating] = useState(false);
+    const [isLoading, setIsLoading] = useState(false);
     const [zoom, setZoom] = useState(1);
+    const [actionError, setActionError] = useState('');
 
-    const selectedDoc = documents.find(doc => doc.id === selectedDocId);
+    const verificationItems = useMemo(() => (
+        documents.map((doc) => ({
+            id: doc.id,
+            text: `${toDocumentLabel(doc)} submitted`,
+            checked: true
+        }))
+    ), [documents]);
+
+    const selectedDoc = documents.find(doc => doc.id === selectedDocId) || null;
+
+    useEffect(() => {
+        const loadCompany = async () => {
+            if (!companyId) {
+                setLoadError('Company id is missing. Please open review from pending companies.');
+                return;
+            }
+            try {
+                setIsLoading(true);
+                setLoadError('');
+                const data = await getCompanyById(companyId);
+                setCompany(data);
+                setNote(data?.notes || '');
+                const companyDocs = data?.company_documents || [];
+                setDocuments(companyDocs);
+                setSelectedDocId(companyDocs[0]?.id || null);
+            } catch (error) {
+                console.error('Error loading company for review:', error);
+                setLoadError('Failed to load company data. Please try again.');
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadCompany();
+    }, [companyId]);
 
     // Document Handlers
     const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.2, 3));
@@ -55,27 +83,33 @@ const CompanyReview = () => {
     const handleDownload = () => {
         if (!selectedDoc) return;
         const link = document.createElement('a');
-        link.href = selectedDoc.file;
-        link.download = `${selectedDoc.name.replace(/\s+/g, '_')}.pdf`;
+        link.href = selectedDoc.file_url;
+        link.download = `${toDocumentLabel(selectedDoc).replace(/\s+/g, '_')}.pdf`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
     };
 
-    const toggleChecklistItem = (id) => {
-        setVerificationItems(prev => prev.map(item =>
-            item.id === id ? { ...item, checked: !item.checked } : item
-        ));
-    };
+    const handleSaveNote = async () => {
+        const trimmedNote = note.trim();
+        setNoteError('');
+        if (!trimmedNote) {
+            setNoteError('Note cannot be empty or only spaces.');
+            return;
+        }
+        if (!companyId) return;
 
-    const handleSaveNote = () => {
-        if (!note.trim()) return;
-        setIsSavingNote(true);
-        // Simulate a save delay
-        setTimeout(() => {
+        try {
+            setIsSavingNote(true);
+            const updatedCompany = await updateCompany(companyId, { notes: trimmedNote });
+            setCompany(prev => ({ ...prev, ...updatedCompany }));
+            setNote(updatedCompany?.notes || trimmedNote);
+        } catch (error) {
+            console.error('Error saving note:', error);
+            setNoteError('Failed to save note. Please try again.');
+        } finally {
             setIsSavingNote(false);
-            console.log("Note saved:", note);
-        }, 800);
+        }
     };
 
 
@@ -93,10 +127,22 @@ const CompanyReview = () => {
         setModalAction(null);
     };
 
-    const handleConfirmAction = () => {
-        // Implement API call logic here
-        console.log(`Company ${modalAction}d`);
-        closeModal();
+    const handleConfirmAction = async () => {
+        if (!companyId || !modalAction) return;
+        const nextStatus = modalAction === 'approve' ? 'approved' : 'rejected';
+        setActionError('');
+
+        try {
+            setIsStatusUpdating(true);
+            const updatedCompany = await updateCompany(companyId, { status: nextStatus });
+            setCompany(prev => ({ ...prev, ...updatedCompany }));
+            closeModal();
+        } catch (error) {
+            console.error(`Error updating company status to ${nextStatus}:`, error);
+            setActionError('Failed to update company status. Please try again.');
+        } finally {
+            setIsStatusUpdating(false);
+        }
     };
 
     return (
@@ -112,6 +158,7 @@ const CompanyReview = () => {
                 <div className="flex items-center gap-3">
                     <button
                         onClick={() => openModal('reject')}
+                        disabled={isLoading || isStatusUpdating || !company}
                         className="flex items-center gap-2 px-4 py-2 border border-red-500 text-red-500 rounded-md hover:bg-red-50 transition-colors text-sm font-medium active:scale-95"
                     >
                         <MdOutlineCancel className="w-5 h-5" />
@@ -119,6 +166,7 @@ const CompanyReview = () => {
                     </button>
                     <button
                         onClick={() => openModal('approve')}
+                        disabled={isLoading || isStatusUpdating || !company}
                         className="flex items-center gap-2 px-4 py-2 bg-green-500 text-white rounded-md hover:bg-green-600 transition-colors text-sm font-medium shadow-sm active:scale-95"
                     >
                         <MdCheckCircle className="w-5 h-5" />
@@ -126,6 +174,11 @@ const CompanyReview = () => {
                     </button>
                 </div>
             </div>
+            {(loadError || actionError) && (
+                <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {loadError || actionError}
+                </div>
+            )}
 
             {/* Main Content Grid */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -134,27 +187,33 @@ const CompanyReview = () => {
                 <div className="lg:col-span-2 bg-white rounded-lg shadow-sm border border-gray-200 flex flex-col h-[700px]">
                     <div className="p-4 border-b border-gray-100 flex items-center justify-between">
                         <h2 className="text-lg font-semibold text-gray-800">Submitted Documents</h2>
-                        <div className="text-xs text-gray-400 font-medium whitespace-nowrap">Viewing: {selectedDoc?.name}</div>
+                        <div className="text-xs text-gray-400 font-medium whitespace-nowrap">
+                            Viewing: {selectedDoc ? toDocumentLabel(selectedDoc) : 'No document'}
+                        </div>
                     </div>
 
                     <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
                         {/* Document List (Tabs) */}
                         <div className="w-full md:w-64 border-r border-gray-100 bg-gray-50/50 shrink-0 overflow-y-auto">
-                            {documents.map((doc) => (
-                                <button
-                                    key={doc.id}
-                                    onClick={() => {
-                                        setSelectedDocId(doc.id);
-                                        setZoom(1); // Reset zoom on doc change
-                                    }}
-                                    className={`w-full text-left px-4 py-4 text-sm font-medium transition-all duration-200 border-l-4 ${selectedDocId === doc.id
-                                        ? 'bg-white border-blue-500 text-blue-600 shadow-sm'
-                                        : 'border-transparent text-gray-600 hover:bg-gray-100/80 hover:text-gray-900'
-                                        }`}
-                                >
-                                    {doc.name}
-                                </button>
-                            ))}
+                            {documents.length > 0 ? (
+                                documents.map((doc) => (
+                                    <button
+                                        key={doc.id}
+                                        onClick={() => {
+                                            setSelectedDocId(doc.id);
+                                            setZoom(1);
+                                        }}
+                                        className={`w-full text-left px-4 py-4 text-sm font-medium transition-all duration-200 border-l-4 ${selectedDocId === doc.id
+                                            ? 'bg-white border-blue-500 text-blue-600 shadow-sm'
+                                            : 'border-transparent text-gray-600 hover:bg-gray-100/80 hover:text-gray-900'
+                                            }`}
+                                    >
+                                        {toDocumentLabel(doc)}
+                                    </button>
+                                ))
+                            ) : (
+                                <div className="px-4 py-5 text-sm text-gray-500">No documents submitted for this company.</div>
+                            )}
                         </div>
 
                         {/* Document Preview Area */}
@@ -201,7 +260,7 @@ const CompanyReview = () => {
                                 >
                                     <iframe
                                         key={selectedDoc?.id}
-                                        src={`${selectedDoc?.file}#toolbar=0&navpanes=0`}
+                                        src={selectedDoc ? `${selectedDoc.file_url}#toolbar=0&navpanes=0` : ''}
                                         className="w-full h-full border-none min-h-[500px]"
                                         title="Document Preview"
                                     />
@@ -230,23 +289,23 @@ const CompanyReview = () => {
                         <div className="space-y-4">
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Company Name</label>
-                                <p className="text-sm text-gray-900 font-medium">{companyInfo.name}</p>
+                                <p className="text-sm text-gray-900 font-medium">{company?.company_name || '—'}</p>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Primary Contact</label>
-                                <p className="text-sm text-gray-900 font-medium">{companyInfo.contact}</p>
+                                <p className="text-sm text-gray-900 font-medium">{company?.company_admins?.[0]?.full_name || '—'}</p>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Email Address</label>
-                                <p className="text-sm text-blue-600 font-medium hover:underline cursor-pointer">{companyInfo.email}</p>
+                                <p className="text-sm text-blue-600 font-medium hover:underline cursor-pointer">{company?.company_email || '—'}</p>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Phone Number</label>
-                                <p className="text-sm text-gray-900 font-medium">{companyInfo.phone}</p>
+                                <p className="text-sm text-gray-900 font-medium">{company?.company_phone || '—'}</p>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Address</label>
-                                <p className="text-sm text-gray-900 font-medium">{companyInfo.address}</p>
+                                <p className="text-sm text-gray-900 font-medium">{company?.company_address || '—'}</p>
                             </div>
                         </div>
                     </div>
@@ -258,20 +317,19 @@ const CompanyReview = () => {
                             {verificationItems.map((item) => (
                                 <li
                                     key={item.id}
-                                    onClick={() => toggleChecklistItem(item.id)}
-                                    className="flex items-start gap-4 group cursor-pointer"
+                                    className="flex items-start gap-4"
                                 >
-                                    <div className={`mt-0.5 min-w-[20px] w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${item.checked
-                                        ? 'bg-blue-500 border-blue-500 text-white'
-                                        : 'bg-white border-gray-300 group-hover:border-blue-400'
-                                        }`}>
-                                        {item.checked && <MdCheck className="w-4 h-4" />}
+                                    <div className="mt-0.5 min-w-[20px] w-5 h-5 rounded border-2 flex items-center justify-center transition-all bg-blue-500 border-blue-500 text-white">
+                                        <MdCheck className="w-4 h-4" />
                                     </div>
-                                    <span className={`text-sm transition-colors ${item.checked ? 'text-gray-900 font-medium' : 'text-gray-600 group-hover:text-gray-900'}`}>
+                                    <span className="text-sm transition-colors text-gray-900 font-medium">
                                         {item.text}
                                     </span>
                                 </li>
                             ))}
+                            {verificationItems.length === 0 && (
+                                <li className="text-sm text-gray-500">No verification items available for this company.</li>
+                            )}
                         </ul>
                     </div>
 
@@ -283,11 +341,17 @@ const CompanyReview = () => {
                                 className="w-full h-24 px-3 py-2 text-sm text-gray-700 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none bg-gray-50 transition-all placeholder:text-gray-400"
                                 placeholder="Add verification notes here..."
                                 value={note}
-                                onChange={(e) => setNote(e.target.value)}
+                                onChange={(e) => {
+                                    setNote(e.target.value);
+                                    if (noteError) setNoteError('');
+                                }}
                             ></textarea>
+                            {noteError && (
+                                <p className="text-sm text-red-600">{noteError}</p>
+                            )}
                             <button
                                 onClick={handleSaveNote}
-                                disabled={isSavingNote || !note.trim()}
+                                disabled={isSavingNote || isLoading || !company}
                                 className={`w-full py-2.5 rounded-lg text-sm font-semibold transition-all flex items-center justify-center gap-2 ${isSavingNote
                                     ? 'bg-blue-100 text-blue-400 cursor-not-allowed'
                                     : 'bg-blue-600 text-white hover:bg-blue-700 active:translate-y-px shadow-sm disabled:opacity-50 disabled:bg-gray-100 disabled:text-gray-400 disabled:shadow-none'
@@ -319,7 +383,7 @@ const CompanyReview = () => {
                                 {modalAction === 'approve' ? 'Approve Company' : 'Reject Company'}
                             </h3>
                             <p className="text-sm text-gray-500 mb-6 px-2">
-                                Are you sure you want to {modalAction} <span className="font-bold text-gray-900">{companyInfo.name}</span>?
+                                Are you sure you want to {modalAction} <span className="font-bold text-gray-900">{company?.company_name || 'this company'}</span>?
                                 {modalAction === 'approve'
                                     ? ' They will be notified and granted access.'
                                     : ' They will be notified about the rejection.'}
@@ -333,10 +397,11 @@ const CompanyReview = () => {
                                 </button>
                                 <button
                                     onClick={handleConfirmAction}
+                                    disabled={isStatusUpdating}
                                     className={`flex-1 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors shadow-sm ${modalAction === 'approve' ? 'bg-green-500 hover:bg-green-600' : 'bg-red-500 hover:bg-red-600'
                                         }`}
                                 >
-                                    Yes, {modalAction === 'approve' ? 'Approve' : 'Reject'}
+                                    {isStatusUpdating ? 'Updating...' : `Yes, ${modalAction === 'approve' ? 'Approve' : 'Reject'}`}
                                 </button>
                             </div>
                         </div>

@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import {
     MdSearch,
     MdFilterList,
-    MdAdd,
     MdMoreHoriz,
     MdChevronLeft,
     MdChevronRight,
@@ -13,43 +12,49 @@ import {
 } from 'react-icons/md';
 
 import { Link } from 'react-router-dom';
-import { getPendingCompaniesWithAdminNames } from '../../../../services/companyService';
+import {
+    getPendingCompaniesWithAdminNames,
+    updateCompaniesStatusByIds
+} from '../../../../services/companyService';
 
 const PendingCompanies = () => {
     const [companies, setCompanies] = useState([]);
     const [selectedRows, setSelectedRows] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isBulkActionOpen, setIsBulkActionOpen] = useState(false);
+    const [activeActionMenuId, setActiveActionMenuId] = useState(null);
+    const [actionError, setActionError] = useState('');
+    const [isProcessing, setIsProcessing] = useState(false);
+
+    const fetchPendingCompanies = async () => {
+        try {
+            const data = await getPendingCompaniesWithAdminNames();
+
+            const mappedCompanies = (data || []).map((company) => ({
+                id: company.id,
+                name: company.company_name || '',
+                submitted: company.created_at
+                    ? new Date(company.created_at).toISOString().split('T')[0]
+                    : '',
+                contact: {
+                    name:
+                        company.admin_full_names?.[0] ||
+                        company.company_admins?.[0]?.full_name ||
+                        '',
+                    avatar: null
+                },
+                location: company.company_address || '',
+                status: company.status || ''
+            }));
+
+            setCompanies(mappedCompanies);
+        } catch (error) {
+            console.error('Error fetching pending companies:', error);
+            setCompanies([]);
+        }
+    };
 
     useEffect(() => {
-        const fetchPendingCompanies = async () => {
-            try {
-                const data = await getPendingCompaniesWithAdminNames();
-
-                const mappedCompanies = (data || []).map((company) => ({
-                    id: company.id,
-                    name: company.company_name || '',
-                    submitted: company.created_at
-                        ? new Date(company.created_at).toISOString().split('T')[0]
-                        : '',
-                    contact: {
-                        name:
-                            company.admin_full_names?.[0] ||
-                            company.company_admins?.[0]?.full_name ||
-                            '',
-                        avatar: null
-                    },
-                    location: company.company_address || '',
-                    status: company.status || ''
-                }));
-
-                setCompanies(mappedCompanies);
-            } catch (error) {
-                console.error('Error fetching pending companies:', error);
-                setCompanies([]);
-            }
-        };
-
         fetchPendingCompanies();
     }, []);
 
@@ -59,6 +64,7 @@ const PendingCompanies = () => {
     );
 
     const toggleSelectAll = () => {
+        setActionError('');
         if (selectedRows.length === filteredCompanies.length) {
             setSelectedRows([]);
         } else {
@@ -67,6 +73,7 @@ const PendingCompanies = () => {
     };
 
     const toggleSelectRow = (id) => {
+        setActionError('');
         if (selectedRows.includes(id)) {
             setSelectedRows(selectedRows.filter(rowId => rowId !== id));
         } else {
@@ -74,16 +81,45 @@ const PendingCompanies = () => {
         }
     };
 
-    const handleBulkAction = (action) => {
-        if (selectedRows.length === 0) return;
+    const handleBulkAction = async (action) => {
+        if (selectedRows.length === 0) {
+            setActionError('Please select at least one company first.');
+            return;
+        }
 
-        // Keep existing functionality unchanged: remove selected rows locally
-        const remainingCompanies = companies.filter(c => !selectedRows.includes(c.id));
-        setCompanies(remainingCompanies);
-        setSelectedRows([]);
-        setIsBulkActionOpen(false);
+        const nextStatus = action === 'approve' ? 'approved' : 'rejected';
 
-        console.log(`Bulk action: ${action} for ids:`, selectedRows);
+        try {
+            setIsProcessing(true);
+            setActionError('');
+            await updateCompaniesStatusByIds(selectedRows, nextStatus);
+            await fetchPendingCompanies();
+            setSelectedRows([]);
+            setIsBulkActionOpen(false);
+        } catch (error) {
+            console.error(`Error applying bulk ${action}:`, error);
+            setActionError('Failed to update selected companies. Please try again.');
+        } finally {
+            setIsProcessing(false);
+        }
+    };
+
+    const handleSingleAction = async (companyId, action) => {
+        const nextStatus = action === 'approve' ? 'approved' : 'rejected';
+
+        try {
+            setIsProcessing(true);
+            setActionError('');
+            await updateCompaniesStatusByIds(companyId, nextStatus);
+            await fetchPendingCompanies();
+            setSelectedRows(prev => prev.filter(id => id !== companyId));
+            setActiveActionMenuId(null);
+        } catch (error) {
+            console.error(`Error applying ${action}:`, error);
+            setActionError('Failed to update company status. Please try again.');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     return (
@@ -143,14 +179,14 @@ const PendingCompanies = () => {
                                         <button
                                             onClick={() => handleBulkAction('approve')}
                                             className="block w-full text-left px-4 py-2 text-sm text-green-600 hover:bg-green-50"
-                                            disabled={selectedRows.length === 0}
+                                            disabled={selectedRows.length === 0 || isProcessing}
                                         >
                                             Approve Selected
                                         </button>
                                         <button
                                             onClick={() => handleBulkAction('reject')}
                                             className="block w-full text-left px-4 py-2 text-sm text-red-600 hover:bg-red-50"
-                                            disabled={selectedRows.length === 0}
+                                            disabled={selectedRows.length === 0 || isProcessing}
                                         >
                                             Reject Selected
                                         </button>
@@ -160,6 +196,13 @@ const PendingCompanies = () => {
                         </div>
                     </div>
                 </div>
+                {actionError ? (
+                    <div className="px-4 pt-3">
+                        <div className="rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-sm text-red-700">
+                            {actionError}
+                        </div>
+                    </div>
+                ) : null}
 
                 {/* Table Container - Horizontal Scroll on Mobile */}
                 <div className="overflow-x-auto min-h-[400px]">
@@ -175,6 +218,7 @@ const PendingCompanies = () => {
                                         )}
                                     </div>
                                 </th>
+                                <th className="px-6 py-4">Company ID</th>
                                 <th className="px-6 py-4 cursor-pointer hover:text-gray-700 group">
                                     <div className="flex items-center gap-1">
                                         Company Name
@@ -212,6 +256,7 @@ const PendingCompanies = () => {
                                                 )}
                                             </div>
                                         </td>
+                                        <td className="px-6 py-4 text-gray-600 font-medium">{company.id}</td>
                                         <td className="px-6 py-4 font-bold text-gray-900">{company.name}</td>
                                         <td className="px-6 py-4 text-gray-500">{company.submitted}</td>
                                         <td className="px-6 py-4">
@@ -235,18 +280,46 @@ const PendingCompanies = () => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
-                                            <Link
-                                                to={`/superadmin/companies/review/${company.name}`}
-                                                className="px-3 py-1.5 bg-white border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50 hover:text-gray-900 shadow-sm transition-all inline-block"
-                                            >
-                                                Review
-                                            </Link>
+                                            <div className="relative inline-block text-left">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => setActiveActionMenuId(activeActionMenuId === company.id ? null : company.id)}
+                                                    className="inline-flex items-center justify-center w-8 h-8 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50"
+                                                >
+                                                    <MdMoreHoriz className="w-5 h-5" />
+                                                </button>
+                                                {activeActionMenuId === company.id && (
+                                                    <div className="absolute right-0 mt-2 w-36 bg-white rounded-lg shadow-lg border border-gray-100 z-20 overflow-hidden">
+                                                        <Link
+                                                            to={`/superadmin/companies/review/${company.id}`}
+                                                            onClick={() => setActiveActionMenuId(null)}
+                                                            className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
+                                                        >
+                                                            Review
+                                                        </Link>
+                                                        <button
+                                                            onClick={() => handleSingleAction(company.id, 'approve')}
+                                                            disabled={isProcessing}
+                                                            className="block w-full text-left px-3 py-2 text-sm text-green-600 hover:bg-green-50 disabled:opacity-60"
+                                                        >
+                                                            Approve
+                                                        </button>
+                                                        <button
+                                                            onClick={() => handleSingleAction(company.id, 'reject')}
+                                                            disabled={isProcessing}
+                                                            className="block w-full text-left px-3 py-2 text-sm text-red-600 hover:bg-red-50 disabled:opacity-60"
+                                                        >
+                                                            Reject
+                                                        </button>
+                                                    </div>
+                                                )}
+                                            </div>
                                         </td>
                                     </tr>
                                 ))
                             ) : (
                                 <tr>
-                                    <td colSpan="7" className="px-6 py-8 text-center text-gray-500">
+                                    <td colSpan="8" className="px-6 py-8 text-center text-gray-500">
                                         No pending companies found matching your search.
                                     </td>
                                 </tr>

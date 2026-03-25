@@ -27,6 +27,7 @@ create table public.companies (
     cic_coverage_amount text,
     cic_expiry_date date,
     status text not null default 'pending',
+    notes text,
 
     created_at timestamptz default now(),
     updated_at timestamptz default now()

@@ -50,6 +50,11 @@ const STATUS_BADGE = {
             Incomplete
         </div>
     ),
+    optional: (
+        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-slate-50 text-slate-500 text-[11px] font-bold tracking-wide uppercase border border-slate-100">
+            Optional
+        </div>
+    ),
 };
 
 // ─── FileUploadZone ───────────────────────────────────────────────────────────
@@ -275,20 +280,6 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
             e.coioe_issue_date = 'Issue date is required';
         if (!documents.certificate_of_incorporation)
             e.certificate_of_incorporation = 'Document upload required';
-        // Commercial insurance block
-        if (!company.cic_policy_number?.trim())
-            e.cic_policy_number = 'Policy number is required';
-        if (!company.cic_coverage_amount?.trim())
-            e.cic_coverage_amount = 'Coverage amount is required';
-        if (!company.cic_expiry_date?.trim())
-            e.cic_expiry_date = 'Expiry date is required';
-        if (!documents.commercial_insurance_certificate)
-            e.commercial_insurance_certificate = 'Document upload required';
-        // Operator licence block
-        if (!company.operator_licence_number?.trim())
-            e.operator_licence_number = 'Licence number is required';
-        if (!company.operator_licence_issuing_authority?.trim())
-            e.operator_licence_issuing_authority = 'Issuing authority is required';
         return e;
     }, [company, documents]);
 
@@ -302,12 +293,6 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
             coioe_registration_number: true,
             coioe_issue_date: true,
             certificate_of_incorporation: true,
-            cic_policy_number: true,
-            cic_coverage_amount: true,
-            cic_expiry_date: true,
-            commercial_insurance_certificate: true,
-            operator_licence_number: true,
-            operator_licence_issuing_authority: true,
         });
 
     const onContinue = () => {
@@ -336,10 +321,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
         ) : null;
 
     // ── Derived doc counts for the header badge ──
-    const requiredDocKeys = [
-        'certificate_of_incorporation',
-        'commercial_insurance_certificate',
-    ];
+    const requiredDocKeys = ['certificate_of_incorporation'];
     const uploadedCount = requiredDocKeys.filter((k) => documents[k]).length;
     const totalRequired = requiredDocKeys.length;
 
@@ -348,14 +330,23 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
         !!documents.certificate_of_incorporation,
         !!(company.coioe_registration_number && company.coioe_issue_date),
     );
-    const cicStatus = deriveStatus(
-        !!documents.commercial_insurance_certificate,
-        !!(company.cic_policy_number && company.cic_coverage_amount && company.cic_expiry_date),
-    );
-    const operatorStatus =
-        company.operator_licence_number && company.operator_licence_issuing_authority
-            ? 'verified'
-            : 'incomplete';
+    const cicStatus = useMemo(() => {
+        const doc = !!documents.commercial_insurance_certificate;
+        const policy = company.cic_policy_number?.trim();
+        const coverage = company.cic_coverage_amount?.trim();
+        const expiry = company.cic_expiry_date?.trim();
+        const anyInput = !!(policy || coverage || expiry);
+        if (!doc && !anyInput) return 'optional';
+        return deriveStatus(doc, !!(policy && coverage && expiry));
+    }, [company, documents]);
+
+    const operatorStatus = useMemo(() => {
+        const num = company.operator_licence_number?.trim();
+        const auth = company.operator_licence_issuing_authority?.trim();
+        if (!num && !auth) return 'optional';
+        if (num && auth) return 'verified';
+        return 'pending';
+    }, [company]);
 
     // ── Render ──
     return (
@@ -453,7 +444,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                                     </svg>
                                 </div>
                                 <div>
-                                    <h3 className="text-[15px] font-bold text-[#1e293b]">Commercial Insurance Certificate <span className="text-red-500">*</span></h3>
+                                    <h3 className="text-[15px] font-bold text-[#1e293b]">Commercial Insurance Certificate</h3>
                                     <p className="text-[13px] text-gray-500 font-medium mt-0.5">Public liability & motor fleet coverage</p>
                                 </div>
                             </div>
@@ -463,7 +454,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
                             <div className="space-y-1.5">
                                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide">
-                                    Policy Number <span className="text-red-500">*</span>
+                                    Policy Number
                                 </label>
                                 <input
                                     type="text"
@@ -477,7 +468,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                             </div>
                             <div className="space-y-1.5">
                                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide">
-                                    Coverage Amount (£) <span className="text-red-500">*</span>
+                                    Coverage Amount (£)
                                 </label>
                                 <input
                                     type="text"
@@ -491,7 +482,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                             </div>
                             <div className="space-y-1.5">
                                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide">
-                                    Expiry Date <span className="text-red-500">*</span>
+                                    Expiry Date
                                 </label>
                                 <div className="relative">
                                     <input
@@ -512,7 +503,6 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                             documentType="commercial_insurance_certificate"
                             value={value}
                             onChange={onChange}
-                            showError={submitAttempted}
                             tempCompanyId={tempCompanyId}
                         />
                     </div>
@@ -525,7 +515,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                                     <MdCreditCard size={20} />
                                 </div>
                                 <div>
-                                    <h3 className="text-[15px] font-bold text-[#1e293b]">Operator Licence Proof <span className="text-red-500">*</span></h3>
+                                    <h3 className="text-[15px] font-bold text-[#1e293b]">Operator Licence Proof</h3>
                                     <p className="text-[13px] text-gray-500 font-medium mt-0.5">
                                         Required to operate commercial transport legally
                                     </p>
@@ -537,7 +527,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide">
-                                    Licence Number <span className="text-red-500">*</span>
+                                    Licence Number
                                 </label>
                                 <input
                                     type="text"
@@ -551,7 +541,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                             </div>
                             <div className="space-y-1.5">
                                 <label className="block text-[11px] font-bold text-gray-500 uppercase tracking-wide">
-                                    Issuing Authority <span className="text-red-500">*</span>
+                                    Issuing Authority
                                 </label>
                                 <input
                                     type="text"
@@ -580,7 +570,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                             type="button"
                             onClick={onContinue}
                             disabled={!canContinue}
-                            title={!canContinue ? 'Please complete all required fields and upload documents' : undefined}
+                            title={!canContinue ? 'Please complete company registration details and upload the certificate of incorporation' : undefined}
                             className={[
                                 'flex items-center gap-2 px-6 py-3 text-white rounded-xl text-[14px] font-bold transition-all shadow-sm',
                                 canContinue ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed',

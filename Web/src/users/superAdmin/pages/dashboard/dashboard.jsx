@@ -336,6 +336,7 @@ const Dashboard = () => {
                     <table className="w-full text-sm text-left">
                         <thead className="bg-gray-50 text-gray-500 font-medium">
                             <tr>
+                                <th className="px-6 py-3">Company ID</th>
                                 <th className="px-6 py-3">Company Name</th>
                                 <th className="px-6 py-3">Submitted On</th>
                                 <th className="px-6 py-3">Location</th>
@@ -346,6 +347,7 @@ const Dashboard = () => {
                         <tbody className="divide-y divide-gray-50">
                             {pendingApprovals.map((row, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
+                                    <td className="px-6 py-4 text-gray-500">{row.id || '—'}</td>
                                     <td className="px-6 py-4 font-medium text-gray-900">{row.company_name || '—'}</td>
                                     <td className="px-6 py-4 text-gray-500">{formatDate(row.created_at)}</td>
                                     <td className="px-6 py-4 text-gray-500">{row.company_operating_address || row.company_address || '—'}</td>
@@ -363,14 +365,14 @@ const Dashboard = () => {
                             ))}
                             {!loading && pendingApprovals.length === 0 && (
                                 <tr>
-                                    <td className="px-6 py-6 text-gray-500" colSpan={5}>
+                                    <td className="px-6 py-6 text-gray-500" colSpan={6}>
                                         No pending approvals.
                                     </td>
                                 </tr>
                             )}
                             {loading && (
                                 <tr>
-                                    <td className="px-6 py-6 text-gray-500" colSpan={5}>
+                                    <td className="px-6 py-6 text-gray-500" colSpan={6}>
                                         Loading…
                                     </td>
                                 </tr>

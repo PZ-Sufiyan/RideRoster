@@ -34,17 +34,17 @@ const FLEET_SIZE_LABELS = {
     100: '100+ vehicles (Enterprise)',
 };
 
-// All documents that must be present before submission
+// Documents that must be present before submission
 const REQUIRED_DOCS = [
-    { key: 'operator_license',                 label: 'Operator License' },
-    { key: 'public_liability_insurance',       label: 'Public Liability Insurance' },
-    { key: 'certificate_of_incorporation',     label: 'Certificate of Incorporation' },
-    { key: 'commercial_insurance_certificate', label: 'Commercial Insurance Certificate' },
+    { key: 'certificate_of_incorporation', label: 'Certificate of Incorporation' },
 ];
 
 const OPTIONAL_DOCS = [
-    { key: 'vat_certificate',  label: 'VAT Certificate' },
-    { key: 'primary_admin_id', label: 'Primary Admin ID' },
+    { key: 'operator_license',                 label: 'Operator License' },
+    { key: 'public_liability_insurance',       label: 'Public Liability Insurance' },
+    { key: 'commercial_insurance_certificate', label: 'Commercial Insurance Certificate' },
+    { key: 'vat_certificate',                  label: 'VAT Certificate' },
+    { key: 'primary_admin_id',                 label: 'Primary Admin ID' },
 ];
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -195,7 +195,10 @@ const Admin_Register_Review = ({ value, onPrev }) => {
         && company.company_name
         && company.company_registration_number
         && admin.full_name
-        && admin.email;
+        && admin.email
+        && company.driver_estimate !== null
+        && company.driver_estimate !== undefined
+        && Number.isFinite(Number(company.driver_estimate));
 
     // ── Submit handler ──
     // Replace the body of this function with your real API call
@@ -257,7 +260,7 @@ const Admin_Register_Review = ({ value, onPrev }) => {
                     type="button"
                     onClick={handleSubmit}
                     disabled={!isReadyToSubmit || submitting}
-                    title={!isReadyToSubmit ? 'Complete all required fields and upload all documents first' : undefined}
+                    title={!isReadyToSubmit ? 'Complete all required fields and upload the required document first' : undefined}
                     className={[
                         'flex items-center gap-2 px-6 py-2.5 text-white rounded-xl text-[14px] font-bold transition-all shadow-sm',
                         isReadyToSubmit && !submitting ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed',
@@ -292,8 +295,15 @@ const Admin_Register_Review = ({ value, onPrev }) => {
                             {!admin.email && (
                                 <li className="text-[12px] text-amber-600">• Primary admin email (Step 3)</li>
                             )}
+                            {(
+                                company.driver_estimate === null
+                                || company.driver_estimate === undefined
+                                || !Number.isFinite(Number(company.driver_estimate))
+                            ) && (
+                                <li className="text-[12px] text-amber-600">• Fleet size / driver estimate (Step 3)</li>
+                            )}
                             {missingRequiredDocs.map((d) => (
-                                <li key={d.key} className="text-[12px] text-amber-600">• {d.label} (Step 1 or 4)</li>
+                                <li key={d.key} className="text-[12px] text-amber-600">• {d.label} (Compliance)</li>
                             ))}
                         </ul>
                     </div>
@@ -393,24 +403,19 @@ const Admin_Register_Review = ({ value, onPrev }) => {
                             ))}
                         </div>
 
-                        {/* Optional docs — only show if at least one was uploaded */}
-                        {OPTIONAL_DOCS.some((d) => documents[d.key]) && (
-                            <>
-                                <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">
-                                    Optional Documents
-                                </p>
-                                <div className="space-y-2">
-                                    {OPTIONAL_DOCS.filter((d) => documents[d.key]).map((d) => (
-                                        <DocStatusRow
-                                            key={d.key}
-                                            label={d.label}
-                                            doc={documents[d.key]}
-                                            required={false}
-                                        />
-                                    ))}
-                                </div>
-                            </>
-                        )}
+                        <p className="text-[11px] font-bold text-gray-400 uppercase tracking-wide mb-3">
+                            Optional Documents
+                        </p>
+                        <div className="space-y-2">
+                            {OPTIONAL_DOCS.map((d) => (
+                                <DocStatusRow
+                                    key={d.key}
+                                    label={d.label}
+                                    doc={documents[d.key]}
+                                    required={false}
+                                />
+                            ))}
+                        </div>
                     </div>
                 </div>
 

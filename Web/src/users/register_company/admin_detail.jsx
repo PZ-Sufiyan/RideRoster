@@ -16,11 +16,13 @@ import {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const FLEET_SIZES = [
-    { value: '1-5',    label: '1–5 vehicles (Micro)' },
-    { value: '6-15',   label: '6–15 vehicles (Small)' },
-    { value: '16-50',  label: '16–50 vehicles (Medium)' },
-    { value: '51-100', label: '51–100 vehicles (Large)' },
-    { value: '100+',   label: '100+ vehicles (Enterprise)' },
+    // Store integer codes to match `review.jsx` + DB column `companies.driver_estimate` (integer).
+    // The label ranges are only for display.
+    { value: '1',    label: '1–5 vehicles (Micro)' },
+    { value: '6',    label: '6–15 vehicles (Small)' },
+    { value: '16',   label: '16–50 vehicles (Medium)' },
+    { value: '51',   label: '51–100 vehicles (Large)' },
+    { value: '100',  label: '100+ vehicles (Enterprise)' },
 ];
 
 // ─── Validators ───────────────────────────────────────────────────────────────
@@ -78,7 +80,7 @@ const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev }) => {
         if (
             company.driver_estimate === null
             || company.driver_estimate === undefined
-            || String(company.driver_estimate).trim().length === 0
+            || !Number.isFinite(Number(company.driver_estimate))
         )
             e.driver_estimate = 'Fleet size is required';
         return e;

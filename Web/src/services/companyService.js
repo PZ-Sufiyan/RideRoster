@@ -241,3 +241,23 @@ export const getPendingCompaniesWithAdminNames = async () => {
     admin_full_names: (c.company_admins || []).map(a => a.full_name)
   }))
 }
+
+/**
+ * Update status for one or many companies by id.
+ * @param {string|string[]} companyIds company id or ids
+ * @param {string} status next status value (e.g. approved/rejected)
+ */
+export const updateCompaniesStatusByIds = async (companyIds, status) => {
+  const ids = Array.isArray(companyIds) ? companyIds : [companyIds]
+
+  if (!ids.length) return []
+
+  const { data, error } = await supabase
+    .from('companies')
+    .update({ status, updated_at: new Date().toISOString() })
+    .in('id', ids)
+    .select('id, status')
+
+  if (error) throw error
+  return data || []
+}

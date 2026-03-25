@@ -136,10 +136,6 @@ const Companies = () => {
                     <h1 className="text-2xl font-bold text-gray-900">All Companies</h1>
                     <p className="text-sm text-gray-500 mt-1">Manage, search, and filter all registered companies.</p>
                 </div>
-                <button className="flex items-center gap-2 px-4 py-2 bg-[#005580] rounded-lg text-sm font-medium text-white hover:bg-sky-900 transition-colors shadow-sm active:scale-95">
-                    <MdAdd size={18} />
-                    Add New Company
-                </button>
             </div>
 
             <div className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col min-h-[500px]">
