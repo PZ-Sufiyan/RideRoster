@@ -60,6 +60,12 @@ const ROUTE_CRUMB_MAP = [
             { label: decodeURIComponent(id) },
         ],
     },
+    {
+        match: /^\/superadmin\/add-admin$/,
+        crumbs: () => [
+            { label: 'Add Admin' },
+        ],
+    },
 
     // ─── ADMIN ────────────────────────────────────────────────────
     {

@@ -9,6 +9,7 @@ import SuperAdmin_SOSPage from './users/superAdmin/pages/sos/sos';
 import SuperAdmin_SystemLogs from './users/superAdmin/pages/systemlogs/systemlogs';
 import SuperAdmin_Settings from './users/superAdmin/pages/settings/settings';
 import SuperAdmin_Login from './users/superAdmin/pages/auth/login';
+import SuperAdmin_AddAdmin from './users/superAdmin/pages/add_admin/add_admin';
 
 import Admin_Login from './users/admin/pages/auth/login';
 import Admin_Dashboard from './users/admin/pages/dashboard/dashboard';
@@ -95,6 +96,7 @@ function App() {
               <Route path="/superadmin/companies/pending" element={<SuperAdmin_PendingCompanies />} />
               <Route path="/superadmin/companies" element={<SuperAdmin_Companies />} />
               <Route path="/superadmin/companies/review/:id" element={<SuperAdmin_CompanyReview />} />
+              <Route path="/superadmin/add-admin" element={<SuperAdmin_AddAdmin />} />
               <Route path="/superadmin/sos" element={<SuperAdmin_SOSPage />} />
               <Route path="/superadmin/logs" element={<SuperAdmin_SystemLogs />} />
               <Route path="/superadmin/settings" element={<SuperAdmin_Settings />} />

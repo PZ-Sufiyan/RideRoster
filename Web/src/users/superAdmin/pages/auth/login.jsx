@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
 import illustration from '../../../../assets/image.png';
+import { supabase } from '../../../../lib/supabaseClient';
 
 const Login = () => {
     const [showPassword, setShowPassword] = useState(false);
@@ -9,14 +10,12 @@ const Login = () => {
     const [password, setPassword] = useState('');
     const [emailError, setEmailError] = useState('');
     const [loginError, setLoginError] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
     const navigate = useNavigate();
 
-    const validateEmail = (email) => {
-        const re = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return re.test(email);
-    };
+    const validateEmail = (value) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
         setEmailError('');
         setLoginError('');
@@ -26,13 +25,44 @@ const Login = () => {
             return;
         }
 
-        // Specific credentials check
-        if (email === 'superadmin@rideroster.com' && password === 'Admin@123') {
+        setIsLoading(true);
+
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: email.trim().toLowerCase(),
+                password,
+            });
+
+            if (error) {
+                throw error;
+            }
+
+            // Read role from app_metadata (server-controlled, set by Admin API).
+            // Falls back to user_metadata for backwards compatibility.
+            const role =
+                data.user?.app_metadata?.role ||
+                data.user?.user_metadata?.role ||
+                null;
+
+            if (role !== 'superadmin') {
+                // Sign the non-superadmin user out immediately so no session lingers.
+                await supabase.auth.signOut();
+                setLoginError('Access denied. This portal is for Super Admins only.');
+                return;
+            }
+
             localStorage.setItem('isAuthenticated', 'true');
             localStorage.setItem('userRole', 'superadmin');
             navigate('/superadmin/dashboard');
-        } else {
-            setLoginError('Invalid email or password. Please try again.');
+        } catch (err) {
+            const message = err?.message || 'Login failed. Please try again.';
+            setLoginError(
+                message.toLowerCase().includes('invalid login credentials')
+                    ? 'Invalid email or password. Please try again.'
+                    : message
+            );
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -149,9 +179,10 @@ const Login = () => {
                         {/* Sign In Button */}
                         <button
                             type="submit"
-                            className="w-full py-4 px-6 bg-[#40829B] hover:bg-[#356b80] text-white font-bold rounded-xl shadow-lg transition-all transform active:scale-[0.98]"
+                            disabled={isLoading}
+                            className="w-full py-4 px-6 bg-[#40829B] hover:bg-[#356b80] text-white font-bold rounded-xl shadow-lg transition-all transform active:scale-[0.98] disabled:opacity-60 disabled:cursor-not-allowed"
                         >
-                            Sign In
+                            {isLoading ? 'Signing in...' : 'Sign In'}
                         </button>
                     </form>
 

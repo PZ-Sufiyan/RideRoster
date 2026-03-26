@@ -13,6 +13,7 @@ import {
     MdAssessment,
     MdCheckCircle,
     MdPeopleOutline,
+    MdPersonAdd,
     MdExpandMore,
     MdExpandLess
 } from 'react-icons/md';
@@ -36,6 +37,7 @@ const Sidebar = ({ isOpen, onClose }) => {
             items: [
                 { name: 'Dashboard', path: '/superadmin/dashboard', icon: <MdDashboard size={20} /> },
                 { name: 'Companies', path: '/superadmin/companies/pending', icon: <MdBusiness size={20} /> },
+                { name: 'Add Admin', path: '/superadmin/add-admin', icon: <MdPersonAdd size={20} /> },
                 { name: 'SOS Monitoring', path: '/superadmin/sos', icon: <MdSos size={20} /> },
                 { name: 'System Logs', path: '/superadmin/logs', icon: <MdHistory size={20} /> },
             ],

@@ -9,23 +9,58 @@ import {
 } from 'react-icons/hi';
 import bgImage from '../../../../assets/img.png';
 import logo from '../../../../assets/image-002.png';
+import { supabase } from '../../../../lib/supabaseClient';
 
 const AdminLogin = () => {
     const navigate = useNavigate();
     const [showPassword, setShowPassword] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
+    const [isLoading, setIsLoading] = useState(false);
+    const [loginError, setLoginError] = useState('');
 
-    const handleLogin = (e) => {
+    const handleLogin = async (e) => {
         e.preventDefault();
-        // Placeholder check
-        if (email === 'admin@rideroster.com' && password === 'Admin@123') {
+        setLoginError('');
+        setIsLoading(true);
+
+        try {
+            const { data, error } = await supabase.auth.signInWithPassword({
+                email: email.trim().toLowerCase(),
+                password,
+            });
+
+            if (error) {
+                throw error;
+            }
+
+            // Read role from app_metadata — server-controlled, set by Admin API.
+            // Falls back to user_metadata for backwards compatibility.
+            const role =
+                data.user?.app_metadata?.role ||
+                data.user?.user_metadata?.role ||
+                null;
+
+            if (role !== 'admin') {
+                // Sign the non-admin user back out immediately so no session lingers.
+                await supabase.auth.signOut();
+                setLoginError('Access denied. This portal is for admins only.');
+                return;
+            }
+
             localStorage.setItem('isAuthenticated', 'true');
             localStorage.setItem('userRole', 'admin');
             navigate('/admin/dashboard');
-        } else {
-            console.log('Login failed');
-            alert('Invalid credentials');
+        } catch (err) {
+            const message = err?.message || 'Login failed. Please try again.';
+            // Normalise Supabase "Invalid login credentials" to a friendlier message.
+            setLoginError(
+                message.toLowerCase().includes('invalid login credentials')
+                    ? 'Invalid email or password.'
+                    : message
+            );
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -82,6 +117,12 @@ const AdminLogin = () => {
                         </p>
 
                         <form onSubmit={handleLogin} className="space-y-5">
+                            {loginError && (
+                                <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 font-medium">
+                                    {loginError}
+                                </div>
+                            )}
+
                             {/* Email */}
                             <div>
                                 <label className="block text-[15px] font-semibold text-gray-800 mb-2">
@@ -153,10 +194,11 @@ const AdminLogin = () => {
                             {/* Login Button */}
                             <button
                                 type="submit"
-                                className="w-full h-[48px] rounded-[10px] bg-[#005C7A] hover:bg-[#004a63] text-white font-semibold flex items-center justify-center gap-2 transition-colors"
+                                disabled={isLoading}
+                                className="w-full h-[48px] rounded-[10px] bg-[#005C7A] hover:bg-[#004a63] text-white font-semibold flex items-center justify-center gap-2 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
                             >
                                 <HiOutlineLogin size={18} />
-                                <span>Login</span>
+                                <span>{isLoading ? 'Signing in...' : 'Login'}</span>
                             </button>
                         </form>
 
