@@ -8,7 +8,9 @@ import {
     createTempCompanyId,
     loadCompanyRegistrationDraft,
     saveCompanyRegistrationDraft,
-} from '../../services/registrationDraftService';
+} from '../../../../services/registrationDraftService';
+import { supabase } from '../../../../lib/supabaseClient';
+import { useNavigate } from 'react-router-dom';
 
 // ─── Step definitions ────────────────────────────────────────────────────────
 const STEPS = [
@@ -97,13 +99,47 @@ const StepLabel = ({ label, active, completed }) => {
 
 // ─── RegistrationFlow ────────────────────────────────────────────────────────
 const RegistrationFlow = () => {
+    const navigate = useNavigate();
     const loadedDraft = useMemo(() => loadCompanyRegistrationDraft(), []);
 
     const [activeStep, setActiveStep] = useState(() => loadedDraft?.activeStep ?? 1);
     const [maxUnlocked, setMaxUnlocked] = useState(() => loadedDraft?.maxUnlocked ?? 1);
 
-    const [tempCompanyId, setTempCompanyId] = useState(() => loadedDraft?.tempCompanyId ?? createTempCompanyId());
+    const [tempCompanyId] = useState(() => loadedDraft?.tempCompanyId ?? createTempCompanyId());
     const [registration, setRegistration] = useState(() => loadedDraft?.registration ?? initialRegistrationState);
+
+    // Primary admin email must match company_admins / auth (same row); keep in sync on load.
+    useEffect(() => {
+        let cancelled = false;
+
+        (async () => {
+            const {
+                data: { user },
+            } = await supabase.auth.getUser();
+            if (!user?.id || cancelled) return;
+
+            const { data: row } = await supabase
+                .from('company_admins')
+                .select('email')
+                .eq('id', user.id)
+                .maybeSingle();
+
+            const email =
+                row?.email?.trim().toLowerCase() ||
+                user.email?.trim().toLowerCase() ||
+                '';
+            if (!email || cancelled) return;
+
+            setRegistration((prev) => ({
+                ...prev,
+                admin: { ...prev.admin, email },
+            }));
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, []);
 
     /**
      * maxUnlocked tracks the furthest step the user has progressed to.
@@ -146,13 +182,25 @@ const RegistrationFlow = () => {
             <div className="max-w-300 mx-auto space-y-8">
 
                 {/* ── Page Header ── */}
-                <div>
-                    <h1 className="text-[28px] font-bold text-[#1e293b] leading-tight tracking-tight">
-                        New Tenant Registration
-                    </h1>
-                    <p className="text-[15px] text-gray-500 mt-1 font-medium">
-                        Onboard a new transport company to the RideRoster ecosystem.
-                    </p>
+                <div className="flex items-start justify-between">
+                    <div>
+                        <h1 className="text-[28px] font-bold text-[#1e293b] leading-tight tracking-tight">
+                            New Tenant Registration
+                        </h1>
+                        <p className="text-[15px] text-gray-500 mt-1 font-medium">
+                            Onboard a new transport company to the RideRoster ecosystem.
+                        </p>
+                    </div>
+                    <button
+                        onClick={async () => {
+                            await supabase.auth.signOut();
+                            localStorage.clear();
+                            navigate('/home');
+                        }}
+                        className="ml-8 mt-1 px-4 py-2 bg-red-50 text-red-700 border border-red-200 rounded-lg font-semibold text-sm shadow-sm hover:bg-red-100 transition-colors"
+                    >
+                        Log out
+                    </button>
                 </div>
 
                 {/* ── Stepper ── */}
@@ -208,6 +256,7 @@ const RegistrationFlow = () => {
                         onChange={setRegistration}
                         onNext={goNext}
                         onPrev={goPrev}
+                        adminEmailLocked
                     />
                 )}
                 {activeStep === 4 && (

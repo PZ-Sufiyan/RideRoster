@@ -20,13 +20,6 @@ const Home = () => {
             color: 'from-blue-600 to-cyan-500'
         },
         {
-            title: 'Company Registration',
-            description: 'Register your company to join RideRoster',
-            icon: '📝',
-            path: '/admin/register',
-            color: 'from-emerald-500 to-teal-600'
-        },
-        {
             title: 'Sub Admin',
             description: 'Staff member and coordinator portal',
             icon: '👥',
@@ -55,7 +48,7 @@ const Home = () => {
                 </div>
 
                 {/* Grid Section */}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 w-full">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 w-full max-w-5xl">
                     {roles.map((role, index) => (
                         <button
                             key={role.title}

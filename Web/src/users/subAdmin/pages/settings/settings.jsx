@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
-import { ToastStack } from '../../../../components/Toast';
+import { ToastStack } from '../../../../utils/Toast';
 import {
     getCurrentSubAdminSettings,
     updateCurrentSubAdminNotificationPrefs,

@@ -43,7 +43,9 @@ import Admin_Report from './users/admin/pages/reports/report';
 import Admin_DriverReport from './users/admin/pages/reports/driver_report';
 import Admin_PAReport from './users/admin/pages/reports/pa_report';
 
-import RegistrationFlow from './users/register_company/registration_flow'
+import RegistrationFlow from './users/admin/pages/register_company/registration_flow';
+import { RequireCompanyLinkedAdmin, RedirectIfCompanyLinked } from './components/AdminCompanyRouteGuards';
+
 import SubAdmin_Login from './users/subAdmin/pages/auth/login';
 import SubAdmin_Dashboard from './users/subAdmin/pages/dashboard/dashboard';
 import SubAdmin_Approvals from './users/subAdmin/pages/approvals/approvals';
@@ -84,10 +86,16 @@ function App() {
         <Route path="/superadmin/login" element={<SuperAdmin_Login />} />
         <Route path="/admin/login" element={<Admin_Login />} />
         <Route path="/subadmin/login" element={<SubAdmin_Login />} />
-        <Route path="/admin/register" element={<RegistrationFlow />} />
 
         {/* Dashboard Pages - Protected */}
         <Route element={<ProtectedRoute />}>
+          {/* Admin: company registration (auth + admin role only; no dashboard chrome) */}
+          <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
+            <Route path="/admin/register" element={<RedirectIfCompanyLinked />}>
+              <Route index element={<RegistrationFlow />} />
+            </Route>
+          </Route>
+
           <Route element={<DashboardLayout />}>
 
             {/* Superadmin Group */}
@@ -102,38 +110,40 @@ function App() {
               <Route path="/superadmin/settings" element={<SuperAdmin_Settings />} />
             </Route>
 
-            {/* Admin Group */}
+            {/* Admin Group — requires linked company (company_admins.company_id) */}
             <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-              <Route path="/admin/dashboard" element={<Admin_Dashboard />} />
-              <Route path="/admin/users/drivers" element={<Admin_Drivers />} />
-              <Route path="/admin/users/drivers/add" element={<Admin_AddDriver />} />
-              <Route path="/admin/users/drivers/:id" element={<Admin_DriverDetail />} />
-              <Route path="/admin/users/pa" element={<Admin_PAList />} />
-              <Route path="/admin/users/pa/add" element={<Admin_AddPA />} />
-              <Route path="/admin/users/pa/:id" element={<Admin_PADetail />} />
-              <Route path="/admin/users/subadmins" element={<SubAdminList />} />
-              <Route path="/admin/users/subadmins/add" element={<Admin_AddSubAdmin />} />
-              <Route path="/admin/users/subadmins/:id" element={<Admin_SubAdminDetail />} />
-              <Route path="/admin/users/passengers" element={<Admin_Passengers />} />
-              <Route path="/admin/users/passengers/add" element={<Admin_AddPassenger />} />
-              <Route path="/admin/users/passengers/assign" element={<Admin_AssignRoute />} />
-              <Route path="/admin/users/passengers/assign/review" element={<Admin_RouteReview />} />
-              <Route path="/admin/users/passengers/assign/success" element={<Admin_SuccessConfirmation />} />
-              <Route path="/admin/users/passengers/:id" element={<Admin_PassengerDetail />} />
-              <Route path="/admin/jobs" element={<Admin_JobsList />} />
-              <Route path="/admin/jobs/calendar" element={<Admin_JobCalendar />} />
-              <Route path="/admin/jobs/create-step1" element={<Admin_AddJobStep1 />} />
-              <Route path="/admin/jobs/create-step2" element={<Admin_AddJobStep2 />} />
-              <Route path="/admin/jobs/create-step3" element={<Admin_AddJobStep3 />} />
-              <Route path="/admin/jobs/:id/edit" element={<Admin_EditJob />} />
-              <Route path="/admin/jobs/:id" element={<Admin_JobDetail />} />
-              <Route path="/admin/notifications" element={<Admin_Notifications />} />
-              <Route path="/admin/reports" element={<Admin_Report />} />
-              <Route path="/admin/reports/driver-performance" element={<Admin_DriverReport />} />
-              <Route path="/admin/reports/pa-attendance" element={<Admin_PAReport />} />
-              <Route path="/admin/sos" element={<Admin_SOSPage />} />
-              <Route path="/admin/sos/:id" element={<Admin_SOSDetail />} />
-              <Route path="/admin/settings" element={<Admin_Settings />} />
+              <Route element={<RequireCompanyLinkedAdmin />}>
+                <Route path="/admin/dashboard" element={<Admin_Dashboard />} />
+                <Route path="/admin/users/drivers" element={<Admin_Drivers />} />
+                <Route path="/admin/users/drivers/add" element={<Admin_AddDriver />} />
+                <Route path="/admin/users/drivers/:id" element={<Admin_DriverDetail />} />
+                <Route path="/admin/users/pa" element={<Admin_PAList />} />
+                <Route path="/admin/users/pa/add" element={<Admin_AddPA />} />
+                <Route path="/admin/users/pa/:id" element={<Admin_PADetail />} />
+                <Route path="/admin/users/subadmins" element={<SubAdminList />} />
+                <Route path="/admin/users/subadmins/add" element={<Admin_AddSubAdmin />} />
+                <Route path="/admin/users/subadmins/:id" element={<Admin_SubAdminDetail />} />
+                <Route path="/admin/users/passengers" element={<Admin_Passengers />} />
+                <Route path="/admin/users/passengers/add" element={<Admin_AddPassenger />} />
+                <Route path="/admin/users/passengers/assign" element={<Admin_AssignRoute />} />
+                <Route path="/admin/users/passengers/assign/review" element={<Admin_RouteReview />} />
+                <Route path="/admin/users/passengers/assign/success" element={<Admin_SuccessConfirmation />} />
+                <Route path="/admin/users/passengers/:id" element={<Admin_PassengerDetail />} />
+                <Route path="/admin/jobs" element={<Admin_JobsList />} />
+                <Route path="/admin/jobs/calendar" element={<Admin_JobCalendar />} />
+                <Route path="/admin/jobs/create-step1" element={<Admin_AddJobStep1 />} />
+                <Route path="/admin/jobs/create-step2" element={<Admin_AddJobStep2 />} />
+                <Route path="/admin/jobs/create-step3" element={<Admin_AddJobStep3 />} />
+                <Route path="/admin/jobs/:id/edit" element={<Admin_EditJob />} />
+                <Route path="/admin/jobs/:id" element={<Admin_JobDetail />} />
+                <Route path="/admin/notifications" element={<Admin_Notifications />} />
+                <Route path="/admin/reports" element={<Admin_Report />} />
+                <Route path="/admin/reports/driver-performance" element={<Admin_DriverReport />} />
+                <Route path="/admin/reports/pa-attendance" element={<Admin_PAReport />} />
+                <Route path="/admin/sos" element={<Admin_SOSPage />} />
+                <Route path="/admin/sos/:id" element={<Admin_SOSDetail />} />
+                <Route path="/admin/settings" element={<Admin_Settings />} />
+              </Route>
             </Route>
 
             {/* Subadmin Group */}

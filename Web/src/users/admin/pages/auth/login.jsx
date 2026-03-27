@@ -50,7 +50,27 @@ const AdminLogin = () => {
 
             localStorage.setItem('isAuthenticated', 'true');
             localStorage.setItem('userRole', 'admin');
-            navigate('/admin/dashboard');
+
+            const { data: companyAdminRow, error: companyAdminError } = await supabase
+                .from('company_admins')
+                .select('company_id')
+                .eq('id', data.user.id)
+                .maybeSingle();
+
+            if (companyAdminError) {
+                console.error('company_admins lookup failed:', companyAdminError);
+                await supabase.auth.signOut();
+                localStorage.removeItem('isAuthenticated');
+                localStorage.removeItem('userRole');
+                setLoginError('Could not load your company profile. Please try again.');
+                return;
+            }
+
+            if (companyAdminRow?.company_id) {
+                navigate('/admin/dashboard', { replace: true });
+            } else {
+                navigate('/admin/register', { replace: true });
+            }
         } catch (err) {
             const message = err?.message || 'Login failed. Please try again.';
             // Normalise Supabase "Invalid login credentials" to a friendlier message.

@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { ToastStack } from '../../../../components/Toast';
+import { ToastStack } from '../../../../utils/Toast';
 import {
     getCurrentSuperAdminSettings,
     updateCurrentSuperAdminProfile,

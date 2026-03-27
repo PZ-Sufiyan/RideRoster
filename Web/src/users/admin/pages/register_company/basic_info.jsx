@@ -12,7 +12,7 @@ import { AiOutlineLoading3Quarters } from 'react-icons/ai';
 import {
     uploadCompanyDocument,
     removeCompanyDocument,
-} from '../../services/storageService';
+} from '../../../../services/storageService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

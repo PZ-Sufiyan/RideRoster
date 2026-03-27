@@ -49,7 +49,7 @@ const SummaryRow = ({ label, value, missing = false }) => (
 
 // ─── Admin_Register_AdminScale ────────────────────────────────────────────────
 
-const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev }) => {
+const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev, adminEmailLocked = false }) => {
     const [touched, setTouched]                = useState({});
     const [submitAttempted, setSubmitAttempted] = useState(false);
 
@@ -180,7 +180,7 @@ const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev }) => {
                             {renderFieldError('full_name')}
                         </div>
 
-                        {/* Admin Email */}
+                        {/* Admin Email — locked to logged-in account when registering while signed in */}
                         <div className="space-y-1.5">
                             <label className="block text-[14px] font-bold text-[#1e293b]">
                                 Primary Admin Email <span className="text-red-500">*</span>
@@ -189,13 +189,31 @@ const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev }) => {
                                 type="email"
                                 placeholder="admin@company.com"
                                 value={admin.email || ''}
-                                onChange={(e) => setAdminField('email', e.target.value)}
+                                readOnly={adminEmailLocked}
+                                onChange={
+                                    adminEmailLocked
+                                        ? undefined
+                                        : (e) => setAdminField('email', e.target.value)
+                                }
                                 onBlur={() => touch('email')}
-                                className={inputClass('email')}
+                                tabIndex={adminEmailLocked ? -1 : undefined}
+                                className={
+                                    adminEmailLocked
+                                        ? [
+                                              'w-full px-4 py-3 bg-gray-50 border rounded-xl text-[14px] text-gray-800',
+                                              'cursor-not-allowed border-gray-200',
+                                              showErr('email')
+                                                  ? 'border-red-400'
+                                                  : 'border-gray-200',
+                                          ].join(' ')
+                                        : inputClass('email')
+                                }
                             />
                             {renderFieldError('email')}
                             <p className="text-[12px] text-gray-400 font-medium italic">
-                                Login credentials will be sent to this address upon approval.
+                                {adminEmailLocked
+                                    ? 'This is your account email and cannot be changed.'
+                                    : 'Login credentials will be sent to this address upon approval.'}
                             </p>
                         </div>
 

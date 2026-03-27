@@ -13,8 +13,8 @@ import {
     MdSend,
 } from 'react-icons/md';
 import { AiOutlineLoading3Quarters } from 'react-icons/ai';
-import { submitCompanyRegistration } from '../../services/registrationService';
-import { clearCompanyRegistrationDraft } from '../../services/registrationDraftService';
+import { submitCompanyRegistration } from '../../../../services/registrationService';
+import { clearCompanyRegistrationDraft } from '../../../../services/registrationDraftService';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 

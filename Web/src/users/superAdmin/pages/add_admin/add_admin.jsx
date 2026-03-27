@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
-import { ToastStack } from '../../../../components/Toast';
+import { ToastStack } from '../../../../utils/Toast';
 import { supabase } from '../../../../lib/supabaseClient';
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin';
 
@@ -51,6 +51,9 @@ const AddAdmin = () => {
                     throw new Error('Admin user could not be created. Please try again.');
                 }
 
+                const normalizedEmail = formData.email.trim().toLowerCase();
+                const nowIso = new Date().toISOString();
+
                 // Step 2: Write role to app_metadata using the Admin API (service role key).
                 // app_metadata is server-controlled and cannot be modified by the user,
                 // making it the trusted source for role-based authorization.
@@ -70,9 +73,30 @@ const AddAdmin = () => {
                     );
                 }
 
+                // Step 3: Create the linked company_admins record with auth.user.id as FK.
+                // Keep optional fields empty during super admin registration.
+                const { error: companyAdminError } = await supabaseAdmin
+                    .from('company_admins')
+                    .insert({
+                        id: data.user.id,
+                        email: normalizedEmail,
+                        company_id: null,
+                        full_name: null,
+                        phone: null,
+                        created_at: nowIso,
+                        updated_at: nowIso,
+                    });
+
+                if (companyAdminError) {
+                    console.error('User created but company_admins insert failed:', companyAdminError);
+                    throw new Error(
+                        `User was created but company admin profile could not be saved: ${companyAdminError.message}`
+                    );
+                }
+
                 pushToast(
                     'success',
-                    `Admin account created successfully for ${formData.email.trim().toLowerCase()}. Role "admin" has been saved to their profile.`
+                    `Admin account created successfully for ${normalizedEmail}. Auth user and company admin profile were both created.`
                 );
                 setFormData({ email: '', password: '' });
             } catch (err) {
