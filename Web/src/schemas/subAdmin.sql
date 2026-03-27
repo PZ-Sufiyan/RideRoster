@@ -1,5 +1,7 @@
 create table if not exists public.sub_admins (
-  id uuid primary key default gen_random_uuid(),
+  id uuid primary key
+    references auth.users(id)
+    on delete cascade,
 
   company_id uuid not null
     references public.companies(id)
@@ -8,8 +10,6 @@ create table if not exists public.sub_admins (
   name text not null,
   email text not null,
   phone text,
-
-  password text not null,
 
   -- Job Management
   view_jobs boolean default false,

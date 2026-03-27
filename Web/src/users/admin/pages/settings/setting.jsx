@@ -1,4 +1,11 @@
 import React, { useState, useRef } from 'react';
+import { ToastStack } from '../../../../components/Toast';
+import { HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
+import {
+    getCurrentAuthUser,
+    updateCurrentPassword,
+    verifyCurrentPassword,
+} from '../../../../services/settingServices';
 
 // ─── Reusable Toggle ─────────────────────────────────────────
 const Toggle = ({ checked, onChange }) => (
@@ -69,14 +76,71 @@ const AdminSettings = () => {
     const [currentPwd, setCurrentPwd] = useState('');
     const [newPwd, setNewPwd] = useState('');
     const [confirmPwd, setConfirmPwd] = useState('');
+    const [showCurrentPwd, setShowCurrentPwd] = useState(false);
+    const [showNewPwd, setShowNewPwd] = useState(false);
+    const [showConfirmPwd, setShowConfirmPwd] = useState(false);
+    const [passwordLoading, setPasswordLoading] = useState(false);
+    const [toasts, setToasts] = useState([]);
+
+    const pushToast = (type, message) => {
+        setToasts((prev) => [...prev, { id: `${Date.now()}-${Math.random()}`, type, message }]);
+    };
+
+    const removeToast = (id) => {
+        setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    };
 
     const handleLogoChange = (file) => {
         if (!file) return;
         setLogoPreview(URL.createObjectURL(file));
     };
 
+    const handlePasswordUpdate = async () => {
+        try {
+            if (!currentPwd || !newPwd || !confirmPwd) {
+                pushToast('warning', 'Please enter current password, new password, and confirm password.');
+                return;
+            }
+
+            if (newPwd !== confirmPwd) {
+                pushToast('warning', 'New password and confirm password must match.');
+                return;
+            }
+
+            if (newPwd === currentPwd) {
+                pushToast('warning', 'New password must be different from your current password.');
+                return;
+            }
+
+            setPasswordLoading(true);
+
+            const authUser = await getCurrentAuthUser();
+            if (!authUser?.email) {
+                throw new Error('Authenticated user email not found.');
+            }
+
+            await verifyCurrentPassword(currentPwd);
+            await updateCurrentPassword(newPwd);
+
+            setCurrentPwd('');
+            setNewPwd('');
+            setConfirmPwd('');
+            pushToast('success', 'Password updated successfully.');
+        } catch (error) {
+            const message = error?.message || 'Failed to update password.';
+            if (message.toLowerCase().includes('invalid login credentials')) {
+                pushToast('error', 'Wrong current password entered.');
+                return;
+            }
+            pushToast('error', message);
+        } finally {
+            setPasswordLoading(false);
+        }
+    };
+
     return (
         <div className="space-y-0">
+            <ToastStack toasts={toasts} onClose={removeToast} />
 
             <div className="mb-5">
                 <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
@@ -162,35 +226,6 @@ const AdminSettings = () => {
                             </button>
                         </div>
                     </div>
-
-                    {/* Security Section within Company Profile tab */}
-                    <div className="border-t border-gray-100">
-                        <div className="px-6 pt-6 pb-4 border-b border-gray-100">
-                            <h2 className="text-lg font-bold text-gray-900">Security</h2>
-                            <p className="text-sm text-gray-500 mt-0.5">Change your password and manage two-factor authentication.</p>
-                        </div>
-                        <div className="px-6 py-5">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                                {/* Left description */}
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-900">Change Password</h3>
-                                    <p className="text-sm text-gray-500 mt-1 leading-relaxed">
-                                        It's a good idea to use a strong password that you're not using elsewhere.
-                                    </p>
-                                </div>
-                                {/* Right fields */}
-                                <div className="space-y-4">
-                                    <InputField label="Current Password" type="password" value={currentPwd} onChange={e => setCurrentPwd(e.target.value)} />
-                                    <InputField label="New Password" type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} />
-                                </div>
-                            </div>
-                            <div className="mt-5 pt-4 border-t border-gray-100">
-                                <button className="px-5 py-2.5 bg-[#005580] text-white text-sm font-semibold rounded-lg hover:bg-sky-900 transition-colors shadow-sm">
-                                    Update Security Settings
-                                </button>
-                            </div>
-                        </div>
-                    </div>
                 </div>
             )}
 
@@ -237,38 +272,82 @@ const AdminSettings = () => {
                     </div>
 
                     <div className="px-6 py-5 border-t border-gray-100 space-y-4 max-w-md">
-                        <InputField
-                            label="Current Password"
-                            type="password"
-                            placeholder="Enter your current password"
-                            value={currentPwd}
-                            onChange={e => setCurrentPwd(e.target.value)}
-                        />
-                        <InputField
-                            label="New Password"
-                            type="password"
-                            placeholder="Enter a new password"
-                            value={newPwd}
-                            onChange={e => setNewPwd(e.target.value)}
-                        />
-                        <InputField
-                            label="Confirm New Password"
-                            type="password"
-                            placeholder="Confirm your new password"
-                            value={confirmPwd}
-                            onChange={e => setConfirmPwd(e.target.value)}
-                        />
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-sm font-medium text-gray-700">Current Password</label>
+                            <div className="relative">
+                                <input
+                                    type={showCurrentPwd ? 'text' : 'password'}
+                                    placeholder="Enter your current password"
+                                    value={currentPwd}
+                                    onChange={(e) => setCurrentPwd(e.target.value)}
+                                    className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] transition-colors bg-white"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowCurrentPwd((prev) => !prev)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                                    aria-label={showCurrentPwd ? 'Hide current password' : 'Show current password'}
+                                >
+                                    {showCurrentPwd ? <HiOutlineEyeOff size={18} /> : <HiOutlineEye size={18} />}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-sm font-medium text-gray-700">New Password</label>
+                            <div className="relative">
+                                <input
+                                    type={showNewPwd ? 'text' : 'password'}
+                                    placeholder="Enter a new password"
+                                    value={newPwd}
+                                    onChange={(e) => setNewPwd(e.target.value)}
+                                    className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] transition-colors bg-white"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowNewPwd((prev) => !prev)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                                    aria-label={showNewPwd ? 'Hide new password' : 'Show new password'}
+                                >
+                                    {showNewPwd ? <HiOutlineEyeOff size={18} /> : <HiOutlineEye size={18} />}
+                                </button>
+                            </div>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                            <label className="text-sm font-medium text-gray-700">Confirm New Password</label>
+                            <div className="relative">
+                                <input
+                                    type={showConfirmPwd ? 'text' : 'password'}
+                                    placeholder="Confirm your new password"
+                                    value={confirmPwd}
+                                    onChange={(e) => setConfirmPwd(e.target.value)}
+                                    className="w-full px-3 py-2.5 pr-10 border border-gray-200 rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] transition-colors bg-white"
+                                />
+                                <button
+                                    type="button"
+                                    onClick={() => setShowConfirmPwd((prev) => !prev)}
+                                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                                    aria-label={showConfirmPwd ? 'Hide confirm password' : 'Show confirm password'}
+                                >
+                                    {showConfirmPwd ? <HiOutlineEyeOff size={18} /> : <HiOutlineEye size={18} />}
+                                </button>
+                            </div>
+                        </div>
                     </div>
 
                     <div className="px-6 pb-6 flex items-center gap-3">
                         <button
                             onClick={() => { setCurrentPwd(''); setNewPwd(''); setConfirmPwd(''); }}
+                            disabled={passwordLoading}
                             className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                         >
                             Cancel
                         </button>
-                        <button className="px-5 py-2.5 bg-[#005580] text-white text-sm font-semibold rounded-lg hover:bg-sky-900 transition-colors shadow-sm">
-                            Update Password
+                        <button
+                            onClick={handlePasswordUpdate}
+                            disabled={passwordLoading}
+                            className="px-5 py-2.5 bg-[#005580] text-white text-sm font-semibold rounded-lg hover:bg-sky-900 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                            {passwordLoading ? 'Updating...' : 'Update Password'}
                         </button>
                     </div>
                 </div>

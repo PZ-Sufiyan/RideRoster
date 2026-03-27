@@ -1,8 +1,93 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
+import { ToastStack } from '../../../../components/Toast';
+import {
+    getCurrentSuperAdminSettings,
+    updateCurrentSuperAdminProfile,
+} from '../../../../services/settingServices';
 
 const Settings = () => {
+    const [fullName, setFullName] = useState('');
+    const [email, setEmail] = useState('');
+    const [phone, setPhone] = useState('');
+    const [role, setRole] = useState('Super Admin');
+    const [loading, setLoading] = useState(true);
+    const [saving, setSaving] = useState(false);
+    const [initialData, setInitialData] = useState({
+        fullName: '',
+        email: '',
+        phone: '',
+    });
+    const [toasts, setToasts] = useState([]);
+
+    const pushToast = (type, message) => {
+        setToasts((prev) => [...prev, { id: `${Date.now()}-${Math.random()}`, type, message }]);
+    };
+
+    const removeToast = (id) => {
+        setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    };
+
+    useEffect(() => {
+        const loadSettings = async () => {
+            try {
+                setLoading(true);
+                const { authUser, profile } = await getCurrentSuperAdminSettings();
+
+                const loadedFullName = profile?.full_name || '';
+                const loadedEmail = profile?.email || authUser?.email || '';
+                const loadedPhone = profile?.phone || '';
+                const loadedRole =
+                    authUser?.app_metadata?.role === 'superadmin' ? 'Super Admin' : 'Super Admin';
+
+                setFullName(loadedFullName);
+                setEmail(loadedEmail);
+                setPhone(loadedPhone);
+                setRole(loadedRole);
+                setInitialData({
+                    fullName: loadedFullName,
+                    email: loadedEmail,
+                    phone: loadedPhone,
+                });
+            } catch (error) {
+                pushToast('error', error?.message || 'Failed to load settings.');
+            } finally {
+                setLoading(false);
+            }
+        };
+
+        loadSettings();
+    }, []);
+
+    const handleSaveChanges = async () => {
+        try {
+            setSaving(true);
+            await updateCurrentSuperAdminProfile({
+                full_name: fullName.trim(),
+                phone: phone.trim(),
+            });
+
+            setInitialData((prev) => ({
+                ...prev,
+                fullName: fullName.trim(),
+                phone: phone.trim(),
+            }));
+            pushToast('success', 'Settings updated successfully.');
+        } catch (error) {
+            pushToast('error', error?.message || 'Failed to update settings.');
+        } finally {
+            setSaving(false);
+        }
+    };
+
+    const handleCancel = () => {
+        setFullName(initialData.fullName);
+        setEmail(initialData.email);
+        setPhone(initialData.phone);
+    };
+
     return (
         <div className="space-y-6">
+            <ToastStack toasts={toasts} onClose={removeToast} />
             {/* Page Header */}
             <div>
                 <h1 className="text-2xl font-bold text-gray-900">Settings</h1>
@@ -46,8 +131,10 @@ const Settings = () => {
                         </label>
                         <input
                             type="text"
-                            defaultValue="Eleanor Pena"
+                            value={fullName}
+                            onChange={(e) => setFullName(e.target.value)}
                             className="block w-full px-4 py-3 text-sm border border-gray-200 rounded-lg bg-gray-50/50 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-colors"
+                            disabled={loading}
                         />
                     </div>
 
@@ -58,25 +145,11 @@ const Settings = () => {
                         </label>
                         <input
                             type="email"
-                            defaultValue="eleanor.pena@example.com"
-                            className="block w-full px-4 py-3 text-sm border border-gray-200 rounded-lg bg-gray-50/50 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-colors"
+                            value={email}
+                            readOnly
+                            className="block w-full px-4 py-3 text-sm border border-gray-200 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                         />
                     </div>
-
-                    {/* Secondary Email Address */}
-                    <div className="space-y-2">
-                        <label className="block text-sm font-semibold text-gray-700">
-                            Secondary Email Address
-                        </label>
-                        <input
-                            type="email"
-                            defaultValue="eleanor.pena@example.com"
-                            className="block w-full px-4 py-3 text-sm border border-gray-200 rounded-lg bg-gray-50/50 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-colors"
-                        />
-                    </div>
-
-                    {/* Empty Div to maintain grid structure (optional, but good for explicit layout if we wanted to force empty cell, though CSS Grid auto placement allows skipping) */}
-                    <div className="hidden md:block"></div>
 
                     {/* Phone Number */}
                     <div className="space-y-2">
@@ -85,8 +158,10 @@ const Settings = () => {
                         </label>
                         <input
                             type="text"
-                            defaultValue="+1 (555) 123-4567"
+                            value={phone}
+                            onChange={(e) => setPhone(e.target.value)}
                             className="block w-full px-4 py-3 text-sm border border-gray-200 rounded-lg bg-gray-50/50 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-colors"
+                            disabled={loading}
                         />
                     </div>
 
@@ -97,7 +172,7 @@ const Settings = () => {
                         </label>
                         <input
                             type="text"
-                            defaultValue="Super Admin"
+                            value={role}
                             disabled
                             className="block w-full px-4 py-3 text-sm border border-gray-200 rounded-lg bg-gray-100 text-gray-400 cursor-not-allowed"
                         />
@@ -107,11 +182,19 @@ const Settings = () => {
 
                 {/* Actions */}
                 <div className="mt-10 flex items-center gap-4">
-                    <button className="px-6 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors bg-white">
+                    <button
+                        onClick={handleCancel}
+                        disabled={loading || saving}
+                        className="px-6 py-2.5 border border-gray-200 rounded-lg text-sm font-semibold text-gray-700 hover:bg-gray-50 transition-colors bg-white disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
                         Cancel
                     </button>
-                    <button className="px-6 py-2.5 bg-[#407B90] rounded-lg text-sm font-semibold text-white hover:bg-[#356a7d] transition-colors shadow-sm">
-                        Save Changes
+                    <button
+                        onClick={handleSaveChanges}
+                        disabled={loading || saving}
+                        className="px-6 py-2.5 bg-[#407B90] rounded-lg text-sm font-semibold text-white hover:bg-[#356a7d] transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        {saving ? 'Saving...' : 'Save Changes'}
                     </button>
                 </div>
 

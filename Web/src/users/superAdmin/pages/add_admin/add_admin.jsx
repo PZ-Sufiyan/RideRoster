@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import { HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
+import { ToastStack } from '../../../../components/Toast';
 import { supabase } from '../../../../lib/supabaseClient';
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin';
 
@@ -8,8 +10,16 @@ const AddAdmin = () => {
         password: '',
     });
     const [isSubmitting, setIsSubmitting] = useState(false);
-    const [errorMessage, setErrorMessage] = useState('');
-    const [successMessage, setSuccessMessage] = useState('');
+    const [toasts, setToasts] = useState([]);
+    const [showPassword, setShowPassword] = useState(false);
+
+    const pushToast = (type, message) => {
+        setToasts((prev) => [...prev, { id: `${Date.now()}-${Math.random()}`, type, message }]);
+    };
+
+    const removeToast = (id) => {
+        setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    };
 
     const handleChange = (event) => {
         const { name, value } = event.target;
@@ -21,8 +31,6 @@ const AddAdmin = () => {
 
     const handleSubmit = (event) => {
         event.preventDefault();
-        setErrorMessage('');
-        setSuccessMessage('');
 
         const createAdmin = async () => {
             try {
@@ -62,7 +70,8 @@ const AddAdmin = () => {
                     );
                 }
 
-                setSuccessMessage(
+                pushToast(
+                    'success',
                     `Admin account created successfully for ${formData.email.trim().toLowerCase()}. Role "admin" has been saved to their profile.`
                 );
                 setFormData({ email: '', password: '' });
@@ -79,13 +88,14 @@ const AddAdmin = () => {
                 });
 
                 if (message.toLowerCase().includes('error sending confirmation email')) {
-                    setErrorMessage(
+                    pushToast(
+                        'error',
                         'Signup failed on server: confirmation email could not be sent. Please configure SMTP for Supabase Auth or enable email autoconfirm in your self-hosted Auth settings.'
                     );
                     return;
                 }
 
-                setErrorMessage(message);
+                pushToast('error', message);
             } finally {
                 setIsSubmitting(false);
             }
@@ -96,6 +106,7 @@ const AddAdmin = () => {
 
     return (
         <div className="space-y-6">
+            <ToastStack toasts={toasts} onClose={removeToast} />
             <div>
                 <h1 className="text-2xl font-bold text-gray-900">Add Admin</h1>
                 <p className="text-sm text-gray-500 mt-1">
@@ -110,18 +121,6 @@ const AddAdmin = () => {
                 </div>
 
                 <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">
-                    {errorMessage && (
-                        <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
-                            {errorMessage}
-                        </div>
-                    )}
-
-                    {successMessage && (
-                        <div className="rounded-lg border border-green-100 bg-green-50 px-4 py-3 text-sm text-green-700">
-                            {successMessage}
-                        </div>
-                    )}
-
                     <div className="space-y-2">
                         <label htmlFor="email" className="block text-sm font-semibold text-gray-700">
                             Email
@@ -142,16 +141,26 @@ const AddAdmin = () => {
                         <label htmlFor="password" className="block text-sm font-semibold text-gray-700">
                             Password
                         </label>
-                        <input
-                            id="password"
-                            name="password"
-                            type="password"
-                            value={formData.password}
-                            onChange={handleChange}
-                            placeholder="Enter password"
-                            className="block w-full px-4 py-3 text-sm border border-gray-200 rounded-lg bg-gray-50/50 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-colors"
-                            required
-                        />
+                        <div className="relative">
+                            <input
+                                id="password"
+                                name="password"
+                                type={showPassword ? 'text' : 'password'}
+                                value={formData.password}
+                                onChange={handleChange}
+                                placeholder="Enter password"
+                                className="block w-full px-4 py-3 pr-11 text-sm border border-gray-200 rounded-lg bg-gray-50/50 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-colors"
+                                required
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPassword((prev) => !prev)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 transition-colors"
+                                aria-label={showPassword ? 'Hide password' : 'Show password'}
+                            >
+                                {showPassword ? <HiOutlineEyeOff size={18} /> : <HiOutlineEye size={18} />}
+                            </button>
+                        </div>
                     </div>
 
                     <div className="pt-2 flex items-center gap-4">
