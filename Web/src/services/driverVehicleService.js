@@ -1,6 +1,50 @@
 import { supabase } from '../lib/supabaseClient'
+import { getCompanyAdminById } from './companyService'
+
+/** Canonical `drivers.status` values stored in the database */
+export const DRIVER_DB_STATUS = {
+  ACTIVE: 'active',
+  APPROVED: 'approved',
+  REJECTED: 'rejected',
+  SUSPENDED: 'suspended',
+}
+
+/**
+ * Maps admin row action labels to `drivers.status` text for Supabase updates.
+ */
+export const driverStatusFromAction = (action) => {
+  const map = {
+    Approve: DRIVER_DB_STATUS.APPROVED,
+    Reject: DRIVER_DB_STATUS.REJECTED,
+    Suspend: DRIVER_DB_STATUS.SUSPENDED,
+    Active: DRIVER_DB_STATUS.ACTIVE,
+  }
+  return map[action] ?? null
+}
 
 /* Drivers CRUD */
+
+/**
+ * Drivers for the logged-in company admin (company_admins.company_id).
+ */
+export const getDriversForCurrentAdmin = async () => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const uid = session?.user?.id
+  if (!uid) {
+    const err = new Error('Not authenticated')
+    err.code = 'AUTH'
+    throw err
+  }
+  const admin = await getCompanyAdminById(uid)
+  if (!admin?.company_id) {
+    const err = new Error('No company linked to your account')
+    err.code = 'NO_COMPANY'
+    throw err
+  }
+  return getAllDrivers({ companyId: admin.company_id })
+}
 
 export const getAllDrivers = async ({ companyId = null } = {}) => {
   let query = supabase.from('drivers').select('*').order('created_at', { ascending: false })

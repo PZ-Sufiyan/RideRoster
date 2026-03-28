@@ -38,6 +38,51 @@ export function buildCompanyDocPath(companyId, documentType, file) {
   return `${companyId}/${documentType}/${randomId()}_${safeName}`
 }
 
+/**
+ * Paths under `{companyId}/drivers/{driverId}/...` or `{companyId}/vehicles/{vehicleId}/...`
+ * so storage policies can scope by company.
+ */
+export function buildDriverVehicleDocPath({ companyId, kind, scopeId, documentType, file }) {
+  const safeName = (file?.name || 'document')
+    .toLowerCase()
+    .replace(/[^a-z0-9.\-_]+/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 120)
+  const segment = kind === 'driver' ? 'drivers' : 'vehicles'
+  return `${companyId}/${segment}/${scopeId}/${documentType}/${randomId()}_${safeName}`
+}
+
+export async function uploadDriverVehicleDocument({
+  companyId,
+  kind,
+  scopeId,
+  documentType,
+  file,
+  bucket = COMPANY_DOCS_BUCKET,
+}) {
+  assertValidCompanyDocFile(file)
+
+  const filePath = buildDriverVehicleDocPath({ companyId, kind, scopeId, documentType, file })
+  const { error: uploadError } = await supabase
+    .storage
+    .from(bucket)
+    .upload(filePath, file, { upsert: false, contentType: file.type })
+
+  if (uploadError) throw uploadError
+
+  const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(filePath)
+  const fileUrl = publicData?.publicUrl || ''
+
+  if (!fileUrl) throw new Error('Uploaded but could not resolve public URL for document.')
+
+  return {
+    file_name: file.name,
+    file_path: filePath,
+    file_url: fileUrl,
+    bucket,
+  }
+}
+
 export async function uploadCompanyDocument({
   companyId,
   documentType,

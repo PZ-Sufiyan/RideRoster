@@ -23,7 +23,8 @@ create table if not exists public.drivers (
 
   passport_number text,
   right_to_work_code text,
-
+  license_no text NOT NULL,
+  status text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -99,6 +100,8 @@ create table if not exists public.vehicles (
   driver_id uuid
     references public.drivers(id)
     on delete set null,
+
+  taxi_license_plate_number text NOT NULL,
 
   vehicle_photo_url text,
 

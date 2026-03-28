@@ -1,6 +1,9 @@
 import React, { useState, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MdArrowForward, MdArrowBack, MdCloudUpload, MdCalendarToday } from 'react-icons/md';
+import { MdArrowBack, MdCloudUpload } from 'react-icons/md';
+import { supabase } from '../../../../../lib/supabaseClient';
+import { getCompanyAdminById } from '../../../../../services/companyService';
+import { registerDriverWithAuthAndRecords } from '../../../../../services/driverRegistrationService';
 
 // ─── Step Indicator ──────────────────────────────────────────
 const steps = [
@@ -61,14 +64,13 @@ const FormField = ({ label, required, placeholder, value, onChange, type = 'text
 );
 
 // ─── Reusable: Upload Box ─────────────────────────────────────
-const UploadBox = ({ label, required, hint, onFileChange }) => {
+const UploadBox = ({ label, required, hint, file, onFileChange, accept = 'application/pdf,image/jpeg,image/png' }) => {
     const inputRef = useRef();
-    const [fileName, setFileName] = useState(null);
+    const fileName = file?.name;
 
-    const handleFile = (file) => {
-        if (!file) return;
-        setFileName(file.name);
-        onFileChange && onFileChange(file);
+    const handleFile = (f) => {
+        if (!f) return;
+        onFileChange && onFileChange(f);
     };
 
     const handleDrop = (e) => {
@@ -101,18 +103,27 @@ const UploadBox = ({ label, required, hint, onFileChange }) => {
                     <span className="text-[10px] text-gray-400 mt-1 text-center">{hint}</span>
                 )}
             </div>
-            <input ref={inputRef} type="file" className="hidden" onChange={(e) => handleFile(e.target.files[0])} />
+            <input
+                ref={inputRef}
+                type="file"
+                accept={accept}
+                className="hidden"
+                onChange={(e) => handleFile(e.target.files[0])}
+            />
         </div>
     );
 };
 
-// ─── Expiry Date Button ───────────────────────────────────────
-const ExpiryDateField = () => (
-    <div className="mt-2">
-        <button className="flex items-center gap-1.5 text-xs text-gray-500 border border-gray-200 rounded-lg px-3 py-1.5 hover:bg-gray-50 transition-colors">
-            <MdCalendarToday size={13} />
-            Expiry Date
-        </button>
+// ─── Expiry date (stored as YYYY-MM-DD for Postgres `date`) ────
+const ExpiryDateField = ({ value, onChange, className = '' }) => (
+    <div className={`flex flex-col gap-1.5 ${className}`}>
+        <span className="text-xs font-semibold text-gray-600">Expiry date</span>
+        <input
+            type="date"
+            value={value || ''}
+            onChange={(e) => onChange(e.target.value)}
+            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] bg-white"
+        />
     </div>
 );
 
@@ -139,22 +150,124 @@ const SectionHeading = ({ title }) => (
 );
 
 // ─── Main Component ───────────────────────────────────────────
+const initialFilesState = {
+    driving_license_front: null,
+    driving_license_back: null,
+    taxi_badge_front: null,
+    taxi_badge_back: null,
+    dbs_certificate_front: null,
+    dbs_certificate_back: null,
+    safeguarding_certificate: null,
+    v5_front: null,
+    v5_inside: null,
+    mot_certificate: null,
+    taxi_license_plate: null,
+    insurance_certificate: null,
+    vehicle_photo: null,
+};
+
 const AddNewDriver = () => {
     const navigate = useNavigate();
     const [currentStep] = useState(1);
+    const [submitting, setSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState('');
     const [form, setForm] = useState({
         firstName: '', lastName: '', email: '', phone: '',
+        password: '', confirmPassword: '',
         address: '', emergencyName: '', emergencyPhone: '',
         passport: '', rightToWork: '',
+        licenseNo: '',
+        licenseExpiry: '',
+        taxiBadgeExpiry: '',
+        dbsExpiry: '',
+        safeguardingExpiry: '',
+        motExpiry: '',
+        taxiPlateExpiry: '',
+        insuranceExpiry: '',
         seatingCapacity: '',
         dbsUpdateId: '',
+        taxiLicensePlate: '',
     });
+    const [files, setFiles] = useState(() => ({ ...initialFilesState }));
 
     const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+    const setExpiry = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
+    const setFile = (key) => (f) => setFiles((prev) => ({ ...prev, [key]: f }));
 
-    const handleNext = () => {
-        // In a real app this would validate then move to the next step
-        alert('Step 2 — Documents (Coming Soon)');
+    const handleRegister = async () => {
+        setSubmitError('');
+        if (form.password !== form.confirmPassword) {
+            setSubmitError('Passwords do not match.');
+            return;
+        }
+        setSubmitting(true);
+        try {
+            const {
+                data: { session },
+            } = await supabase.auth.getSession();
+            const uid = session?.user?.id;
+            if (!uid) {
+                throw new Error('Not authenticated.');
+            }
+            const admin = await getCompanyAdminById(uid);
+            if (!admin?.company_id) {
+                throw new Error('No company linked to your account.');
+            }
+            await registerDriverWithAuthAndRecords({
+                companyId: admin.company_id,
+                personal: {
+                    firstName: form.firstName,
+                    lastName: form.lastName,
+                    email: form.email,
+                    phone: form.phone,
+                    password: form.password,
+                    address: form.address,
+                    emergencyName: form.emergencyName,
+                    emergencyPhone: form.emergencyPhone,
+                    passport: form.passport,
+                    rightToWork: form.rightToWork,
+                    licenseNo: form.licenseNo,
+                },
+                expiry: {
+                    license: form.licenseExpiry,
+                    taxiBadge: form.taxiBadgeExpiry,
+                    dbs: form.dbsExpiry,
+                    safeguarding: form.safeguardingExpiry,
+                    mot: form.motExpiry,
+                    taxiPlate: form.taxiPlateExpiry,
+                    insurance: form.insuranceExpiry,
+                },
+                driverFiles: {
+                    driving_license_front: files.driving_license_front,
+                    driving_license_back: files.driving_license_back,
+                    taxi_badge_front: files.taxi_badge_front,
+                    taxi_badge_back: files.taxi_badge_back,
+                    dbs_certificate_front: files.dbs_certificate_front,
+                    dbs_certificate_back: files.dbs_certificate_back,
+                    ...(files.safeguarding_certificate
+                        ? { safeguarding_certificate: files.safeguarding_certificate }
+                        : {}),
+                },
+                vehicleFiles: {
+                    v5_front: files.v5_front,
+                    v5_inside: files.v5_inside,
+                    mot_certificate: files.mot_certificate,
+                    taxi_license_plate: files.taxi_license_plate,
+                    insurance_certificate: files.insurance_certificate,
+                    vehicle_photo: files.vehicle_photo,
+                },
+                vehicle: {
+                    taxiLicensePlate: form.taxiLicensePlate,
+                    seatingCapacity: form.seatingCapacity,
+                },
+            });
+            navigate('/admin/users/drivers');
+        } catch (e) {
+            const msg = e?.message || 'Could not register driver.';
+            setSubmitError(msg);
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -185,6 +298,25 @@ const AddNewDriver = () => {
                             <FormField label="Email Address" required type="email" placeholder="Enter email address" value={form.email} onChange={set('email')} />
                             <FormField label="Phone Number" required type="tel" placeholder="Enter phone number" value={form.phone} onChange={set('phone')} />
                         </div>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <FormField
+                                label="Password"
+                                required
+                                type="password"
+                                placeholder="Enter password"
+                                value={form.password}
+                                onChange={set('password')}
+                            />
+
+                            <FormField
+                                label="Confirm Password"
+                                required
+                                type="password"
+                                placeholder="Confirm password"
+                                value={form.confirmPassword}
+                                onChange={set('confirmPassword')}
+                            />
+                        </div>
                         {/* Row 3 */}
                         <FormField label="Residential Address" required placeholder="Enter full residential address" value={form.address} onChange={set('address')} />
                         {/* Row 4 */}
@@ -207,24 +339,64 @@ const AddNewDriver = () => {
 
                         {/* Driving License */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <UploadBox label="Driving License (Front)" required />
-                            <UploadBox label="Driving License (Back)" required />
+                            <UploadBox
+                                label="Driving License (Front)"
+                                required
+                                file={files.driving_license_front}
+                                onFileChange={setFile('driving_license_front')}
+                            />
+                            <UploadBox
+                                label="Driving License (Back)"
+                                required
+                                file={files.driving_license_back}
+                                onFileChange={setFile('driving_license_back')}
+                            />
                         </div>
-                        <ExpiryDateField />
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                            <FormField
+                                label="License Number"
+                                required
+                                placeholder="License Number"
+                                value={form.licenseNo}
+                                onChange={set('licenseNo')}
+                            />
+                            <ExpiryDateField value={form.licenseExpiry} onChange={setExpiry('licenseExpiry')} />
+                        </div>
 
                         {/* Taxi Badge */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <UploadBox label="Taxi Badge (Front)" required />
-                            <UploadBox label="Taxi Badge (Back)" required />
+                            <UploadBox
+                                label="Taxi Badge (Front)"
+                                required
+                                file={files.taxi_badge_front}
+                                onFileChange={setFile('taxi_badge_front')}
+                            />
+                            <UploadBox
+                                label="Taxi Badge (Back)"
+                                required
+                                file={files.taxi_badge_back}
+                                onFileChange={setFile('taxi_badge_back')}
+                            />
                         </div>
-                        <ExpiryDateField />
+                        <ExpiryDateField value={form.taxiBadgeExpiry} onChange={setExpiry('taxiBadgeExpiry')} />
 
                         {/* DBS Certificate */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <UploadBox label="DBS Certificate (Front)" required />
-                            <UploadBox label="DBS Certificate (Back)" required />
+                            <UploadBox
+                                label="DBS Certificate (Front)"
+                                required
+                                file={files.dbs_certificate_front}
+                                onFileChange={setFile('dbs_certificate_front')}
+                            />
+                            <UploadBox
+                                label="DBS Certificate (Back)"
+                                required
+                                file={files.dbs_certificate_back}
+                                onFileChange={setFile('dbs_certificate_back')}
+                            />
                         </div>
-                        <ExpiryDateField />
+                        <ExpiryDateField value={form.dbsExpiry} onChange={setExpiry('dbsExpiry')} />
 
                         {/* DBS Update ID + Derby City Safeguarding */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -238,8 +410,11 @@ const AddNewDriver = () => {
                             <UploadBox
                                 label="Derby City Safeguarding Certificate"
                                 hint="Must be less than 3 years old"
+                                file={files.safeguarding_certificate}
+                                onFileChange={setFile('safeguarding_certificate')}
                             />
                         </div>
+                        <ExpiryDateField value={form.safeguardingExpiry} onChange={setExpiry('safeguardingExpiry')} />
                     </div>
                 </div>
 
@@ -250,28 +425,79 @@ const AddNewDriver = () => {
 
                         {/* V5 Document */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <UploadBox label="V5 Document (Front)" required />
-                            <UploadBox label="V5 Document (Inside)" required />
+                            <UploadBox
+                                label="V5 Document (Front)"
+                                required
+                                file={files.v5_front}
+                                onFileChange={setFile('v5_front')}
+                            />
+                            <UploadBox
+                                label="V5 Document (Inside)"
+                                required
+                                file={files.v5_inside}
+                                onFileChange={setFile('v5_inside')}
+                            />
                         </div>
 
                         {/* MOT + Taxi License Plate + Insurance */}
                         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                             <div>
-                                <UploadBox label="MOT Certificate" required />
-                                <ExpiryDateField />
+                                <UploadBox
+                                    label="MOT Certificate"
+                                    required
+                                    file={files.mot_certificate}
+                                    onFileChange={setFile('mot_certificate')}
+                                />
+                                <ExpiryDateField
+                                    className="mt-2"
+                                    value={form.motExpiry}
+                                    onChange={setExpiry('motExpiry')}
+                                />
                             </div>
                             <div>
-                                <UploadBox label="Taxi License Plate" required />
-                                <ExpiryDateField />
+                                <UploadBox
+                                    label="Taxi License Plate"
+                                    required
+                                    file={files.taxi_license_plate}
+                                    onFileChange={setFile('taxi_license_plate')}
+                                />
+                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
+                                    <FormField
+                                        label="Taxi License Plate Number"
+                                        required
+                                        placeholder="Taxi License Plate Number"
+                                        value={form.taxiLicensePlate}
+                                        onChange={set('taxiLicensePlate')}
+                                    />
+                                    <ExpiryDateField
+                                        value={form.taxiPlateExpiry}
+                                        onChange={setExpiry('taxiPlateExpiry')}
+                                    />
+                                </div>
                             </div>
                             <div>
-                                <UploadBox label="Insurance Certificate" required />
-                                <ExpiryDateField />
+                                <UploadBox
+                                    label="Insurance Certificate"
+                                    required
+                                    file={files.insurance_certificate}
+                                    onFileChange={setFile('insurance_certificate')}
+                                />
+                                <ExpiryDateField
+                                    className="mt-2"
+                                    value={form.insuranceExpiry}
+                                    onChange={setExpiry('insuranceExpiry')}
+                                />
                             </div>
                         </div>
 
                         {/* Vehicle Photo */}
-                        <UploadBox label="Vehicle Photo" required />
+                        <UploadBox
+                            label="Vehicle Photo"
+                            required
+                            file={files.vehicle_photo}
+                            onFileChange={setFile('vehicle_photo')}
+                            accept="image/jpeg,image/png"
+                        />
 
                         {/* Seating Capacity */}
                         <SeatingCapacity
@@ -283,22 +509,31 @@ const AddNewDriver = () => {
             </div>
 
             {/* ── Footer Actions ── */}
-            <div className="flex items-center justify-between pt-5 pb-2">
-                <button
-                    onClick={() => navigate('/admin/users/drivers')}
-                    className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-0"
-                    disabled={currentStep === 1}
-                >
-                    <MdArrowBack size={16} />
-                    Previous
-                </button>
-                <button
-                    onClick={handleNext}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm"
-                >
-                    Next Step
-                    <MdArrowForward size={16} />
-                </button>
+            <div className="space-y-3 pt-5 pb-2">
+                {submitError && (
+                    <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                        {submitError}
+                    </p>
+                )}
+                <div className="flex items-center justify-between">
+                    <button
+                        type="button"
+                        onClick={() => navigate('/admin/users/drivers')}
+                        className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-0"
+                        disabled={currentStep === 1}
+                    >
+                        <MdArrowBack size={16} />
+                        Previous
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleRegister}
+                        disabled={submitting}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        {submitting ? 'Registering…' : 'Register Driver'}
+                    </button>
+                </div>
             </div>
         </div>
     );
