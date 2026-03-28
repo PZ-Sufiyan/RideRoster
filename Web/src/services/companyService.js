@@ -103,6 +103,18 @@ export const createCompanyAdmin = async (adminPayload) => {
   return data
 }
 
+/** Insert or replace by primary key `id` (auth user id). Use when the row may already exist (e.g. signup stub). */
+export const upsertCompanyAdmin = async (adminPayload) => {
+  const { data, error } = await supabase
+    .from('company_admins')
+    .upsert(adminPayload, { onConflict: 'id' })
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
 export const updateCompanyAdmin = async (adminId, updates) => {
   const { data, error } = await supabase
     .from('company_admins')

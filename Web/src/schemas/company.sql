@@ -33,8 +33,9 @@ create table public.companies (
     updated_at timestamptz default now()
 );
 
+-- id is the Supabase Auth user id (same as auth.users.id); set by app on insert/upsert, not generated.
 create table public.company_admins (
-    id uuid primary key default gen_random_uuid(),
+    id uuid primary key,
 
     company_id uuid references public.companies(id) on delete cascade,
 

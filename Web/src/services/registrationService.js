@@ -1,10 +1,11 @@
 import {
   createCompany,
-  createCompanyAdmin,
   createCompanyDocument,
   deleteCompany,
+  upsertCompanyAdmin,
 } from './companyService'
 import { uploadCompanyDocument, removeCompanyDocument } from './storageService'
+import { supabase } from '../lib/supabaseClient'
 
 function cleanString(v) {
   if (v === null || v === undefined) return ''
@@ -87,7 +88,17 @@ export async function submitCompanyRegistration(registrationData) {
 
     createdCompany = await createCompany(companyPayload)
 
-    await createCompanyAdmin({
+    const {
+      data: { user },
+      error: authErr,
+    } = await supabase.auth.getUser()
+    if (authErr || !user?.id) {
+      throw new Error('You must be signed in to submit company registration.')
+    }
+
+    // company_admins.id is the auth user id; a stub row may already exist from admin signup.
+    await upsertCompanyAdmin({
+      id: user.id,
       company_id: createdCompany.id,
       full_name: cleanString(registrationData?.admin?.full_name),
       email: cleanString(registrationData?.admin?.email),
