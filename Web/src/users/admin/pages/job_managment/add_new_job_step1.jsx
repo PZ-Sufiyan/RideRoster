@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ToastStack } from '../../../../utils/Toast';
 import { 
     MdArrowBack, 
     MdCheck, 
@@ -18,6 +19,8 @@ const AddNewJobStep1 = () => {
         clientName: '',
         internalId: ''
     });
+    const [toasts, setToasts] = useState([]);
+    const [submitAttempted, setSubmitAttempted] = useState(false);
 
     const handleChange = (e) => {
         const { name, value } = e.target;
@@ -25,6 +28,20 @@ const AddNewJobStep1 = () => {
     };
 
     const handleNext = () => {
+        setSubmitAttempted(true);
+        if (!formData.jobName.trim() || !formData.clientName.trim() || !formData.jobType.trim()) {
+            setToasts((prev) => [
+                ...prev,
+                {
+                    id: `${Date.now()}-${Math.random()}`,
+                    type: 'warning',
+                    message: 'Please fill in all required fields before moving to next step.',
+                    autoClose: true,
+                    duration: 3500,
+                },
+            ]);
+            return;
+        }
         navigate('/admin/jobs/create-step2');
     };
 
@@ -34,27 +51,28 @@ const AddNewJobStep1 = () => {
 
     return (
         <div className="max-w-[1280px] mx-auto pb-20">
+            <ToastStack
+                toasts={toasts}
+                onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+            />
             {/* --- Header Section --- */}
             <div className="flex items-center gap-4 mb-8">
-                <button 
-                    onClick={handleCancel}
-                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                >
-                    <MdArrowBack size={24} className="text-gray-600" />
-                </button>
                 <div>
-                    <h1 className="text-[22px] font-bold text-gray-900 leading-tight">Create a New Job</h1>
-                    <p className="text-[14px] text-gray-500">Step 1 of 3: Route Information</p>
+                    <h1 className="text-[22px] font-bold text-gray-900 leading-tight">Step 1 of 3: Route Information</h1>
                 </div>
             </div>
 
             {/* --- Stepper Section --- */}
             <div className="relative mb-12 px-10">
-                <div className="flex items-center justify-between relative z-10">
+                 {/* Connecting Lines */}
+                 <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 z-0">
+                    <div className="h-full w-1/2"></div>
+                </div>
+                <div className="flex items-center justify-between relative ">
                     {/* Step 1 */}
                     <div className="flex flex-col items-center gap-2">
                         <div className="w-10 h-10 rounded-full bg-[#004D6D] flex items-center justify-center text-white ring-4 ring-[#004D6D]/10">
-                            <MdCheck size={20} />
+                           1
                         </div>
                         <span className="text-[13px] font-bold text-[#004D6D]">Route Info</span>
                     </div>
@@ -76,10 +94,7 @@ const AddNewJobStep1 = () => {
                     </div>
                 </div>
 
-                {/* Connecting Lines */}
-                <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 z-0">
-                    <div className="h-full bg-[#004D6D] w-1/2"></div>
-                </div>
+               
             </div>
 
             {/* --- Main Content Layout --- */}
@@ -104,8 +119,13 @@ const AddNewJobStep1 = () => {
                                 value={formData.jobName}
                                 onChange={handleChange}
                                 placeholder="e.g., Morning School Run - Route A"
-                                className="w-full px-4 py-3 bg-[#F9FAFB] border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/20 focus:border-[#004D6D] transition-all"
+                                className={`w-full px-4 py-3 bg-[#F9FAFB] border rounded-xl text-[14px] placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${
+                                    submitAttempted && !formData.jobName.trim()
+                                        ? 'border-red-400 text-red-700 focus:ring-red-500/20 focus:border-red-500'
+                                        : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/20 focus:border-[#004D6D]'
+                                }`}
                             />
+                            {submitAttempted && !formData.jobName.trim() && <p className="text-[12px] font-semibold text-red-600">Job Name / Route Title is required.</p>}
                         </div>
 
                         {/* Job Type */}
@@ -118,7 +138,11 @@ const AddNewJobStep1 = () => {
                                     name="jobType"
                                     value={formData.jobType}
                                     onChange={handleChange}
-                                    className="w-full px-4 py-3 bg-[#F9FAFB] border border-gray-200 rounded-xl text-[14px] text-gray-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#004D6D]/20 focus:border-[#004D6D] transition-all cursor-pointer"
+                                    className={`w-full px-4 py-3 bg-[#F9FAFB] border rounded-xl text-[14px] appearance-none focus:outline-none focus:ring-2 transition-all cursor-pointer ${
+                                        submitAttempted && !formData.jobType.trim()
+                                            ? 'border-red-400 text-red-700 focus:ring-red-500/20 focus:border-red-500'
+                                            : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/20 focus:border-[#004D6D]'
+                                    }`}
                                 >
                                     <option>Regular Contract</option>
                                     <option>One-off Trip</option>
@@ -126,6 +150,7 @@ const AddNewJobStep1 = () => {
                                 </select>
                                 <MdKeyboardArrowDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
                             </div>
+                            {submitAttempted && !formData.jobType.trim() && <p className="text-[12px] font-semibold text-red-600">Job Type is required.</p>}
                         </div>
 
                         {/* Client / School Name */}
@@ -139,8 +164,13 @@ const AddNewJobStep1 = () => {
                                 value={formData.clientName}
                                 onChange={handleChange}
                                 placeholder="e.g., Northwood High School"
-                                className="w-full px-4 py-3 bg-[#F9FAFB] border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/20 focus:border-[#004D6D] transition-all"
+                                className={`w-full px-4 py-3 bg-[#F9FAFB] border rounded-xl text-[14px] placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${
+                                    submitAttempted && !formData.clientName.trim()
+                                        ? 'border-red-400 text-red-700 focus:ring-red-500/20 focus:border-red-500'
+                                        : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/20 focus:border-[#004D6D]'
+                                }`}
                             />
+                            {submitAttempted && !formData.clientName.trim() && <p className="text-[12px] font-semibold text-red-600">Client / School Name is required.</p>}
                         </div>
 
                         {/* Internal Job ID */}
@@ -230,9 +260,6 @@ const AddNewJobStep1 = () => {
                     Cancel
                 </button>
                 <div className="flex items-center gap-4">
-                    <button className="px-6 py-2.5 border border-[#004D6D] text-[#004D6D] rounded-xl text-[14px] font-bold hover:bg-blue-50 transition-all active:scale-95">
-                        Save as Draft
-                    </button>
                     <button 
                         onClick={handleNext}
                         className="flex items-center gap-2 px-8 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/20 active:scale-95"

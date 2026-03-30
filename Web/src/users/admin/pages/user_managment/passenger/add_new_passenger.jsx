@@ -11,6 +11,7 @@ import {
     MdInfo,
 } from 'react-icons/md';
 import { HiExclamationCircle } from 'react-icons/hi';
+import { ToastStack } from '../../../../../utils/Toast';
 
 const AddNewPassenger = () => {
     const navigate = useNavigate();
@@ -30,6 +31,8 @@ const AddNewPassenger = () => {
         wheelchair: 'no',
         notes: '',
     });
+    const [toasts, setToasts] = useState([]);
+    const [submitAttempted, setSubmitAttempted] = useState(false);
 
     const handleChange = (field, value) =>
         setForm((prev) => ({ ...prev, [field]: value }));
@@ -38,23 +41,76 @@ const AddNewPassenger = () => {
 
     const goBack = () => navigate('/admin/users/passengers');
 
+    const pushToast = (type, message) => {
+        setToasts((prev) => [
+            ...prev,
+            {
+                id: `${Date.now()}-${Math.random()}`,
+                type,
+                message,
+                autoClose: true,
+                duration: 3500,
+            },
+        ]);
+    };
+
+    const requiredKeys = [
+        'firstName',
+        'surname',
+        'contact1',
+        'homeAddress',
+        'homePostcode',
+        'pickupTime',
+        'schoolAddress',
+        'schoolPostcode',
+        'returnTime',
+    ];
+
+    const isMissing = (key) => !String(form[key] || '').trim();
+    const showRequiredError = (key) => submitAttempted && isMissing(key);
+
+    const inputClass = (key) =>
+        `w-full px-3 py-2.5 border rounded-lg text-[13px] placeholder-gray-400 focus:outline-none focus:ring-1 ${
+            showRequiredError(key)
+                ? 'border-red-400 text-red-700 focus:ring-red-500'
+                : 'border-gray-200 text-gray-700 focus:ring-[#004D6D]'
+        }`;
+
+    const textareaClass = (key) =>
+        `w-full px-3 py-2.5 border rounded-lg text-[13px] placeholder-gray-400 focus:outline-none focus:ring-1 resize-none ${
+            showRequiredError(key)
+                ? 'border-red-400 text-red-700 focus:ring-red-500'
+                : 'border-gray-200 text-gray-700 focus:ring-[#004D6D]'
+        }`;
+
+    const prefixedPhoneWrapClass = (key) =>
+        `flex items-center border rounded-lg overflow-hidden focus-within:ring-1 ${
+            showRequiredError(key)
+                ? 'border-red-400 focus-within:ring-red-500'
+                : 'border-gray-200 focus-within:ring-[#004D6D]'
+        }`;
+
+    const handleSave = () => {
+        setSubmitAttempted(true);
+        const missing = requiredKeys.some((key) => isMissing(key));
+        if (missing) {
+            pushToast('warning', 'Please fill in all required fields before saving passenger.');
+            return;
+        }
+        pushToast('success', 'Passenger details are valid and ready to save.');
+        navigate('/admin/users/passengers');
+    };
+
     return (
         <div className="space-y-5 pb-20">
+            <ToastStack
+                toasts={toasts}
+                onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+            />
 
             {/* ── Page Header ── */}
             <div className="flex items-center justify-between">
                 <h1 className="text-[22px] font-bold text-gray-900">Add New Passenger</h1>
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={goBack}
-                        className="px-5 py-2 border border-gray-200 rounded-lg text-[13px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all"
-                    >
-                        Cancel
-                    </button>
-                    <button className="px-5 py-2 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm">
-                        Save Passenger
-                    </button>
-                </div>
             </div>
 
             {/* ── Two-column layout ── */}
@@ -81,8 +137,9 @@ const AddNewPassenger = () => {
                                     placeholder="e.g. John"
                                     value={form.firstName}
                                     onChange={(e) => handleChange('firstName', e.target.value)}
-                                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
+                                    className={inputClass('firstName')}
                                 />
+                                {showRequiredError('firstName') && <p className="text-[11px] font-semibold text-red-600">First Name is required.</p>}
                             </div>
                             <div className="space-y-1.5">
                                 <label className="text-[12px] font-semibold text-gray-700">
@@ -93,8 +150,9 @@ const AddNewPassenger = () => {
                                     placeholder="e.g. Doe"
                                     value={form.surname}
                                     onChange={(e) => handleChange('surname', e.target.value)}
-                                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
+                                    className={inputClass('surname')}
                                 />
+                                {showRequiredError('surname') && <p className="text-[11px] font-semibold text-red-600">Surname is required.</p>}
                             </div>
                         </div>
 
@@ -116,7 +174,7 @@ const AddNewPassenger = () => {
                                 <label className="text-[12px] font-semibold text-gray-700">
                                     Contact Number 1<span className="text-red-500">*</span>
                                 </label>
-                                <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-[#004D6D]">
+                                <div className={prefixedPhoneWrapClass('contact1')}>
                                     <span className="px-3 py-2.5 bg-gray-50 text-[13px] text-gray-500 font-medium border-r border-gray-200 shrink-0">+44</span>
                                     <input
                                         type="tel"
@@ -126,6 +184,7 @@ const AddNewPassenger = () => {
                                         className="flex-1 px-3 py-2.5 text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none bg-white"
                                     />
                                 </div>
+                                {showRequiredError('contact1') && <p className="text-[11px] font-semibold text-red-600">Contact Number 1 is required.</p>}
                             </div>
                             <div className="space-y-1.5">
                                 <label className="text-[12px] font-semibold text-gray-700">Contact Number 2 (Optional)</label>
@@ -162,8 +221,9 @@ const AddNewPassenger = () => {
                                     placeholder="Enter full address..."
                                     value={form.homeAddress}
                                     onChange={(e) => handleChange('homeAddress', e.target.value)}
-                                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#004D6D] resize-none"
+                                    className={textareaClass('homeAddress')}
                                 />
+                                {showRequiredError('homeAddress') && <p className="text-[11px] font-semibold text-red-600">Home Address is required.</p>}
                             </div>
 
                             <div className="grid grid-cols-2 gap-3 mb-3">
@@ -175,8 +235,9 @@ const AddNewPassenger = () => {
                                         type="text"
                                         value={form.homePostcode}
                                         onChange={(e) => handleChange('homePostcode', e.target.value)}
-                                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
+                                        className={inputClass('homePostcode')}
                                     />
+                                    {showRequiredError('homePostcode') && <p className="text-[11px] font-semibold text-red-600">Post Code is required.</p>}
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[12px] font-semibold text-gray-700">
@@ -187,10 +248,14 @@ const AddNewPassenger = () => {
                                             type="time"
                                             value={form.pickupTime}
                                             onChange={(e) => handleChange('pickupTime', e.target.value)}
-                                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-500 focus:outline-none focus:ring-1 focus:ring-[#004D6D] pr-9"
+                                            className={`w-full px-3 py-2.5 border rounded-lg text-[13px] pr-9 focus:outline-none focus:ring-1 ${
+                                                showRequiredError('pickupTime')
+                                                    ? 'border-red-400 text-red-700 focus:ring-red-500'
+                                                    : 'border-gray-200 text-gray-500 focus:ring-[#004D6D]'
+                                            }`}
                                         />
-                                        <MdAccessTime className="absolute right-2.5 top-3 text-gray-400 pointer-events-none" size={16} />
                                     </div>
+                                    {showRequiredError('pickupTime') && <p className="text-[11px] font-semibold text-red-600">Pick-up Time is required.</p>}
                                 </div>
                             </div>
 
@@ -215,8 +280,9 @@ const AddNewPassenger = () => {
                                     placeholder="School name and address..."
                                     value={form.schoolAddress}
                                     onChange={(e) => handleChange('schoolAddress', e.target.value)}
-                                    className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#004D6D] resize-none"
+                                    className={textareaClass('schoolAddress')}
                                 />
+                                {showRequiredError('schoolAddress') && <p className="text-[11px] font-semibold text-red-600">Drop-Off Address is required.</p>}
                             </div>
 
                             <div className="grid grid-cols-2 gap-3 mb-3">
@@ -228,8 +294,9 @@ const AddNewPassenger = () => {
                                         type="text"
                                         value={form.schoolPostcode}
                                         onChange={(e) => handleChange('schoolPostcode', e.target.value)}
-                                        className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
+                                        className={inputClass('schoolPostcode')}
                                     />
+                                    {showRequiredError('schoolPostcode') && <p className="text-[11px] font-semibold text-red-600">Post Code is required.</p>}
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[12px] font-semibold text-gray-700">
@@ -240,10 +307,14 @@ const AddNewPassenger = () => {
                                             type="time"
                                             value={form.returnTime}
                                             onChange={(e) => handleChange('returnTime', e.target.value)}
-                                            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-500 focus:outline-none focus:ring-1 focus:ring-[#004D6D] pr-9"
+                                            className={`w-full px-3 py-2.5 border rounded-lg text-[13px] pr-9 focus:outline-none focus:ring-1 ${
+                                                showRequiredError('returnTime')
+                                                    ? 'border-red-400 text-red-700 focus:ring-red-500'
+                                                    : 'border-gray-200 text-gray-500 focus:ring-[#004D6D]'
+                                            }`}
                                         />
-                                        <MdAccessTime className="absolute right-2.5 top-3 text-gray-400 pointer-events-none" size={16} />
                                     </div>
+                                    {showRequiredError('returnTime') && <p className="text-[11px] font-semibold text-red-600">Return Time is required.</p>}
                                 </div>
                             </div>
 
@@ -403,10 +474,16 @@ const AddNewPassenger = () => {
                     >
                         Cancel
                     </button>
-                    <button className="px-5 py-2 border border-gray-300 rounded-lg text-[13px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all">
+                    <button
+                        onClick={handleSave}
+                        className="px-5 py-2 border border-gray-300 rounded-lg text-[13px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all"
+                    >
                         Save &amp; Add Another
                     </button>
-                    <button className="px-5 py-2 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm opacity-80">
+                    <button
+                        onClick={handleSave}
+                        className="px-5 py-2 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm opacity-80"
+                    >
                         Save Passenger
                     </button>
                 </div>

@@ -146,6 +146,13 @@ const ROUTE_CRUMB_MAP = [
 
     // ─── SUBADMIN ─────────────────────────────────────────────────
     {
+        match: /^\/subadmin\/drivers\/add$/,
+        crumbs: () => [
+            { label: 'Drivers', to: '/subadmin/drivers' },
+            { label: 'Add New Driver' },
+        ],
+    },
+    {
         match: /^\/subadmin\/drivers\/([^/]+)$/,
         crumbs: (_, [id]) => [
             { label: 'Drivers', to: '/subadmin/drivers' },

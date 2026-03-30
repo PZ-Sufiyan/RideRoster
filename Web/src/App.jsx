@@ -50,9 +50,12 @@ import SubAdmin_Login from './users/subAdmin/pages/auth/login';
 import SubAdmin_Dashboard from './users/subAdmin/pages/dashboard/dashboard';
 import SubAdmin_Approvals from './users/subAdmin/pages/approvals/approvals';
 import SubAdmin_Drivers from './users/subAdmin/pages/drivers/drivers';
+import SubAdmin_NewDriver from './users/subAdmin/pages/drivers/new_driver';
 import SubAdmin_DriverProfile from './users/subAdmin/pages/drivers/driver-profile';
 import SubAdmin_Jobs from './users/subAdmin/pages/jobs/jobs';
 import SubAdmin_NewJob from './users/subAdmin/pages/jobs/new-job';
+import SubAdmin_JobDetail from './users/subAdmin/pages/jobs/job_detail';
+import SubAdmin_EditJob from './users/subAdmin/pages/jobs/edit_job';
 import SubAdmin_Notifications from './users/subAdmin/pages/notifications/notification';
 import SubAdmin_Settings from './users/subAdmin/pages/settings/settings';
 import Home from './home';
@@ -151,9 +154,12 @@ function App() {
               <Route path="/subadmin/dashboard" element={<SubAdmin_Dashboard />} />
               <Route path="/subadmin/approvals" element={<SubAdmin_Approvals />} />
               <Route path="/subadmin/drivers" element={<SubAdmin_Drivers />} />
+              <Route path="/subadmin/drivers/add" element={<SubAdmin_NewDriver />} />
               <Route path="/subadmin/drivers/:id" element={<SubAdmin_DriverProfile />} />
               <Route path="/subadmin/jobs" element={<SubAdmin_Jobs />} />
               <Route path="/subadmin/jobs/create" element={<SubAdmin_NewJob />} />
+              <Route path="/subadmin/jobs/:id" element={<SubAdmin_JobDetail />} />
+              <Route path="/subadmin/jobs/:id/edit" element={<SubAdmin_EditJob />} />
               <Route path="/subadmin/notifications" element={<SubAdmin_Notifications />} />
               <Route path="/subadmin/settings" element={<SubAdmin_Settings />} />
             </Route>

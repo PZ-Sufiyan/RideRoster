@@ -1,5 +1,4 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
     HiOutlineBriefcase,
     HiOutlineClipboardList,
@@ -141,7 +140,6 @@ const counterOffers = [
 
 /* ─── Component ──────────────────────────────────────────── */
 const SubAdmin_Dashboard = () => {
-    const navigate = useNavigate();
     return (
         <div className="space-y-6">
 
@@ -151,24 +149,7 @@ const SubAdmin_Dashboard = () => {
                     <h1 className="text-[22px] font-bold text-gray-900">Sub-Admin Dashboard</h1>
                     <p className="text-sm text-gray-500 mt-0.5">Welcome back, Ana. Here's your operational overview for today.</p>
                 </div>
-                <div className="flex items-center gap-2 flex-wrap">
-                    <button className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <HiOutlineUserAdd size={15} />
-                        <span>Assign Driver</span>
-                    </button>
-                    <button className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <HiOutlineUserGroup size={15} />
-                        <span>Assign PA</span>
-                    </button>
-                    <button className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-700 hover:bg-gray-50 transition-colors">
-                        <HiOutlinePencil size={15} />
-                        <span>Edit Job</span>
-                    </button>
-                    <button onClick={() => navigate('/subadmin/jobs/create')} className="flex items-center gap-1.5 px-4 py-2 bg-[#005C7A] hover:bg-[#004a63] text-white rounded-lg text-sm font-semibold transition-colors">
-                        <HiPlus size={16} />
-                        <span>Create Job</span>
-                    </button>
-                </div>
+                    
             </div>
 
             {/* Stat Cards */}

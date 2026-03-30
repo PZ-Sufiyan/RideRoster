@@ -1,8 +1,9 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { ToastStack } from '../../../../../utils/Toast';
 
 // ─── Reusable: Form Field ─────────────────────────────────────
-const FormField = ({ label, required, placeholder, value, onChange, type = 'text', className = '' }) => (
+const FormField = ({ label, required, placeholder, value, onChange, type = 'text', className = '', showError = false, errorText = 'This field is required.' }) => (
     <div className={`flex flex-col gap-1.5 ${className}`}>
         <label className="text-sm font-semibold text-gray-800">
             {label}{required && <span className="text-red-500 ml-0.5">*</span>}
@@ -12,8 +13,13 @@ const FormField = ({ label, required, placeholder, value, onChange, type = 'text
             placeholder={placeholder}
             value={value}
             onChange={onChange}
-            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] transition-colors bg-gray-50/50"
+            className={`w-full px-3 py-2.5 border rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:ring-1 transition-colors bg-gray-50/50 ${
+                showError
+                    ? 'border-red-400 text-red-700 focus:border-red-500 focus:ring-red-500'
+                    : 'border-gray-200 focus:border-[#005580] focus:ring-[#005580]'
+            }`}
         />
+        {showError && <p className="text-xs text-red-600 font-medium">{errorText}</p>}
     </div>
 );
 
@@ -47,6 +53,8 @@ const AddSubAdmin = () => {
         phone: '',
         password: '',
     });
+    const [toasts, setToasts] = useState([]);
+    const [submitAttempted, setSubmitAttempted] = useState(false);
 
     // permissions state: array of keys
     const [permissions, setPermissions] = useState([]);
@@ -69,13 +77,49 @@ const AddSubAdmin = () => {
         }
     };
 
+    const pushToast = (type, message) => {
+        setToasts((prev) => [
+            ...prev,
+            {
+                id: `${Date.now()}-${Math.random()}`,
+                type,
+                message,
+                autoClose: true,
+                duration: 3500,
+            },
+        ]);
+    };
+
+    const validateRequired = () => {
+        setSubmitAttempted(true);
+        const missing =
+            !form.fullName?.trim() ||
+            !form.email?.trim() ||
+            !form.password?.trim();
+
+        if (missing) {
+            pushToast('warning', 'Please fill in all required fields before creating a sub-admin.');
+            return false;
+        }
+        return true;
+    };
+
     const handleSubmit = () => {
+        if (!validateRequired()) {
+            return;
+        }
         // Implementation
         navigate('/admin/users/subadmins');
     };
 
+    const showRequired = (v) => submitAttempted && !String(v || '').trim();
+
     return (
         <div className="space-y-6 max-w-[1400px]">
+            <ToastStack
+                toasts={toasts}
+                onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+            />
 
             {/* ── Page Header ── */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -111,12 +155,12 @@ const AddSubAdmin = () => {
 
                         <div className="space-y-4">
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                <FormField label="Full Name" required placeholder="e.g. Jane Doe" value={form.fullName} onChange={setField('fullName')} />
-                                <FormField label="Email Address" required type="email" placeholder="e.g. jane.doe@example.com" value={form.email} onChange={setField('email')} />
+                                <FormField label="Full Name" required placeholder="e.g. Jane Doe" value={form.fullName} onChange={setField('fullName')} showError={showRequired(form.fullName)} />
+                                <FormField label="Email Address" required type="email" placeholder="e.g. jane.doe@example.com" value={form.email} onChange={setField('email')} showError={showRequired(form.email)} />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                                 <FormField label="Phone Number" placeholder="e.g. (123) 456-7890" value={form.phone} onChange={setField('phone')} />
-                                <FormField label="Create Password" required type="password" placeholder="••••••••" value={form.password} onChange={setField('password')} />
+                                <FormField label="Create Password" required type="password" placeholder="••••••••" value={form.password} onChange={setField('password')} showError={showRequired(form.password)} />
                             </div>
                         </div>
                     </div>

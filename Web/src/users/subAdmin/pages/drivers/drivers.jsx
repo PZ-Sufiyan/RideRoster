@@ -180,7 +180,11 @@ const SubAdmin_Drivers = () => {
                 </div>
 
                 {/* Add Driver Button */}
-                <button className="flex items-center gap-2 px-4 py-2 bg-[#005C7A] text-white rounded-lg text-sm font-medium hover:bg-[#004a63] transition-colors shadow-sm">
+                <button
+                    type="button"
+                    onClick={() => navigate('/subadmin/drivers/add')}
+                    className="flex items-center gap-2 px-4 py-2 bg-[#005C7A] text-white rounded-lg text-sm font-medium hover:bg-[#004a63] transition-colors shadow-sm"
+                >
                     <MdAdd size={18} />
                     Add Driver
                 </button>

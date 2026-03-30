@@ -8,38 +8,63 @@ import {
     MdOutlineToggleOff, 
     MdOutlineToggleOn
 } from 'react-icons/md';
+import { ToastStack } from '../../../../utils/Toast';
 
 const AddNewJobStep3 = () => {
     const navigate = useNavigate();
     const [isRecurring, setIsRecurring] = useState(false);
+    const [toasts, setToasts] = useState([]);
+    const [submitAttempted, setSubmitAttempted] = useState(false);
+    const [formData, setFormData] = useState({
+        jobDate: '2025-12-05',
+        pickupTime: '08:30',
+        estDropoff: '09:15',
+        driverPay: '',
+        passengerAssistantPay: '',
+    });
 
     const handleBack = () => {
         navigate('/admin/jobs/create-step2');
     };
 
     const handleFinish = () => {
-        // Final submission logic would go here
+        setSubmitAttempted(true);
+        if (!formData.jobDate || !formData.pickupTime || !formData.driverPay.trim()) {
+            setToasts((prev) => [
+                ...prev,
+                {
+                    id: `${Date.now()}-${Math.random()}`,
+                    type: 'warning',
+                    message: 'Please fill in all required fields before creating the job.',
+                    autoClose: true,
+                    duration: 3500,
+                },
+            ]);
+            return;
+        }
         navigate('/admin/jobs');
     };
 
     return (
         <div className="max-w-[1280px] mx-auto pb-32">
+            <ToastStack
+                toasts={toasts}
+                onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
+            />
             {/* --- Header Section --- */}
             <div className="flex items-center gap-4 mb-8">
-                <button 
-                    onClick={handleBack}
-                    className="p-2 hover:bg-gray-100 rounded-full transition-colors"
-                >
-                    <MdArrowBack size={24} className="text-gray-600" />
-                </button>
                 <div>
-                    <h1 className="text-[22px] font-bold text-gray-900 leading-tight">Create a New Job</h1>
+                    <h1 className="text-[22px] font-bold text-gray-900 leading-tight">Step 3 of 3: Schedule & Pay</h1>
                 </div>
             </div>
 
-            {/* --- Stepper Section --- */}
-            <div className="relative mb-12 px-10">
-                <div className="flex items-center justify-between relative z-10">
+         {/* --- Stepper Section --- */}
+         <div className="relative mb-12 px-10">
+            {/* Connecting Lines */}
+            <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 z-0">
+                    <div className="h-full bg-[#004D6D] w-full"></div>
+                </div>
+                <div className="flex items-center justify-between relative ">
                     {/* Step 1 */}
                     <div className="flex flex-col items-center gap-2">
                         <div className="w-10 h-10 rounded-full bg-[#004D6D] flex items-center justify-center text-white ring-4 ring-[#004D6D]/10">
@@ -50,28 +75,21 @@ const AddNewJobStep3 = () => {
 
                     {/* Step 2 */}
                     <div className="flex flex-col items-center gap-2">
-                        <div className="w-10 h-10 rounded-full bg-[#004D6D] flex items-center justify-center text-white ring-4 ring-[#004D6D]/10">
-                            <MdCheck size={20} />
+                        <div className="w-10 h-10 rounded-full border-2 border-[#004D6D] bg-[#004D6D] flex items-center justify-center text-white font-bold ring-4 ring-[#004D6D]/10">
+                        <MdCheck size={20} />
                         </div>
                         <span className="text-[13px] font-bold text-[#004D6D]">Pickups & Drop-offs</span>
                     </div>
 
                     {/* Step 3 */}
-                    <div className="flex-1 flex flex-col items-center gap-2">
-                        <div className="w-10 h-10 rounded-full border-2 border-[#004D6D] bg-[#004D6D] flex items-center justify-center text-white font-bold ring-4 ring-[#004D6D]/10">
+                    <div className="flex flex-col items-center gap-2">
+                    <div className="w-10 h-10 rounded-full border-2 border-[#004D6D] bg-[#004D6D] flex items-center justify-center text-white font-bold ring-4 ring-[#004D6D]/10">
                             3
                         </div>
-                        <div className="text-center">
-                            <span className="block text-[13px] font-bold text-[#004D6D]">Timings & Compensation</span>
-                            <span className="block text-[11px] text-gray-400 font-medium">Set schedule and pay rates</span>
-                        </div>
+                        <span className="text-[13px] font-bold text-[#004D6D]">Schedule & Pay</span>
                     </div>
                 </div>
-
-                {/* Connecting Lines */}
-                <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 z-0">
-                    <div className="h-full bg-[#004D6D] w-full"></div>
-                </div>
+   
             </div>
 
             {/* --- Main Content Card --- */}
@@ -87,39 +105,50 @@ const AddNewJobStep3 = () => {
                     <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
                         {/* Job Date */}
                         <div className="md:col-span-1 space-y-2">
-                            <label className="text-[13px] font-bold text-gray-700">Job Date*</label>
+                            <label className="text-[13px] font-bold text-gray-700">Job Date <span className="text-red-500">*</span></label>
                             <div className="relative">
                                 <input 
                                     type="date" 
-                                    defaultValue="2025-12-05"
-                                    className="w-full px-4 py-3 bg-[#F9FAFB] border border-gray-200 rounded-xl text-[14px] text-gray-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D]"
+                                    value={formData.jobDate}
+                                    onChange={(e) => setFormData((prev) => ({ ...prev, jobDate: e.target.value }))}
+                                    className={`w-full px-4 py-3 bg-[#F9FAFB] border rounded-xl text-[14px] appearance-none focus:outline-none focus:ring-2 ${
+                                        submitAttempted && !formData.jobDate
+                                            ? 'border-red-400 text-red-700 focus:ring-red-500/20 focus:border-red-500'
+                                            : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/10 focus:border-[#004D6D]'
+                                    }`}
                                 />
-                                <MdEvent className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
                             </div>
+                            {submitAttempted && !formData.jobDate && <p className="text-[12px] font-semibold text-red-600">Job Date is required.</p>}
                         </div>
 
                         {/* Pickup Time */}
                         <div className="space-y-2">
-                            <label className="text-[13px] font-bold text-gray-700">Pickup Time*</label>
+                            <label className="text-[13px] font-bold text-gray-700">Pickup Time <span className="text-red-500">*</span></label>
                             <div className="relative">
                                 <input 
                                     type="time" 
-                                    defaultValue="08:30"
-                                    className="w-full px-4 py-3 bg-[#F9FAFB] border border-gray-200 rounded-xl text-[14px] text-gray-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D]"
+                                    value={formData.pickupTime}
+                                    onChange={(e) => setFormData((prev) => ({ ...prev, pickupTime: e.target.value }))}
+                                    className={`w-full px-4 py-3 bg-[#F9FAFB] border rounded-xl text-[14px] appearance-none focus:outline-none focus:ring-2 ${
+                                        submitAttempted && !formData.pickupTime
+                                            ? 'border-red-400 text-red-700 focus:ring-red-500/20 focus:border-red-500'
+                                            : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/10 focus:border-[#004D6D]'
+                                    }`}
                                 />
                             </div>
+                            {submitAttempted && !formData.pickupTime && <p className="text-[12px] font-semibold text-red-600">Pickup Time is required.</p>}
                         </div>
 
                         {/* Est. Drop-off */}
                         <div className="space-y-2">
-                            <label className="text-[13px] font-bold text-gray-700">Est. Drop-off</label>
+                            <label className="text-[13px] font-bold text-gray-700">Est. Drop-off <span className="text-red-500">*</span></label>
                             <div className="relative">
                                 <input 
                                     type="time" 
-                                    defaultValue="09:15"
+                                    value={formData.estDropoff}
+                                    onChange={(e) => setFormData((prev) => ({ ...prev, estDropoff: e.target.value }))}
                                     className="w-full px-4 py-3 bg-[#F9FAFB] border border-gray-200 rounded-xl text-[14px] text-gray-900 appearance-none focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D]"
                                 />
-                                <MdAccessTime className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
                             </div>
                         </div>
                     </div>
@@ -153,25 +182,34 @@ const AddNewJobStep3 = () => {
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         {/* Driver Pay */}
                         <div className="space-y-2">
-                            <label className="text-[13px] font-bold text-gray-700">Driver Pay (Flat Rate)*</label>
+                            <label className="text-[13px] font-bold text-gray-700">Driver Pay (Flat Rate) <span className="text-red-500">*</span></label>
                             <div className="relative">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">£</span>
                                 <input 
                                     type="text" 
                                     placeholder="e.g., 50.00"
-                                    className="w-full pl-8 pr-4 py-3 bg-[#F9FAFB] border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D]"
+                                    value={formData.driverPay}
+                                    onChange={(e) => setFormData((prev) => ({ ...prev, driverPay: e.target.value }))}
+                                    className={`w-full pl-8 pr-4 py-3 bg-[#F9FAFB] border rounded-xl text-[14px] placeholder-gray-400 focus:outline-none focus:ring-2 ${
+                                        submitAttempted && !formData.driverPay.trim()
+                                            ? 'border-red-400 text-red-700 focus:ring-red-500/20 focus:border-red-500'
+                                            : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/10 focus:border-[#004D6D]'
+                                    }`}
                                 />
                             </div>
+                            {submitAttempted && !formData.driverPay.trim() && <p className="text-[12px] font-semibold text-red-600">Driver Pay is required.</p>}
                         </div>
 
                         {/* Passenger Assistant Pay */}
                         <div className="space-y-2">
-                            <label className="text-[13px] font-bold text-gray-700">Passenger Assistant Pay (Flat Rate)</label>
+                            <label className="text-[13px] font-bold text-gray-700">Passenger Assistant Pay (Flat Rate) <span className="text-red-500">*</span></label>
                             <div className="relative">
                                 <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 font-medium">£</span>
                                 <input 
                                     type="text" 
                                     placeholder="e.g., 40.00"
+                                    value={formData.passengerAssistantPay}
+                                    onChange={(e) => setFormData((prev) => ({ ...prev, passengerAssistantPay: e.target.value }))}
                                     className="w-full pl-8 pr-4 py-3 bg-[#F9FAFB] border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D]"
                                 />
                             </div>
@@ -179,23 +217,24 @@ const AddNewJobStep3 = () => {
                     </div>
                 </div>
 
-                {/* Bottom Actions */}
-                <div className="p-6 bg-gray-50/50 flex items-center justify-between border-t border-gray-50">
-                    <button 
-                        onClick={handleBack}
-                        className="flex items-center gap-2 text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors"
-                    >
-                        <MdArrowBack size={20} />
-                        Back
-                    </button>
+            </div>
+
+            {/* --- Sticky Bottom Action Bar --- */}
+            <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-between z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
+                <button 
+                    onClick={handleBack}
+                    className="text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors"
+                >
+                    Back
+                </button>
+                <div className="flex items-center gap-4">
                     <button 
                         onClick={handleFinish}
-                        className="px-10 py-3 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg active:scale-95"
+                        className="flex items-center gap-2 px-8 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/20 active:scale-95"
                     >
                         Finish & Create Job
                     </button>
                 </div>
-
             </div>
         </div>
     );

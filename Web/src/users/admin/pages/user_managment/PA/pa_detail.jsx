@@ -1,5 +1,4 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import {
     MdArrowBack,
     MdEdit,
@@ -69,7 +68,6 @@ const ITEMS_PER_PAGE = 5;
 
 // ─── Main Component ───────────────────────────────────────────
 const PADetail = () => {
-    const navigate = useNavigate();
     const [currentPage, setCurrentPage] = useState(1);
 
     const totalPages = Math.ceil(allJobs.length / ITEMS_PER_PAGE);
@@ -88,13 +86,6 @@ const PADetail = () => {
             {/* ── Back + Title Row ── */}
             <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                 <div>
-                    <button
-                        onClick={() => navigate('/admin/users/pa')}
-                        className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-800 transition-colors mb-3"
-                    >
-                        <MdArrowBack size={18} />
-                        Back to Assistants
-                    </button>
                     <h1 className="text-2xl font-bold text-gray-900">{pa.name}</h1>
                     <p className="text-sm text-gray-500 mt-0.5">Passenger Assistant Profile &amp; Activity</p>
                 </div>

@@ -19,6 +19,7 @@ import {
     MdCheck,
     MdPersonAddAlt1
 } from 'react-icons/md';
+import { ToastStack } from '../../../../utils/Toast';
 
 const ActiveJobs = () => {
     const navigate = useNavigate();
@@ -27,6 +28,11 @@ const ActiveJobs = () => {
     const [showAssignDriver, setShowAssignDriver] = useState(false);
     const [showAssignPA, setShowAssignPA] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
+    const [toasts, setToasts] = useState([]);
+    const [driverQuery, setDriverQuery] = useState('');
+    const [paQuery, setPaQuery] = useState('');
+    const [driverTab, setDriverTab] = useState('recommended'); // recommended | nearby | available
+    const [paTab, setPaTab] = useState('recommended');
 
     const menuRef = useRef(null);
 
@@ -40,7 +46,7 @@ const ActiveJobs = () => {
         return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
-    const jobs = [
+    const initialJobs = [
         {
             id: '#J-789123',
             route: 'Northwood Elementary Run',
@@ -49,6 +55,7 @@ const ActiveJobs = () => {
             duration: '1h 15m duration',
             driver: { name: 'Robert Fox', avatar: 'https://i.pravatar.cc/150?u=robert' },
             vehicle: 'BUS-101',
+            pa: null,
             passengers: '12 / 15',
             status: 'In Progress',
             statusColor: 'bg-green-50 text-green-600 border-green-100',
@@ -62,6 +69,7 @@ const ActiveJobs = () => {
             duration: '1h duration',
             driver: { name: 'Esther Howard', avatar: 'https://i.pravatar.cc/150?u=esther' },
             vehicle: 'VAN-302',
+            pa: { name: 'Sarah Wilson', avatar: 'https://i.pravatar.cc/150?u=sarah' },
             passengers: '4 / 6',
             status: 'Upcoming',
             statusColor: 'bg-blue-50 text-blue-600 border-blue-100',
@@ -75,6 +83,7 @@ const ActiveJobs = () => {
             duration: '1h 15m duration',
             driver: null, // Unassigned
             vehicle: null,
+            pa: null,
             passengers: '22 / 25',
             status: 'Unassigned',
             statusColor: 'bg-orange-50 text-orange-600 border-orange-100',
@@ -88,12 +97,37 @@ const ActiveJobs = () => {
             duration: '45m duration',
             driver: { name: 'Cameron Williamson', avatar: 'https://i.pravatar.cc/150?u=cameron' },
             vehicle: 'SHUTTLE-04',
+            pa: null,
             passengers: '8 / 10',
             status: 'Upcoming',
             statusColor: 'bg-blue-50 text-blue-600 border-blue-100',
             dateTimeStr: 'Nov 19, 2025 at 03:30 PM'
         }
     ];
+
+    const [jobs, setJobs] = useState(initialJobs);
+
+    const drivers = [
+        { id: 'd1', name: 'Johnathan Smith', vehicleLabel: 'Ford Transit - 12 Seater', vehicleCode: 'VAN-118', tag: 'Recommended', tagColor: 'text-green-600 bg-green-50', avatar: 'https://i.pravatar.cc/150?u=johnathan', distanceMi: 1.2, available: true, recommended: true },
+        { id: 'd2', name: 'Esther Howard', vehicleLabel: 'Mercedes Sprinter - 15 Seater', vehicleCode: 'VAN-302', tag: '5 mi away', tagColor: 'text-orange-600 bg-orange-50', avatar: 'https://i.pravatar.cc/150?u=esther', distanceMi: 5.0, available: true, recommended: false },
+        { id: 'd3', name: 'Robert Fox', vehicleLabel: 'Toyota Sienna - 7 Seater', vehicleCode: 'BUS-101', tag: 'Available', tagColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=robert', distanceMi: 3.4, available: true, recommended: false },
+        { id: 'd4', name: 'Kristin Watson', vehicleLabel: 'Ford Transit - 12 Seater', vehicleCode: 'VAN-224', tag: 'Available', tagColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=kristin', distanceMi: 0.8, available: true, recommended: true },
+        { id: 'd5', name: 'Cameron Williamson', vehicleLabel: 'Minibus - 10 Seater', vehicleCode: 'SHUTTLE-04', tag: 'Busy', tagColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=cameron', distanceMi: 2.0, available: false, recommended: false },
+    ];
+
+    const pas = [
+        { id: 'p1', name: 'Sarah Wilson', tag: 'Recommended', tagColor: 'text-green-600 bg-green-50', avatar: 'https://i.pravatar.cc/150?u=sarah', distanceMi: 2.1, available: true, recommended: true },
+        { id: 'p2', name: 'David Miller', tag: 'Available', tagColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=david', distanceMi: 1.4, available: true, recommended: false },
+        { id: 'p3', name: 'Olivia Johnson', tag: '3 mi away', tagColor: 'text-orange-600 bg-orange-50', avatar: 'https://i.pravatar.cc/150?u=olivia', distanceMi: 3.0, available: true, recommended: false },
+        { id: 'p4', name: 'Noah Williams', tag: 'Busy', tagColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=noah', distanceMi: 0.6, available: false, recommended: false },
+    ];
+
+    const pushToast = (type, message) => {
+        setToasts((prev) => [
+            ...prev,
+            { id: `${Date.now()}-${Math.random()}`, type, message, autoClose: true, duration: 3500 },
+        ]);
+    };
 
     const toggleRow = (id) => {
         if (selectedRows.includes(id)) {
@@ -105,18 +139,71 @@ const ActiveJobs = () => {
 
     const handleAssignDriver = (job) => {
         setSelectedJob(job);
+        setDriverQuery('');
+        setDriverTab('recommended');
         setShowAssignDriver(true);
         setActiveMenu(null);
     };
 
     const handleAssignPA = (job) => {
         setSelectedJob(job);
+        setPaQuery('');
+        setPaTab('recommended');
         setShowAssignPA(true);
         setActiveMenu(null);
     };
 
+    const assignDriverToJob = (jobId, driver) => {
+        setJobs((prev) =>
+            prev.map((j) => {
+                if (j.id !== jobId) return j;
+                const nextStatus = j.status === 'Unassigned' ? 'Upcoming' : j.status;
+                const nextStatusColor =
+                    j.status === 'Unassigned'
+                        ? 'bg-blue-50 text-blue-600 border-blue-100'
+                        : j.statusColor;
+                return {
+                    ...j,
+                    driver: { name: driver.name, avatar: driver.avatar },
+                    vehicle: driver.vehicleCode,
+                    status: nextStatus,
+                    statusColor: nextStatusColor,
+                };
+            })
+        );
+        pushToast('success', `Driver assigned to ${jobId}.`);
+    };
+
+    const assignPaToJob = (jobId, pa) => {
+        setJobs((prev) =>
+            prev.map((j) => (j.id === jobId ? { ...j, pa: { name: pa.name, avatar: pa.avatar } } : j))
+        );
+        pushToast('success', `PA assigned to ${jobId}.`);
+    };
+
+    const filteredDrivers = drivers
+        .filter((d) => (driverTab === 'available' ? d.available : true))
+        .filter((d) => (driverTab === 'recommended' ? d.recommended : true))
+        .filter((d) => (driverTab === 'nearby' ? d.distanceMi <= 3 : true))
+        .filter((d) => {
+            const q = driverQuery.trim().toLowerCase();
+            if (!q) return true;
+            return (d.name + ' ' + d.vehicleLabel + ' ' + d.vehicleCode).toLowerCase().includes(q);
+        });
+
+    const filteredPAs = pas
+        .filter((p) => (paTab === 'available' ? p.available : true))
+        .filter((p) => (paTab === 'recommended' ? p.recommended : true))
+        .filter((p) => (paTab === 'nearby' ? p.distanceMi <= 3 : true))
+        .filter((p) => {
+            const q = paQuery.trim().toLowerCase();
+            if (!q) return true;
+            return p.name.toLowerCase().includes(q);
+        });
+
     return (
         <div className="space-y-6">
+            <ToastStack toasts={toasts} onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))} />
             {/* ── Page Header ── */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
@@ -268,7 +355,9 @@ const ActiveJobs = () => {
                                         {activeMenu === idx && (
                                             <div 
                                                 ref={menuRef}
-                                                className="absolute right-12 top-5 w-48 bg-white border border-gray-100 rounded-xl shadow-xl z-20 overflow-hidden"
+                                                className={`absolute right-12 w-48 bg-white border border-gray-100 rounded-xl shadow-xl z-20 overflow-hidden ${
+                                                    idx >= jobs.length - 2 ? 'bottom-10' : 'top-5'
+                                                }`}
                                             >
                                                 <div className="py-1">
                                                     <button 
@@ -281,13 +370,13 @@ const ActiveJobs = () => {
                                                         onClick={() => handleAssignDriver(job)}
                                                         className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
                                                     >
-                                                        Add Driver
+                                                        {job.driver ? 'Reassign Driver' : 'Add Driver'}
                                                     </button>
                                                     <button 
                                                         onClick={() => handleAssignPA(job)}
                                                         className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium border-t border-gray-50"
                                                     >
-                                                        Add PA
+                                                        {job.pa ? 'Reassign PA' : 'Add PA'}
                                                     </button>
                                                 </div>
                                             </div>
@@ -353,50 +442,85 @@ const ActiveJobs = () => {
                                     <input 
                                         type="text" 
                                         placeholder="Search driver by name or vehicle..."
+                                        value={driverQuery}
+                                        onChange={(e) => setDriverQuery(e.target.value)}
                                         className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D] transition-all"
                                     />
                                     <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                                 </div>
                                 <div className="flex items-center bg-gray-100 p-1 rounded-xl">
-                                    <button className="px-4 py-2 text-[12px] font-bold text-[#004D6D] bg-white rounded-lg shadow-sm">Recommended</button>
-                                    <button className="px-4 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-700">Nearby</button>
-                                    <button className="px-4 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-700">Available</button>
+                                    <button
+                                        onClick={() => setDriverTab('recommended')}
+                                        className={`px-4 py-2 text-[12px] font-bold rounded-lg ${driverTab === 'recommended' ? 'text-[#004D6D] bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Recommended
+                                    </button>
+                                    <button
+                                        onClick={() => setDriverTab('nearby')}
+                                        className={`px-4 py-2 text-[12px] font-bold rounded-lg ${driverTab === 'nearby' ? 'text-[#004D6D] bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Nearby
+                                    </button>
+                                    <button
+                                        onClick={() => setDriverTab('available')}
+                                        className={`px-4 py-2 text-[12px] font-bold rounded-lg ${driverTab === 'available' ? 'text-[#004D6D] bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Available
+                                    </button>
                                 </div>
                             </div>
 
                             {/* Driver List */}
                             <div className="space-y-3">
-                                {[
-                                    { name: 'Johnathan Smith', vehicle: 'Ford Transit - 12 Seater', label: 'Recommended', labelColor: 'text-green-600 bg-green-50', avatar: 'https://i.pravatar.cc/150?u=johnathan' },
-                                    { name: 'Esther Howard', vehicle: 'Mercedes Sprinter - 15 Seater', label: '5 mi away', labelColor: 'text-orange-600 bg-orange-50', avatar: 'https://i.pravatar.cc/150?u=esther', selected: true },
-                                    { name: 'Robert Fox', vehicle: 'Toyota Sienna - 7 Seater', label: 'Available', labelColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=robert' },
-                                    { name: 'Kristin Watson', vehicle: 'Ford Transit - 12 Seater', label: 'Available', labelColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=kristin' },
-                                ].map((driver, idx) => (
-                                    <div key={idx} className={`p-4 border rounded-2xl flex items-center justify-between transition-all ${driver.selected ? 'bg-[#F4F9FF] border-[#004D6D]/20' : 'bg-white border-gray-100 hover:border-gray-200'}`}>
+                                {filteredDrivers.length === 0 && (
+                                    <div className="px-4 py-6 text-center text-[13px] text-gray-500 font-medium border border-dashed border-gray-200 rounded-2xl">
+                                        No drivers match your search/filters.
+                                    </div>
+                                )}
+                                {filteredDrivers.map((driver) => {
+                                    const isCurrent = selectedJob?.driver?.name && selectedJob.driver.name === driver.name;
+                                    return (
+                                    <div key={driver.id} className={`p-4 border rounded-2xl flex items-center justify-between transition-all ${isCurrent ? 'bg-[#F4F9FF] border-[#004D6D]/20' : 'bg-white border-gray-100 hover:border-gray-200'}`}>
                                         <div className="flex items-center gap-4">
                                             <img src={driver.avatar} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" />
                                             <div>
                                                 <p className="text-[14px] font-bold text-gray-900">{driver.name}</p>
-                                                <p className="text-[12px] text-gray-400 font-medium mt-0.5">{driver.vehicle}</p>
+                                                <p className="text-[12px] text-gray-400 font-medium mt-0.5">{driver.vehicleLabel} • {driver.vehicleCode}</p>
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-4">
-                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${driver.labelColor}`}>
-                                                {driver.label}
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${driver.tagColor}`}>
+                                                {driver.tag}
                                             </span>
-                                            {driver.selected ? (
-                                                <button className="flex items-center gap-1.5 px-4 py-2 bg-[#004D6D] text-white rounded-xl text-[12px] font-bold shadow-sm">
-                                                    <MdCheck size={16} />
-                                                    Selected
-                                                </button>
-                                            ) : (
-                                                <button className="px-4 py-2 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-xl text-[12px] font-bold transition-all">
-                                                    Assign
-                                                </button>
-                                            )}
+                                            <button
+                                                disabled={!driver.available}
+                                                onClick={() => {
+                                                    if (!selectedJob) return;
+                                                    if (!driver.available) {
+                                                        pushToast('warning', 'This driver is currently busy.');
+                                                        return;
+                                                    }
+                                                    assignDriverToJob(selectedJob.id, driver);
+                                                    setShowAssignDriver(false);
+                                                }}
+                                                className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all ${
+                                                    driver.available
+                                                        ? 'border border-gray-200 text-gray-700 hover:bg-gray-50'
+                                                        : 'border border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'
+                                                }`}
+                                            >
+                                                {isCurrent ? (
+                                                    <span className="inline-flex items-center gap-1.5 text-[#004D6D]">
+                                                        <MdCheck size={16} />
+                                                        Current
+                                                    </span>
+                                                ) : (
+                                                    'Assign'
+                                                )}
+                                            </button>
                                         </div>
                                     </div>
-                                ))}
+                                )})}
                             </div>
                         </div>
 
@@ -452,24 +576,45 @@ const ActiveJobs = () => {
                                     <input 
                                         type="text" 
                                         placeholder="Search PA by name..."
+                                        value={paQuery}
+                                        onChange={(e) => setPaQuery(e.target.value)}
                                         className="w-full pl-10 pr-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D] transition-all"
                                     />
                                     <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                                 </div>
                                 <div className="flex items-center bg-gray-100 p-1 rounded-xl">
-                                    <button className="px-4 py-2 text-[12px] font-bold text-[#004D6D] bg-white rounded-lg shadow-sm">Recommended</button>
-                                    <button className="px-4 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-700">Nearby</button>
-                                    <button className="px-4 py-2 text-[12px] font-bold text-gray-500 hover:text-gray-700">Available</button>
+                                    <button
+                                        onClick={() => setPaTab('recommended')}
+                                        className={`px-4 py-2 text-[12px] font-bold rounded-lg ${paTab === 'recommended' ? 'text-[#004D6D] bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Recommended
+                                    </button>
+                                    <button
+                                        onClick={() => setPaTab('nearby')}
+                                        className={`px-4 py-2 text-[12px] font-bold rounded-lg ${paTab === 'nearby' ? 'text-[#004D6D] bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Nearby
+                                    </button>
+                                    <button
+                                        onClick={() => setPaTab('available')}
+                                        className={`px-4 py-2 text-[12px] font-bold rounded-lg ${paTab === 'available' ? 'text-[#004D6D] bg-white shadow-sm' : 'text-gray-500 hover:text-gray-700'}`}
+                                    >
+                                        Available
+                                    </button>
                                 </div>
                             </div>
 
                             {/* PA List */}
                             <div className="space-y-3">
-                                {[
-                                    { name: 'Sarah Wilson', label: 'Recommended', labelColor: 'text-green-600 bg-green-50', avatar: 'https://i.pravatar.cc/150?u=sarah' },
-                                    { name: 'David Miller', label: 'Available', labelColor: 'text-gray-500 bg-gray-100', avatar: 'https://i.pravatar.cc/150?u=david' },
-                                ].map((pa, idx) => (
-                                    <div key={idx} className="p-4 bg-white border border-gray-100 rounded-2xl flex items-center justify-between transition-all hover:border-gray-200">
+                                {filteredPAs.length === 0 && (
+                                    <div className="px-4 py-6 text-center text-[13px] text-gray-500 font-medium border border-dashed border-gray-200 rounded-2xl">
+                                        No passenger assistants match your search/filters.
+                                    </div>
+                                )}
+                                {filteredPAs.map((pa) => {
+                                    const isCurrent = selectedJob?.pa?.name && selectedJob.pa.name === pa.name;
+                                    return (
+                                    <div key={pa.id} className={`p-4 bg-white border rounded-2xl flex items-center justify-between transition-all hover:border-gray-200 ${isCurrent ? 'border-[#004D6D]/20 bg-[#F4F9FF]' : 'border-gray-100'}`}>
                                         <div className="flex items-center gap-4">
                                             <img src={pa.avatar} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" />
                                             <div>
@@ -478,15 +623,38 @@ const ActiveJobs = () => {
                                             </div>
                                         </div>
                                         <div className="flex items-center gap-4">
-                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${pa.labelColor}`}>
-                                                {pa.label}
+                                            <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${pa.tagColor}`}>
+                                                {pa.tag}
                                             </span>
-                                            <button className="px-4 py-2 border border-gray-200 text-gray-700 hover:bg-gray-50 rounded-xl text-[12px] font-bold transition-all">
-                                                Assign
+                                            <button
+                                                disabled={!pa.available}
+                                                onClick={() => {
+                                                    if (!selectedJob) return;
+                                                    if (!pa.available) {
+                                                        pushToast('warning', 'This PA is currently busy.');
+                                                        return;
+                                                    }
+                                                    assignPaToJob(selectedJob.id, pa);
+                                                    setShowAssignPA(false);
+                                                }}
+                                                className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all ${
+                                                    pa.available
+                                                        ? 'border border-gray-200 text-gray-700 hover:bg-gray-50'
+                                                        : 'border border-gray-200 text-gray-400 cursor-not-allowed bg-gray-50'
+                                                }`}
+                                            >
+                                                {isCurrent ? (
+                                                    <span className="inline-flex items-center gap-1.5 text-[#004D6D]">
+                                                        <MdCheck size={16} />
+                                                        Current
+                                                    </span>
+                                                ) : (
+                                                    'Assign'
+                                                )}
                                             </button>
                                         </div>
                                     </div>
-                                ))}
+                                )})}
                             </div>
                         </div>
 
