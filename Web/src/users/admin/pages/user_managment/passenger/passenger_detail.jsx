@@ -1,5 +1,5 @@
 import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
 import {
     MdHome,
     MdSchool,
@@ -32,6 +32,7 @@ const ReadField = ({ label, value }) => (
 /* ── Main Component ───────────────────────────────────────── */
 const PassengerDetail = () => {
     const navigate = useNavigate();
+    const { id } = useParams();
 
     return (
         <div className="space-y-5">
@@ -44,7 +45,10 @@ const PassengerDetail = () => {
                         <MdBlock size={16} />
                         Deactivate
                     </button>
-                    <button className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm">
+                    <button
+                        onClick={() => navigate(`/admin/users/passengers/${id}/edit`)}
+                        className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm"
+                    >
                         <MdEdit size={15} />
                         Edit Profile
                     </button>

@@ -31,6 +31,7 @@ import Admin_AddJobStep2 from './users/admin/pages/job_managment/add_new_job_ste
 import Admin_AddJobStep3 from './users/admin/pages/job_managment/add_new_job_step3';
 import Admin_Passengers from './users/admin/pages/user_managment/passenger/passengers';
 import Admin_AddPassenger from './users/admin/pages/user_managment/passenger/add_new_passenger';
+import Admin_EditPassenger from './users/admin/pages/user_managment/passenger/edit_passenger';
 import Admin_PassengerDetail from './users/admin/pages/user_managment/passenger/passenger_detail';
 import Admin_AssignRoute from './users/admin/pages/user_managment/passenger/assign_route';
 import Admin_RouteReview from './users/admin/pages/user_managment/passenger/route_review';
@@ -128,6 +129,7 @@ function App() {
                 <Route path="/admin/users/subadmins/:id" element={<Admin_SubAdminDetail />} />
                 <Route path="/admin/users/passengers" element={<Admin_Passengers />} />
                 <Route path="/admin/users/passengers/add" element={<Admin_AddPassenger />} />
+                <Route path="/admin/users/passengers/:id/edit" element={<Admin_EditPassenger />} />
                 <Route path="/admin/users/passengers/assign" element={<Admin_AssignRoute />} />
                 <Route path="/admin/users/passengers/assign/review" element={<Admin_RouteReview />} />
                 <Route path="/admin/users/passengers/assign/success" element={<Admin_SuccessConfirmation />} />

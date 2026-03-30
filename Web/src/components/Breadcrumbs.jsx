@@ -93,6 +93,33 @@ const ROUTE_CRUMB_MAP = [
         ],
     },
     {
+        match: /^\/admin\/users\/passengers\/assign\/review$/,
+        crumbs: () => [
+            { label: 'User Management' },
+            { label: 'Passengers', to: '/admin/users/passengers' },
+            { label: 'Job Assignment', to: '/admin/users/passengers/assign' },
+            { label: 'Assignment Review' },
+        ],
+    },
+    {
+        match: /^\/admin\/users\/passengers\/assign\/success$/,
+        crumbs: () => [
+            { label: 'User Management' },
+            { label: 'Passengers', to: '/admin/users/passengers' },
+            { label: 'Job Assignment', to: '/admin/users/passengers/assign' },
+            { label: 'Assignment Confirmed' },
+        ],
+    },
+    {
+        match: /^\/admin\/users\/passengers\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'User Management' },
+            { label: 'Passengers', to: '/admin/users/passengers' },
+            { label: decodeURIComponent(id), to: `/admin/users/passengers/${id}` },
+            { label: 'Edit Passenger' },
+        ],
+    },
+    {
         match: /^\/admin\/users\/passengers\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },

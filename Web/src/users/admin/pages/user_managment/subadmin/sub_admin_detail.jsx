@@ -1,7 +1,6 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-    MdArrowBack,
     MdEmail,
     MdPhone,
     MdCalendarToday,
@@ -9,29 +8,46 @@ import {
     MdPeopleAlt,
     MdAccessTime,
     MdAssignment,
-    MdPersonAdd,
     MdBarChart,
-    MdNotifications,
     MdAdd,
-    MdUpdate
+    MdUpdate,
 } from 'react-icons/md';
+import { PERMISSIONS_CATEGORIES, allPermKeys } from './permissionsConstants';
 
-const PermissionItem = ({ icon: Icon, title, description, enabled, onToggle }) => (
-    <div className="flex items-center justify-between p-4 bg-white border border-gray-100 rounded-xl mb-3 shadow-sm hover:shadow-md transition-shadow">
-        <div className="flex items-center gap-4">
-            <div className={`w-10 h-10 rounded-lg flex items-center justify-center ${enabled ? 'bg-blue-50 text-[#004D6D]' : 'bg-gray-50 text-gray-400'}`}>
-                <Icon size={20} />
-            </div>
-            <div>
-                <h4 className="text-[14px] font-bold text-gray-900">{title}</h4>
-                <p className="text-[12px] text-gray-400 mt-0.5">{description}</p>
-            </div>
-        </div>
+/** Mock defaults for detail view (would match saved sub-admin in a real app). */
+const buildDefaultPermissionState = () => {
+    const initial = {};
+    allPermKeys.forEach((key) => {
+        initial[key] = false;
+    });
+    // Example profile: mirrors a typical sub-admin selection
+    [
+        'view_jobs',
+        'create_jobs',
+        'edit_jobs',
+        'view_users',
+        'edit_profiles',
+        'view_reports',
+    ].forEach((k) => {
+        initial[k] = true;
+    });
+    return initial;
+};
+
+const CATEGORY_ICONS = [MdAssignment, MdPeopleAlt, MdBarChart];
+
+const PermissionToggleRow = ({ label, enabled, onToggle }) => (
+    <div className="flex items-center justify-between gap-3 py-2.5 border-b border-gray-50 last:border-0">
+        <span className="text-[13px] font-medium text-gray-700">{label}</span>
         <button
+            type="button"
             onClick={onToggle}
-            className={`relative w-11 h-6 rounded-full transition-colors focus:outline-none ${enabled ? 'bg-[#004D6D]' : 'bg-gray-200'}`}
+            aria-pressed={enabled}
+            className={`relative w-10 h-5 shrink-0 rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-[#004D6D]/30 ${enabled ? 'bg-[#004D6D]' : 'bg-gray-200'}`}
         >
-            <div className={`absolute top-1 left-1 w-4 h-4 bg-white rounded-full transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`} />
+            <span
+                className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${enabled ? 'translate-x-5' : 'translate-x-0'}`}
+            />
         </button>
     </div>
 );
@@ -57,18 +73,16 @@ const SubAdminDetail = () => {
     const navigate = useNavigate();
     const { id } = useParams();
 
-    const [permissions, setPermissions] = useState([
-        { id: 1, icon: MdAssignment, title: 'Assign Jobs', description: 'Create, edit, and assign jobs to available drivers.', enabled: true },
-        { id: 2, icon: MdPersonAdd, title: 'Register Drivers', description: 'Add new drivers, upload documents, and manage profiles.', enabled: true },
-        { id: 3, icon: MdBarChart, title: 'View Company Stats', description: 'Access high-level financial and operational reports.', enabled: false },
-        { id: 4, icon: MdNotifications, title: 'Access Notifications', description: 'Send and manage broadcast messages to drivers.', enabled: true },
-    ]);
+    const [permissionState, setPermissionState] = useState(buildDefaultPermissionState);
 
-    const togglePermission = (permId) => {
-        setPermissions(perms => perms.map(p => p.id === permId ? { ...p, enabled: !p.enabled } : p));
+    const togglePermissionKey = (key) => {
+        setPermissionState((prev) => ({ ...prev, [key]: !prev[key] }));
     };
 
-    const activeCount = permissions.filter(p => p.enabled).length;
+    const activeCount = useMemo(
+        () => allPermKeys.filter((k) => permissionState[k]).length,
+        [permissionState]
+    );
 
     return (
         <div className="pb-24 mx-auto px-4 sm:px-6 lg:px-8">
@@ -152,25 +166,56 @@ const SubAdminDetail = () => {
 
                     {/* Permissions Section */}
                     <div>
-                        <div className="flex items-center justify-between mb-2">
-                            <h3 className="text-[16px] font-bold text-gray-900">Access Permissions</h3>
-                            <span className="text-[11px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded">
-                                {activeCount} Active
+                        <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
+                            <div>
+                                <h3 className="text-[16px] font-bold text-gray-900">Access Permissions</h3>
+                                {id && (
+                                    <p className="text-[11px] text-gray-400 font-medium mt-0.5">Sub-admin ID: {id}</p>
+                                )}
+                            </div>
+                            <span className="text-[11px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded shrink-0">
+                                {activeCount} / {allPermKeys.length} granted
                             </span>
                         </div>
-                        <p className="text-[13px] text-gray-400 mb-6">Toggle specific capabilities for this sub-admin. Changes take effect immediately.</p>
+                        <p className="text-[13px] text-gray-400 mb-6">
+                            Same permission keys as when creating a sub-admin. Toggle each item on or off; counts match the add form categories.
+                        </p>
 
-                        <div className="space-y-2">
-                            {permissions.map((perm) => (
-                                <PermissionItem
-                                    key={perm.id}
-                                    icon={perm.icon}
-                                    title={perm.title}
-                                    description={perm.description}
-                                    enabled={perm.enabled}
-                                    onToggle={() => togglePermission(perm.id)}
-                                />
-                            ))}
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+                            {PERMISSIONS_CATEGORIES.map((category, catIdx) => {
+                                const Icon = CATEGORY_ICONS[catIdx] || MdAssignment;
+                                const enabledInCategory = category.keys.filter((k) => permissionState[k]).length;
+                                return (
+                                    <div
+                                        key={category.name}
+                                        className="bg-white border border-gray-100 rounded-xl shadow-sm overflow-hidden flex flex-col"
+                                    >
+                                        <div className="px-4 py-3.5 border-b border-gray-100 bg-gray-50/60 flex items-center justify-between gap-2">
+                                            <div className="flex items-center gap-2.5 min-w-0">
+                                                <div className="w-9 h-9 rounded-lg bg-white border border-gray-100 flex items-center justify-center text-[#004D6D] shrink-0">
+                                                    <Icon size={18} />
+                                                </div>
+                                                <div className="min-w-0">
+                                                    <h4 className="text-[14px] font-bold text-gray-900 truncate">{category.name}</h4>
+                                                    <p className="text-[11px] text-gray-500 font-medium">
+                                                        {enabledInCategory}/{category.keys.length} enabled
+                                                    </p>
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="px-4 py-2 flex-1">
+                                            {category.keys.map((key, index) => (
+                                                <PermissionToggleRow
+                                                    key={key}
+                                                    label={category.labels[index]}
+                                                    enabled={!!permissionState[key]}
+                                                    onToggle={() => togglePermissionKey(key)}
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })}
                         </div>
                     </div>
 

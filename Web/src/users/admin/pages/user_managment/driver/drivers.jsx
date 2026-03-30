@@ -40,6 +40,19 @@ function formatStatusLabel(raw) {
 
 const ITEMS_PER_PAGE = 5;
 
+const DRIVER_ACTION_MENU_H = 188;
+
+function getDriverRowActions(rawStatus) {
+    const s = (rawStatus || '').trim().toLowerCase();
+    return ['Approve', 'Reject', 'Suspend', 'Active'].filter((action) => {
+        if (action === 'Active' && s === 'active') return false;
+        if (action === 'Approve' && s === 'approved') return false;
+        if (action === 'Reject' && s === 'rejected') return false;
+        if (action === 'Suspend' && s === 'suspended') return false;
+        return true;
+    });
+}
+
 function formatUsPhone(phone) {
     if (!phone || typeof phone !== 'string') return '—';
     const digits = phone.replace(/\D/g, '');
@@ -160,9 +173,12 @@ const DriversPage = () => {
         }
         const rect = e.currentTarget.getBoundingClientRect();
         const width = 144;
+        const spaceBelow = window.innerHeight - rect.bottom;
+        const openUp = spaceBelow < DRIVER_ACTION_MENU_H + 16;
+        const top = openUp ? rect.top - DRIVER_ACTION_MENU_H - 4 : rect.bottom + 4;
         setOpenMenu({
             driverId,
-            top: rect.bottom + 4,
+            top,
             left: Math.max(8, rect.right - width),
         });
     };
@@ -221,6 +237,9 @@ const DriversPage = () => {
         }
         return pages;
     };
+
+    const menuDriver = openMenu ? drivers.find((d) => d.id === openMenu.driverId) : null;
+    const driverMenuActions = menuDriver ? getDriverRowActions(menuDriver.status) : [];
 
     return (
         <div className="space-y-4">
@@ -292,7 +311,7 @@ const DriversPage = () => {
             </div>
 
             {/* Table */}
-            <div className="bg-white rounded-xl border border-gray-100 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-hidden">
+            <div className="bg-white rounded-xl border border-gray-100 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-visible">
                 <div className="overflow-x-auto">
                     <table className="w-full text-sm text-left">
                         <thead className="border-b border-gray-100">
@@ -453,6 +472,7 @@ const DriversPage = () => {
             </div>
 
             {openMenu &&
+                driverMenuActions.length > 0 &&
                 createPortal(
                     <div
                         ref={menuRef}
@@ -460,7 +480,7 @@ const DriversPage = () => {
                         style={{ top: openMenu.top, left: openMenu.left }}
                         role="menu"
                     >
-                        {['Approve', 'Reject', 'Suspend', 'Active'].map((action) => (
+                        {driverMenuActions.map((action) => (
                             <button
                                 key={action}
                                 type="button"

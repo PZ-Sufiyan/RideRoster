@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
     MdSearch,
@@ -60,6 +61,18 @@ const STATUS_COLORS = {
 
 const ITEMS_PER_PAGE = 10;
 
+const SUBADMIN_ACTION_MENU_H = 188;
+
+function getSubAdminRowActions(currentStatus) {
+    const s = (currentStatus || '').trim();
+    return ['Approve', 'Reject', 'Suspend', 'Active'].filter((action) => {
+        if (s === 'Active' && (action === 'Active' || action === 'Approve')) return false;
+        if (s === 'Inactive' && action === 'Reject') return false;
+        if (s === 'Suspended' && action === 'Suspend') return false;
+        return true;
+    });
+}
+
 // ─── Component ────────────────────────────────────────────────
 const SubAdminList = () => {
     const navigate = useNavigate();
@@ -67,23 +80,41 @@ const SubAdminList = () => {
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('Status: All');
     const [selectedRows, setSelectedRows] = useState([]);
-    const [openActionId, setOpenActionId] = useState(null);
+    const [openMenu, setOpenMenu] = useState(null);
     const [isStatusOpen, setIsStatusOpen] = useState(false);
+    const [isBulkOpen, setIsBulkOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
 
-    const actionRef = useRef(null);
+    const menuRef = useRef(null);
     const statusRef = useRef(null);
+    const bulkRef = useRef(null);
 
     const statuses = ['Status: All', 'Active', 'Inactive', 'Suspended'];
 
     useEffect(() => {
         const handler = (e) => {
-            if (actionRef.current && !actionRef.current.contains(e.target)) setOpenActionId(null);
+            if (menuRef.current?.contains(e.target)) return;
+            for (const el of document.querySelectorAll('[data-subadmin-action-trigger]')) {
+                if (el.contains(e.target)) return;
+            }
+            setOpenMenu(null);
             if (statusRef.current && !statusRef.current.contains(e.target)) setIsStatusOpen(false);
+            if (bulkRef.current && !bulkRef.current.contains(e.target)) setIsBulkOpen(false);
         };
         document.addEventListener('mousedown', handler);
         return () => document.removeEventListener('mousedown', handler);
     }, []);
+
+    useEffect(() => {
+        if (!openMenu) return;
+        const close = () => setOpenMenu(null);
+        window.addEventListener('scroll', close, true);
+        window.addEventListener('resize', close);
+        return () => {
+            window.removeEventListener('scroll', close, true);
+            window.removeEventListener('resize', close);
+        };
+    }, [openMenu]);
 
     // Filter
     const filtered = subAdmins.filter((sa) => {
@@ -97,14 +128,32 @@ const SubAdminList = () => {
     const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
     const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-    // Reset to page 1 when filters change
-    useEffect(() => { setCurrentPage(1); }, [search, statusFilter]);
-
     const handleAction = (action, id) => {
-        const statusMap = { Approve: 'Active', Active: 'Active', Reject: 'Inactive', Suspend: 'Suspended' };
-        setSubAdmins((prev) => prev.map((sa) => sa.id === id ? { ...sa, status: statusMap[action] || sa.status } : sa));
-        setOpenActionId(null);
+        const statusMap = { Approve: 'Active', Reject: 'Inactive', Suspend: 'Suspended', Active: 'Active' };
+        const next = statusMap[action];
+        if (!next) return;
+        setSubAdmins((prev) => prev.map((sa) => (sa.id === id ? { ...sa, status: next } : sa)));
+        setOpenMenu(null);
     };
+
+    const handleBulkAction = (action) => {
+        const statusMap = { Approve: 'Active', Reject: 'Inactive', Suspend: 'Suspended', Active: 'Active' };
+        const nextStatus = statusMap[action];
+        if (!nextStatus || selectedRows.length === 0) {
+            setIsBulkOpen(false);
+            return;
+        }
+        setSubAdmins((prev) =>
+            prev.map((sa) =>
+                selectedRows.includes(sa.id) ? { ...sa, status: nextStatus } : sa
+            )
+        );
+        setSelectedRows([]);
+        setIsBulkOpen(false);
+    };
+
+    const menuSa = openMenu ? subAdmins.find((sa) => sa.id === openMenu.subAdminId) : null;
+    const subAdminMenuActions = menuSa ? getSubAdminRowActions(menuSa.status) : [];
 
     const toggleRow = (id) => setSelectedRows((prev) =>
         prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
@@ -143,7 +192,7 @@ const SubAdminList = () => {
             </div>
 
             {/* ── Card ── */}
-            <div className="bg-white border border-gray-100 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-hidden">
+            <div className="bg-white border border-gray-100 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-visible">
 
                 {/* Toolbar */}
                 <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border-b border-gray-100">
@@ -157,7 +206,10 @@ const SubAdminList = () => {
                                 type="text"
                                 placeholder="Search by name or email"
                                 value={search}
-                                onChange={(e) => setSearch(e.target.value)}
+                                onChange={(e) => {
+                                    setSearch(e.target.value);
+                                    setCurrentPage(1);
+                                }}
                                 className="pl-9 pr-3 py-2.5 border border-gray-200 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white w-64 transition-colors"
                             />
                         </div>
@@ -177,7 +229,11 @@ const SubAdminList = () => {
                                     {statuses.map((s) => (
                                         <button
                                             key={s}
-                                            onClick={() => { setStatusFilter(s); setIsStatusOpen(false); }}
+                                            onClick={() => {
+                                                setStatusFilter(s);
+                                                setIsStatusOpen(false);
+                                                setCurrentPage(1);
+                                            }}
                                             className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg ${statusFilter === s ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
                                         >
                                             {s}
@@ -190,15 +246,41 @@ const SubAdminList = () => {
 
                     {/* Bulk Actions & Menu */}
                     <div className="flex items-center gap-2">
-                        <button
-                            disabled
-                            className="px-3 py-2 rounded-lg text-sm font-medium text-gray-400 bg-gray-50 cursor-not-allowed"
-                        >
-                            Bulk Actions
-                        </button>
-                        <button className="p-2 border border-gray-200 rounded-lg text-gray-500 hover:bg-gray-50 transition-colors">
-                            <MdMoreVert size={18} />
-                        </button>
+                        <div className="relative" ref={bulkRef}>
+                            <button
+                                onClick={() => selectedRows.length > 0 && setIsBulkOpen((o) => !o)}
+                                disabled={selectedRows.length === 0}
+                                className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1.5 ${
+                                    selectedRows.length === 0
+                                        ? 'text-gray-400 bg-gray-50 cursor-not-allowed'
+                                        : 'text-gray-700 bg-white border border-gray-200 hover:bg-gray-50'
+                                }`}
+                            >
+                                Bulk Actions
+                                <MdKeyboardArrowDown size={16} className="text-gray-400" />
+                            </button>
+                            {isBulkOpen && (
+                                <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-100 rounded-lg shadow-lg z-40 py-1">
+                                    {['Approve', 'Reject', 'Suspend', 'Active'].map((action) => (
+                                        <button
+                                            key={action}
+                                            onClick={() => handleBulkAction(action)}
+                                            className={`block w-full text-left px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                                                action === 'Approve' ? 'text-green-700 hover:bg-green-50' : ''
+                                            } ${
+                                                action === 'Reject' ? 'text-red-700 hover:bg-red-50' : ''
+                                            } ${
+                                                action === 'Suspend' ? 'text-orange-700 hover:bg-orange-50' : ''
+                                            } ${
+                                                action === 'Active' ? 'text-blue-700 hover:bg-blue-50' : ''
+                                            }`}
+                                        >
+                                            {action}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
                 </div>
 
@@ -270,41 +352,33 @@ const SubAdminList = () => {
 
                                     {/* Actions */}
                                     <td className="px-4 py-4 text-right pr-4">
-                                        <div className="relative inline-block text-left" ref={openActionId === sa.id ? actionRef : null}>
+                                        <div className="relative inline-block text-left">
                                             <button
+                                                type="button"
+                                                data-subadmin-action-trigger
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setOpenActionId(openActionId === sa.id ? null : sa.id);
+                                                    if (openMenu?.subAdminId === sa.id) {
+                                                        setOpenMenu(null);
+                                                        return;
+                                                    }
+                                                    const rect = e.currentTarget.getBoundingClientRect();
+                                                    const width = 144;
+                                                    const spaceBelow = window.innerHeight - rect.bottom;
+                                                    const openUp = spaceBelow < SUBADMIN_ACTION_MENU_H + 16;
+                                                    const top = openUp
+                                                        ? rect.top - SUBADMIN_ACTION_MENU_H - 4
+                                                        : rect.bottom + 4;
+                                                    setOpenMenu({
+                                                        subAdminId: sa.id,
+                                                        top,
+                                                        left: Math.max(8, rect.right - width),
+                                                    });
                                                 }}
-                                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+                                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors focus:outline-none focus:ring-2 focus:ring-[#005580]/20"
                                             >
                                                 <MdMoreVert size={20} />
                                             </button>
-                                            {openActionId === sa.id && (
-                                                <div className="absolute right-0 top-full mt-1 w-36 bg-white border border-gray-100 rounded-lg shadow-lg z-30 py-1">
-                                                    {['Approve', 'Reject', 'Suspend', 'Active'].map((action) => (
-                                                        <button
-                                                            key={action}
-                                                            onClick={(e) => {
-                                                                e.stopPropagation();
-                                                                handleAction(action, sa.id);
-                                                            }}
-                                                            className={`w-full text-left px-4 py-2 text-sm font-medium transition-colors
-                                                                ${action === 'Approve' ? 'text-green-700 hover:bg-green-50' : ''}
-                                                                ${action === 'Reject' ? 'text-gray-700 hover:bg-red-50 hover:text-red-700' : ''}
-                                                                ${action === 'Suspend' ? 'text-gray-700 hover:bg-orange-50 hover:text-orange-700' : ''}
-                                                                ${action === 'Active' ? 'text-blue-700 hover:bg-blue-50' : ''}
-                                                                ${action !== 'Approve' && action !== 'Active' ? 'text-gray-700 hover:bg-gray-50' : ''}
-                                                            `}
-                                                            style={
-                                                                (action === 'Approve' || action === 'Active' || action === 'Reject' || action === 'Suspend') ? {} : { color: '#374151' }
-                                                            }
-                                                        >
-                                                            {action}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            )}
                                         </div>
                                     </td>
                                 </tr>
@@ -365,6 +439,38 @@ const SubAdminList = () => {
                     </div>
                 </div>
             </div>
+
+            {openMenu &&
+                subAdminMenuActions.length > 0 &&
+                createPortal(
+                    <div
+                        ref={menuRef}
+                        className="fixed z-[100] w-36 bg-white border border-gray-100 rounded-lg shadow-lg py-1"
+                        style={{ top: openMenu.top, left: openMenu.left }}
+                        role="menu"
+                    >
+                        {subAdminMenuActions.map((action) => (
+                            <button
+                                key={action}
+                                type="button"
+                                role="menuitem"
+                                onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleAction(action, openMenu.subAdminId);
+                                }}
+                                className={`block w-full text-left px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors
+                                    ${action === 'Approve' ? 'text-green-700 hover:bg-green-50' : ''}
+                                    ${action === 'Reject' ? 'text-red-700 hover:bg-red-50' : ''}
+                                    ${action === 'Suspend' ? 'text-orange-700 hover:bg-orange-50' : ''}
+                                    ${action === 'Active' ? 'text-blue-700 hover:bg-blue-50' : ''}
+                                `}
+                            >
+                                {action}
+                            </button>
+                        ))}
+                    </div>,
+                    document.body
+                )}
         </div>
     );
 };
