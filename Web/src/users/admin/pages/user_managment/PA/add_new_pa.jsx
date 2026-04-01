@@ -10,6 +10,12 @@ import {
     MdVisibility,
     MdInfoOutline,
 } from 'react-icons/md';
+import { supabase } from '../../../../../lib/supabaseClient';
+import { getCompanyAdminById } from '../../../../../services/companyService';
+import {
+    registerPassengerAssistantWithAuthAndRecords,
+    PA_DOCUMENT_TYPES,
+} from '../../../../../services/passengerAsssistantService';
 import { ToastStack } from '../../../../../utils/Toast';
 
 // ─── Reusable: Form Field ─────────────────────────────────────
@@ -46,7 +52,7 @@ const Section = ({ title, subtitle, children }) => (
     </div>
 );
 
-/** Local-only file preview: no upload. View opens blob URL; delete/revoke clears. */
+/** Local file preview; `value.file` is kept for upload on submit. */
 const LocalDocumentSlot = ({ label, hint, value, onFile, onRemove }) => {
     const inputRef = useRef(null);
 
@@ -56,6 +62,8 @@ const LocalDocumentSlot = ({ label, hint, value, onFile, onRemove }) => {
         if (!file) return;
         onFile(file);
     };
+
+    const displayName = value?.fileName || value?.file?.name;
 
     const handleView = () => {
         if (value?.objectUrl) {
@@ -107,7 +115,7 @@ const LocalDocumentSlot = ({ label, hint, value, onFile, onRemove }) => {
                         </div>
                         <div className="min-w-0">
                             <h3 className="text-[14px] font-bold text-gray-800">{label}</h3>
-                            <p className="text-[12px] text-gray-400 font-medium mt-0.5 truncate">{value.fileName}</p>
+                            <p className="text-[12px] text-gray-400 font-medium mt-0.5 truncate">{displayName}</p>
                         </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
@@ -147,8 +155,10 @@ const AddNewPA = () => {
     const navigate = useNavigate();
     const avatarRef = useRef();
     const [avatarPreview, setAvatarPreview] = useState(null);
+    const [avatarFile, setAvatarFile] = useState(null);
     const [form, setForm] = useState({
         firstName: '', lastName: '', email: '', phone: '',
+        password: '', confirmPassword: '',
         address: '', contactName: '', contactPhone: '',
     });
 
@@ -160,6 +170,8 @@ const AddNewPA = () => {
     const [firstAidDoc, setFirstAidDoc] = useState(null);
     const [toasts, setToasts] = useState([]);
     const [submitAttempted, setSubmitAttempted] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [submitError, setSubmitError] = useState('');
 
     const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
 
@@ -171,7 +183,7 @@ const AddNewPA = () => {
         setter((prev) => {
             revokeIfUrl(prev);
             if (!file) return null;
-            return { fileName: file.name, objectUrl: URL.createObjectURL(file) };
+            return { fileName: file.name, objectUrl: URL.createObjectURL(file), file };
         });
     }, [revokeIfUrl]);
 
@@ -184,6 +196,7 @@ const AddNewPA = () => {
 
     const handleAvatarChange = (file) => {
         if (!file) return;
+        setAvatarFile(file);
         setAvatarPreview((prev) => {
             if (prev) URL.revokeObjectURL(prev);
             return URL.createObjectURL(file);
@@ -238,25 +251,90 @@ const AddNewPA = () => {
             !form.lastName?.trim() ||
             !form.email?.trim() ||
             !form.phone?.trim() ||
+            !form.password ||
+            !form.confirmPassword ||
             !form.contactName?.trim() ||
             !form.contactPhone?.trim();
         if (missing) {
             pushToast('warning', 'Please fill in all required fields before adding a passenger assistant.');
             return false;
         }
+        if (passportDoc?.file && !passportExpiry?.trim()) {
+            pushToast('warning', 'Passport expiry is required when a passport document is uploaded.');
+            return false;
+        }
+        if (safeguardingDoc?.file && !safeguardingExpiry?.trim()) {
+            pushToast('warning', 'Safeguarding expiry is required when a safeguarding certificate is uploaded.');
+            return false;
+        }
         return true;
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
+        setSubmitError('');
         if (!validateRequired()) {
             return;
         }
-        navigate('/admin/users/pa');
+        if (form.password !== form.confirmPassword) {
+            setSubmitError('Passwords do not match.');
+            pushToast('error', 'Passwords do not match.');
+            return;
+        }
+        setSubmitting(true);
+        try {
+            const {
+                data: { session },
+            } = await supabase.auth.getSession();
+            const uid = session?.user?.id;
+            if (!uid) {
+                throw new Error('Not authenticated.');
+            }
+            const admin = await getCompanyAdminById(uid);
+            if (!admin?.company_id) {
+                throw new Error('No company linked to your account.');
+            }
+            await registerPassengerAssistantWithAuthAndRecords({
+                companyId: admin.company_id,
+                personal: {
+                    firstName: form.firstName,
+                    lastName: form.lastName,
+                    email: form.email,
+                    phone: form.phone,
+                    password: form.password,
+                    address: form.address,
+                    contactName: form.contactName,
+                    contactPhone: form.contactPhone,
+                },
+                expiry: {
+                    passport: passportExpiry,
+                    safeguarding: safeguardingExpiry,
+                },
+                avatarFile: avatarFile || null,
+                files: {
+                    [PA_DOCUMENT_TYPES.PASSPORT]: passportDoc?.file,
+                    [PA_DOCUMENT_TYPES.SAFEGUARDING_CERTIFICATE]: safeguardingDoc?.file,
+                    [PA_DOCUMENT_TYPES.BACKGROUND_CHECK]: backgroundCheckDoc?.file,
+                    [PA_DOCUMENT_TYPES.FIRST_AID_CERTIFICATE]: firstAidDoc?.file,
+                },
+            });
+            pushToast('success', 'Passenger assistant registered successfully.');
+            navigate('/admin/users/pa');
+        } catch (e) {
+            const msg = e?.message || 'Could not register passenger assistant.';
+            setSubmitError(msg);
+            pushToast('error', msg);
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const dateInputClass =
         'w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] transition-colors bg-white';
+    const dateInputClassError =
+        'w-full px-3 py-2.5 border border-red-400 rounded-lg text-sm text-red-700 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors bg-white';
     const showRequired = (value) => submitAttempted && !String(value || '').trim();
+    const showPassportExpiryError = submitAttempted && passportDoc?.file && !passportExpiry?.trim();
+    const showSafeguardingExpiryError = submitAttempted && safeguardingDoc?.file && !safeguardingExpiry?.trim();
 
     return (
         <div className="space-y-5">
@@ -282,6 +360,27 @@ const AddNewPA = () => {
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <FormField label="Email Address" required type="email" placeholder="e.g. jane.doe@example.com" value={form.email} onChange={set('email')} showError={showRequired(form.email)} />
                         <FormField label="Phone Number" required type="tel" placeholder="e.g. (123) 456-7890" value={form.phone} onChange={set('phone')} showError={showRequired(form.phone)} />
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormField
+                            label="Password"
+                            required
+                            type="password"
+                            placeholder="Enter password"
+                            value={form.password}
+                            onChange={set('password')}
+                            showError={showRequired(form.password)}
+                        />
+
+                        <FormField
+                            label="Confirm Password"
+                            required
+                            type="password"
+                            placeholder="Confirm password"
+                            value={form.confirmPassword}
+                            onChange={set('confirmPassword')}
+                            showError={showRequired(form.confirmPassword)}
+                        />
                     </div>
                     <FormField label="Residential Address" placeholder="e.g. 123 Main Street, Anytown, USA" value={form.address} onChange={set('address')} />
                 </div>
@@ -331,7 +430,7 @@ const AddNewPA = () => {
             <Section title="Documents &amp; Certifications">
                 <div className="space-y-4">
                     <p className="text-sm text-gray-500">
-                        Upload required documents. Accepted: PDF, JPG, PNG — preview opens in a new tab. Nothing is saved to the server; leaving this page clears uploads.
+                        Upload documents as needed. Accepted: PDF, JPG, PNG, WebP — preview opens in a new tab. Passport and safeguarding require an expiry date when a file is uploaded. Files are stored in your company storage when you submit.
                     </p>
 
                     {/* Passport number — document + manual expiry */}
@@ -342,7 +441,7 @@ const AddNewPA = () => {
                                 <label className="text-xs font-medium text-gray-600">Document</label>
                                 <LocalDocumentSlot
                                     label="Passport copy"
-                                    hint="PDF or image — local preview only"
+                                    hint="PDF or image"
                                     value={passportDoc}
                                     onFile={(f) => setLocalDoc(setPassportDoc, f)}
                                     onRemove={() => clearLocalDoc(setPassportDoc)}
@@ -354,12 +453,15 @@ const AddNewPA = () => {
                                     type="date"
                                     value={passportExpiry}
                                     onChange={(e) => setPassportExpiry(e.target.value)}
-                                    className={dateInputClass}
+                                    className={showPassportExpiryError ? dateInputClassError : dateInputClass}
                                 />
                                 <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
                                     <MdInfoOutline size={12} className="shrink-0 opacity-70" />
                                     Enter expiry manually; it is not read from the file.
                                 </p>
+                                {showPassportExpiryError && (
+                                    <p className="text-xs text-red-600 font-medium">Expiry date is required when a passport file is uploaded.</p>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -372,7 +474,7 @@ const AddNewPA = () => {
                                 <label className="text-xs font-medium text-gray-600">Document</label>
                                 <LocalDocumentSlot
                                     label="Safeguarding certificate"
-                                    hint="PDF or image — local preview only"
+                                    hint="PDF or image"
                                     value={safeguardingDoc}
                                     onFile={(f) => setLocalDoc(setSafeguardingDoc, f)}
                                     onRemove={() => clearLocalDoc(setSafeguardingDoc)}
@@ -384,12 +486,15 @@ const AddNewPA = () => {
                                     type="date"
                                     value={safeguardingExpiry}
                                     onChange={(e) => setSafeguardingExpiry(e.target.value)}
-                                    className={dateInputClass}
+                                    className={showSafeguardingExpiryError ? dateInputClassError : dateInputClass}
                                 />
                                 <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
                                     <MdInfoOutline size={12} className="shrink-0 opacity-70" />
                                     Enter expiry manually; it is not read from the file.
                                 </p>
+                                {showSafeguardingExpiryError && (
+                                    <p className="text-xs text-red-600 font-medium">Expiry date is required when a safeguarding file is uploaded.</p>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -446,22 +551,31 @@ const AddNewPA = () => {
             </Section>
 
             {/* ── Footer Actions ── */}
-            <div className="flex items-center gap-3 pb-2">
-                <button
-                    type="button"
-                    onClick={() => navigate('/admin/users/pa')}
-                    className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
-                >
-                    Cancel
-                </button>
-                <button
-                    type="button"
-                    onClick={handleSubmit}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm"
-                >
-                    <MdPeople size={18} />
-                    Add Passenger Assistant
-                </button>
+            <div className="space-y-3 pb-2">
+                {submitError && (
+                    <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                        {submitError}
+                    </p>
+                )}
+                <div className="flex items-center gap-3">
+                    <button
+                        type="button"
+                        onClick={() => navigate('/admin/users/pa')}
+                        disabled={submitting}
+                        className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        type="button"
+                        onClick={handleSubmit}
+                        disabled={submitting}
+                        className="flex items-center gap-2 px-5 py-2.5 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
+                    >
+                        <MdPeople size={18} />
+                        {submitting ? 'Registering…' : 'Add Passenger Assistant'}
+                    </button>
+                </div>
             </div>
         </div>
     );

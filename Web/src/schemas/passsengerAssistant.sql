@@ -12,6 +12,7 @@ create table if not exists public.passenger_assistant (
 
   emergency_contact_name text,
   emergency_contact_phone text,
+  status text not null default 'pending',
 
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()

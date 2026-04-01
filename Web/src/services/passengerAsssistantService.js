@@ -169,3 +169,49 @@ export const deletePassengerDocumentByPassengerAndType = async (passengerId, doc
   if (error) throw error
   return data
 }
+
+/* Passenger Assistant list helpers */
+
+export const getPassengerAssistants = async ({ companyId = null } = {}) => {
+  let query = supabase
+    .from('passenger_assistant')
+    .select('*')
+    .order('created_at', { ascending: false })
+
+  if (companyId) query = query.eq('company_id', companyId)
+
+  const { data, error } = await query
+  if (error) throw error
+  return data || []
+}
+
+export const getPassengerAssistantById = async (assistantId) => {
+  const { data, error } = await supabase
+    .from('passenger_assistant')
+    .select('*')
+    .eq('id', assistantId)
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+/** @param {string} assistantId
+ *  @param {object} updates — e.g. { status: 'approve' }
+ */
+export const updatePassengerAssistant = async (assistantId, updates) => {
+  const { data, error } = await supabase
+    .from('passenger_assistant')
+    .update({ ...updates, updated_at: new Date().toISOString() })
+    .eq('id', assistantId)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export {
+  registerPassengerAssistantWithAuthAndRecords,
+  PA_DOCUMENT_TYPES,
+} from './passengerAssistantRegistrationService'

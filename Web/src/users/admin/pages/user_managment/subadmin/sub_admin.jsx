@@ -12,50 +12,22 @@ import {
     MdKeyboardArrowDown,
     MdFilterList,
 } from 'react-icons/md';
-
-// ─── Dummy Data ───────────────────────────────────────────────
-const allSubAdmins = [
-    {
-        id: 1,
-        name: 'Cameron Williamson',
-        email: 'cameron.w@example.com',
-        avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=64&h=64',
-        permissions: 'Job Management, Reporting',
-        status: 'Active',
-        lastLogin: '2025-11-18 18:30 PM',
-    },
-    {
-        id: 2,
-        name: 'Esther Howard',
-        email: 'esther.h@example.com',
-        avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=64&h=64',
-        permissions: 'View Only',
-        status: 'Active',
-        lastLogin: '2025-11-17 09:15 AM',
-    },
-    {
-        id: 3,
-        name: 'Robert Fox',
-        email: 'robert.f@example.com',
-        avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=64&h=64',
-        permissions: 'Full Access (Admin Proxy)',
-        status: 'Inactive',
-        lastLogin: '2025-10-22 11:00 AM',
-    },
-    {
-        id: 4,
-        name: 'Guy Hawkins',
-        email: 'guy.h@example.com',
-        avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=64&h=64',
-        permissions: 'Job Management',
-        status: 'Active',
-        lastLogin: '2025-11-18 14:20 PM',
-    },
-];
+import { supabase } from '../../../../../lib/supabaseClient';
+import { getCompanyAdminById } from '../../../../../services/companyService';
+import {
+    getSubAdminsByCompany,
+    updateSubAdmin,
+    formatSubAdminPermissionsSummary,
+    normalizeSubAdminStatus,
+    subAdminStatusLabel,
+    actionToSubAdminDbStatus,
+} from '../../../../../services/subAdminService';
 
 const STATUS_COLORS = {
+    Pending: 'bg-amber-50 text-amber-800 border border-amber-200',
+    Approved: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
     Active: 'bg-green-50 text-green-700 border border-green-200',
-    Inactive: 'bg-red-50 text-red-600 border border-red-200',
+    Rejected: 'bg-red-50 text-red-600 border border-red-200',
     Suspended: 'bg-orange-50 text-orange-600 border border-orange-200',
 };
 
@@ -63,12 +35,22 @@ const ITEMS_PER_PAGE = 10;
 
 const SUBADMIN_ACTION_MENU_H = 188;
 
-function getSubAdminRowActions(currentStatus) {
-    const s = (currentStatus || '').trim();
+function formatUpdatedAt(iso) {
+    if (!iso) return '—';
+    try {
+        return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch {
+        return '—';
+    }
+}
+
+function getSubAdminRowActions(statusLabel) {
     return ['Approve', 'Reject', 'Suspend', 'Active'].filter((action) => {
-        if (s === 'Active' && (action === 'Active' || action === 'Approve')) return false;
-        if (s === 'Inactive' && action === 'Reject') return false;
-        if (s === 'Suspended' && action === 'Suspend') return false;
+        if (statusLabel === 'Active' && (action === 'Active' || action === 'Approve')) return false;
+        if (statusLabel === 'Approved' && action === 'Approve') return false;
+        if (statusLabel === 'Pending' && action === 'Active') return false;
+        if (statusLabel === 'Rejected' && action === 'Reject') return false;
+        if (statusLabel === 'Suspended' && action === 'Suspend') return false;
         return true;
     });
 }
@@ -76,7 +58,7 @@ function getSubAdminRowActions(currentStatus) {
 // ─── Component ────────────────────────────────────────────────
 const SubAdminList = () => {
     const navigate = useNavigate();
-    const [subAdmins, setSubAdmins] = useState(allSubAdmins);
+    const [subAdmins, setSubAdmins] = useState([]);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('Status: All');
     const [selectedRows, setSelectedRows] = useState([]);
@@ -84,12 +66,55 @@ const SubAdminList = () => {
     const [isStatusOpen, setIsStatusOpen] = useState(false);
     const [isBulkOpen, setIsBulkOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+    const [statusUpdateError, setStatusUpdateError] = useState('');
+    const [isSavingStatus, setIsSavingStatus] = useState(false);
 
     const menuRef = useRef(null);
     const statusRef = useRef(null);
     const bulkRef = useRef(null);
 
-    const statuses = ['Status: All', 'Active', 'Inactive', 'Suspended'];
+    const statuses = ['Status: All', 'Pending', 'Approved', 'Active', 'Rejected', 'Suspended'];
+
+    useEffect(() => {
+        const loadSubAdmins = async () => {
+            setIsLoading(true);
+            setLoadError('');
+            setStatusUpdateError('');
+            try {
+                const {
+                    data: { session },
+                } = await supabase.auth.getSession();
+                const userId = session?.user?.id;
+                if (!userId) throw new Error('Not authenticated.');
+
+                const admin = await getCompanyAdminById(userId);
+                if (!admin?.company_id) throw new Error('No company linked to your account.');
+
+                const rows = await getSubAdminsByCompany(admin.company_id);
+                const mapped = (rows || []).map((row) => ({
+                    id: row.id,
+                    name: row.name?.trim() || '—',
+                    email: row.email != null && String(row.email).trim() !== '' ? String(row.email).trim() : '',
+                    phone: row.phone != null && String(row.phone).trim() !== '' ? String(row.phone).trim() : '',
+                    avatar: `https://i.pravatar.cc/64?u=${row.id}`,
+                    permissions: formatSubAdminPermissionsSummary(row),
+                    statusDb: normalizeSubAdminStatus(row.status),
+                    updatedAt: row.updated_at,
+                }));
+                setSubAdmins(mapped);
+            } catch (err) {
+                console.error('Failed loading sub-admins:', err);
+                setLoadError(err?.message || 'Failed to load sub-admins.');
+                setSubAdmins([]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadSubAdmins();
+    }, []);
 
     useEffect(() => {
         const handler = (e) => {
@@ -118,42 +143,89 @@ const SubAdminList = () => {
 
     // Filter
     const filtered = subAdmins.filter((sa) => {
-        const matchSearch = sa.name.toLowerCase().includes(search.toLowerCase()) ||
-            sa.email.toLowerCase().includes(search.toLowerCase());
-        const rawStatus = statusFilter === 'Status: All' ? 'All' : statusFilter;
-        const matchStatus = rawStatus === 'All' || sa.status === rawStatus;
+        const q = search.toLowerCase();
+        const idStr = String(sa.id || '').toLowerCase();
+        const matchSearch =
+            sa.name.toLowerCase().includes(q) ||
+            (sa.email && sa.email.toLowerCase().includes(q)) ||
+            (sa.phone && sa.phone.toLowerCase().includes(q)) ||
+            idStr.includes(q);
+        const label = subAdminStatusLabel(sa.statusDb);
+        const matchStatus = statusFilter === 'Status: All' || label === statusFilter;
         return matchSearch && matchStatus;
     });
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
     const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-    const handleAction = (action, id) => {
-        const statusMap = { Approve: 'Active', Reject: 'Inactive', Suspend: 'Suspended', Active: 'Active' };
-        const next = statusMap[action];
-        if (!next) return;
-        setSubAdmins((prev) => prev.map((sa) => (sa.id === id ? { ...sa, status: next } : sa)));
-        setOpenMenu(null);
+    useEffect(() => {
+        if (currentPage > totalPages) setCurrentPage(totalPages);
+    }, [currentPage, totalPages]);
+
+    const handleAction = async (action, id) => {
+        const nextDb = actionToSubAdminDbStatus(action);
+        if (!nextDb) return;
+        setStatusUpdateError('');
+        setIsSavingStatus(true);
+        try {
+            const updated = await updateSubAdmin(id, { status: nextDb });
+            setSubAdmins((prev) =>
+                prev.map((sa) =>
+                    sa.id === id
+                        ? {
+                            ...sa,
+                            statusDb: normalizeSubAdminStatus(updated?.status ?? nextDb),
+                            updatedAt: updated?.updated_at ?? sa.updatedAt,
+                        }
+                        : sa
+                )
+            );
+            setOpenMenu(null);
+        } catch (err) {
+            console.error('Failed to update sub-admin status:', err);
+            setStatusUpdateError(err?.message || 'Failed to update status.');
+        } finally {
+            setIsSavingStatus(false);
+        }
     };
 
-    const handleBulkAction = (action) => {
-        const statusMap = { Approve: 'Active', Reject: 'Inactive', Suspend: 'Suspended', Active: 'Active' };
-        const nextStatus = statusMap[action];
-        if (!nextStatus || selectedRows.length === 0) {
+    const handleBulkAction = async (action) => {
+        const nextDb = actionToSubAdminDbStatus(action);
+        if (!nextDb || selectedRows.length === 0) {
             setIsBulkOpen(false);
             return;
         }
-        setSubAdmins((prev) =>
-            prev.map((sa) =>
-                selectedRows.includes(sa.id) ? { ...sa, status: nextStatus } : sa
-            )
-        );
-        setSelectedRows([]);
-        setIsBulkOpen(false);
+        setStatusUpdateError('');
+        setIsSavingStatus(true);
+        try {
+            const results = await Promise.all(
+                selectedRows.map((rowId) => updateSubAdmin(rowId, { status: nextDb }))
+            );
+            setSubAdmins((prev) =>
+                prev.map((sa) => {
+                    if (!selectedRows.includes(sa.id)) return sa;
+                    const updated = results.find((r) => r.id === sa.id);
+                    return updated
+                        ? {
+                            ...sa,
+                            statusDb: normalizeSubAdminStatus(updated.status),
+                            updatedAt: updated.updated_at,
+                        }
+                        : { ...sa, statusDb: normalizeSubAdminStatus(nextDb) };
+                })
+            );
+            setSelectedRows([]);
+            setIsBulkOpen(false);
+        } catch (err) {
+            console.error('Failed bulk sub-admin status update:', err);
+            setStatusUpdateError(err?.message || 'Failed to update status.');
+        } finally {
+            setIsSavingStatus(false);
+        }
     };
 
     const menuSa = openMenu ? subAdmins.find((sa) => sa.id === openMenu.subAdminId) : null;
-    const subAdminMenuActions = menuSa ? getSubAdminRowActions(menuSa.status) : [];
+    const subAdminMenuActions = menuSa ? getSubAdminRowActions(subAdminStatusLabel(menuSa.statusDb)) : [];
 
     const toggleRow = (id) => setSelectedRows((prev) =>
         prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
@@ -168,7 +240,11 @@ const SubAdminList = () => {
     const allPageSelected = paginated.length > 0 && paginated.every((sa) => selectedRows.includes(sa.id));
 
     const handlePage = (page) => {
-        if (page >= 1 && page <= totalPages) { setCurrentPage(page); setSelectedRows([]); }
+        if (page >= 1 && page <= totalPages) {
+            setCurrentPage(page);
+            setSelectedRows([]);
+            setIsBulkOpen(false);
+        }
     };
 
     const startItem = filtered.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
@@ -195,7 +271,22 @@ const SubAdminList = () => {
             <div className="bg-white border border-gray-100 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-visible">
 
                 {/* Toolbar */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border-b border-gray-100">
+                <div className="border-b border-gray-100">
+                    {(loadError || statusUpdateError) && (
+                        <div className="mx-4 mt-3 space-y-2">
+                            {loadError && (
+                                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                    {loadError}
+                                </div>
+                            )}
+                            {statusUpdateError && (
+                                <div className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                                    {statusUpdateError}
+                                </div>
+                            )}
+                        </div>
+                    )}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3">
                     <div className="flex flex-wrap items-center gap-3">
                         {/* Search */}
                         <div className="relative">
@@ -204,7 +295,7 @@ const SubAdminList = () => {
                             </div>
                             <input
                                 type="text"
-                                placeholder="Search by name or email"
+                                placeholder="Search by name, email, phone, or ID"
                                 value={search}
                                 onChange={(e) => {
                                     setSearch(e.target.value);
@@ -248,10 +339,10 @@ const SubAdminList = () => {
                     <div className="flex items-center gap-2">
                         <div className="relative" ref={bulkRef}>
                             <button
-                                onClick={() => selectedRows.length > 0 && setIsBulkOpen((o) => !o)}
-                                disabled={selectedRows.length === 0}
+                                onClick={() => selectedRows.length > 0 && !isSavingStatus && setIsBulkOpen((o) => !o)}
+                                disabled={selectedRows.length === 0 || isSavingStatus}
                                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1.5 ${
-                                    selectedRows.length === 0
+                                    selectedRows.length === 0 || isSavingStatus
                                         ? 'text-gray-400 bg-gray-50 cursor-not-allowed'
                                         : 'text-gray-700 bg-white border border-gray-200 hover:bg-gray-50'
                                 }`}
@@ -264,8 +355,9 @@ const SubAdminList = () => {
                                     {['Approve', 'Reject', 'Suspend', 'Active'].map((action) => (
                                         <button
                                             key={action}
+                                            disabled={isSavingStatus}
                                             onClick={() => handleBulkAction(action)}
-                                            className={`block w-full text-left px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                                            className={`block w-full text-left px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-50 ${
                                                 action === 'Approve' ? 'text-green-700 hover:bg-green-50' : ''
                                             } ${
                                                 action === 'Reject' ? 'text-red-700 hover:bg-red-50' : ''
@@ -282,6 +374,7 @@ const SubAdminList = () => {
                             )}
                         </div>
                     </div>
+                    </div>
                 </div>
 
                 {/* Table */}
@@ -296,15 +389,27 @@ const SubAdminList = () => {
                                             : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                     </div>
                                 </th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center max-w-[14rem]">
+                                    Sub Admin ID
+                                </th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center shrink-0 w-24 sm:text-left sm:w-auto">Name</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Permissions</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Status</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Last Login</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Last updated</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right pr-6">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {paginated.length > 0 ? paginated.map((sa) => (
+                            {isLoading ? (
+                                <tr>
+                                    <td colSpan="7" className="px-6 py-16 text-center text-gray-500 text-sm">
+                                        Loading sub-admins…
+                                    </td>
+                                </tr>
+                            ) : paginated.length > 0 ? paginated.map((sa) => {
+                                const statusLabel = subAdminStatusLabel(sa.statusDb);
+                                const secondaryLine = sa.email || sa.phone || '—';
+                                return (
                                 <tr key={sa.id} className="hover:bg-gray-50/60 transition-colors">
                                     {/* Checkbox */}
                                     <td className="px-4 py-4">
@@ -313,6 +418,16 @@ const SubAdminList = () => {
                                                 ? <MdCheckBox className="text-blue-600 w-5 h-5" />
                                                 : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                         </div>
+                                    </td>
+
+                                    {/* Sub Admin ID */}
+                                    <td className="px-4 py-4 text-center align-top">
+                                        <span
+                                            className="font-mono text-[11px] sm:text-xs text-gray-700 break-all whitespace-normal text-left inline-block max-w-[14rem]"
+                                            title={sa.id}
+                                        >
+                                            {sa.id}
+                                        </span>
                                     </td>
 
                                     {/* Name + Avatar */}
@@ -326,28 +441,28 @@ const SubAdminList = () => {
                                                 alt={sa.name}
                                                 className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-100 shrink-0 mb-2 sm:mb-0"
                                             />
-                                            <div className="text-center sm:text-left">
+                                            <div className="text-center sm:text-left min-w-0">
                                                 <p className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors text-xs sm:text-sm">{sa.name}</p>
-                                                <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5">{sa.email}</p>
+                                                <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 break-all">{secondaryLine}</p>
                                             </div>
                                         </div>
                                     </td>
 
                                     {/* Permissions */}
-                                    <td className="px-4 py-4 text-gray-600 text-center">
+                                    <td className="px-4 py-4 text-gray-600 text-center whitespace-normal max-w-xs">
                                         {sa.permissions}
                                     </td>
 
                                     {/* Status */}
                                     <td className="px-4 py-4 text-center">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide ${STATUS_COLORS[sa.status] || 'bg-gray-100 text-gray-500'}`}>
-                                            {sa.status}
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide ${STATUS_COLORS[statusLabel] || 'bg-gray-100 text-gray-500'}`}>
+                                            {statusLabel}
                                         </span>
                                     </td>
 
-                                    {/* Last Login */}
-                                    <td className="px-4 py-4 text-gray-500 text-center">
-                                        {sa.lastLogin}
+                                    {/* Last updated */}
+                                    <td className="px-4 py-4 text-gray-500 text-center whitespace-normal">
+                                        {formatUpdatedAt(sa.updatedAt)}
                                     </td>
 
                                     {/* Actions */}
@@ -356,6 +471,7 @@ const SubAdminList = () => {
                                             <button
                                                 type="button"
                                                 data-subadmin-action-trigger
+                                                disabled={isSavingStatus}
                                                 onClick={(e) => {
                                                     e.stopPropagation();
                                                     if (openMenu?.subAdminId === sa.id) {
@@ -375,16 +491,17 @@ const SubAdminList = () => {
                                                         left: Math.max(8, rect.right - width),
                                                     });
                                                 }}
-                                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors focus:outline-none focus:ring-2 focus:ring-[#005580]/20"
+                                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors focus:outline-none focus:ring-2 focus:ring-[#005580]/20 disabled:opacity-40"
                                             >
                                                 <MdMoreVert size={20} />
                                             </button>
                                         </div>
                                     </td>
                                 </tr>
-                            )) : (
+                                );
+                            }) : (
                                 <tr>
-                                    <td colSpan="6" className="px-6 py-16 text-center text-gray-400 text-sm">
+                                    <td colSpan="7" className="px-6 py-16 text-center text-gray-400 text-sm">
                                         No sub-admins found.
                                     </td>
                                 </tr>
@@ -406,7 +523,7 @@ const SubAdminList = () => {
                     <div className="flex items-center gap-1.5">
                         <button
                             onClick={() => handlePage(currentPage - 1)}
-                            disabled={currentPage === 1}
+                            disabled={currentPage === 1 || isLoading}
                             className="p-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
                             <MdChevronLeft size={18} />
@@ -418,11 +535,12 @@ const SubAdminList = () => {
                                 <button
                                     key={page}
                                     onClick={() => handlePage(page)}
+                                    disabled={isLoading}
                                     className={`w-8 h-8 flex items-center justify-center rounded-lg text-sm font-medium transition-colors border
                                         ${currentPage === page
                                             ? 'bg-blue-50 text-blue-700 border-blue-200'
                                             : 'text-gray-600 hover:bg-gray-50 border-gray-200'
-                                        }`}
+                                        } disabled:opacity-40`}
                                 >
                                     {page}
                                 </button>
@@ -431,7 +549,7 @@ const SubAdminList = () => {
 
                         <button
                             onClick={() => handlePage(currentPage + 1)}
-                            disabled={currentPage === totalPages}
+                            disabled={currentPage === totalPages || isLoading}
                             className="p-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500 disabled:opacity-40 disabled:cursor-not-allowed transition-colors"
                         >
                             <MdChevronRight size={18} />
@@ -454,11 +572,12 @@ const SubAdminList = () => {
                                 key={action}
                                 type="button"
                                 role="menuitem"
+                                disabled={isSavingStatus}
                                 onClick={(e) => {
                                     e.stopPropagation();
                                     handleAction(action, openMenu.subAdminId);
                                 }}
-                                className={`block w-full text-left px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors
+                                className={`block w-full text-left px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-50
                                     ${action === 'Approve' ? 'text-green-700 hover:bg-green-50' : ''}
                                     ${action === 'Reject' ? 'text-red-700 hover:bg-red-50' : ''}
                                     ${action === 'Suspend' ? 'text-orange-700 hover:bg-orange-50' : ''}

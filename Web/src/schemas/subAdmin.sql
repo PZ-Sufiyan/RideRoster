@@ -27,6 +27,9 @@ create table if not exists public.sub_admins (
   view_reports boolean default false,
   export_data boolean default false,
 
+  -- Row actions: Approve → approve, Reject → reject, Suspend → suspend, Active → active
+  status text,
+
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
@@ -36,3 +39,6 @@ on public.sub_admins(company_id);
 
 create unique index if not exists uq_sub_admins_email
 on public.sub_admins(email);
+
+-- If `sub_admins` already existed without `status`, run once:
+-- alter table public.sub_admins add column if not exists status text;

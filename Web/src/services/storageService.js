@@ -14,13 +14,14 @@ export function isAllowedDocMime(mime) {
   return (
     mime === 'application/pdf' ||
     mime === 'image/jpeg' ||
-    mime === 'image/png'
+    mime === 'image/png' ||
+    mime === 'image/webp'
   )
 }
 
 export function assertValidCompanyDocFile(file, { maxBytes = 10 * 1024 * 1024 } = {}) {
   if (!file) throw new Error('No file selected.')
-  if (!isAllowedDocMime(file.type)) throw new Error('File must be a PDF, JPG, or PNG.')
+  if (!isAllowedDocMime(file.type)) throw new Error('File must be a PDF, JPG, PNG, or WebP.')
   if (file.size > maxBytes) throw new Error(`File must be <= ${formatBytes(maxBytes)}.`)
 }
 
@@ -50,6 +51,94 @@ export function buildDriverVehicleDocPath({ companyId, kind, scopeId, documentTy
     .slice(0, 120)
   const segment = kind === 'driver' ? 'drivers' : 'vehicles'
   return `${companyId}/${segment}/${scopeId}/${documentType}/${randomId()}_${safeName}`
+}
+
+export function buildPassengerAssistantDocPath({ companyId, assistantId, documentType, file }) {
+  const safeName = (file?.name || 'document')
+    .toLowerCase()
+    .replace(/[^a-z0-9.\-_]+/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 120)
+  return `${companyId}/passenger-assistants/${assistantId}/${documentType}/${randomId()}_${safeName}`
+}
+
+export function buildPassengerAssistantProfilePath({ companyId, assistantId, file }) {
+  const safeName = (file?.name || 'profile')
+    .toLowerCase()
+    .replace(/[^a-z0-9.\-_]+/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 120)
+  return `${companyId}/passenger-assistants/${assistantId}/profile/${randomId()}_${safeName}`
+}
+
+export function assertValidProfileImageFile(file, { maxBytes = 8 * 1024 * 1024 } = {}) {
+  if (!file) throw new Error('No file selected.')
+  const ok =
+    file.type === 'image/jpeg' ||
+    file.type === 'image/png' ||
+    file.type === 'image/gif' ||
+    file.type === 'image/webp'
+  if (!ok) throw new Error('Profile image must be JPEG, PNG, GIF, or WebP.')
+  if (file.size > maxBytes) throw new Error(`Image must be <= ${formatBytes(maxBytes)}.`)
+}
+
+export async function uploadPassengerAssistantDocument({
+  companyId,
+  assistantId,
+  documentType,
+  file,
+  bucket = COMPANY_DOCS_BUCKET,
+}) {
+  assertValidCompanyDocFile(file)
+
+  const filePath = buildPassengerAssistantDocPath({ companyId, assistantId, documentType, file })
+  const { error: uploadError } = await supabase
+    .storage
+    .from(bucket)
+    .upload(filePath, file, { upsert: false, contentType: file.type })
+
+  if (uploadError) throw uploadError
+
+  const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(filePath)
+  const fileUrl = publicData?.publicUrl || ''
+
+  if (!fileUrl) throw new Error('Uploaded but could not resolve public URL for document.')
+
+  return {
+    file_name: file.name,
+    file_path: filePath,
+    file_url: fileUrl,
+    bucket,
+  }
+}
+
+export async function uploadPassengerAssistantProfileImage({
+  companyId,
+  assistantId,
+  file,
+  bucket = COMPANY_DOCS_BUCKET,
+}) {
+  assertValidProfileImageFile(file)
+
+  const filePath = buildPassengerAssistantProfilePath({ companyId, assistantId, file })
+  const { error: uploadError } = await supabase
+    .storage
+    .from(bucket)
+    .upload(filePath, file, { upsert: false, contentType: file.type })
+
+  if (uploadError) throw uploadError
+
+  const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(filePath)
+  const fileUrl = publicData?.publicUrl || ''
+
+  if (!fileUrl) throw new Error('Uploaded but could not resolve public URL for profile image.')
+
+  return {
+    file_name: file.name,
+    file_path: filePath,
+    file_url: fileUrl,
+    bucket,
+  }
 }
 
 export async function uploadDriverVehicleDocument({

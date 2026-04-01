@@ -10,59 +10,73 @@ import {
     MdCheckBoxOutlineBlank,
     MdCheckBox,
     MdKeyboardArrowDown,
-    MdOutlineFileDownload,
 } from 'react-icons/md';
+import { supabase } from '../../../../../lib/supabaseClient';
+import { getCompanyAdminById } from '../../../../../services/companyService';
+import {
+    getPassengerAssistants,
+    updatePassengerAssistant,
+} from '../../../../../services/passengerAsssistantService';
 
-// ─── Dummy Data ───────────────────────────────────────────────
-const allPAs = [
-    { id: 1, paId: 'PA-00123', name: 'Theresa Webb', avatar: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=64&h=64', email: 'theresa.webb@example.com', phone: '(201) 555-0123', assignedJobs: 5, status: 'Active', dateAdded: '2025-10-22' },
-    { id: 2, paId: 'PA-00124', name: 'Jenny Wilson', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&w=64&h=64', email: 'jenny.wilson@example.com', phone: '(202) 555-0145', assignedJobs: 8, status: 'Active', dateAdded: '2025-10-15' },
-    { id: 3, paId: 'PA-00125', name: 'Robert Fox', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=64&h=64', email: 'robert.fox@example.com', phone: '(203) 555-0167', assignedJobs: 3, status: 'Active', dateAdded: '2025-09-30' },
-    { id: 4, paId: 'PA-00126', name: 'Annette Black', avatar: 'https://images.unsplash.com/photo-1531746020798-e795c5399c7c?auto=format&fit=crop&w=64&h=64', email: 'annette.black@example.com', phone: '(204) 555-0189', assignedJobs: 0, status: 'Inactive', dateAdded: '2025-09-01' },
-    { id: 5, paId: 'PA-00127', name: 'Kristin Watson', avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&w=64&h=64', email: 'kristin.watson@example.com', phone: '(205) 555-0112', assignedJobs: 6, status: 'Active', dateAdded: '2025-08-20' },
-    { id: 6, paId: 'PA-00128', name: 'Eleanor Pena', avatar: 'https://images.unsplash.com/photo-1438761681033-6461ffad8d80?auto=format&fit=crop&w=64&h=64', email: 'eleanor.pena@example.com', phone: '(206) 555-0134', assignedJobs: 4, status: 'Active', dateAdded: '2025-08-10' },
-    { id: 7, paId: 'PA-00129', name: 'Marvin McKinney', avatar: 'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?auto=format&fit=crop&w=64&h=64', email: 'marvin.mckinney@example.com', phone: '(207) 555-0156', assignedJobs: 2, status: 'Inactive', dateAdded: '2025-07-28' },
-    { id: 8, paId: 'PA-00130', name: 'Jane Cooper', avatar: 'https://images.unsplash.com/photo-1554151228-14d9def656e4?auto=format&fit=crop&w=64&h=64', email: 'jane.cooper@example.com', phone: '(208) 555-0178', assignedJobs: 7, status: 'Active', dateAdded: '2025-07-15' },
-    { id: 9, paId: 'PA-00131', name: 'Jacob Jones', avatar: 'https://images.unsplash.com/photo-1535713875002-d1d0cf377fde?auto=format&fit=crop&w=64&h=64', email: 'jacob.jones@example.com', phone: '(209) 555-0190', assignedJobs: 9, status: 'Active', dateAdded: '2025-07-03' },
-    { id: 10, paId: 'PA-00132', name: 'Albert Flores', avatar: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=64&h=64', email: 'albert.flores@example.com', phone: '(210) 555-0111', assignedJobs: 1, status: 'Inactive', dateAdded: '2025-06-22' },
-    // pages 2-10 (87 more to reach 97)
-    ...Array.from({ length: 87 }, (_, i) => ({
-        id: i + 11,
-        paId: `PA-001${(i + 33).toString().padStart(2, '0')}`,
-        name: `Passenger Assistant ${i + 11}`,
-        avatar: `https://i.pravatar.cc/64?img=${(i % 70) + 1}`,
-        email: `pa${i + 11}@example.com`,
-        phone: `(300) 555-0${String(i).padStart(3, '0')}`,
-        assignedJobs: Math.floor(Math.random() * 12),
-        status: i % 3 === 0 ? 'Inactive' : 'Active',
-        dateAdded: '2025-01-01',
-    })),
-];
+/** DB `passenger_assistant.status` values (lowercase) */
+const PA_STATUS_DB = {
+    PENDING: 'pending',
+    APPROVE: 'approve',
+    REJECT: 'reject',
+    SUSPEND: 'suspend',
+    ACTIVE: 'active',
+};
+
+function normalizePaStatus(raw) {
+    if (raw == null || raw === '') return PA_STATUS_DB.PENDING;
+    const s = String(raw).trim().toLowerCase();
+    if (['pending', 'approve', 'reject', 'suspend', 'active'].includes(s)) return s;
+    if (s === 'approved') return PA_STATUS_DB.APPROVE;
+    if (s === 'rejected') return PA_STATUS_DB.REJECT;
+    if (s === 'suspended') return PA_STATUS_DB.SUSPEND;
+    return s;
+}
+
+function paStatusLabel(dbStatus) {
+    const s = normalizePaStatus(dbStatus);
+    const labels = {
+        [PA_STATUS_DB.PENDING]: 'Pending',
+        [PA_STATUS_DB.APPROVE]: 'Approved',
+        [PA_STATUS_DB.REJECT]: 'Rejected',
+        [PA_STATUS_DB.SUSPEND]: 'Suspended',
+        [PA_STATUS_DB.ACTIVE]: 'Active',
+    };
+    return labels[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Pending');
+}
 
 const STATUS_COLORS = {
-    Active: 'bg-green-50 text-green-700 border border-green-200',
-    Inactive: 'bg-gray-100 text-gray-500 border border-gray-200',
+    Pending: 'bg-amber-50 text-amber-800 border border-amber-200',
+    Approved: 'bg-green-50 text-green-700 border border-green-200',
+    Rejected: 'bg-gray-100 text-gray-600 border border-gray-200',
     Suspended: 'bg-red-50 text-red-600 border border-red-200',
+    Active: 'bg-blue-50 text-blue-700 border border-blue-200',
 };
 
 const ITEMS_PER_PAGE = 10;
 
 const PA_ACTION_MENU_H = 188;
 
-function getPARowActions(currentStatus) {
-    const s = (currentStatus || '').trim();
-    return ['Approve', 'Reject', 'Suspend', 'Active'].filter((action) => {
-        if (s === 'Active' && (action === 'Active' || action === 'Approve')) return false;
-        if (s === 'Inactive' && action === 'Reject') return false;
-        if (s === 'Suspended' && action === 'Suspend') return false;
-        return true;
-    });
+const PA_MENU_ACTIONS = ['Approve', 'Reject', 'Suspend', 'Active'];
+
+function actionToDbStatus(action) {
+    const map = {
+        Approve: PA_STATUS_DB.APPROVE,
+        Reject: PA_STATUS_DB.REJECT,
+        Suspend: PA_STATUS_DB.SUSPEND,
+        Active: PA_STATUS_DB.ACTIVE,
+    };
+    return map[action] ?? null;
 }
 
 // ─── Component ────────────────────────────────────────────────
 const PAListPage = () => {
     const navigate = useNavigate();
-    const [pas, setPas] = useState(allPAs);
+    const [pas, setPas] = useState([]);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('All Statuses');
     const [selectedRows, setSelectedRows] = useState([]);
@@ -70,12 +84,56 @@ const PAListPage = () => {
     const [isStatusOpen, setIsStatusOpen] = useState(false);
     const [isBulkOpen, setIsBulkOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+    const [statusUpdateError, setStatusUpdateError] = useState('');
+    const [isSavingStatus, setIsSavingStatus] = useState(false);
 
     const menuRef = useRef(null);
     const statusRef = useRef(null);
     const bulkRef = useRef(null);
 
-    const statuses = ['All Statuses', 'Active', 'Inactive', 'Suspended'];
+    const statuses = ['All Statuses', 'Pending', 'Approved', 'Rejected', 'Suspended', 'Active'];
+
+    useEffect(() => {
+        const loadPassengerAssistants = async () => {
+            setIsLoading(true);
+            setLoadError('');
+            setStatusUpdateError('');
+            try {
+                const {
+                    data: { session },
+                } = await supabase.auth.getSession();
+                const userId = session?.user?.id;
+                if (!userId) throw new Error('Not authenticated.');
+
+                const admin = await getCompanyAdminById(userId);
+                if (!admin?.company_id) throw new Error('No company linked to your account.');
+
+                const rows = await getPassengerAssistants({ companyId: admin.company_id });
+                const mapped = (rows || []).map((row) => ({
+                    id: row.id,
+                    paId: row.id,
+                    name: `${row.first_name || ''} ${row.surname || ''}`.trim() || 'N/A',
+                    avatar: row.profile_picture_url || `https://i.pravatar.cc/64?u=${row.id}`,
+                    email: row.email || '-',
+                    phone: row.phone || '-',
+                    assignedJobs: 0,
+                    statusDb: normalizePaStatus(row.status),
+                    dateAdded: row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : '-',
+                }));
+                setPas(mapped);
+            } catch (err) {
+                console.error('Failed loading passenger assistants:', err);
+                setLoadError(err?.message || 'Failed to load passenger assistants.');
+                setPas([]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadPassengerAssistants();
+    }, []);
 
     useEffect(() => {
         const handler = (e) => {
@@ -104,42 +162,64 @@ const PAListPage = () => {
 
     // Filter
     const filtered = pas.filter((p) => {
-        const matchSearch = p.name.toLowerCase().includes(search.toLowerCase()) ||
-            p.email.toLowerCase().includes(search.toLowerCase());
-        const matchStatus = statusFilter === 'All Statuses' || p.status === statusFilter;
+        const q = search.toLowerCase();
+        const matchSearch = p.name.toLowerCase().includes(q) ||
+            p.email.toLowerCase().includes(q) ||
+            p.phone.toLowerCase().includes(q) ||
+            p.paId.toLowerCase().includes(q);
+        const matchStatus = statusFilter === 'All Statuses' || paStatusLabel(p.statusDb) === statusFilter;
         return matchSearch && matchStatus;
     });
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
     const paginated = filtered.slice((currentPage - 1) * ITEMS_PER_PAGE, currentPage * ITEMS_PER_PAGE);
 
-    const paStatusFromAction = (action) => {
-        const statusMap = { Approve: 'Active', Active: 'Active', Reject: 'Inactive', Suspend: 'Suspended' };
-        return statusMap[action] ?? null;
+    useEffect(() => {
+        if (currentPage > totalPages) setCurrentPage(totalPages);
+    }, [currentPage, totalPages]);
+
+    const handleAction = async (action, paId) => {
+        const nextDb = actionToDbStatus(action);
+        if (!nextDb) return;
+        setStatusUpdateError('');
+        setIsSavingStatus(true);
+        try {
+            await updatePassengerAssistant(paId, { status: nextDb });
+            setPas((prev) => prev.map((p) => (p.id === paId ? { ...p, statusDb: nextDb } : p)));
+            setOpenMenu(null);
+        } catch (err) {
+            console.error('Failed to update PA status:', err);
+            setStatusUpdateError(err?.message || 'Failed to update status.');
+        } finally {
+            setIsSavingStatus(false);
+        }
     };
 
-    const handleAction = (action, paId) => {
-        const next = paStatusFromAction(action);
-        if (!next) return;
-        setPas((prev) => prev.map((p) => (p.id === paId ? { ...p, status: next } : p)));
-        setOpenMenu(null);
-    };
-
-    const handleBulkAction = (action) => {
-        const nextStatus = paStatusFromAction(action);
-        if (!nextStatus || selectedRows.length === 0) {
+    const handleBulkAction = async (action) => {
+        const nextDb = actionToDbStatus(action);
+        if (!nextDb || selectedRows.length === 0) {
             setIsBulkOpen(false);
             return;
         }
-        setPas((prev) =>
-            prev.map((p) => (selectedRows.includes(p.id) ? { ...p, status: nextStatus } : p))
-        );
-        setSelectedRows([]);
-        setIsBulkOpen(false);
+        setStatusUpdateError('');
+        setIsSavingStatus(true);
+        try {
+            await Promise.all(selectedRows.map((id) => updatePassengerAssistant(id, { status: nextDb })));
+            setPas((prev) =>
+                prev.map((p) => (selectedRows.includes(p.id) ? { ...p, statusDb: nextDb } : p))
+            );
+            setSelectedRows([]);
+            setIsBulkOpen(false);
+        } catch (err) {
+            console.error('Failed bulk PA status update:', err);
+            setStatusUpdateError(err?.message || 'Failed to update status.');
+        } finally {
+            setIsSavingStatus(false);
+        }
     };
 
     const menuPa = openMenu ? pas.find((p) => p.id === openMenu.paId) : null;
-    const paMenuActions = menuPa ? getPARowActions(menuPa.status) : [];
+    const paMenuActions = menuPa ? PA_MENU_ACTIONS : [];
 
     const toggleRow = (id) => setSelectedRows((prev) =>
         prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
@@ -194,7 +274,13 @@ const PAListPage = () => {
             <div className="bg-white border border-gray-100 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-visible">
 
                 {/* Toolbar */}
-                <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 border-b border-gray-100">
+                <div className="border-b border-gray-100">
+                    {statusUpdateError && (
+                        <div className="mx-4 mt-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                            {statusUpdateError}
+                        </div>
+                    )}
+                    <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3">
                     <div className="flex items-center gap-3">
                         {/* Search */}
                         <div className="relative">
@@ -239,10 +325,10 @@ const PAListPage = () => {
                         <div className="relative" ref={bulkRef}>
                             <button
                                 type="button"
-                                onClick={() => selectedRows.length > 0 && setIsBulkOpen((o) => !o)}
-                                disabled={selectedRows.length === 0}
+                                onClick={() => selectedRows.length > 0 && !isSavingStatus && setIsBulkOpen((o) => !o)}
+                                disabled={selectedRows.length === 0 || isSavingStatus}
                                 className={`px-3 py-2 rounded-lg text-sm font-medium transition-colors inline-flex items-center gap-1.5 ${
-                                    selectedRows.length === 0
+                                    selectedRows.length === 0 || isSavingStatus
                                         ? 'text-gray-400 bg-gray-50 cursor-not-allowed'
                                         : 'text-gray-700 bg-white border border-gray-200 hover:bg-gray-50'
                                 }`}
@@ -252,12 +338,13 @@ const PAListPage = () => {
                             </button>
                             {isBulkOpen && (
                                 <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-100 rounded-lg shadow-lg z-40 py-1">
-                                    {['Approve', 'Reject', 'Suspend', 'Active'].map((action) => (
+                                    {PA_MENU_ACTIONS.map((action) => (
                                         <button
                                             key={action}
                                             type="button"
                                             onClick={() => handleBulkAction(action)}
-                                            className={`block w-full text-left px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors ${
+                                            disabled={isSavingStatus}
+                                            className={`block w-full text-left px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-50 ${
                                                 action === 'Approve' ? 'text-green-700 hover:bg-green-50' : ''
                                             } ${
                                                 action === 'Reject' ? 'text-red-700 hover:bg-red-50' : ''
@@ -274,6 +361,7 @@ const PAListPage = () => {
                             )}
                         </div>
                     </div>
+                    </div>
                 </div>
 
                 {/* Table */}
@@ -289,6 +377,7 @@ const PAListPage = () => {
                                     </div>
                                 </th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">PA ID</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact Info</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Assigned Jobs</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
@@ -297,7 +386,7 @@ const PAListPage = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {paginated.length > 0 ? paginated.map((pa) => (
+                            {!isLoading && paginated.length > 0 ? paginated.map((pa) => (
                                 <tr key={pa.id} className="hover:bg-gray-50/60 transition-colors">
                                     {/* Checkbox */}
                                     <td className="px-4 py-3.5">
@@ -321,9 +410,13 @@ const PAListPage = () => {
                                             />
                                             <div>
                                                 <p className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors whitespace-nowrap">{pa.name}</p>
-                                                <p className="text-xs text-gray-400">{pa.paId}</p>
                                             </div>
                                         </div>
+                                    </td>
+
+                                    {/* PA ID */}
+                                    <td className="px-4 py-3.5 text-gray-500 whitespace-nowrap">
+                                        {pa.paId}
                                     </td>
 
                                     {/* Contact Info */}
@@ -339,8 +432,8 @@ const PAListPage = () => {
 
                                     {/* Status */}
                                     <td className="px-4 py-3.5">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_COLORS[pa.status] || 'bg-gray-100 text-gray-500'}`}>
-                                            {pa.status}
+                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_COLORS[paStatusLabel(pa.statusDb)] || 'bg-gray-100 text-gray-500'}`}>
+                                            {paStatusLabel(pa.statusDb)}
                                         </span>
                                     </td>
 
@@ -355,6 +448,7 @@ const PAListPage = () => {
                                                 data-pa-action-trigger
                                                 onClick={(e) => {
                                                     e.stopPropagation();
+                                                    if (isSavingStatus) return;
                                                     if (openMenu?.paId === pa.id) {
                                                         setOpenMenu(null);
                                                         return;
@@ -372,7 +466,7 @@ const PAListPage = () => {
                                                         left: Math.max(8, rect.right - width),
                                                     });
                                                 }}
-                                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+                                                className={`p-1.5 rounded-lg text-gray-500 transition-colors ${isSavingStatus ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
                                             >
                                                 <MdMoreVert size={18} />
                                             </button>
@@ -381,8 +475,12 @@ const PAListPage = () => {
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan="7" className="px-6 py-16 text-center text-gray-400 text-sm">
-                                        No passenger assistants found.
+                                    <td colSpan="8" className="px-6 py-16 text-center text-gray-400 text-sm">
+                                        {isLoading
+                                            ? 'Loading passenger assistants...'
+                                            : loadError
+                                                ? loadError
+                                                : 'No passenger assistants found.'}
                                     </td>
                                 </tr>
                             )}
@@ -451,8 +549,9 @@ const PAListPage = () => {
                                 key={action}
                                 type="button"
                                 role="menuitem"
+                                disabled={isSavingStatus}
                                 onClick={() => handleAction(action, openMenu.paId)}
-                                className={`block w-full text-left px-4 py-2.5 text-sm transition-colors first:rounded-t-lg last:rounded-b-lg hover:bg-gray-50
+                                className={`block w-full text-left px-4 py-2.5 text-sm transition-colors first:rounded-t-lg last:rounded-b-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50
                                     ${action === 'Approve' ? 'text-green-600 hover:bg-green-50' : ''}
                                     ${action === 'Reject' ? 'text-red-600 hover:bg-red-50' : ''}
                                     ${action === 'Suspend' ? 'text-orange-600 hover:bg-orange-50' : ''}

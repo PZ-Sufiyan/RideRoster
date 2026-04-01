@@ -1,6 +1,9 @@
 import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ToastStack } from '../../../../../utils/Toast';
+import { supabase } from '../../../../../lib/supabaseClient';
+import { getCompanyAdminById } from '../../../../../services/companyService';
+import { registerSubAdminWithAuthAndRecord } from '../../../../../services/subAdminRegistrationService';
 import { PERMISSIONS_CATEGORIES, allPermKeys } from './permissionsConstants';
 
 // ─── Reusable: Form Field ─────────────────────────────────────
@@ -35,6 +38,7 @@ const AddSubAdmin = () => {
     });
     const [toasts, setToasts] = useState([]);
     const [submitAttempted, setSubmitAttempted] = useState(false);
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     // permissions state: array of keys
     const [permissions, setPermissions] = useState([]);
@@ -84,12 +88,39 @@ const AddSubAdmin = () => {
         return true;
     };
 
-    const handleSubmit = () => {
+    const handleSubmit = async () => {
         if (!validateRequired()) {
             return;
         }
-        // Implementation
-        navigate('/admin/users/subadmins');
+        setIsSubmitting(true);
+        try {
+            const {
+                data: { session },
+            } = await supabase.auth.getSession();
+            const uid = session?.user?.id;
+            if (!uid) {
+                throw new Error('Not authenticated.');
+            }
+            const admin = await getCompanyAdminById(uid);
+            if (!admin?.company_id) {
+                throw new Error('No company linked to your account.');
+            }
+            await registerSubAdminWithAuthAndRecord({
+                companyId: admin.company_id,
+                fullName: form.fullName.trim(),
+                email: form.email.trim(),
+                phone: form.phone,
+                password: form.password,
+                permissionKeys: permissions,
+            });
+            pushToast('success', 'Sub-admin created successfully.');
+            navigate('/admin/users/subadmins');
+        } catch (e) {
+            const msg = e?.message || 'Could not create sub-admin.';
+            pushToast('error', msg);
+        } finally {
+            setIsSubmitting(false);
+        }
     };
 
     const showRequired = (v) => submitAttempted && !String(v || '').trim();
@@ -109,16 +140,20 @@ const AddSubAdmin = () => {
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
                     <button
+                        type="button"
+                        disabled={isSubmitting}
                         onClick={() => navigate('/admin/users/subadmins')}
-                        className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                        className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                     >
                         Cancel
                     </button>
                     <button
+                        type="button"
+                        disabled={isSubmitting}
                         onClick={handleSubmit}
-                        className="px-5 py-2.5 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm"
+                        className="px-5 py-2.5 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
                     >
-                        Create Sub-Admin
+                        {isSubmitting ? 'Creating…' : 'Create Sub-Admin'}
                     </button>
                 </div>
             </div>
