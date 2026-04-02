@@ -1,30 +1,45 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ToastStack } from '../../../../utils/Toast';
-import { 
-    MdArrowBack, 
-    MdCheck, 
-    MdKeyboardArrowDown, 
-    MdAdd, 
-    MdRemove, 
+import {
+    MdCheck,
+    MdKeyboardArrowDown,
+    MdAdd,
+    MdRemove,
     MdGpsFixed,
-    MdTrendingFlat
+    MdTrendingFlat,
 } from 'react-icons/md';
+import { loadJobDraft, saveJobDraft } from '../../../../services/jobService';
 
 const AddNewJobStep1 = () => {
     const navigate = useNavigate();
-    const [formData, setFormData] = useState({
-        jobName: '',
-        jobType: 'Regular Contract',
-        clientName: '',
-        internalId: ''
+    const [formData, setFormData] = useState(() => {
+        const d = loadJobDraft();
+        const s1 = d.step1 || {};
+        return {
+            jobName: s1.job_name ?? '',
+            jobType: s1.job_type || 'Regular Contract',
+            clientName: s1.client_school_name ?? '',
+            internalId: s1.internal_job_id ?? '',
+        };
     });
     const [toasts, setToasts] = useState([]);
     const [submitAttempted, setSubmitAttempted] = useState(false);
 
+    useEffect(() => {
+        saveJobDraft({
+            step1: {
+                job_name: formData.jobName,
+                job_type: formData.jobType,
+                client_school_name: formData.clientName,
+                internal_job_id: formData.internalId,
+            },
+        });
+    }, [formData]);
+
     const handleChange = (e) => {
         const { name, value } = e.target;
-        setFormData(prev => ({ ...prev, [name]: value }));
+        setFormData((prev) => ({ ...prev, [name]: value }));
     };
 
     const handleNext = () => {
@@ -42,6 +57,14 @@ const AddNewJobStep1 = () => {
             ]);
             return;
         }
+        saveJobDraft({
+            step1: {
+                job_name: formData.jobName.trim(),
+                job_type: formData.jobType.trim(),
+                client_school_name: formData.clientName.trim(),
+                internal_job_id: formData.internalId.trim(),
+            },
+        });
         navigate('/admin/jobs/create-step2');
     };
 
@@ -55,29 +78,27 @@ const AddNewJobStep1 = () => {
                 toasts={toasts}
                 onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
             />
-            {/* --- Header Section --- */}
             <div className="flex items-center gap-4 mb-8">
                 <div>
                     <h1 className="text-[22px] font-bold text-gray-900 leading-tight">Step 1 of 3: Route Information</h1>
+                    <p className="text-[13px] text-gray-500 mt-1">
+                        Details are saved in this browser session until you finish step 3 (nothing is written to the database yet).
+                    </p>
                 </div>
             </div>
 
-            {/* --- Stepper Section --- */}
             <div className="relative mb-12 px-10">
-                 {/* Connecting Lines */}
-                 <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 z-0">
+                <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 z-0">
                     <div className="h-full w-1/2"></div>
                 </div>
                 <div className="flex items-center justify-between relative ">
-                    {/* Step 1 */}
                     <div className="flex flex-col items-center gap-2">
                         <div className="w-10 h-10 rounded-full bg-[#004D6D] flex items-center justify-center text-white ring-4 ring-[#004D6D]/10">
-                           1
+                            1
                         </div>
                         <span className="text-[13px] font-bold text-[#004D6D]">Route Info</span>
                     </div>
 
-                    {/* Step 2 */}
                     <div className="flex flex-col items-center gap-2">
                         <div className="w-10 h-10 rounded-full border-2 border-[#004D6D] bg-white flex items-center justify-center text-[#004D6D] font-bold">
                             2
@@ -85,7 +106,6 @@ const AddNewJobStep1 = () => {
                         <span className="text-[13px] font-bold text-[#004D6D]">Pickups & Drop-offs</span>
                     </div>
 
-                    {/* Step 3 */}
                     <div className="flex flex-col items-center gap-2">
                         <div className="w-10 h-10 rounded-full border-2 border-gray-200 bg-white flex items-center justify-center text-gray-400 font-bold">
                             3
@@ -93,14 +113,9 @@ const AddNewJobStep1 = () => {
                         <span className="text-[13px] font-medium text-gray-400">Schedule & Pay</span>
                     </div>
                 </div>
-
-               
             </div>
 
-            {/* --- Main Content Layout --- */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-                
-                {/* --- Left Column: Route Details Card --- */}
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm p-6 sm:p-8 h-full">
                     <div className="mb-8">
                         <h2 className="text-[18px] font-bold text-gray-900">Route Details</h2>
@@ -108,12 +123,11 @@ const AddNewJobStep1 = () => {
                     </div>
 
                     <div className="space-y-6">
-                        {/* Job Name */}
                         <div className="space-y-2">
                             <label className="text-[13px] font-bold text-gray-700">
                                 Job Name / Route Title <span className="text-red-500">*</span>
                             </label>
-                            <input 
+                            <input
                                 type="text"
                                 name="jobName"
                                 value={formData.jobName}
@@ -125,16 +139,17 @@ const AddNewJobStep1 = () => {
                                         : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/20 focus:border-[#004D6D]'
                                 }`}
                             />
-                            {submitAttempted && !formData.jobName.trim() && <p className="text-[12px] font-semibold text-red-600">Job Name / Route Title is required.</p>}
+                            {submitAttempted && !formData.jobName.trim() && (
+                                <p className="text-[12px] font-semibold text-red-600">Job Name / Route Title is required.</p>
+                            )}
                         </div>
 
-                        {/* Job Type */}
                         <div className="space-y-2">
                             <label className="text-[13px] font-bold text-gray-700">
                                 Job Type <span className="text-red-500">*</span>
                             </label>
                             <div className="relative">
-                                <select 
+                                <select
                                     name="jobType"
                                     value={formData.jobType}
                                     onChange={handleChange}
@@ -150,15 +165,16 @@ const AddNewJobStep1 = () => {
                                 </select>
                                 <MdKeyboardArrowDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
                             </div>
-                            {submitAttempted && !formData.jobType.trim() && <p className="text-[12px] font-semibold text-red-600">Job Type is required.</p>}
+                            {submitAttempted && !formData.jobType.trim() && (
+                                <p className="text-[12px] font-semibold text-red-600">Job Type is required.</p>
+                            )}
                         </div>
 
-                        {/* Client / School Name */}
                         <div className="space-y-2">
                             <label className="text-[13px] font-bold text-gray-700">
                                 Client / School Name <span className="text-red-500">*</span>
                             </label>
-                            <input 
+                            <input
                                 type="text"
                                 name="clientName"
                                 value={formData.clientName}
@@ -170,15 +186,14 @@ const AddNewJobStep1 = () => {
                                         : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/20 focus:border-[#004D6D]'
                                 }`}
                             />
-                            {submitAttempted && !formData.clientName.trim() && <p className="text-[12px] font-semibold text-red-600">Client / School Name is required.</p>}
+                            {submitAttempted && !formData.clientName.trim() && (
+                                <p className="text-[12px] font-semibold text-red-600">Client / School Name is required.</p>
+                            )}
                         </div>
 
-                        {/* Internal Job ID */}
                         <div className="space-y-2">
-                            <label className="text-[13px] font-bold text-gray-700">
-                                Internal Job ID (Optional)
-                            </label>
-                            <input 
+                            <label className="text-[13px] font-bold text-gray-700">Internal Job ID (Optional)</label>
+                            <input
                                 type="text"
                                 name="internalId"
                                 value={formData.internalId}
@@ -190,20 +205,16 @@ const AddNewJobStep1 = () => {
                     </div>
                 </div>
 
-                {/* --- Right Column: Map Preview --- */}
                 <div className="relative rounded-2xl border border-gray-100 shadow-sm overflow-hidden h-[500px] lg:h-full min-h-[500px]">
-                    {/* Placeholder for Map - Using a styled div to mimic map appearance */}
-                    <div 
+                    <div
                         className="absolute inset-0 bg-[#E5E7EB]"
                         style={{
-                            backgroundImage: `url('https://api.mapbox.com/styles/v1/mapbox/light-v10/static/0,0,1,0/1280x1280?access_token=pk.eyJ1IjoibGFicmFkb3I5OSIsImEiOiJjbGlxa3R3Y2UwMDNjM2RwYmFqbXZ3ZTh1In0.dGstfI9h-mRj-v_T6YjTaw')`, // Static map placeholder
+                            backgroundImage: `url('https://api.mapbox.com/styles/v1/mapbox/light-v10/static/0,0,1,0/1280x1280?access_token=pk.eyJ1IjoibGFicmFkb3I5OSIsImEiOiJjbGlxa3R3Y2UwMDNjM2RwYmFqbXZ3ZTh1In0.dGstfI9h-mRj-v_T6YjTaw')`,
                             backgroundSize: 'cover',
-                            backgroundPosition: 'center'
+                            backgroundPosition: 'center',
                         }}
                     >
-                        {/* Map Overlay Pins */}
                         <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px]">
-                            {/* Mimicking the pins from screenshot */}
                             {[
                                 { top: '30%', left: '45%' },
                                 { top: '35%', left: '48%' },
@@ -219,8 +230,8 @@ const AddNewJobStep1 = () => {
                                 { top: '52%', left: '62%' },
                                 { top: '48%', left: '35%' },
                             ].map((pin, i) => (
-                                <div 
-                                    key={i} 
+                                <div
+                                    key={i}
                                     className="absolute transform -translate-x-1/2 -translate-y-full"
                                     style={{ top: pin.top, left: pin.left }}
                                 >
@@ -235,32 +246,38 @@ const AddNewJobStep1 = () => {
                         </div>
                     </div>
 
-                    {/* Map Controls */}
                     <div className="absolute right-4 bottom-4 flex flex-col gap-2">
-                        <button className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95">
+                        <button
+                            type="button"
+                            className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"
+                        >
                             <MdAdd size={20} />
                         </button>
-                        <button className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95">
+                        <button
+                            type="button"
+                            className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"
+                        >
                             <MdGpsFixed size={20} />
                         </button>
-                        <button className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95">
+                        <button
+                            type="button"
+                            className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"
+                        >
                             <MdRemove size={20} />
                         </button>
                     </div>
                 </div>
-
             </div>
 
-            {/* --- Sticky Bottom Action Bar --- */}
             <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-between z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
-                <button 
+                <button
                     onClick={handleCancel}
                     className="text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors"
                 >
                     Cancel
                 </button>
                 <div className="flex items-center gap-4">
-                    <button 
+                    <button
                         onClick={handleNext}
                         className="flex items-center gap-2 px-8 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/20 active:scale-95"
                     >
