@@ -12,6 +12,9 @@ import {
 } from 'react-icons/md';
 import { HiExclamationCircle } from 'react-icons/hi';
 import { ToastStack } from '../../../../../utils/Toast';
+import { supabase } from '../../../../../lib/supabaseClient';
+import { getCompanyAdminById } from '../../../../../services/companyService';
+import { registerPassengerWithAuthAndRecord } from '../../../../../services/passengerService';
 
 const AddNewPassenger = () => {
     const navigate = useNavigate();
@@ -20,6 +23,8 @@ const AddNewPassenger = () => {
         firstName: '',
         surname: '',
         email: '',
+        password: '',
+        confirmPassword: '',
         contact1: '',
         contact2: '',
         homeAddress: '',
@@ -33,6 +38,7 @@ const AddNewPassenger = () => {
     });
     const [toasts, setToasts] = useState([]);
     const [submitAttempted, setSubmitAttempted] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
 
     const handleChange = (field, value) =>
         setForm((prev) => ({ ...prev, [field]: value }));
@@ -57,6 +63,9 @@ const AddNewPassenger = () => {
     const requiredKeys = [
         'firstName',
         'surname',
+        'email',
+        'password',
+        'confirmPassword',
         'contact1',
         'homeAddress',
         'homePostcode',
@@ -65,6 +74,28 @@ const AddNewPassenger = () => {
         'schoolPostcode',
         'returnTime',
     ];
+
+    const clearForm = () => {
+        setForm({
+          firstName: '',
+          surname: '',
+          email: '',
+          contact1: '',
+          contact2: '',
+          homeAddress: '',
+          homePostcode: 'SW1A 1AA',
+          pickupTime: '',
+          schoolAddress: '',
+          schoolPostcode: 'E1 6AN',
+          returnTime: '',
+          wheelchair: 'no',
+          notes: '',
+          password: '',
+          confirmPassword: '',
+        });
+      
+        setSubmitAttempted(false);
+    };
 
     const isMissing = (key) => !String(form[key] || '').trim();
     const showRequiredError = (key) => submitAttempted && isMissing(key);
@@ -90,15 +121,54 @@ const AddNewPassenger = () => {
                 : 'border-gray-200 focus-within:ring-[#004D6D]'
         }`;
 
-    const handleSave = () => {
+    const validateForm = () => {
+        if (form.password !== form.confirmPassword) {
+            pushToast('warning', 'Passwords do not match.');
+            return false;
+        }
+        
         setSubmitAttempted(true);
+        
         const missing = requiredKeys.some((key) => isMissing(key));
         if (missing) {
             pushToast('warning', 'Please fill in all required fields before saving passenger.');
-            return;
+            return false;
         }
+        
         pushToast('success', 'Passenger details are valid and ready to save.');
-        navigate('/admin/users/passengers');
+        return true;
+    };
+
+    const savePassenger = async (navigateAfterSave) => {
+        if (!validateForm()) return;
+
+        setSubmitting(true);
+        try {
+            const {
+                data: { session },
+            } = await supabase.auth.getSession();
+            const userId = session?.user?.id;
+            if (!userId) throw new Error('Not authenticated.');
+
+            const admin = await getCompanyAdminById(userId);
+            if (!admin?.company_id) throw new Error('No company linked to your account.');
+
+            await registerPassengerWithAuthAndRecord({
+                companyId: admin.company_id,
+                form,
+            });
+
+            pushToast('success', 'Passenger registered successfully.');
+            if (navigateAfterSave) {
+                navigate('/admin/users/passengers');
+                return;
+            }
+            clearForm();
+        } catch (err) {
+            pushToast('error', err?.message || 'Could not register passenger.');
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     return (
@@ -158,7 +228,7 @@ const AddNewPassenger = () => {
 
                         {/* Email */}
                         <div className="space-y-1.5 mb-4">
-                            <label className="text-[12px] font-semibold text-gray-700">Email ID</label>
+                            <label className="text-[12px] font-semibold text-gray-700">Email ID<span className="text-red-500">*</span></label>
                             <input
                                 type="email"
                                 placeholder="passenger@example.com"
@@ -166,6 +236,48 @@ const AddNewPassenger = () => {
                                 onChange={(e) => handleChange('email', e.target.value)}
                                 className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
                             />
+                            {showRequiredError('email') && <p className="text-[11px] font-semibold text-red-600">Email ID is required.</p>}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        {/* Password */}
+                        <div className="space-y-1.5">
+                            <label className="text-[12px] font-semibold text-gray-700">
+                            Password<span className="text-red-500">*</span>
+                            </label>
+                            <input
+                                type="password"
+                                placeholder="Enter password"
+                                value={form.password}
+                                onChange={(e) => handleChange('password', e.target.value)}
+                                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
+                            />
+                            {showRequiredError('password') && <p className="text-[11px] font-semibold text-red-600">Password is required.</p>}
+                        </div>
+
+                        {/* Confirm Password */}
+                        <div className="space-y-1.5">
+                            <label className="text-[12px] font-semibold text-gray-700">
+                            Confirm Password<span className="text-red-500">*</span>
+                            </label>
+                            <input
+                            type="password"
+                            placeholder="Confirm password"
+                            value={form.confirmPassword}
+                            onChange={(e) => handleChange('confirmPassword', e.target.value)}
+                            className={`w-full px-3 py-2.5 border rounded-lg text-[13px] focus:outline-none focus:ring-1 ${
+                                form.confirmPassword && form.password !== form.confirmPassword
+                                ? 'border-red-400 text-red-700 focus:ring-red-500'
+                                : 'border-gray-200 focus:ring-[#004D6D]'
+                            }`}
+                            />
+
+                            {form.confirmPassword && form.password !== form.confirmPassword && (
+                            <p className="text-[11px] font-semibold text-red-600">
+                                Passwords do not match
+                            </p>
+                            )}
+                        </div>
                         </div>
 
                         {/* Contact Number 1 + 2 */}
@@ -475,16 +587,20 @@ const AddNewPassenger = () => {
                         Cancel
                     </button>
                     <button
-                        onClick={handleSave}
+                        type="button"
+                        onClick={() => savePassenger(false)}
+                        disabled={submitting}
                         className="px-5 py-2 border border-gray-300 rounded-lg text-[13px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all"
                     >
-                        Save &amp; Add Another
+                        {submitting ? 'Saving...' : 'Save &amp; Add Another'}
                     </button>
                     <button
-                        onClick={handleSave}
-                        className="px-5 py-2 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm opacity-80"
-                    >
-                        Save Passenger
+                        type="button"
+                        onClick={() => savePassenger(true)}
+                        disabled={submitting}
+                        className="px-5 py-2 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm opacity-80 disabled:opacity-60 disabled:cursor-not-allowed"
+                        >
+                        {submitting ? 'Saving...' : 'Save Passenger'}
                     </button>
                 </div>
             </div>

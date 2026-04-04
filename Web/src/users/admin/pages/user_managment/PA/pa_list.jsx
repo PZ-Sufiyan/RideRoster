@@ -376,8 +376,8 @@ const PAListPage = () => {
                                             : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                     </div>
                                 </th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">PA ID</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact Info</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Assigned Jobs</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
@@ -397,6 +397,11 @@ const PAListPage = () => {
                                         </div>
                                     </td>
 
+                                    {/* PA ID */}
+                                    <td className="px-4 py-3.5 text-gray-500 whitespace-nowrap">
+                                        {pa.paId}
+                                    </td>
+
                                     {/* Name + PA ID */}
                                     <td className="px-4 py-3.5">
                                         <div
@@ -414,10 +419,7 @@ const PAListPage = () => {
                                         </div>
                                     </td>
 
-                                    {/* PA ID */}
-                                    <td className="px-4 py-3.5 text-gray-500 whitespace-nowrap">
-                                        {pa.paId}
-                                    </td>
+                                    
 
                                     {/* Contact Info */}
                                     <td className="px-4 py-3.5">

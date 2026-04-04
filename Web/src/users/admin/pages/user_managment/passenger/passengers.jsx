@@ -13,76 +13,61 @@ import {
     MdNotificationsNone,
     MdAccessible,
 } from 'react-icons/md';
-
-/* ── Static data ─────────────────────────────────────────── */
-const allPassengers = [
-    {
-        id: 1,
-        name: 'Sarah Jenkins',
-        avatar: 'https://i.pravatar.cc/150?u=sarah-jenkins',
-        contact: '07700 900123',
-        postcode: 'NW1 5BT',
-        school: "St. Mary's Primary",
-        time: '08:15 AM',
-        wheelchair: true,
-        route: 'Route A-12',
-        status: 'Active',
-    },
-    {
-        id: 2,
-        name: 'James Wilson',
-        avatar: 'https://i.pravatar.cc/150?u=james-wilson',
-        contact: '07700 900456',
-        postcode: 'SE1 2TY',
-        school: 'Bridge Academy',
-        time: '07:45 AM',
-        wheelchair: false,
-        route: 'Route B-04',
-        status: 'Active',
-    },
-    {
-        id: 3,
-        name: 'Emily Davis',
-        avatar: 'https://i.pravatar.cc/150?u=emily-davis',
-        contact: '07700 900789',
-        postcode: 'E1 6AN',
-        school: 'Central High',
-        time: '08:30 AM',
-        wheelchair: false,
-        route: null, // Unassigned
-        status: 'Pending',
-    },
-    {
-        id: 4,
-        name: 'Thomas Brown',
-        avatar: 'https://i.pravatar.cc/150?u=thomas-brown',
-        contact: '07700 900111',
-        postcode: 'SW4 0AL',
-        school: 'Green Valley',
-        time: '08:00 AM',
-        wheelchair: true,
-        route: 'Route C-21',
-        status: 'Inactive',
-    },
-];
+import { supabase } from '../../../../../lib/supabaseClient';
+import { getCompanyAdminById } from '../../../../../services/companyService';
+import { getPassengers, updatePassenger } from '../../../../../services/passengerService';
 
 const STATUS_STYLES = {
-    Active:   'text-green-600 font-bold text-[11px] uppercase tracking-wide',
-    Pending:  'text-yellow-500 font-bold text-[11px] uppercase tracking-wide',
-    Inactive: 'text-gray-400 font-bold text-[11px] uppercase tracking-wide',
+    Active: 'text-blue-600 font-bold text-[11px] uppercase tracking-wide',
+    Approved: 'text-green-600 font-bold text-[11px] uppercase tracking-wide',
+    Pending: 'text-yellow-500 font-bold text-[11px] uppercase tracking-wide',
+    Rejected: 'text-gray-500 font-bold text-[11px] uppercase tracking-wide',
     Suspended: 'text-orange-600 font-bold text-[11px] uppercase tracking-wide',
 };
 
 const PASSENGER_ACTION_MENU_H = 188;
+const PASSENGER_MENU_ACTIONS = ['Approve', 'Reject', 'Suspend', 'Active'];
 
-function getPassengerRowActions(currentStatus) {
-    const s = (currentStatus || '').trim();
-    return ['Approve', 'Reject', 'Suspend', 'Active'].filter((action) => {
-        if (s === 'Active' && (action === 'Active' || action === 'Approve')) return false;
-        if (s === 'Inactive' && action === 'Reject') return false;
-        if (s === 'Suspended' && action === 'Suspend') return false;
-        return true;
-    });
+function normalizePassengerStatus(raw) {
+    if (raw == null || raw === '') return 'pending';
+    const s = String(raw).trim().toLowerCase();
+    if (['pending', 'approve', 'reject', 'suspend', 'active'].includes(s)) return s;
+    if (s === 'approved') return 'approve';
+    if (s === 'rejected') return 'reject';
+    if (s === 'suspended') return 'suspend';
+    return s;
+}
+
+function passengerStatusLabel(dbStatus) {
+    const s = normalizePassengerStatus(dbStatus);
+    const labels = {
+        pending: 'Pending',
+        approve: 'Approved',
+        reject: 'Rejected',
+        suspend: 'Suspended',
+        active: 'Active',
+    };
+    return labels[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Pending');
+}
+
+function actionToPassengerDbStatus(action) {
+    const map = {
+        Approve: 'approve',
+        Reject: 'reject',
+        Suspend: 'suspend',
+        Active: 'active',
+    };
+    return map[action] ?? null;
+}
+
+function formatTime12h(timeValue) {
+    if (!timeValue) return '-';
+    const [h, m] = String(timeValue).split(':');
+    const hourNum = Number(h);
+    if (Number.isNaN(hourNum)) return String(timeValue);
+    const meridian = hourNum >= 12 ? 'PM' : 'AM';
+    const hour12 = hourNum % 12 || 12;
+    return `${String(hour12).padStart(2, '0')}:${m ?? '00'} ${meridian}`;
 }
 
 /* ── Tiny dropdown helper (top-level component to satisfy hooks lint) ── */
@@ -116,7 +101,7 @@ const Dropdown = ({ label, options, value, open, setOpen, onChange }) => (
 const PassengersPage = () => {
     const navigate = useNavigate();
 
-    const [passengers, setPassengers]       = useState(allPassengers);
+    const [passengers, setPassengers] = useState([]);
     const [search, setSearch]               = useState('');
     const [pickupFilter, setPickupFilter]   = useState('All Pickups');
     const [wcFilter, setWcFilter]           = useState('All');
@@ -131,8 +116,55 @@ const PassengersPage = () => {
     const [pickupOpen, setPickupOpen]   = useState(false);
     const [wcOpen, setWcOpen]           = useState(false);
     const [statusOpen, setStatusOpen]   = useState(false);
+    const [isLoading, setIsLoading] = useState(true);
+    const [loadError, setLoadError] = useState('');
+    const [statusUpdateError, setStatusUpdateError] = useState('');
+    const [isSavingStatus, setIsSavingStatus] = useState(false);
 
     const menuRef = useRef(null);
+
+    useEffect(() => {
+        const loadPassengers = async () => {
+            setIsLoading(true);
+            setLoadError('');
+            setStatusUpdateError('');
+            try {
+                const {
+                    data: { session },
+                } = await supabase.auth.getSession();
+                const userId = session?.user?.id;
+                if (!userId) throw new Error('Not authenticated.');
+
+                const admin = await getCompanyAdminById(userId);
+                if (!admin?.company_id) throw new Error('No company linked to your account.');
+
+                const rows = await getPassengers({ companyId: admin.company_id });
+                const mapped = (rows || []).map((row) => ({
+                    id: row.id,
+                    passengerId: row.id,
+                    name: `${row.first_name || ''} ${row.surname || ''}`.trim() || 'N/A',
+                    avatar: `https://i.pravatar.cc/150?u=${row.id}`,
+                    contact: row.contact_number_1 || '-',
+                    pickupPostcode: row.pickup_postal_code || '-',
+                    pickupAddress: row.pickup_address || '-',
+                    dropoffPostcode: row.dropoff_postal_code || '-',
+                    dropoffAddress: row.dropoff_address || '-',
+                    time: formatTime12h(row.pickup_time),
+                    wheelchair: Boolean(row.wheelchair_required),
+                    statusDb: normalizePassengerStatus(row.status),
+                }));
+                setPassengers(mapped);
+            } catch (err) {
+                console.error('Failed loading passengers:', err);
+                setLoadError(err?.message || 'Failed to load passengers.');
+                setPassengers([]);
+            } finally {
+                setIsLoading(false);
+            }
+        };
+
+        loadPassengers();
+    }, []);
 
     useEffect(() => {
         const handler = (e) => {
@@ -172,7 +204,8 @@ const PassengersPage = () => {
     const filtered = passengers.filter((p) => {
         const matchSearch =
             p.name.toLowerCase().includes(search.toLowerCase()) ||
-            p.postcode.toLowerCase().includes(search.toLowerCase());
+            p.pickupPostcode.toLowerCase().includes(search.toLowerCase()) ||
+            p.dropoffPostcode.toLowerCase().includes(search.toLowerCase());
         const matchPickup =
             pickupFilter === 'All Pickups' || pickupSlot(p.time) === pickupFilter;
         const matchWc =
@@ -180,7 +213,7 @@ const PassengersPage = () => {
             (wcFilter === 'Yes' && p.wheelchair) ||
             (wcFilter === 'No' && !p.wheelchair);
         const matchStatus =
-            statusFilter === 'All' || p.status === statusFilter;
+            statusFilter === 'All' || passengerStatusLabel(p.statusDb) === statusFilter;
         return matchSearch && matchPickup && matchWc && matchStatus;
     });
 
@@ -211,17 +244,28 @@ const PassengersPage = () => {
     };
 
     const handlePassengerStatusAction = (action, passengerId) => {
-        const statusMap = { Approve: 'Active', Reject: 'Inactive', Suspend: 'Suspended', Active: 'Active' };
-        const next = statusMap[action];
-        if (!next) return;
-        setPassengers((prev) =>
-            prev.map((row) => (row.id === passengerId ? { ...row, status: next } : row))
-        );
-        setOpenMenu(null);
+        const nextDb = actionToPassengerDbStatus(action);
+        if (!nextDb) return;
+        setStatusUpdateError('');
+        setIsSavingStatus(true);
+        updatePassenger(passengerId, { status: nextDb })
+            .then(() => {
+                setPassengers((prev) =>
+                    prev.map((row) => (row.id === passengerId ? { ...row, statusDb: nextDb } : row))
+                );
+                setOpenMenu(null);
+            })
+            .catch((err) => {
+                console.error('Failed to update passenger status:', err);
+                setStatusUpdateError(err?.message || 'Failed to update status.');
+            })
+            .finally(() => {
+                setIsSavingStatus(false);
+            });
     };
 
     const menuPassenger = openMenu ? passengers.find((x) => x.id === openMenu.passengerId) : null;
-    const passengerMenuActions = menuPassenger ? getPassengerRowActions(menuPassenger.status) : [];
+    const passengerMenuActions = menuPassenger ? PASSENGER_MENU_ACTIONS : [];
 
     /* ── Reset ── */
     const handleReset = () => {
@@ -290,7 +334,7 @@ const PassengersPage = () => {
                 {/* Status */}
                 <Dropdown
                     label="Status"
-                    options={['All', 'Active', 'Pending', 'Inactive', 'Suspended']}
+                    options={['All', 'Active', 'Approved', 'Pending', 'Rejected', 'Suspended']}
                     value={statusFilter}
                     open={statusOpen}
                     setOpen={setStatusOpen}
@@ -348,6 +392,11 @@ const PassengersPage = () => {
 
             {/* ── Table ── */}
             <div className="bg-white rounded-xl border border-gray-100 shadow-sm overflow-visible">
+                {statusUpdateError && (
+                    <div className="mx-4 mt-3 text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                        {statusUpdateError}
+                    </div>
+                )}
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-[13px]">
                         <thead className="border-b border-gray-100">
@@ -360,12 +409,13 @@ const PassengersPage = () => {
                                         }
                                     </div>
                                 </th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Passenger ID</th>
                                 <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Passenger Name</th>
                                 <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pickup/Drop-off</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pickup</th>
                                 <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Time</th>
                                 <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">W/C</th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pickup/Drop-off</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Drop-off</th>
                                 <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
                                 <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                             </tr>
@@ -383,6 +433,9 @@ const PassengersPage = () => {
                                             }
                                         </div>
                                     </td>
+
+                                    {/* Passenger ID */}
+                                    <td className="px-4 py-4 text-gray-500 whitespace-nowrap">{p.passengerId}</td>
 
                                     {/* Name + Avatar */}
                                     <td className="px-4 py-4">
@@ -406,8 +459,8 @@ const PassengersPage = () => {
 
                                     {/* Pickup/Drop-off address */}
                                     <td className="px-4 py-4">
-                                        <div className="font-medium text-gray-800">{p.postcode}</div>
-                                        <div className="text-[11px] text-gray-400 mt-0.5">{p.school}</div>
+                                        <div className="font-medium text-gray-800">{p.pickupPostcode}</div>
+                                        <div className="text-[11px] text-gray-400 mt-0.5">{p.pickupAddress}</div>
                                     </td>
 
                                     {/* Time */}
@@ -421,18 +474,16 @@ const PassengersPage = () => {
                                         }
                                     </td>
 
-                                    {/* Route */}
+                                    {/* Drop-off */}
                                     <td className="px-4 py-4">
-                                        {p.route
-                                            ? <span className="text-gray-700 font-medium">{p.route}</span>
-                                            : <span className="text-gray-400 italic">Unassigned</span>
-                                        }
+                                        <div className="font-medium text-gray-800">{p.dropoffPostcode}</div>
+                                        <div className="text-[11px] text-gray-400 mt-0.5">{p.dropoffAddress}</div>
                                     </td>
 
                                     {/* Status */}
                                     <td className="px-4 py-4">
-                                        <span className={STATUS_STYLES[p.status] || 'text-gray-500 text-[11px] font-bold uppercase'}>
-                                            {p.status.toUpperCase()}
+                                        <span className={STATUS_STYLES[passengerStatusLabel(p.statusDb)] || 'text-gray-500 text-[11px] font-bold uppercase'}>
+                                            {passengerStatusLabel(p.statusDb).toUpperCase()}
                                         </span>
                                     </td>
 
@@ -444,6 +495,7 @@ const PassengersPage = () => {
                                                 data-passenger-action-trigger
                                                 onClick={(e) => {
                                                     e.stopPropagation();
+                                                    if (isSavingStatus) return;
                                                     if (openMenu?.passengerId === p.id) {
                                                         setOpenMenu(null);
                                                         return;
@@ -461,7 +513,7 @@ const PassengersPage = () => {
                                                         left: Math.max(8, rect.right - width),
                                                     });
                                                 }}
-                                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors"
+                                                className={`p-1.5 rounded-lg text-gray-500 transition-colors ${isSavingStatus ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
                                             >
                                                 <MdMoreVert size={18} />
                                             </button>
@@ -470,8 +522,10 @@ const PassengersPage = () => {
                                 </tr>
                             )) : (
                                 <tr>
-                                    <td colSpan="9" className="px-6 py-16 text-center text-gray-400 text-sm">
-                                        No passengers found.
+                                    <td colSpan="10" className="px-6 py-16 text-center text-gray-400 text-sm">
+                                        {isLoading
+                                            ? 'Loading passengers...'
+                                            : loadError || 'No passengers found.'}
                                     </td>
                                 </tr>
                             )}
@@ -532,8 +586,9 @@ const PassengersPage = () => {
                                 key={action}
                                 type="button"
                                 role="menuitem"
+                                disabled={isSavingStatus}
                                 onClick={() => handlePassengerStatusAction(action, openMenu.passengerId)}
-                                className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors first:rounded-t-lg last:rounded-b-lg hover:bg-gray-50
+                                className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors first:rounded-t-lg last:rounded-b-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
                                     ${action === 'Approve' ? 'text-green-600 hover:bg-green-50' : ''}
                                     ${action === 'Reject' ? 'text-red-600 hover:bg-red-50' : ''}
                                     ${action === 'Suspend' ? 'text-orange-600 hover:bg-orange-50' : ''}
