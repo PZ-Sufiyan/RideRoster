@@ -17,6 +17,7 @@ import {
     updateDriver,
     driverStatusFromAction,
 } from '../../../../../services/driverVehicleService';
+import { ShimmerBlock } from '../../../../../utils/Shimmer';
 
 const STATUS_COLORS = {
     active: 'bg-green-50 text-green-700 border border-green-200',
@@ -240,6 +241,7 @@ const DriversPage = () => {
 
     const menuDriver = openMenu ? drivers.find((d) => d.id === openMenu.driverId) : null;
     const driverMenuActions = menuDriver ? getDriverRowActions(menuDriver.status) : [];
+    const shimmerRows = Array.from({ length: 5 });
 
     return (
         <div className="space-y-4">
@@ -325,7 +327,6 @@ const DriversPage = () => {
                                         )}
                                     </div>
                                 </th>
-                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Driver ID</th>
                                 <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Driver Name</th>
                                 <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
                                 <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">License No.</th>
@@ -334,13 +335,42 @@ const DriversPage = () => {
                                 <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-gray-50" aria-busy={loading} aria-label={loading ? 'Loading drivers' : undefined}>
                             {loading ? (
-                                <tr>
-                                    <td colSpan="8" className="px-6 py-16 text-center text-gray-500 text-sm">
-                                        Loading drivers…
-                                    </td>
-                                </tr>
+                                shimmerRows.map((_, index) => (
+                                        <tr key={`driver-skeleton-${index}`}>
+                                            <td className="px-4 py-3.5">
+                                                <ShimmerBlock className="w-5 h-5 rounded" rounded="rounded" />
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                <ShimmerBlock className="h-3.5 w-36 rounded-md" />
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                <div className="flex items-center gap-3">
+                                                    <ShimmerBlock className="w-9 h-9 shrink-0" rounded="rounded-full" />
+                                                    <div className="space-y-2 min-w-0">
+                                                        <ShimmerBlock className="h-3.5 w-28 max-w-full rounded-md" />
+                                                        <ShimmerBlock className="h-3 w-20 rounded-md" />
+                                                    </div>
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                <ShimmerBlock className="h-3.5 w-28 rounded-md" />
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                <ShimmerBlock className="h-3.5 w-24 rounded-md" />
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                <ShimmerBlock className="h-6 w-20 rounded-full" rounded="rounded-full" />
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                <ShimmerBlock className="h-3.5 w-24 rounded-md" />
+                                            </td>
+                                            <td className="px-4 py-3.5 text-right">
+                                                <ShimmerBlock className="ml-auto h-8 w-8 rounded-lg" />
+                                            </td>
+                                        </tr>
+                                ))
                             ) : paginated.length > 0 ? paginated.map((driver) => {
                                 const displayName = driverDisplayName(driver);
                                 const statusLabel = formatStatusLabel(driver.status);
@@ -356,17 +386,6 @@ const DriversPage = () => {
                                             )}
                                         </div>
                                     </td>
-
-                                    {/* Driver ID */}
-                                    <td className="px-4 py-3.5 max-w-[220px]">
-                                        <span
-                                            className="font-mono text-xs text-gray-600 break-all"
-                                            title={driver.id}
-                                        >
-                                            {driver.id}
-                                        </span>
-                                    </td>
-
                                     {/* Name + Avatar */}
                                     <td className="px-4 py-3.5">
                                         <div
@@ -449,7 +468,7 @@ const DriversPage = () => {
                                 <button
                                     key={page}
                                     onClick={() => handlePageChange(page)}
-                                    className={`min-w-[32px] h-8 flex items-center justify-center rounded-lg text-xs font-medium transition-colors border
+                                    className={`min-w-8 h-8 flex items-center justify-center rounded-lg text-xs font-medium transition-colors border
                                         ${currentPage === page
                                             ? 'bg-[#005580] text-white border-[#005580] shadow-sm'
                                             : 'border-gray-200 text-gray-600 hover:bg-gray-50'
@@ -476,7 +495,7 @@ const DriversPage = () => {
                 createPortal(
                     <div
                         ref={menuRef}
-                        className="fixed z-[100] w-36 bg-white border border-gray-100 rounded-lg shadow-lg py-0.5"
+                        className="fixed z-100 w-36 bg-white border border-gray-100 rounded-lg shadow-lg py-0.5"
                         style={{ top: openMenu.top, left: openMenu.left }}
                         role="menu"
                     >

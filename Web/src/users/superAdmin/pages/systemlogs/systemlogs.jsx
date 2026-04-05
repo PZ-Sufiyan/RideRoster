@@ -9,6 +9,7 @@ import {
 } from 'react-icons/md';
 import { exportToExcel } from '../../../../utils/exportUtils';
 import { getSystemLogs, getSystemLogsPage } from '../../../../services/systemLogService';
+import { ShimmerBlock } from '../../../../utils/Shimmer';
 
 const SystemLogs = () => {
     const itemsPerPage = 6;
@@ -70,6 +71,8 @@ const SystemLogs = () => {
         const detail = raw.slice(firstToken.length).trim();
         return { type, detail };
     };
+
+    const shimmerRows = Array.from({ length: itemsPerPage });
 
     const abortRef = useRef(null);
 
@@ -201,7 +204,7 @@ const SystemLogs = () => {
             ) : null}
 
             {/* Main Content Card */}
-            <div className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col min-h-[600px]">
+            <div className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col" style={{ minHeight: '600px' }}>
 
                 {/* Filters Row */}
                 <div className="p-5 border-b border-gray-100 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -294,14 +297,22 @@ const SystemLogs = () => {
                                 <th className="px-6 py-4 text-right">Details</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {loading ? (
-                                <tr>
-                                    <td colSpan="6" className="px-6 py-20 text-center text-gray-500">
-                                        Loading logs...
+                        <tbody className="divide-y divide-gray-50" aria-busy={loading} aria-label={loading ? 'Loading system logs' : undefined}>
+                            {loading ? shimmerRows.map((_, index) => (
+                                <tr key={`systemlog-skeleton-${index}`}>
+                                    <td className="px-6 py-4"><ShimmerBlock className="h-3.5 w-40 rounded-md" /></td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <ShimmerBlock className="w-8 h-8 shrink-0" rounded="rounded-full" />
+                                            <ShimmerBlock className="h-3.5 w-28 rounded-md" />
+                                        </div>
                                     </td>
+                                    <td className="px-6 py-4"><ShimmerBlock className="h-3.5 w-32 rounded-md" /></td>
+                                    <td className="px-6 py-4"><ShimmerBlock className="h-6 w-20 rounded-full" rounded="rounded-full" /></td>
+                                    <td className="px-6 py-4"><ShimmerBlock className="h-3.5 w-28 rounded-md" /></td>
+                                    <td className="px-6 py-4 text-right"><ShimmerBlock className="ml-auto h-3.5 w-12 rounded-md" /></td>
                                 </tr>
-                            ) : logs.length > 0 ? (
+                            )) : logs.length > 0 ? (
                                 logs.map((log) => (
                                     <tr key={log.id} className="hover:bg-gray-50/60 transition-colors">
                                         <td className="px-6 py-4 text-gray-500 font-medium font-mono text-xs">
@@ -398,7 +409,7 @@ const SystemLogs = () => {
                                     <button
                                         key={pageNum}
                                         onClick={() => handlePageChange(pageNum)}
-                                        className={`min-w-[32px] h-8 flex items-center justify-center rounded-lg font-medium text-xs border transition-colors ${currentPage === pageNum
+                                        className={`min-w-8 h-8 flex items-center justify-center rounded-lg font-medium text-xs border transition-colors ${currentPage === pageNum
                                             ? 'bg-blue-50 text-blue-600 border-blue-100 font-semibold'
                                             : 'hover:bg-gray-50 text-gray-600 border-transparent hover:border-gray-200'
                                             }`}
@@ -410,7 +421,7 @@ const SystemLogs = () => {
                                 pageNum === currentPage - 2 ||
                                 pageNum === currentPage + 2
                             ) {
-                                return <span key={pageNum} className="min-w-[32px] h-8 flex items-center justify-center text-gray-400 text-xs">...</span>;
+                                return <span key={pageNum} className="min-w-8 h-8 flex items-center justify-center text-gray-400 text-xs">...</span>;
                             }
                             return null;
                         })}

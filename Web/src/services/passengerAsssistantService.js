@@ -196,6 +196,46 @@ export const getPassengerAssistantById = async (assistantId) => {
   return data
 }
 
+/** Same as getPassengerAssistantById but returns null when no row exists. */
+export const getPassengerAssistantByIdMaybe = async (assistantId) => {
+  const { data, error } = await supabase
+    .from('passenger_assistant')
+    .select('*')
+    .eq('id', assistantId)
+    .maybeSingle()
+
+  if (error) throw error
+  return data
+}
+
+/** All document rows for a PA (see `passenger_assistant_documents`). */
+export const getPassengerAssistantDocuments = async (assistantId) => {
+  const { data, error } = await supabase
+    .from('passenger_assistant_documents')
+    .select('*')
+    .eq('passenger_assistant_id', assistantId)
+    .order('document_type', { ascending: true })
+
+  if (error) throw error
+  return data || []
+}
+
+/**
+ * Jobs where this PA is assigned (`jobs.assigned_pa_id`), scoped by company.
+ */
+export const getJobsByAssignedPassengerAssistant = async (companyId, paId) => {
+  if (!companyId || !paId) return []
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('id, internal_job_id, job_name, job_date, status, company_id, assigned_pa_id')
+    .eq('company_id', companyId)
+    .eq('assigned_pa_id', paId)
+    .order('job_date', { ascending: false })
+
+  if (error) throw error
+  return data || []
+}
+
 /** @param {string} assistantId
  *  @param {object} updates — e.g. { status: 'approve' }
  */

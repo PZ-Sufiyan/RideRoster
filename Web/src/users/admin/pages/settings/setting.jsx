@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { ToastStack } from '../../../../utils/Toast';
 import { HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
 import {
@@ -6,6 +6,8 @@ import {
     updateCurrentPassword,
     verifyCurrentPassword,
 } from '../../../../services/settingServices';
+import { getCompanyAdminById, getCompanyById, updateCompany } from '../../../../services/companyService';
+import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer';
 
 // ─── Reusable Toggle ─────────────────────────────────────────
 const Toggle = ({ checked, onChange }) => (
@@ -23,7 +25,7 @@ const Toggle = ({ checked, onChange }) => (
 );
 
 // ─── Reusable Input Field ─────────────────────────────────────
-const InputField = ({ label, value, onChange, type = 'text', placeholder = '' }) => (
+const InputField = ({ label, value, onChange, type = 'text', placeholder = '', disabled = false }) => (
     <div className="flex flex-col gap-1.5">
         {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
         <input
@@ -31,7 +33,8 @@ const InputField = ({ label, value, onChange, type = 'text', placeholder = '' })
             value={value}
             onChange={onChange}
             placeholder={placeholder}
-            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] transition-colors bg-white"
+            disabled={disabled}
+            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] transition-colors bg-white disabled:bg-gray-50 disabled:text-gray-500"
         />
     </div>
 );
@@ -49,16 +52,57 @@ const ToggleRow = ({ label, description, checked, onChange }) => (
 
 const TABS = ['Company Profile', 'Notifications', 'Security'];
 
+const CompanyProfileTabShimmer = () => (
+    <LoadingStatus label="Loading company profile" className="space-y-5">
+        {/* Logo row */}
+        <div className="flex items-center gap-4 py-2">
+            <ShimmerBlock className="w-14 h-14 shrink-0 rounded-lg" />
+            <div className="flex-1 space-y-2 min-w-0">
+                <div className="flex flex-wrap items-center gap-3">
+                    <ShimmerBlock className="h-9 w-32 rounded-lg" />
+                    <ShimmerBlock className="h-9 w-24 rounded-lg" />
+                </div>
+                <ShimmerBlock className="h-3 max-w-xs rounded" />
+            </div>
+        </div>
+
+        {/* Form fields */}
+        <div className="border-t border-gray-100 pt-5 space-y-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                    <ShimmerBlock className="h-4 w-28 rounded" />
+                    <ShimmerBlock className="h-10 w-full rounded-lg" />
+                </div>
+                <div className="space-y-2">
+                    <ShimmerBlock className="h-4 w-24 rounded" />
+                    <ShimmerBlock className="h-10 w-full rounded-lg" />
+                </div>
+            </div>
+            <div className="space-y-2">
+                <ShimmerBlock className="h-4 w-36 rounded" />
+                <ShimmerBlock className="h-10 w-full rounded-lg" />
+            </div>
+        </div>
+
+        <div className="pt-1">
+            <ShimmerBlock className="h-10 w-36 rounded-lg" />
+        </div>
+    </LoadingStatus>
+);
+
 // ─── Main Component ───────────────────────────────────────────
 const AdminSettings = () => {
     const [activeTab, setActiveTab] = useState('Company Profile');
     const logoRef = useRef();
-    const [logoPreview, setLogoPreview] = useState('https://images.unsplash.com/photo-1568702846914-96b305d2aaeb?auto=format&fit=crop&w=64&h=64');
+    const [logoPreview, setLogoPreview] = useState('');
 
-    // Company Profile
-    const [companyName, setCompanyName] = useState('Bright Horizons Transport');
-    const [contactEmail, setContactEmail] = useState('contact@brighthorizons.com');
-    const [companyAddr, setCompanyAddr] = useState('123 Market St, San Francisco, CA 94103');
+    // Company Profile (synced with `companies` table)
+    const [companyId, setCompanyId] = useState(null);
+    const [profileLoading, setProfileLoading] = useState(true);
+    const [profileSaving, setProfileSaving] = useState(false);
+    const [companyName, setCompanyName] = useState('');
+    const [contactEmail, setContactEmail] = useState('');
+    const [companyAddr, setCompanyAddr] = useState('');
 
     // Notifications
     const [notifs, setNotifs] = useState({
@@ -88,6 +132,60 @@ const AdminSettings = () => {
 
     const removeToast = (id) => {
         setToasts((prev) => prev.filter((toast) => toast.id !== id));
+    };
+
+    useEffect(() => {
+        let cancelled = false;
+        (async () => {
+            setProfileLoading(true);
+            try {
+                const user = await getCurrentAuthUser();
+                const admin = await getCompanyAdminById(user.id);
+                if (!admin?.company_id) {
+                    throw new Error('No company linked to your account.');
+                }
+                const company = await getCompanyById(admin.company_id);
+                if (cancelled) return;
+                setCompanyId(company.id);
+                setCompanyName(company.company_name ?? '');
+                setContactEmail(company.company_email ?? '');
+                setCompanyAddr(company.company_address ?? '');
+            } catch (error) {
+                if (!cancelled) {
+                    pushToast('error', error?.message || 'Failed to load company profile.');
+                }
+            } finally {
+                if (!cancelled) setProfileLoading(false);
+            }
+        })();
+        return () => {
+            cancelled = true;
+        };
+    }, []);
+
+    const handleSaveCompanyProfile = async () => {
+        if (!companyId) {
+            pushToast('error', 'Company not loaded. Please refresh the page.');
+            return;
+        }
+        const name = companyName.trim();
+        if (!name) {
+            pushToast('warning', 'Please enter a company name.');
+            return;
+        }
+        setProfileSaving(true);
+        try {
+            await updateCompany(companyId, {
+                company_name: name,
+                company_email: contactEmail.trim(),
+                company_address: companyAddr.trim(),
+            });
+            pushToast('success', 'Company profile saved.');
+        } catch (error) {
+            pushToast('error', error?.message || 'Failed to save company profile.');
+        } finally {
+            setProfileSaving(false);
+        }
     };
 
     const handleLogoChange = (file) => {
@@ -177,54 +275,90 @@ const AdminSettings = () => {
                     </div>
 
                     <div className="px-6 py-5 space-y-5">
-                        {/* Logo Row */}
-                        <div className="flex items-center gap-4 py-2">
-                            <img
-                                src={logoPreview}
-                                alt="Company Logo"
-                                className="w-14 h-14 rounded-lg object-cover border border-gray-100"
-                            />
-                            <div>
-                                <div className="flex items-center gap-3">
+                        {profileLoading ? (
+                            <CompanyProfileTabShimmer />
+                        ) : (
+                            <>
+                                {/* Logo Row */}
+                                <div className="flex items-center gap-4 py-2">
+                                    {logoPreview ? (
+                                        <img
+                                            src={logoPreview}
+                                            alt="Company Logo"
+                                            className="w-14 h-14 rounded-lg object-cover border border-gray-100"
+                                        />
+                                    ) : (
+                                        <div
+                                            className="w-14 h-14 rounded-lg border border-dashed border-gray-200 bg-gray-50 flex items-center justify-center text-xs text-gray-400 text-center px-1"
+                                            aria-hidden
+                                        >
+                                            No logo
+                                        </div>
+                                    )}
+                                    <div>
+                                        <div className="flex items-center gap-3">
+                                            <button
+                                                type="button"
+                                                onClick={() => logoRef.current?.click()}
+                                                className="px-4 py-2 bg-[#005580] text-white text-sm font-medium rounded-lg hover:bg-sky-900 transition-colors"
+                                            >
+                                                Upload Logo
+                                            </button>
+                                            <button
+                                                type="button"
+                                                onClick={() => setLogoPreview('')}
+                                                disabled={!logoPreview}
+                                                className="px-4 py-2 border border-gray-200 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50 transition-colors disabled:opacity-60 disabled:cursor-not-allowed"
+                                            >
+                                                Remove
+                                            </button>
+                                        </div>
+                                        <p className="text-xs text-gray-400 mt-2">Recommended size: 200x200px, PNG or JPG.</p>
+                                    </div>
+                                    <input
+                                        ref={logoRef}
+                                        type="file"
+                                        accept="image/*"
+                                        className="hidden"
+                                        onChange={(e) => handleLogoChange(e.target.files[0])}
+                                    />
+                                </div>
+
+                                {/* Form Fields */}
+                                <div className="border-t border-gray-100 pt-5 space-y-4">
+                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                        <InputField
+                                            label="Company Name"
+                                            value={companyName}
+                                            onChange={(e) => setCompanyName(e.target.value)}
+                                        />
+                                        <InputField
+                                            label="Contact Email"
+                                            value={contactEmail}
+                                            onChange={(e) => setContactEmail(e.target.value)}
+                                            type="email"
+                                        />
+                                    </div>
+                                    <InputField
+                                        label="Company Address"
+                                        value={companyAddr}
+                                        onChange={(e) => setCompanyAddr(e.target.value)}
+                                    />
+                                </div>
+
+                                {/* Save Button */}
+                                <div className="pt-1">
                                     <button
-                                        onClick={() => logoRef.current.click()}
-                                        className="px-4 py-2 bg-[#005580] text-white text-sm font-medium rounded-lg hover:bg-sky-900 transition-colors"
+                                        type="button"
+                                        onClick={handleSaveCompanyProfile}
+                                        disabled={profileSaving || !companyId}
+                                        className="px-5 py-2.5 bg-[#005580] text-white text-sm font-semibold rounded-lg hover:bg-sky-900 transition-colors shadow-sm disabled:opacity-60 disabled:cursor-not-allowed"
                                     >
-                                        Upload Logo
-                                    </button>
-                                    <button
-                                        onClick={() => setLogoPreview('')}
-                                        className="px-4 py-2 border border-gray-200 text-sm font-medium text-gray-700 rounded-lg hover:bg-gray-50 transition-colors"
-                                    >
-                                        Remove
+                                        {profileSaving ? 'Saving…' : 'Save Changes'}
                                     </button>
                                 </div>
-                                <p className="text-xs text-gray-400 mt-2">Recommended size: 200x200px, PNG or JPG.</p>
-                            </div>
-                            <input
-                                ref={logoRef}
-                                type="file"
-                                accept="image/*"
-                                className="hidden"
-                                onChange={(e) => handleLogoChange(e.target.files[0])}
-                            />
-                        </div>
-
-                        {/* Form Fields */}
-                        <div className="border-t border-gray-100 pt-5 space-y-4">
-                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                                <InputField label="Company Name" value={companyName} onChange={e => setCompanyName(e.target.value)} />
-                                <InputField label="Contact Email" value={contactEmail} onChange={e => setContactEmail(e.target.value)} type="email" />
-                            </div>
-                            <InputField label="Company Address" value={companyAddr} onChange={e => setCompanyAddr(e.target.value)} />
-                        </div>
-
-                        {/* Save Button */}
-                        <div className="pt-1">
-                            <button className="px-5 py-2.5 bg-[#005580] text-white text-sm font-semibold rounded-lg hover:bg-sky-900 transition-colors shadow-sm">
-                                Save Changes
-                            </button>
-                        </div>
+                            </>
+                        )}
                     </div>
                 </div>
             )}

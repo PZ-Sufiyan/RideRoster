@@ -4,6 +4,7 @@ import {
     getCurrentSuperAdminSettings,
     updateCurrentSuperAdminProfile,
 } from '../../../../services/settingServices';
+import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer';
 
 const Settings = () => {
     const [fullName, setFullName] = useState('');
@@ -84,6 +85,42 @@ const Settings = () => {
         setEmail(initialData.email);
         setPhone(initialData.phone);
     };
+
+    if (loading) {
+        return (
+            <LoadingStatus label="Loading settings" className="space-y-6">
+                <div>
+                    <ShimmerBlock className="h-8 w-40 rounded-md" />
+                    <ShimmerBlock className="mt-3 h-4 w-80 max-w-full rounded-md" />
+                </div>
+
+                <div className="border-b border-gray-200">
+                    <ShimmerBlock className="h-10 w-24 rounded-t-lg" rounded="rounded-t-lg" />
+                </div>
+
+                <div className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-gray-100 p-8 space-y-8">
+                    <div className="space-y-3">
+                        <ShimmerBlock className="h-6 w-56 max-w-full rounded-md" />
+                        <ShimmerBlock className="h-4 w-72 max-w-full rounded-md" />
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 max-w-5xl">
+                        {Array.from({ length: 4 }).map((_, index) => (
+                            <div key={`settings-skeleton-${index}`} className="space-y-2">
+                                <ShimmerBlock className="h-4 w-24 rounded-md" />
+                                <ShimmerBlock className="h-12 rounded-lg" />
+                            </div>
+                        ))}
+                    </div>
+
+                    <div className="flex items-center gap-4">
+                        <ShimmerBlock className="h-11 w-24 rounded-lg" />
+                        <ShimmerBlock className="h-11 w-32 rounded-lg" />
+                    </div>
+                </div>
+            </LoadingStatus>
+        );
+    }
 
     return (
         <div className="space-y-6">

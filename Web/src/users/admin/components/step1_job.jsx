@@ -1,17 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ToastStack } from '../../../../utils/Toast';
-import {
-    MdCheck,
-    MdKeyboardArrowDown,
-    MdAdd,
-    MdRemove,
-    MdGpsFixed,
-    MdTrendingFlat,
-} from 'react-icons/md';
-import { loadJobDraft, saveJobDraft } from '../../../../services/jobService';
+import { MdKeyboardArrowDown, MdAdd, MdRemove, MdGpsFixed, MdTrendingFlat } from 'react-icons/md';
+import { loadJobDraft, saveJobDraft } from '../../../services/jobService';
 
-const AddNewJobStep1 = () => {
+const Step1Job = ({ setToasts }) => {
     const navigate = useNavigate();
     const [formData, setFormData] = useState(() => {
         const d = loadJobDraft();
@@ -23,7 +15,6 @@ const AddNewJobStep1 = () => {
             internalId: s1.internal_job_id ?? '',
         };
     });
-    const [toasts, setToasts] = useState([]);
     const [submitAttempted, setSubmitAttempted] = useState(false);
 
     useEffect(() => {
@@ -65,53 +56,24 @@ const AddNewJobStep1 = () => {
                 internal_job_id: formData.internalId.trim(),
             },
         });
-        navigate('/admin/jobs/create-step2');
+        navigate('/admin/jobs/add-job?step=2');
     };
 
-    const handleCancel = () => {
-        navigate('/admin/jobs');
-    };
+    const fieldClass = (invalid) =>
+        `w-full px-4 py-3 bg-[#F9FAFB] border rounded-xl text-[14px] placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${
+            invalid
+                ? 'border-red-400 text-red-700 focus:ring-red-500/20 focus:border-red-500'
+                : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/20 focus:border-[#004D6D]'
+        }`;
 
     return (
-        <div className="max-w-[1280px] mx-auto pb-20">
-            <ToastStack
-                toasts={toasts}
-                onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
-            />
+        <>
             <div className="flex items-center gap-4 mb-8">
                 <div>
                     <h1 className="text-[22px] font-bold text-gray-900 leading-tight">Step 1 of 3: Route Information</h1>
                     <p className="text-[13px] text-gray-500 mt-1">
                         Details are saved in this browser session until you finish step 3 (nothing is written to the database yet).
                     </p>
-                </div>
-            </div>
-
-            <div className="relative mb-12 px-10">
-                <div className="absolute top-5 left-10 right-10 h-[2px] bg-gray-100 z-0">
-                    <div className="h-full w-1/2"></div>
-                </div>
-                <div className="flex items-center justify-between relative ">
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="w-10 h-10 rounded-full bg-[#004D6D] flex items-center justify-center text-white ring-4 ring-[#004D6D]/10">
-                            1
-                        </div>
-                        <span className="text-[13px] font-bold text-[#004D6D]">Route Info</span>
-                    </div>
-
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="w-10 h-10 rounded-full border-2 border-[#004D6D] bg-white flex items-center justify-center text-[#004D6D] font-bold">
-                            2
-                        </div>
-                        <span className="text-[13px] font-bold text-[#004D6D]">Pickups & Drop-offs</span>
-                    </div>
-
-                    <div className="flex flex-col items-center gap-2">
-                        <div className="w-10 h-10 rounded-full border-2 border-gray-200 bg-white flex items-center justify-center text-gray-400 font-bold">
-                            3
-                        </div>
-                        <span className="text-[13px] font-medium text-gray-400">Schedule & Pay</span>
-                    </div>
                 </div>
             </div>
 
@@ -133,11 +95,7 @@ const AddNewJobStep1 = () => {
                                 value={formData.jobName}
                                 onChange={handleChange}
                                 placeholder="e.g., Morning School Run - Route A"
-                                className={`w-full px-4 py-3 bg-[#F9FAFB] border rounded-xl text-[14px] placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${
-                                    submitAttempted && !formData.jobName.trim()
-                                        ? 'border-red-400 text-red-700 focus:ring-red-500/20 focus:border-red-500'
-                                        : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/20 focus:border-[#004D6D]'
-                                }`}
+                                className={fieldClass(submitAttempted && !formData.jobName.trim())}
                             />
                             {submitAttempted && !formData.jobName.trim() && (
                                 <p className="text-[12px] font-semibold text-red-600">Job Name / Route Title is required.</p>
@@ -153,11 +111,7 @@ const AddNewJobStep1 = () => {
                                     name="jobType"
                                     value={formData.jobType}
                                     onChange={handleChange}
-                                    className={`w-full px-4 py-3 bg-[#F9FAFB] border rounded-xl text-[14px] appearance-none focus:outline-none focus:ring-2 transition-all cursor-pointer ${
-                                        submitAttempted && !formData.jobType.trim()
-                                            ? 'border-red-400 text-red-700 focus:ring-red-500/20 focus:border-red-500'
-                                            : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/20 focus:border-[#004D6D]'
-                                    }`}
+                                    className={fieldClass(submitAttempted && !formData.jobType.trim()) + ' appearance-none cursor-pointer'}
                                 >
                                     <option>Regular Contract</option>
                                     <option>One-off Trip</option>
@@ -180,11 +134,7 @@ const AddNewJobStep1 = () => {
                                 value={formData.clientName}
                                 onChange={handleChange}
                                 placeholder="e.g., Northwood High School"
-                                className={`w-full px-4 py-3 bg-[#F9FAFB] border rounded-xl text-[14px] placeholder-gray-400 focus:outline-none focus:ring-2 transition-all ${
-                                    submitAttempted && !formData.clientName.trim()
-                                        ? 'border-red-400 text-red-700 focus:ring-red-500/20 focus:border-red-500'
-                                        : 'border-gray-200 text-gray-900 focus:ring-[#004D6D]/20 focus:border-[#004D6D]'
-                                }`}
+                                className={fieldClass(submitAttempted && !formData.clientName.trim())}
                             />
                             {submitAttempted && !formData.clientName.trim() && (
                                 <p className="text-[12px] font-semibold text-red-600">Client / School Name is required.</p>
@@ -205,6 +155,7 @@ const AddNewJobStep1 = () => {
                     </div>
                 </div>
 
+                {/* Map Preview */}
                 <div className="relative rounded-2xl border border-gray-100 shadow-sm overflow-hidden h-[500px] lg:h-full min-h-[500px]">
                     <div
                         className="absolute inset-0 bg-[#E5E7EB]"
@@ -216,78 +167,45 @@ const AddNewJobStep1 = () => {
                     >
                         <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px]">
                             {[
-                                { top: '30%', left: '45%' },
-                                { top: '35%', left: '48%' },
-                                { top: '40%', left: '42%' },
-                                { top: '45%', left: '55%' },
-                                { top: '50%', left: '40%' },
-                                { top: '55%', left: '50%' },
-                                { top: '60%', left: '45%' },
-                                { top: '38%', left: '52%' },
-                                { top: '32%', left: '38%' },
-                                { top: '42%', left: '40%' },
-                                { top: '28%', left: '58%' },
-                                { top: '52%', left: '62%' },
+                                { top: '30%', left: '45%' }, { top: '35%', left: '48%' },
+                                { top: '40%', left: '42%' }, { top: '45%', left: '55%' },
+                                { top: '50%', left: '40%' }, { top: '55%', left: '50%' },
+                                { top: '60%', left: '45%' }, { top: '38%', left: '52%' },
+                                { top: '32%', left: '38%' }, { top: '42%', left: '40%' },
+                                { top: '28%', left: '58%' }, { top: '52%', left: '62%' },
                                 { top: '48%', left: '35%' },
                             ].map((pin, i) => (
-                                <div
-                                    key={i}
-                                    className="absolute transform -translate-x-1/2 -translate-y-full"
-                                    style={{ top: pin.top, left: pin.left }}
-                                >
+                                <div key={i} className="absolute transform -translate-x-1/2 -translate-y-full" style={{ top: pin.top, left: pin.left }}>
                                     <div className="relative group cursor-pointer transition-transform hover:scale-110">
                                         <div className="w-6 h-6 bg-red-500 rounded-full border-2 border-white shadow-md flex items-center justify-center">
-                                            <div className="w-1.5 h-1.5 bg-white rounded-full"></div>
+                                            <div className="w-1.5 h-1.5 bg-white rounded-full" />
                                         </div>
-                                        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-8 border-t-red-500"></div>
+                                        <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-1 w-0 h-0 border-l-[6px] border-l-transparent border-r-[6px] border-r-transparent border-t-8 border-t-red-500" />
                                     </div>
                                 </div>
                             ))}
                         </div>
                     </div>
-
                     <div className="absolute right-4 bottom-4 flex flex-col gap-2">
-                        <button
-                            type="button"
-                            className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"
-                        >
-                            <MdAdd size={20} />
-                        </button>
-                        <button
-                            type="button"
-                            className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"
-                        >
-                            <MdGpsFixed size={20} />
-                        </button>
-                        <button
-                            type="button"
-                            className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"
-                        >
-                            <MdRemove size={20} />
-                        </button>
+                        <button type="button" className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"><MdAdd size={20} /></button>
+                        <button type="button" className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"><MdGpsFixed size={20} /></button>
+                        <button type="button" className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"><MdRemove size={20} /></button>
                     </div>
                 </div>
             </div>
 
+            {/* Bottom Bar */}
             <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-between z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
-                <button
-                    onClick={handleCancel}
-                    className="text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors"
-                >
+                <button onClick={() => navigate('/admin/jobs')} className="text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors">
                     Cancel
                 </button>
-                <div className="flex items-center gap-4">
-                    <button
-                        onClick={handleNext}
-                        className="flex items-center gap-2 px-8 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/20 active:scale-95"
-                    >
-                        Next: Pickups & Drop-offs
-                        <MdTrendingFlat size={20} />
-                    </button>
-                </div>
+                <button onClick={handleNext} className="flex items-center gap-2 px-8 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/20 active:scale-95">
+                    Next: Pickups & Drop-offs
+                    <MdTrendingFlat size={20} />
+                </button>
             </div>
-        </div>
+        </>
     );
 };
 
-export default AddNewJobStep1;
+export default Step1Job;

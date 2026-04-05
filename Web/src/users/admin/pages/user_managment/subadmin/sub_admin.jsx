@@ -22,6 +22,7 @@ import {
     subAdminStatusLabel,
     actionToSubAdminDbStatus,
 } from '../../../../../services/subAdminService';
+import { ShimmerBlock } from '../../../../../utils/Shimmer';
 
 const STATUS_COLORS = {
     Pending: 'bg-amber-50 text-amber-800 border border-amber-200',
@@ -238,6 +239,7 @@ const SubAdminList = () => {
         );
     };
     const allPageSelected = paginated.length > 0 && paginated.every((sa) => selectedRows.includes(sa.id));
+    const shimmerRows = Array.from({ length: 6 });
 
     const handlePage = (page) => {
         if (page >= 1 && page <= totalPages) {
@@ -389,9 +391,6 @@ const SubAdminList = () => {
                                             : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                     </div>
                                 </th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center max-w-[14rem]">
-                                    Sub Admin ID
-                                </th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center shrink-0 w-24 sm:text-left sm:w-auto">Name</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Permissions</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Status</th>
@@ -399,107 +398,118 @@ const SubAdminList = () => {
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right pr-6">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-gray-50" aria-busy={isLoading} aria-label={isLoading ? 'Loading sub-admins' : undefined}>
                             {isLoading ? (
-                                <tr>
-                                    <td colSpan="7" className="px-6 py-16 text-center text-gray-500 text-sm">
-                                        Loading sub-admins…
-                                    </td>
-                                </tr>
-                            ) : paginated.length > 0 ? paginated.map((sa) => {
-                                const statusLabel = subAdminStatusLabel(sa.statusDb);
-                                const secondaryLine = sa.email || sa.phone || '—';
-                                return (
-                                <tr key={sa.id} className="hover:bg-gray-50/60 transition-colors">
-                                    {/* Checkbox */}
-                                    <td className="px-4 py-4">
-                                        <div className="flex items-center cursor-pointer" onClick={() => toggleRow(sa.id)}>
-                                            {selectedRows.includes(sa.id)
-                                                ? <MdCheckBox className="text-blue-600 w-5 h-5" />
-                                                : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
-                                        </div>
-                                    </td>
-
-                                    {/* Sub Admin ID */}
-                                    <td className="px-4 py-4 text-center align-top">
-                                        <span
-                                            className="font-mono text-[11px] sm:text-xs text-gray-700 break-all whitespace-normal text-left inline-block max-w-[14rem]"
-                                            title={sa.id}
-                                        >
-                                            {sa.id}
-                                        </span>
-                                    </td>
-
-                                    {/* Name + Avatar */}
-                                    <td className="px-4 py-4 sm:pl-4">
-                                        <div
-                                            className="flex flex-col sm:flex-row items-center sm:items-start sm:gap-3 cursor-pointer group"
-                                            onClick={() => navigate(`/admin/users/subadmins/${sa.id}`)}
-                                        >
-                                            <img
-                                                src={sa.avatar}
-                                                alt={sa.name}
-                                                className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-100 shrink-0 mb-2 sm:mb-0"
-                                            />
-                                            <div className="text-center sm:text-left min-w-0">
-                                                <p className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors text-xs sm:text-sm">{sa.name}</p>
-                                                <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 break-all">{secondaryLine}</p>
+                                shimmerRows.map((_, index) => (
+                                    <tr key={`subadmin-skeleton-${index}`}>
+                                        <td className="px-4 py-4">
+                                            <ShimmerBlock className="w-5 h-5 rounded" rounded="rounded" />
+                                        </td>
+                                        <td className="px-4 py-4 text-center">
+                                            <ShimmerBlock className="mx-auto h-3.5 w-32 rounded-md" />
+                                        </td>
+                                        <td className="px-4 py-4 sm:pl-4">
+                                            <div className="flex items-center gap-3">
+                                                <ShimmerBlock className="w-10 h-10 shrink-0" rounded="rounded-full" />
+                                                <div className="space-y-2 min-w-0">
+                                                    <ShimmerBlock className="h-3.5 w-28 max-w-full rounded-md" />
+                                                    <ShimmerBlock className="h-3 w-32 rounded-md" />
+                                                </div>
                                             </div>
-                                        </div>
-                                    </td>
+                                        </td>
+                                        <td className="px-4 py-4 text-center">
+                                            <ShimmerBlock className="mx-auto h-3.5 w-40 rounded-md" />
+                                        </td>
+                                        <td className="px-4 py-4 text-center">
+                                            <ShimmerBlock className="mx-auto h-6 w-20 rounded-full" rounded="rounded-full" />
+                                        </td>
+                                        <td className="px-4 py-4 text-center">
+                                            <ShimmerBlock className="mx-auto h-3.5 w-32 rounded-md" />
+                                        </td>
+                                        <td className="px-4 py-4 text-right pr-4">
+                                            <ShimmerBlock className="ml-auto h-8 w-8 rounded-lg" />
+                                        </td>
+                                    </tr>
+                                ))
+                            ) : paginated.length > 0 ? (
+                                paginated.map((sa) => {
+                                    const statusLabel = subAdminStatusLabel(sa.statusDb);
+                                    const secondaryLine = sa.email || sa.phone || '—';
+                                    return (
+                                        <tr key={sa.id} className="hover:bg-gray-50/60 transition-colors">
+                                            <td className="px-4 py-4">
+                                                <div className="flex items-center cursor-pointer" onClick={() => toggleRow(sa.id)}>
+                                                    {selectedRows.includes(sa.id)
+                                                        ? <MdCheckBox className="text-blue-600 w-5 h-5" />
+                                                        : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
+                                                </div>
+                                            </td>
+                                            <td className="px-4 py-4 sm:pl-4">
+                                                <div
+                                                    className="flex flex-col sm:flex-row items-center sm:items-start sm:gap-3 cursor-pointer group"
+                                                    onClick={() => navigate(`/admin/users/subadmins/${sa.id}`)}
+                                                >
+                                                    <img
+                                                        src={sa.avatar}
+                                                        alt={sa.name}
+                                                        className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-100 shrink-0 mb-2 sm:mb-0"
+                                                    />
+                                                    <div className="text-center sm:text-left min-w-0">
+                                                        <p className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors text-xs sm:text-sm">{sa.name}</p>
+                                                        <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 break-all">{secondaryLine}</p>
+                                                    </div>
+                                                </div>
+                                            </td>
 
-                                    {/* Permissions */}
-                                    <td className="px-4 py-4 text-gray-600 text-center whitespace-normal max-w-xs">
-                                        {sa.permissions}
-                                    </td>
+                                            <td className="px-4 py-4 text-gray-600 text-center whitespace-normal max-w-xs">
+                                                {sa.permissions}
+                                            </td>
 
-                                    {/* Status */}
-                                    <td className="px-4 py-4 text-center">
-                                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide ${STATUS_COLORS[statusLabel] || 'bg-gray-100 text-gray-500'}`}>
-                                            {statusLabel}
-                                        </span>
-                                    </td>
+                                            <td className="px-4 py-4 text-center">
+                                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold tracking-wide ${STATUS_COLORS[statusLabel] || 'bg-gray-100 text-gray-500'}`}>
+                                                    {statusLabel}
+                                                </span>
+                                            </td>
 
-                                    {/* Last updated */}
-                                    <td className="px-4 py-4 text-gray-500 text-center whitespace-normal">
-                                        {formatUpdatedAt(sa.updatedAt)}
-                                    </td>
+                                            <td className="px-4 py-4 text-gray-500 text-center whitespace-normal">
+                                                {formatUpdatedAt(sa.updatedAt)}
+                                            </td>
 
-                                    {/* Actions */}
-                                    <td className="px-4 py-4 text-right pr-4">
-                                        <div className="relative inline-block text-left">
-                                            <button
-                                                type="button"
-                                                data-subadmin-action-trigger
-                                                disabled={isSavingStatus}
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    if (openMenu?.subAdminId === sa.id) {
-                                                        setOpenMenu(null);
-                                                        return;
-                                                    }
-                                                    const rect = e.currentTarget.getBoundingClientRect();
-                                                    const width = 144;
-                                                    const spaceBelow = window.innerHeight - rect.bottom;
-                                                    const openUp = spaceBelow < SUBADMIN_ACTION_MENU_H + 16;
-                                                    const top = openUp
-                                                        ? rect.top - SUBADMIN_ACTION_MENU_H - 4
-                                                        : rect.bottom + 4;
-                                                    setOpenMenu({
-                                                        subAdminId: sa.id,
-                                                        top,
-                                                        left: Math.max(8, rect.right - width),
-                                                    });
-                                                }}
-                                                className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors focus:outline-none focus:ring-2 focus:ring-[#005580]/20 disabled:opacity-40"
-                                            >
-                                                <MdMoreVert size={20} />
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                );
-                            }) : (
+                                            <td className="px-4 py-4 text-right pr-4">
+                                                <div className="relative inline-block text-left">
+                                                    <button
+                                                        type="button"
+                                                        data-subadmin-action-trigger
+                                                        disabled={isSavingStatus}
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            if (openMenu?.subAdminId === sa.id) {
+                                                                setOpenMenu(null);
+                                                                return;
+                                                            }
+                                                            const rect = e.currentTarget.getBoundingClientRect();
+                                                            const width = 144;
+                                                            const spaceBelow = window.innerHeight - rect.bottom;
+                                                            const openUp = spaceBelow < SUBADMIN_ACTION_MENU_H + 16;
+                                                            const top = openUp
+                                                                ? rect.top - SUBADMIN_ACTION_MENU_H - 4
+                                                                : rect.bottom + 4;
+                                                            setOpenMenu({
+                                                                subAdminId: sa.id,
+                                                                top,
+                                                                left: Math.max(8, rect.right - width),
+                                                            });
+                                                        }}
+                                                        className="p-1.5 rounded-lg hover:bg-gray-100 text-gray-500 transition-colors focus:outline-none focus:ring-2 focus:ring-[#005580]/20 disabled:opacity-40"
+                                                    >
+                                                        <MdMoreVert size={20} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    );
+                                })
+                            ) : (
                                 <tr>
                                     <td colSpan="7" className="px-6 py-16 text-center text-gray-400 text-sm">
                                         No sub-admins found.
@@ -563,7 +573,7 @@ const SubAdminList = () => {
                 createPortal(
                     <div
                         ref={menuRef}
-                        className="fixed z-[100] w-36 bg-white border border-gray-100 rounded-lg shadow-lg py-1"
+                        className="fixed z-100 w-36 bg-white border border-gray-100 rounded-lg shadow-lg py-1"
                         style={{ top: openMenu.top, left: openMenu.left }}
                         role="menu"
                     >

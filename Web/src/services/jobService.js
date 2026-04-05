@@ -204,6 +204,157 @@ export function buildPassengerRouteRows(selectedPassengers, pickupStops, dropoff
   }))
 }
 
+/**
+ * Map DB job stops onto edit keys (normalized passenger profile addresses) for edit Step 2 hydration.
+ * `passengersById` should be full `passenger` rows keyed by id.
+ */
+export function buildPickupEditsFromJobBundle(bundle, passengersById) {
+  const edits = {}
+  const pickupsById = new Map((bundle.pickups || []).map((p) => [p.id, p]))
+  for (const r of bundle.routes || []) {
+    const pax = passengersById.get(r.passenger_id)
+    if (!pax) continue
+    const key = normalizeAddressKey(pax.pickup_address)
+    if (!key) continue
+    const pu = pickupsById.get(r.pickup_id)
+    if (!pu) continue
+    edits[key] = {
+      address: pu.address ?? '',
+      postcode: pu.postcode ?? '',
+      scheduled_time: timeInputFromDb(pu.scheduled_time),
+      latitude: pu.latitude != null ? String(pu.latitude) : '',
+      longitude: pu.longitude != null ? String(pu.longitude) : '',
+      notes_for_driver: pu.notes_for_driver || '',
+    }
+  }
+  return edits
+}
+
+export function buildDropoffEditsFromJobBundle(bundle, passengersById) {
+  const edits = {}
+  const dropoffsById = new Map((bundle.dropoffs || []).map((d) => [d.id, d]))
+  for (const r of bundle.routes || []) {
+    const pax = passengersById.get(r.passenger_id)
+    if (!pax) continue
+    const key = normalizeAddressKey(pax.dropoff_address)
+    if (!key) continue
+    const d = dropoffsById.get(r.dropoff_id)
+    if (!d) continue
+    edits[key] = {
+      address: d.address ?? '',
+      postcode: d.postcode ?? '',
+      scheduled_time: timeInputFromDb(d.scheduled_time),
+      latitude: d.latitude != null ? String(d.latitude) : '',
+      longitude: d.longitude != null ? String(d.longitude) : '',
+      notes_for_driver: d.notes_for_driver || '',
+    }
+  }
+  return edits
+}
+
+async function insertJobStopsAndRoutes(jobId, pickupStops, dropoffStops, selectedPassengers) {
+  const pickupRows = pickupStops.map((s) => ({
+    job_id: jobId,
+    pickup_order: s.pickup_order,
+    address: s.address,
+    postcode: s.postcode,
+    latitude: parseCoord(s.latitude),
+    longitude: parseCoord(s.longitude),
+    scheduled_time: toPgTime(s.scheduled_time),
+    notes_for_driver: s.notes_for_driver?.trim() || null,
+  }))
+
+  const { data: insertedPickups, error: puErr } = await supabase
+    .from('job_pickups')
+    .insert(pickupRows)
+    .select('id, pickup_order')
+
+  if (puErr) throw puErr
+
+  const pickupUuidByKey = new Map()
+  const sortedPu = [...(insertedPickups || [])].sort((a, b) => a.pickup_order - b.pickup_order)
+  pickupStops.forEach((s, i) => {
+    const row = sortedPu[i]
+    if (row) pickupUuidByKey.set(s.addressKey, row.id)
+  })
+
+  const dropoffRows = dropoffStops.map((s) => ({
+    job_id: jobId,
+    dropoff_order: s.dropoff_order,
+    address: s.address,
+    postcode: s.postcode,
+    latitude: parseCoord(s.latitude),
+    longitude: parseCoord(s.longitude),
+    scheduled_time: toPgTime(s.scheduled_time),
+    notes_for_driver: s.notes_for_driver?.trim() || null,
+  }))
+
+  const { data: insertedDropoffs, error: doErr } = await supabase
+    .from('job_dropoffs')
+    .insert(dropoffRows)
+    .select('id, dropoff_order')
+
+  if (doErr) throw doErr
+
+  const dropoffUuidByKey = new Map()
+  const sortedDo = [...(insertedDropoffs || [])].sort((a, b) => a.dropoff_order - b.dropoff_order)
+  dropoffStops.forEach((s, i) => {
+    const row = sortedDo[i]
+    if (row) dropoffUuidByKey.set(s.addressKey, row.id)
+  })
+
+  const routeMeta = buildPassengerRouteRows(selectedPassengers, pickupStops, dropoffStops)
+  const routeRows = routeMeta.map((r) => {
+    const pickupId = pickupUuidByKey.get(r.pickup_address_key)
+    const dropoffId = dropoffUuidByKey.get(r.dropoff_address_key)
+    if (!pickupId || !dropoffId) {
+      throw new Error('Could not resolve pickup/drop-off for a passenger route.')
+    }
+    return {
+      job_id: jobId,
+      passenger_id: r.passenger_id,
+      pickup_id: pickupId,
+      dropoff_id: dropoffId,
+      wheelchair_required: r.wheelchair_required,
+    }
+  })
+
+  const { error: routeErr } = await supabase.from('job_passenger_routes').insert(routeRows)
+  if (routeErr) throw routeErr
+}
+
+/**
+ * Replace all pickups, drop-offs, and passenger routes for a job (edit flow).
+ * Deletes existing rows then inserts from derived stops — same shape as job creation.
+ */
+export async function replaceJobStopsAndRoutes(jobId, selectedPassengers, pickupEdits, dropoffEdits) {
+  if (!jobId) throw new Error('Job id is required.')
+  const pickupStops = derivePickupStops(selectedPassengers, pickupEdits)
+  const dropoffStops = deriveDropoffStops(selectedPassengers, dropoffEdits)
+  if (pickupStops.length === 0 || dropoffStops.length === 0) {
+    throw new Error('Pickup and drop-off stops could not be derived from selected passengers.')
+  }
+  for (const s of pickupStops) {
+    if (!String(s.address || '').trim() || !String(s.postcode || '').trim() || !String(s.scheduled_time || '').trim()) {
+      throw new Error('Complete all required pickup fields (addresses, postcodes, and pickup times).')
+    }
+  }
+  for (const s of dropoffStops) {
+    if (!String(s.address || '').trim() || !String(s.postcode || '').trim()) {
+      throw new Error('Complete all required drop-off fields (addresses and postcodes).')
+    }
+  }
+
+  const { error: delR } = await supabase.from('job_passenger_routes').delete().eq('job_id', jobId)
+  if (delR) throw delR
+  const { error: delP } = await supabase.from('job_pickups').delete().eq('job_id', jobId)
+  if (delP) throw delP
+  const { error: delD } = await supabase.from('job_dropoffs').delete().eq('job_id', jobId)
+  if (delD) throw delD
+
+  await insertJobStopsAndRoutes(jobId, pickupStops, dropoffStops, selectedPassengers)
+}
+
 function parseCoord(value) {
   if (value == null || value === '') return null
   const n = Number(value)
@@ -403,6 +554,59 @@ export async function updateJobDropoffRow(dropoffId, patch) {
   if (error) throw error
 }
 
+/** Match existing job_pickups row to a passenger template address (same rules as create flow). */
+export function resolveJobPickupIdForPassenger(bundle, passenger) {
+  const key = normalizeAddressKey(passenger?.pickup_address)
+  if (!key) return null
+  for (const p of bundle.pickups || []) {
+    if (normalizeAddressKey(p.address) === key) return p.id
+  }
+  return null
+}
+
+/** Match existing job_dropoffs row to a passenger template address. */
+export function resolveJobDropoffIdForPassenger(bundle, passenger) {
+  const key = normalizeAddressKey(passenger?.dropoff_address)
+  if (!key) return null
+  for (const d of bundle.dropoffs || []) {
+    if (normalizeAddressKey(d.address) === key) return d.id
+  }
+  return null
+}
+
+/**
+ * Link a passenger to an existing job (insert job_passenger_routes).
+ * Pickup/drop-off stops must already exist and match the passenger profile addresses.
+ */
+export async function addPassengerRouteToJob(jobId, passenger, bundle) {
+  if (!jobId || !passenger?.id) throw new Error('Job and passenger are required.')
+  const pickupId = resolveJobPickupIdForPassenger(bundle, passenger)
+  const dropoffId = resolveJobDropoffIdForPassenger(bundle, passenger)
+  if (!pickupId || !dropoffId) {
+    throw new Error(
+      "This passenger's pickup and drop-off must match existing stops on this job. Check addresses on the passenger profile."
+    )
+  }
+  const { error } = await supabase.from('job_passenger_routes').insert({
+    job_id: jobId,
+    passenger_id: passenger.id,
+    pickup_id: pickupId,
+    dropoff_id: dropoffId,
+    wheelchair_required: Boolean(passenger.wheelchair_required),
+  })
+  if (error) throw error
+}
+
+export async function removePassengerRouteFromJob(jobId, passengerId) {
+  if (!jobId || !passengerId) throw new Error('Job and passenger are required.')
+  const { error } = await supabase
+    .from('job_passenger_routes')
+    .delete()
+    .eq('job_id', jobId)
+    .eq('passenger_id', passengerId)
+  if (error) throw error
+}
+
 /**
  * Full job creation: jobs → job_pickups → job_dropoffs → job_passenger_routes
  * (assigned_driver_id / assigned_pa_id stay null until assigned later.)
@@ -457,74 +661,7 @@ export async function createJobFromDraft(companyId, draft) {
   if (jobErr) throw jobErr
   const jobId = jobRow.id
 
-  const pickupRows = pickupStops.map((s) => ({
-    job_id: jobId,
-    pickup_order: s.pickup_order,
-    address: s.address,
-    postcode: s.postcode,
-    latitude: parseCoord(s.latitude),
-    longitude: parseCoord(s.longitude),
-    scheduled_time: toPgTime(s.scheduled_time),
-    notes_for_driver: s.notes_for_driver?.trim() || null,
-  }))
-
-  const { data: insertedPickups, error: puErr } = await supabase
-    .from('job_pickups')
-    .insert(pickupRows)
-    .select('id, pickup_order')
-
-  if (puErr) throw puErr
-
-  const pickupUuidByKey = new Map()
-  const sortedPu = [...(insertedPickups || [])].sort((a, b) => a.pickup_order - b.pickup_order)
-  pickupStops.forEach((s, i) => {
-    const row = sortedPu[i]
-    if (row) pickupUuidByKey.set(s.addressKey, row.id)
-  })
-
-  const dropoffRows = dropoffStops.map((s) => ({
-    job_id: jobId,
-    dropoff_order: s.dropoff_order,
-    address: s.address,
-    postcode: s.postcode,
-    latitude: parseCoord(s.latitude),
-    longitude: parseCoord(s.longitude),
-    scheduled_time: toPgTime(s.scheduled_time),
-    notes_for_driver: s.notes_for_driver?.trim() || null,
-  }))
-
-  const { data: insertedDropoffs, error: doErr } = await supabase
-    .from('job_dropoffs')
-    .insert(dropoffRows)
-    .select('id, dropoff_order')
-
-  if (doErr) throw doErr
-
-  const dropoffUuidByKey = new Map()
-  const sortedDo = [...(insertedDropoffs || [])].sort((a, b) => a.dropoff_order - b.dropoff_order)
-  dropoffStops.forEach((s, i) => {
-    const row = sortedDo[i]
-    if (row) dropoffUuidByKey.set(s.addressKey, row.id)
-  })
-
-  const routeMeta = buildPassengerRouteRows(selected, pickupStops, dropoffStops)
-  const routeRows = routeMeta.map((r) => {
-    const pickupId = pickupUuidByKey.get(r.pickup_address_key)
-    const dropoffId = dropoffUuidByKey.get(r.dropoff_address_key)
-    if (!pickupId || !dropoffId) {
-      throw new Error('Could not resolve pickup/drop-off for a passenger route.')
-    }
-    return {
-      job_id: jobId,
-      passenger_id: r.passenger_id,
-      pickup_id: pickupId,
-      dropoff_id: dropoffId,
-      wheelchair_required: r.wheelchair_required,
-    }
-  })
-
-  const { error: routeErr } = await supabase.from('job_passenger_routes').insert(routeRows)
-  if (routeErr) throw routeErr
+  await insertJobStopsAndRoutes(jobId, pickupStops, dropoffStops, selected)
 
   return { jobId, job: jobRow }
 }

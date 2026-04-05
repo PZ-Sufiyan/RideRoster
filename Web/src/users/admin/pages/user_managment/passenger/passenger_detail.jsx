@@ -7,6 +7,7 @@ import {
     MdBlock,
 } from 'react-icons/md';
 import { getPassengerDetailBundle } from '../../../../../services/passengerService';
+import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
 
 function formatTime12h(timeValue) {
     if (timeValue == null || timeValue === '') return '—';
@@ -37,13 +38,6 @@ function display(v) {
     if (v === null || v === undefined || v === '') return '—';
     if (typeof v === 'boolean') return v ? 'Yes' : 'No';
     return String(v);
-}
-
-function money(n) {
-    if (n === null || n === undefined || n === '') return '—';
-    const num = Number(n);
-    if (Number.isNaN(num)) return String(n);
-    return new Intl.NumberFormat(undefined, { style: 'currency', currency: 'GBP' }).format(num);
 }
 
 function normalizePassengerStatus(raw) {
@@ -96,7 +90,7 @@ const Toggle = ({ checked }) => (
 const ReadField = ({ label, value }) => (
     <div className="space-y-1.5">
         <label className="text-[11px] text-gray-500">{label}</label>
-        <div className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-800 bg-white break-words">
+        <div className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-800 bg-white wrap-break-word">
             {value}
         </div>
     </div>
@@ -139,7 +133,6 @@ const PassengerDetail = () => {
     const job = bundle?.job;
     const driver = bundle?.driver;
     const pa = bundle?.passengerAssistant;
-    const route = bundle?.route;
 
     const fullName = useMemo(() => {
         if (!p) return '';
@@ -160,9 +153,96 @@ const PassengerDetail = () => {
 
     if (loading) {
         return (
-            <div className="flex items-center justify-center min-h-[240px] text-[14px] text-gray-500">
-                Loading passenger…
-            </div>
+            <LoadingStatus label="Loading passenger profile" className="space-y-5">
+                <div className="flex items-center justify-between flex-wrap gap-3">
+                    <ShimmerBlock className="h-7 w-48 rounded-md" />
+                    <div className="flex items-center gap-3">
+                        <ShimmerBlock className="h-10 w-28 rounded-lg" />
+                        <ShimmerBlock className="h-10 w-28 rounded-lg" />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+                    <div className="lg:col-span-2 space-y-5">
+                        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-5">
+                            <div className="flex items-center gap-4">
+                                <ShimmerBlock className="w-16 h-16 shrink-0" rounded="rounded-full" />
+                                <div className="space-y-3 flex-1 min-w-0">
+                                    <ShimmerBlock className="h-5 w-48 max-w-full rounded-md" />
+                                    <ShimmerBlock className="h-3 w-24 rounded-md" />
+                                    <ShimmerBlock className="h-3 w-40 rounded-md" />
+                                </div>
+                            </div>
+                            <div className="grid grid-cols-3 gap-4 border-t border-gray-50 pt-4">
+                                {Array.from({ length: 3 }).map((_, index) => (
+                                    <div key={`summary-skeleton-${index}`} className="space-y-2">
+                                        <ShimmerBlock className="h-3 w-24 rounded-md" />
+                                        <ShimmerBlock className="h-4 w-full rounded-md" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-5">
+                            <ShimmerBlock className="h-5 w-40 rounded-md" />
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                {Array.from({ length: 5 }).map((_, index) => (
+                                    <div key={`personal-skeleton-${index}`} className="space-y-2">
+                                        <ShimmerBlock className="h-3 w-24 rounded-md" />
+                                        <ShimmerBlock className="h-11 rounded-lg" />
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                            {Array.from({ length: 2 }).map((_, index) => (
+                                <div key={`address-skeleton-${index}`} className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
+                                    <ShimmerBlock className="h-5 w-36 rounded-md" />
+                                    <div className="space-y-3">
+                                        <ShimmerBlock className="h-3 w-24 rounded-md" />
+                                        <ShimmerBlock className="h-10 rounded-lg" />
+                                        <ShimmerBlock className="h-3 w-20 rounded-md" />
+                                        <ShimmerBlock className="h-10 rounded-lg" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="lg:col-span-1 space-y-5">
+                        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
+                            <ShimmerBlock className="h-5 w-52 rounded-md" />
+                            <ShimmerBlock className="h-14 rounded-lg" />
+                            <ShimmerBlock className="h-24 rounded-lg" />
+                        </div>
+
+                        <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5 space-y-4">
+                            <ShimmerBlock className="h-5 w-36 rounded-md" />
+                            {Array.from({ length: 3 }).map((_, index) => (
+                                <div key={`audit-skeleton-${index}`} className="flex items-center justify-between gap-3">
+                                    <ShimmerBlock className="h-3 w-20 rounded-md" />
+                                    <ShimmerBlock className="h-3 w-32 rounded-md" />
+                                </div>
+                            ))}
+                            <div className="pt-2 space-y-3">
+                                <ShimmerBlock className="h-4 w-28 rounded-md" />
+                                <div className="space-y-3">
+                                    {Array.from({ length: 3 }).map((_, index) => (
+                                        <div key={`timeline-skeleton-${index}`} className="flex items-start gap-2.5">
+                                            <ShimmerBlock className="w-2 h-2 mt-1.5 shrink-0" rounded="rounded-full" />
+                                            <div className="space-y-2 flex-1 min-w-0">
+                                                <ShimmerBlock className="h-3.5 w-36 max-w-full rounded-md" />
+                                                <ShimmerBlock className="h-3 w-28 rounded-md" />
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </LoadingStatus>
         );
     }
 
@@ -246,7 +326,7 @@ const PassengerDetail = () => {
                         <div className="grid grid-cols-3 gap-4 border-t border-gray-50 pt-4">
                             <div>
                                 <div className="text-[10px] text-gray-400 font-medium mb-1">Assigned Job</div>
-                                <div className="text-[13px] font-semibold text-[#004D6D] break-words">{jobTitleLine}</div>
+                                <div className="text-[13px] font-semibold text-[#004D6D] wrap-break-word">{jobTitleLine}</div>
                             </div>
                             <div>
                                 <div className="text-[10px] text-gray-400 font-medium mb-1">Assigned Driver</div>
@@ -351,7 +431,7 @@ const PassengerDetail = () => {
 
                         <div>
                             <div className="text-[13px] font-bold text-gray-800 mb-2">Special Instructions / Notes</div>
-                            <div className="w-full px-3 py-3 border border-gray-200 rounded-lg text-[12px] text-gray-700 bg-white leading-relaxed min-h-[90px] whitespace-pre-wrap">
+                            <div className="w-full px-3 py-3 border border-gray-200 rounded-lg text-[12px] text-gray-700 bg-white leading-relaxed min-h-22.5 whitespace-pre-wrap">
                                 {p.notes?.trim() ? p.notes : '—'}
                             </div>
                             <p className="text-[11px] text-gray-400 italic mt-2">

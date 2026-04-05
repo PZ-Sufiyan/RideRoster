@@ -16,9 +16,11 @@ import {
     getPendingCompaniesWithAdminNames,
     updateCompaniesStatusByIds
 } from '../../../../services/companyService';
+import { ShimmerBlock } from '../../../../utils/Shimmer';
 
 const PendingCompanies = () => {
     const [companies, setCompanies] = useState([]);
+    const [isLoading, setIsLoading] = useState(true);
     const [selectedRows, setSelectedRows] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
     const [isBulkActionOpen, setIsBulkActionOpen] = useState(false);
@@ -27,6 +29,7 @@ const PendingCompanies = () => {
     const [isProcessing, setIsProcessing] = useState(false);
 
     const fetchPendingCompanies = async () => {
+        setIsLoading(true);
         try {
             const data = await getPendingCompaniesWithAdminNames();
 
@@ -51,6 +54,8 @@ const PendingCompanies = () => {
         } catch (error) {
             console.error('Error fetching pending companies:', error);
             setCompanies([]);
+        } finally {
+            setIsLoading(false);
         }
     };
 
@@ -62,6 +67,7 @@ const PendingCompanies = () => {
     const filteredCompanies = companies.filter(company =>
         company.name.toLowerCase().includes(searchQuery.toLowerCase())
     );
+    const shimmerRows = Array.from({ length: 8 });
 
     const toggleSelectAll = () => {
         setActionError('');
@@ -205,7 +211,7 @@ const PendingCompanies = () => {
                 ) : null}
 
                 {/* Table Container - Horizontal Scroll on Mobile */}
-                <div className="overflow-x-auto min-h-[400px]">
+                <div className="overflow-x-auto min-h-100">
                     <table className="w-full text-sm text-left whitespace-nowrap">
                         <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                             <tr>
@@ -243,8 +249,38 @@ const PendingCompanies = () => {
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {filteredCompanies.length > 0 ? (
+                        <tbody className="divide-y divide-gray-50" aria-busy={isLoading} aria-label={isLoading ? 'Loading pending companies' : undefined}>
+                            {isLoading ? shimmerRows.map((_, index) => (
+                                <tr key={`pending-company-skeleton-${index}`}>
+                                    <td className="px-6 py-4">
+                                        <ShimmerBlock className="w-5 h-5 rounded" rounded="rounded" />
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <ShimmerBlock className="h-3.5 w-28 rounded-md" />
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <ShimmerBlock className="h-3.5 w-40 rounded-md" />
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <ShimmerBlock className="h-3.5 w-24 rounded-md" />
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <ShimmerBlock className="w-8 h-8 shrink-0" rounded="rounded-full" />
+                                            <ShimmerBlock className="h-3.5 w-28 rounded-md" />
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <ShimmerBlock className="h-3.5 w-40 rounded-md" />
+                                    </td>
+                                    <td className="px-6 py-4">
+                                        <ShimmerBlock className="h-6 w-20 rounded-full" rounded="rounded-full" />
+                                    </td>
+                                    <td className="px-6 py-4 text-right">
+                                        <ShimmerBlock className="ml-auto h-8 w-8 rounded-lg" />
+                                    </td>
+                                </tr>
+                            )) : filteredCompanies.length > 0 ? (
                                 filteredCompanies.map((company) => (
                                     <tr key={company.id} className="hover:bg-gray-50/80 transition-colors">
                                         <td className="px-6 py-4">

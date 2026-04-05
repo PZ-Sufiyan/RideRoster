@@ -30,6 +30,12 @@ const SIDEBAR_PATHS = new Set([
     '/subadmin/settings',
 ]);
 
+const STEP_LABELS = {
+    '1': 'Route Info',
+    '2': 'Pickups & Drop-offs',
+    '3': 'Schedule & Pay',
+};
+
 const ROUTE_CRUMB_MAP = [
     // ─── SUPERADMIN ───────────────────────────────────────────────
     {
@@ -124,30 +130,39 @@ const ROUTE_CRUMB_MAP = [
         crumbs: (_, [action]) => [
             { label: 'User Management' },
             { label: 'Passengers', to: '/admin/users/passengers' },
-            { label: action === 'assign' ? 'Job Assignment' : 
+            { label: action === 'assign' ? 'Job Assignment' :
                      action === 'review' ? 'Assignment Review' :
                      action === 'success' ? 'Assignment Confirmed' :
                      decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) },
         ],
     },
+    // New consolidated add-job route — step label comes from ?step query param
     {
-        match: /^\/admin\/jobs\/([^/]+)(?:\/edit)?$/,
-        crumbs: (_, [id, editAction]) => {
-            const pathSegments = _.split('/');
-            const isEditing = pathSegments[pathSegments.length - 1] === 'edit';
+        match: /^\/admin\/jobs\/add-job$/,
+        crumbs: (_, __, searchParams) => {
+            const step = searchParams?.get('step') || '1';
+            const stepLabel = STEP_LABELS[step] || 'Create New Job';
             return [
                 { label: 'Job Management', to: '/admin/jobs' },
-                { 
-                    label: id === 'calendar' ? 'Job Calendar' : 
-                         id === 'create-step1' ? 'Create New Job' :
-                         id === 'create-step2' ? 'Pickups & Drop-offs' :
-                         id === 'create-step3' ? 'Timings & Compensation' :
-                         decodeURIComponent(id),
-                    to: isEditing && id && !id.startsWith('create') && id !== 'calendar' ? `/admin/jobs/${id}` : undefined
-                },
-                ...(isEditing ? [{ label: 'Edit Job' }] : [])
+                { label: 'Create New Job', to: '/admin/jobs/add-job?step=1' },
+                ...(step !== '1' ? [{ label: stepLabel }] : []),
             ];
         },
+    },
+    {
+        match: /^\/admin\/jobs\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'Job Management', to: '/admin/jobs' },
+            { label: decodeURIComponent(id), to: `/admin/jobs/${id}` },
+            { label: 'Edit Job' },
+        ],
+    },
+    {
+        match: /^\/admin\/jobs\/([^/]+)$/,
+        crumbs: (_, [id]) => [
+            { label: 'Job Management', to: '/admin/jobs' },
+            { label: id === 'calendar' ? 'Job Calendar' : decodeURIComponent(id) },
+        ],
     },
     {
         match: /^\/admin\/reports\/([^/]+)$/,
@@ -181,7 +196,7 @@ const ROUTE_CRUMB_MAP = [
     },
     {
         match: /^\/subadmin\/drivers\/([^/]+)$/,
-        crumbs: (_, [id]) => [
+        crumbs: () => [
             { label: 'Drivers', to: '/subadmin/drivers' },
             { label: 'Driver Profile' },
         ],
@@ -203,7 +218,8 @@ const ROUTE_CRUMB_MAP = [
 ];
 
 const Breadcrumbs = () => {
-    const { pathname } = useLocation();
+    const { pathname, search } = useLocation();
+    const searchParams = new URLSearchParams(search);
 
     if (SIDEBAR_PATHS.has(pathname)) return null;
 
@@ -211,7 +227,7 @@ const Breadcrumbs = () => {
     for (const route of ROUTE_CRUMB_MAP) {
         const matches = pathname.match(route.match);
         if (matches) {
-            crumbs = route.crumbs(matches[0], matches.slice(1));
+            crumbs = route.crumbs(matches[0], matches.slice(1), searchParams);
             break;
         }
     }

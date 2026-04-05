@@ -64,6 +64,32 @@ export const getDriverById = async (driverId) => {
   return data
 }
 
+/** Returns null if no row (useful for detail pages). */
+export const getDriverByIdMaybe = async (driverId) => {
+  const { data, error } = await supabase
+    .from('drivers')
+    .select('*')
+    .eq('id', driverId)
+    .maybeSingle()
+  if (error) throw error
+  return data
+}
+
+/**
+ * Jobs where this driver is assigned (`jobs.assigned_driver_id`).
+ */
+export const getJobsByAssignedDriver = async (companyId, driverId) => {
+  if (!companyId || !driverId) return []
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('id, internal_job_id, job_name, job_date, status, company_id, assigned_driver_id')
+    .eq('company_id', companyId)
+    .eq('assigned_driver_id', driverId)
+    .order('job_date', { ascending: false })
+  if (error) throw error
+  return data || []
+}
+
 export const createDriver = async (driverPayload) => {
   const { data, error } = await supabase
     .from('drivers')

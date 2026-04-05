@@ -11,6 +11,7 @@ import {
     MdCheckBox
 } from 'react-icons/md';
 import { getAllCompanies } from '../../../../services/companyService' // added
+import { ShimmerBlock } from '../../../../utils/Shimmer';
 
 const Companies = () => {
     // replaced hardcoded dummy -> fetch from backend
@@ -129,6 +130,8 @@ const Companies = () => {
         }
     };
 
+    const shimmerRows = Array.from({ length: itemsPerPage });
+
     return (
         <div className="space-y-6">
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
@@ -138,7 +141,10 @@ const Companies = () => {
                 </div>
             </div>
 
-            <div className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col min-h-[500px]">
+            <div
+                className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col"
+                style={{ minHeight: '500px' }}
+            >
                 <div className="p-4 border-b border-gray-100 flex flex-col lg:flex-row gap-4 justify-between lg:items-center">
                     <div className="flex flex-col sm:flex-row gap-3 flex-1">
                         <div className="relative max-w-sm w-full sm:w-64">
@@ -181,7 +187,7 @@ const Companies = () => {
                     </button>
                 </div>
 
-                <div className="grow overflow-x-auto min-h-[400px]">
+                <div className="grow overflow-x-auto" style={{ minHeight: '400px' }}>
                     <table className="w-full text-sm text-left whitespace-nowrap">
                         <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                             <tr>
@@ -202,13 +208,39 @@ const Companies = () => {
                                 <th className="px-6 py-4 text-center">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
+                        <tbody className="divide-y divide-gray-50" aria-busy={loading} aria-label={loading ? 'Loading companies' : undefined}>
                             {loading ? (
-                                <tr>
-                                    <td colSpan="7" className="px-6 py-20 text-center text-gray-500">
-                                        Loading...
-                                    </td>
-                                </tr>
+                                shimmerRows.map((_, index) => (
+                                    <tr key={`company-skeleton-${index}`}>
+                                        <td className="px-6 py-4">
+                                            <ShimmerBlock className="w-5 h-5 rounded" rounded="rounded" />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <ShimmerBlock className="h-3.5 w-24 rounded-md" />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <div className="flex items-center gap-3">
+                                                <ShimmerBlock className="w-8 h-8 shrink-0" rounded="rounded-full" />
+                                                <ShimmerBlock className="h-3.5 w-36 rounded-md" />
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <ShimmerBlock className="h-3.5 w-36 rounded-md" />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <ShimmerBlock className="h-3.5 w-40 rounded-md" />
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <ShimmerBlock className="mx-auto h-6 w-20 rounded-full" rounded="rounded-full" />
+                                        </td>
+                                        <td className="px-6 py-4">
+                                            <ShimmerBlock className="h-3.5 w-24 rounded-md" />
+                                        </td>
+                                        <td className="px-6 py-4 text-center">
+                                            <ShimmerBlock className="mx-auto h-8 w-8 rounded-lg" />
+                                        </td>
+                                    </tr>
+                                ))
                             ) : pagedCompanies.length > 0 ? (
                                 pagedCompanies.map((company) => (
                                     <tr key={company.id} className="hover:bg-gray-50/80 transition-colors">

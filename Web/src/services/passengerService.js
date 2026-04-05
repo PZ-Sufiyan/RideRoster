@@ -52,6 +52,9 @@ export const getPassengerById = async (passengerId) => {
 
 /**
  * Passenger plus assigned job, driver, PA, and optional job_passenger_routes → pickup/dropoff rows.
+ *
+ * Job is resolved from `job_passenger_routes` (passenger’s link to a job), not from `passenger.assigned_job_id`.
+ * Driver and PA come from `jobs.assigned_driver_id` / `jobs.assigned_pa_id` for that job.
  */
 export const getPassengerDetailBundle = async (passengerId) => {
   const passenger = await getPassengerById(passengerId)
@@ -65,7 +68,17 @@ export const getPassengerDetailBundle = async (passengerId) => {
     }
   }
 
-  const jobId = passenger.assigned_job_id != null ? String(passenger.assigned_job_id).trim() : ''
+  const { data: routeRows, error: routeListErr } = await supabase
+    .from('job_passenger_routes')
+    .select('id, job_id, passenger_id, pickup_id, dropoff_id, wheelchair_required, created_at')
+    .eq('passenger_id', passengerId)
+    .order('created_at', { ascending: false })
+
+  if (routeListErr) throw routeListErr
+
+  const primaryRoute = routeRows?.length ? routeRows[0] : null
+  const jobId = primaryRoute?.job_id ? String(primaryRoute.job_id).trim() : ''
+
   if (!jobId) {
     return {
       passenger,
@@ -93,31 +106,28 @@ export const getPassengerDetailBundle = async (passengerId) => {
     }
   }
 
-  const [driverRes, paRes, routeRes] = await Promise.all([
-    supabase.from('drivers').select('*').eq('id', job.assigned_driver_id).maybeSingle(),
-    supabase.from('passenger_assistant').select('*').eq('id', job.assigned_pa_id).maybeSingle(),
-    supabase
-      .from('job_passenger_routes')
-      .select('*')
-      .eq('job_id', job.id)
-      .eq('passenger_id', passengerId)
-      .maybeSingle(),
+  const [driverRes, paRes] = await Promise.all([
+    job.assigned_driver_id
+      ? supabase.from('drivers').select('*').eq('id', job.assigned_driver_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    job.assigned_pa_id
+      ? supabase.from('passenger_assistant').select('*').eq('id', job.assigned_pa_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
   ])
 
   if (driverRes.error) throw driverRes.error
   if (paRes.error) throw paRes.error
-  if (routeRes.error) throw routeRes.error
 
   let route = null
-  if (routeRes.data) {
+  if (primaryRoute) {
     const [pickupRes, dropoffRes] = await Promise.all([
-      supabase.from('job_pickups').select('*').eq('id', routeRes.data.pickup_id).maybeSingle(),
-      supabase.from('job_dropoffs').select('*').eq('id', routeRes.data.dropoff_id).maybeSingle(),
+      supabase.from('job_pickups').select('*').eq('id', primaryRoute.pickup_id).maybeSingle(),
+      supabase.from('job_dropoffs').select('*').eq('id', primaryRoute.dropoff_id).maybeSingle(),
     ])
     if (pickupRes.error) throw pickupRes.error
     if (dropoffRes.error) throw dropoffRes.error
     route = {
-      ...routeRes.data,
+      ...primaryRoute,
       pickup: pickupRes.data,
       dropoff: dropoffRes.data,
     }

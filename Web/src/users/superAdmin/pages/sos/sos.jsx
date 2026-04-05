@@ -5,6 +5,7 @@ import 'leaflet/dist/leaflet.css'
 import { MdPerson } from 'react-icons/md'
 
 import { getActiveSosAlerts } from '../../../../services/sosService'
+import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer'
 
 const DEFAULT_CENTER = [0, 0]
 const DEFAULT_ZOOM = 12
@@ -142,6 +143,8 @@ const SOSPage = () => {
     return [avgLat, avgLng]
   }, [visibleSosAlerts])
 
+  const shimmerRows = Array.from({ length: 4 })
+
   return (
     <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
       <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0">
@@ -151,6 +154,16 @@ const SOSPage = () => {
 
       <div className="flex flex-1 overflow-hidden">
         <div className="flex-1 relative bg-[#9BCFF5] overflow-hidden">
+          {loading && (
+            <div
+              className="absolute inset-0 z-20 pointer-events-none"
+              style={{ backgroundImage: 'linear-gradient(to bottom right, rgba(255,255,255,0.30), rgba(255,255,255,0.10), transparent)' }}
+            >
+              <div className="absolute inset-0 flex items-center justify-center">
+                <ShimmerBlock className="w-16 h-16 border border-white/90 shadow-lg" rounded="rounded-full" />
+              </div>
+            </div>
+          )}
           <MapContainer
             center={mapCenter}
             zoom={DEFAULT_ZOOM}
@@ -182,21 +195,14 @@ const SOSPage = () => {
             ))}
           </MapContainer>
 
-          {loading && (
-            <div className="absolute inset-0 flex items-center justify-center bg-transparent pointer-events-none">
-              <div className="bg-white/90 border border-gray-200 rounded-lg px-4 py-3 text-sm text-gray-600 shadow-sm">
-                Loading SOS alerts...
-              </div>
-            </div>
-          )}
         </div>
 
-        <div className="w-[400px] bg-white border-l border-gray-200 flex flex-col shrink-0 z-20 shadow-xl">
+        <div className="bg-white border-l border-gray-200 flex flex-col shrink-0 z-20 shadow-xl" style={{ width: '400px' }}>
           <div className="p-6 border-b border-gray-100">
             <h2 className="text-lg font-bold text-gray-800">Active SOS Alerts</h2>
             <p className="text-sm text-gray-500 mt-1">
               {loading
-                ? 'Loading...'
+                ? 'Loading live incidents...'
                 : showAllSos
                   ? `${activeSosAlerts.length} incidents require attention.`
                   : `${visibleSosAlerts.length} incidents match your filter.`}
@@ -277,7 +283,29 @@ const SOSPage = () => {
           )}
 
           <div className="flex-1 overflow-y-auto p-6 space-y-6">
-            {visibleSosAlerts.map((alert) => {
+            {loading ? (
+              <LoadingStatus label="Loading SOS alerts" className="space-y-6">
+                {shimmerRows.map((_, index) => (
+                  <div key={`sos-side-skeleton-${index}`} className="border-b border-gray-100 pb-6 last:border-0 last:pb-0">
+                    <div className="flex justify-between items-start mb-3">
+                      <ShimmerBlock className="h-4 w-44 max-w-[70%] rounded-md" />
+                      <ShimmerBlock className="h-3 w-16 rounded-md" />
+                    </div>
+                    <ShimmerBlock className="h-3 w-28 rounded-md mb-4" />
+                    <div className="space-y-2 mb-4">
+                      <ShimmerBlock className="h-3.5 w-full rounded-md" />
+                      <ShimmerBlock className="h-3.5 w-[83%] rounded-md" />
+                    </div>
+                    <div className="flex flex-wrap gap-y-2 gap-x-4 mb-4">
+                      <ShimmerBlock className="h-5 w-28 rounded-md" />
+                      <ShimmerBlock className="h-5 w-24 rounded-md" />
+                      <ShimmerBlock className="h-5 w-20 rounded-md" />
+                    </div>
+                    <ShimmerBlock className="h-4 w-44 rounded-md" />
+                  </div>
+                ))}
+              </LoadingStatus>
+            ) : visibleSosAlerts.map((alert) => {
               const driverLabel = alert.driver_label || '—'
               const paLabel = alert.passenger_assistant_label || '—'
 

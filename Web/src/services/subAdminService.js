@@ -16,6 +16,24 @@ const SUB_ADMIN_PERM_FIELDS = [
 
 export const SUB_ADMIN_PERMISSION_KEYS = SUB_ADMIN_PERM_FIELDS.map((f) => f.key)
 
+/** Build UI permission toggles from a `sub_admins` row. */
+export const subAdminRowToPermissionState = (row) => {
+  const initial = {}
+  for (const key of SUB_ADMIN_PERMISSION_KEYS) {
+    initial[key] = !!row?.[key]
+  }
+  return initial
+}
+
+/** Map permission toggle state to columns for `updateSubAdmin`. */
+export const permissionStateToSubAdminUpdates = (permissionState) => {
+  const updates = {}
+  for (const key of SUB_ADMIN_PERMISSION_KEYS) {
+    updates[key] = !!permissionState?.[key]
+  }
+  return updates
+}
+
 /* Sub Admins CRUD */
 
 // Get all sub_admins, optional filter by companyId

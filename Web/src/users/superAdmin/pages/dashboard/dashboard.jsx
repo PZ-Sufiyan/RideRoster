@@ -14,6 +14,7 @@ import {
     getCompanyGrowthByMonth,
     getCompanyTypeBreakdown,
 } from '../../../../services/dashboardService'
+import { ShimmerBlock } from '../../../../utils/Shimmer'
 
 const Dashboard = () => {
     const [loading, setLoading] = useState(true)
@@ -142,8 +143,12 @@ const Dashboard = () => {
         }
     }, [companyTypeBreakdown])
 
+    const shimmerStats = Array.from({ length: 4 })
+    const shimmerRows = Array.from({ length: 4 })
+
     return (
-        <div className="space-y-6">
+        <div className="space-y-6" {...(loading ? { role: 'status', 'aria-busy': true, 'aria-label': 'Loading dashboard' } : {})}>
+            {loading && <span className="sr-only">Loading dashboard</span>}
             {/* Header / Titles */}
             <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
@@ -166,22 +171,37 @@ const Dashboard = () => {
 
             {/* Stats Grid */}
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-6">
-                {stats.map((stat, index) => (
-                    <div key={index} className="bg-white p-6 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col justify-between h-full">
-                        <div className="flex justify-between items-start">
-                            <span className="text-sm font-medium text-gray-500">{stat.label}</span>
-                            <div className={`p-2 rounded-lg ${stat.bg}`}>
-                                {stat.icon}
+                {loading
+                    ? shimmerStats.map((_, index) => (
+                        <div key={`stat-skeleton-${index}`} className="bg-white p-6 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col justify-between h-full">
+                            <div className="flex justify-between items-start">
+                                <ShimmerBlock className="h-4 w-28 rounded-md" />
+                                <div className="p-2 rounded-lg bg-gray-100/90">
+                                    <ShimmerBlock className="h-5 w-5 rounded" rounded="rounded" />
+                                </div>
+                            </div>
+                            <div className="mt-4 space-y-3">
+                                <ShimmerBlock className="h-9 w-20 rounded-md" />
+                                <ShimmerBlock className="h-3 w-32 rounded-md" />
                             </div>
                         </div>
-                        <div className="mt-4">
-                            <h2 className="text-3xl font-bold text-gray-900">{stat.value}</h2>
-                            <div className="flex items-center gap-1 mt-2 text-xs font-medium text-gray-500">
-                                <span>{stat.change}</span>
+                    ))
+                    : stats.map((stat, index) => (
+                        <div key={index} className="bg-white p-6 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col justify-between h-full">
+                            <div className="flex justify-between items-start">
+                                <span className="text-sm font-medium text-gray-500">{stat.label}</span>
+                                <div className={`p-2 rounded-lg ${stat.bg}`}>
+                                    {stat.icon}
+                                </div>
+                            </div>
+                            <div className="mt-4">
+                                <h2 className="text-3xl font-bold text-gray-900">{stat.value}</h2>
+                                <div className="flex items-center gap-1 mt-2 text-xs font-medium text-gray-500">
+                                    <span>{stat.change}</span>
+                                </div>
                             </div>
                         </div>
-                    </div>
-                ))}
+                    ))}
             </div>
 
             {/* Charts Section */}
@@ -190,6 +210,18 @@ const Dashboard = () => {
                 <div className="lg:col-span-2 bg-white p-6 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100">
                     <h3 className="font-bold text-gray-800 mb-6">Monthly Member Growth</h3>
                     <div className="w-full h-64 flex items-end justify-between gap-2 text-xs text-gray-400 relative px-4">
+                        {loading && (
+                            <div className="absolute inset-0 z-10 rounded-xl bg-white/70 backdrop-blur-[1px] flex items-end px-4 pb-6">
+                                <div className="w-full h-full flex items-end justify-between gap-2">
+                                    {Array.from({ length: 12 }).map((_, index) => (
+                                        <div key={`growth-skeleton-${index}`} className="flex-1 flex flex-col items-center gap-2 min-w-0">
+                                            <ShimmerBlock className="w-full h-24 rounded-t-lg" rounded="rounded-t-lg" />
+                                            <ShimmerBlock className="h-3 w-6 rounded" rounded="rounded" />
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
                         <div className="absolute left-0 top-0 bottom-6 flex flex-col justify-between text-gray-300 w-8 text-right pr-2">
                             <span>Max</span>
                             <span>75%</span>
@@ -243,9 +275,14 @@ const Dashboard = () => {
                 </div>
 
                 {/* Donut Chart Area (1 col) */}
-                <div className="bg-white p-6 rounded-xl shadow-[0_2px_10px_-4_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col">
+                <div className="relative bg-white p-6 rounded-xl shadow-[0_2px_10px_-4_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col">
                     <h3 className="font-bold text-gray-800 mb-6">Company Sign-ups by Type</h3>
                     <div className="flex-1 flex flex-col items-center justify-center">
+                        {loading && (
+                            <div className="absolute inset-0 z-10 rounded-xl bg-white/70 backdrop-blur-[1px] flex items-center justify-center">
+                                <ShimmerBlock className="w-48 h-48 border-8 border-gray-100/90" rounded="rounded-full" />
+                            </div>
+                        )}
                         <div className="relative w-48 h-48">
                             <svg viewBox="0 0 36 36" className="w-full h-full transform -rotate-90">
                                 <path
@@ -344,8 +381,17 @@ const Dashboard = () => {
                                 <th className="px-6 py-3 text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {pendingApprovals.map((row, idx) => (
+                        <tbody className="divide-y divide-gray-50" aria-busy={loading} aria-label={loading ? 'Loading pending approvals' : undefined}>
+                            {loading ? shimmerRows.map((_, idx) => (
+                                <tr key={`pending-skeleton-${idx}`}>
+                                    <td className="px-6 py-4"><ShimmerBlock className="h-3.5 w-24 rounded-md" /></td>
+                                    <td className="px-6 py-4"><ShimmerBlock className="h-3.5 w-36 rounded-md" /></td>
+                                    <td className="px-6 py-4"><ShimmerBlock className="h-3.5 w-24 rounded-md" /></td>
+                                    <td className="px-6 py-4"><ShimmerBlock className="h-3.5 w-40 rounded-md" /></td>
+                                    <td className="px-6 py-4"><ShimmerBlock className="h-6 w-20 rounded-full" rounded="rounded-full" /></td>
+                                    <td className="px-6 py-4 text-right"><ShimmerBlock className="ml-auto h-3.5 w-12 rounded-md" /></td>
+                                </tr>
+                            )) : pendingApprovals.map((row, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
                                     <td className="px-6 py-4 text-gray-500">{row.id || '—'}</td>
                                     <td className="px-6 py-4 font-medium text-gray-900">{row.company_name || '—'}</td>
@@ -367,13 +413,6 @@ const Dashboard = () => {
                                 <tr>
                                     <td className="px-6 py-6 text-gray-500" colSpan={6}>
                                         No pending approvals.
-                                    </td>
-                                </tr>
-                            )}
-                            {loading && (
-                                <tr>
-                                    <td className="px-6 py-6 text-gray-500" colSpan={6}>
-                                        Loading…
                                     </td>
                                 </tr>
                             )}

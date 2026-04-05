@@ -30,6 +30,7 @@ import {
     updateJobAssignedDriver,
     updateJobAssignedPa,
 } from '../../../../services/jobService';
+import { ShimmerBlock } from '../../../../utils/Shimmer';
 
 const ActiveJobs = () => {
     const navigate = useNavigate();
@@ -288,7 +289,7 @@ const ActiveJobs = () => {
                         View Calendar
                     </button>
                     <button
-                        onClick={() => navigate('/admin/jobs/create-step1')}
+                        onClick={() => navigate('/admin/jobs/add-job')}
                         className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[14px] font-semibold hover:bg-[#003c55] transition-all shadow-sm"
                     >
                         <MdAdd size={20} />
@@ -361,14 +362,45 @@ const ActiveJobs = () => {
                                 <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-right pr-8">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {loading && (
-                                <tr>
-                                    <td colSpan={7} className="px-6 py-16 text-center text-[14px] text-gray-500 font-medium">
-                                        Loading jobs…
-                                    </td>
-                                </tr>
-                            )}
+                        <tbody className="divide-y divide-gray-50" aria-busy={loading} aria-label={loading ? 'Loading jobs' : undefined}>
+                            {loading &&
+                                Array.from({ length: 6 }).map((_, i) => (
+                                    <tr key={`jobs-skeleton-${i}`}>
+                                        <td className="px-6 py-5">
+                                            <ShimmerBlock className="w-4 h-4 rounded" rounded="rounded" />
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <div className="space-y-2">
+                                                <ShimmerBlock className="h-3.5 w-32 rounded-md" />
+                                                <ShimmerBlock className="h-3 w-44 rounded-md" />
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <div className="mx-auto space-y-2 w-fit">
+                                                <ShimmerBlock className="h-3.5 w-24 rounded-md" />
+                                                <ShimmerBlock className="h-3 w-20 rounded-md" />
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <div className="mx-auto flex items-center gap-3 w-fit">
+                                                <ShimmerBlock className="w-9 h-9 shrink-0" rounded="rounded-full" />
+                                                <div className="space-y-2">
+                                                    <ShimmerBlock className="h-3.5 w-24 rounded-md" />
+                                                    <ShimmerBlock className="h-3 w-16 rounded-md" />
+                                                </div>
+                                            </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <ShimmerBlock className="mx-auto h-3.5 w-10 rounded-md" />
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <ShimmerBlock className="mx-auto h-6 w-20 rounded-full" rounded="rounded-full" />
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <ShimmerBlock className="ml-auto h-8 w-8 rounded-full" rounded="rounded-full" />
+                                        </td>
+                                    </tr>
+                                ))}
                             {!loading &&
                                 jobs.map((job, idx) => (
                                     <tr key={job.id} className="hover:bg-gray-50/50 transition-all">

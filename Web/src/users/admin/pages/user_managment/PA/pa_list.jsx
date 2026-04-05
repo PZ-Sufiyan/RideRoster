@@ -17,6 +17,7 @@ import {
     getPassengerAssistants,
     updatePassengerAssistant,
 } from '../../../../../services/passengerAsssistantService';
+import { ShimmerBlock } from '../../../../../utils/Shimmer';
 
 /** DB `passenger_assistant.status` values (lowercase) */
 const PA_STATUS_DB = {
@@ -220,6 +221,7 @@ const PAListPage = () => {
 
     const menuPa = openMenu ? pas.find((p) => p.id === openMenu.paId) : null;
     const paMenuActions = menuPa ? PA_MENU_ACTIONS : [];
+    const shimmerRows = Array.from({ length: 5 });
 
     const toggleRow = (id) => setSelectedRows((prev) =>
         prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
@@ -376,7 +378,6 @@ const PAListPage = () => {
                                             : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                     </div>
                                 </th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">PA ID</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact Info</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Assigned Jobs</th>
@@ -385,8 +386,44 @@ const PAListPage = () => {
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {!isLoading && paginated.length > 0 ? paginated.map((pa) => (
+                        <tbody className="divide-y divide-gray-50" aria-busy={isLoading} aria-label={isLoading ? 'Loading passenger assistants' : undefined}>
+                            {isLoading ? shimmerRows.map((_, index) => (
+                                <tr key={`pa-skeleton-${index}`}>
+                                    <td className="px-4 py-3.5">
+                                        <ShimmerBlock className="w-5 h-5 rounded" rounded="rounded" />
+                                    </td>
+                                    <td className="px-4 py-3.5">
+                                        <ShimmerBlock className="h-3.5 w-32 rounded-md" />
+                                    </td>
+                                    <td className="px-4 py-3.5">
+                                        <div className="flex items-center gap-3">
+                                            <ShimmerBlock className="w-9 h-9 shrink-0" rounded="rounded-full" />
+                                            <div className="space-y-2 min-w-0">
+                                                <ShimmerBlock className="h-3.5 w-28 max-w-full rounded-md" />
+                                                <ShimmerBlock className="h-3 w-16 rounded-md" />
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3.5">
+                                        <div className="space-y-2">
+                                            <ShimmerBlock className="h-3.5 w-36 rounded-md" />
+                                            <ShimmerBlock className="h-3 w-24 rounded-md" />
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-3.5">
+                                        <ShimmerBlock className="h-3.5 w-20 rounded-md" />
+                                    </td>
+                                    <td className="px-4 py-3.5">
+                                        <ShimmerBlock className="h-6 w-20 rounded-full" rounded="rounded-full" />
+                                    </td>
+                                    <td className="px-4 py-3.5">
+                                        <ShimmerBlock className="h-3.5 w-24 rounded-md" />
+                                    </td>
+                                    <td className="px-4 py-3.5 text-right">
+                                        <ShimmerBlock className="ml-auto h-8 w-8 rounded-lg" />
+                                    </td>
+                                </tr>
+                            )) : paginated.length > 0 ? paginated.map((pa) => (
                                 <tr key={pa.id} className="hover:bg-gray-50/60 transition-colors">
                                     {/* Checkbox */}
                                     <td className="px-4 py-3.5">
@@ -396,12 +433,6 @@ const PAListPage = () => {
                                                 : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                         </div>
                                     </td>
-
-                                    {/* PA ID */}
-                                    <td className="px-4 py-3.5 text-gray-500 whitespace-nowrap">
-                                        {pa.paId}
-                                    </td>
-
                                     {/* Name + PA ID */}
                                     <td className="px-4 py-3.5">
                                         <div
@@ -515,7 +546,7 @@ const PAListPage = () => {
                                 <button
                                     key={page}
                                     onClick={() => handlePage(page)}
-                                    className={`min-w-[32px] h-8 flex items-center justify-center rounded-lg text-xs font-medium transition-colors border
+                                    className={`min-w-8 h-8 flex items-center justify-center rounded-lg text-xs font-medium transition-colors border
                                         ${currentPage === page
                                             ? 'bg-[#005580] text-white border-[#005580] shadow-sm'
                                             : 'border-gray-200 text-gray-600 hover:bg-gray-50'
@@ -542,7 +573,7 @@ const PAListPage = () => {
                 createPortal(
                     <div
                         ref={menuRef}
-                        className="fixed z-[100] w-36 bg-white border border-gray-100 rounded-lg shadow-lg py-0.5"
+                        className="fixed z-100 w-36 bg-white border border-gray-100 rounded-lg shadow-lg py-0.5"
                         style={{ top: openMenu.top, left: openMenu.left }}
                         role="menu"
                     >

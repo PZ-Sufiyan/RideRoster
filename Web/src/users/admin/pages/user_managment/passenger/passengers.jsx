@@ -16,6 +16,7 @@ import {
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { getPassengers, updatePassenger } from '../../../../../services/passengerService';
+import { ShimmerBlock } from '../../../../../utils/Shimmer';
 
 const STATUS_STYLES = {
     Active: 'text-blue-600 font-bold text-[11px] uppercase tracking-wide',
@@ -82,7 +83,7 @@ const Dropdown = ({ label, options, value, open, setOpen, onChange }) => (
             <MdKeyboardArrowDown className="text-gray-400 ml-0.5" size={16} />
         </button>
         {open && (
-            <div className="absolute left-0 top-full mt-1 min-w-[120px] bg-white border border-gray-100 rounded-lg shadow-lg z-30">
+            <div className="absolute left-0 top-full mt-1 min-w-30 bg-white border border-gray-100 rounded-lg shadow-lg z-30">
                 {options.map((opt) => (
                     <button
                         key={opt}
@@ -235,6 +236,7 @@ const PassengersPage = () => {
     };
 
     const allSel = paginated.length > 0 && paginated.every((p) => selectedRows.includes(p.id));
+    const shimmerRows = Array.from({ length: 6 });
 
     const handlePageChange = (page) => {
         if (page < 1 || page > totalPages) return;
@@ -300,7 +302,7 @@ const PassengersPage = () => {
             {/* ── Filter Bar ── */}
             <div className="flex flex-wrap items-center gap-3 bg-white px-4 py-3 rounded-xl border border-gray-100 shadow-sm">
                 {/* Search */}
-                <div className="relative flex-1 min-w-[220px]">
+                <div className="relative flex-1 min-w-55">
                     <MdSearch className="absolute left-3 top-2.5 text-gray-400" size={18} />
                     <input
                         type="text"
@@ -409,7 +411,6 @@ const PassengersPage = () => {
                                         }
                                     </div>
                                 </th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Passenger ID</th>
                                 <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Passenger Name</th>
                                 <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
                                 <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pickup</th>
@@ -420,8 +421,56 @@ const PassengersPage = () => {
                                 <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50">
-                            {paginated.length > 0 ? paginated.map((p) => (
+                        <tbody className="divide-y divide-gray-50" aria-busy={isLoading} aria-label={isLoading ? 'Loading passengers' : undefined}>
+                            {isLoading ? shimmerRows.map((_, index) => (
+                                <tr key={`passenger-skeleton-${index}`}>
+                                    <td className="px-4 py-4">
+                                        <ShimmerBlock className="w-5 h-5 rounded" rounded="rounded" />
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        <ShimmerBlock className="h-3.5 w-32 rounded-md" />
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        <div className="flex items-center gap-3">
+                                            <ShimmerBlock className="w-8 h-8 shrink-0" rounded="rounded-full" />
+                                            <div className="space-y-2 min-w-0">
+                                                <ShimmerBlock className="h-3.5 w-28 max-w-full rounded-md" />
+                                                <ShimmerBlock className="h-3 w-20 rounded-md" />
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        <div className="space-y-2">
+                                            <ShimmerBlock className="h-3.5 w-24 rounded-md" />
+                                            <ShimmerBlock className="h-3 w-16 rounded-md" />
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        <div className="space-y-2">
+                                            <ShimmerBlock className="h-3.5 w-28 rounded-md" />
+                                            <ShimmerBlock className="h-3 w-36 rounded-md" />
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        <ShimmerBlock className="h-3.5 w-16 rounded-md" />
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        <ShimmerBlock className="h-5 w-5 rounded" rounded="rounded" />
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        <div className="space-y-2">
+                                            <ShimmerBlock className="h-3.5 w-28 rounded-md" />
+                                            <ShimmerBlock className="h-3 w-36 rounded-md" />
+                                        </div>
+                                    </td>
+                                    <td className="px-4 py-4">
+                                        <ShimmerBlock className="h-6 w-20 rounded-full" rounded="rounded-full" />
+                                    </td>
+                                    <td className="px-4 py-4 text-right">
+                                        <ShimmerBlock className="ml-auto h-8 w-8 rounded-lg" />
+                                    </td>
+                                </tr>
+                            )) : paginated.length > 0 ? paginated.map((p) => (
                                 <tr key={p.id} className="hover:bg-gray-50/50 transition-colors">
 
                                     {/* Checkbox */}
@@ -433,10 +482,6 @@ const PassengersPage = () => {
                                             }
                                         </div>
                                     </td>
-
-                                    {/* Passenger ID */}
-                                    <td className="px-4 py-4 text-gray-500 whitespace-nowrap">{p.passengerId}</td>
-
                                     {/* Name + Avatar */}
                                     <td className="px-4 py-4">
                                         <div
@@ -523,9 +568,7 @@ const PassengersPage = () => {
                             )) : (
                                 <tr>
                                     <td colSpan="10" className="px-6 py-16 text-center text-gray-400 text-sm">
-                                        {isLoading
-                                            ? 'Loading passengers...'
-                                            : loadError || 'No passengers found.'}
+                                        {loadError || 'No passengers found.'}
                                     </td>
                                 </tr>
                             )}
@@ -577,7 +620,7 @@ const PassengersPage = () => {
                 createPortal(
                     <div
                         ref={menuRef}
-                        className="fixed z-[100] w-36 bg-white border border-gray-100 rounded-lg shadow-lg py-0.5"
+                        className="fixed z-100 w-36 bg-white border border-gray-100 rounded-lg shadow-lg py-0.5"
                         style={{ top: openMenu.top, left: openMenu.left }}
                         role="menu"
                     >
