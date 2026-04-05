@@ -71,6 +71,7 @@ import SubAdmin_SOSDetail from './users/subAdmin/pages/sos/sos_detail';
 import SubAdmin_Notifications from './users/subAdmin/pages/notifications/notification';
 import SubAdmin_Settings from './users/subAdmin/pages/settings/settings';
 import Home from './home';
+import SubAdminProtectedPage from './components/SubAdminProtectedPage';
 import './App.css';
 
 // Component for route protection
@@ -160,31 +161,178 @@ function App() {
               </Route>
             </Route>
 
-            {/* Subadmin Group — mirrors admin routes under /subadmin */}
+            {/* Subadmin Group — mirrors admin routes; pages gated by sub_admins permissions */}
             <Route element={<ProtectedRoute allowedRoles={['subadmin']} />}>
               <Route path="/subadmin/dashboard" element={<SubAdmin_Dashboard />} />
-              <Route path="/subadmin/approvals" element={<SubAdmin_Approvals />} />
-              <Route path="/subadmin/users/drivers" element={<SubAdmin_Drivers />} />
-              <Route path="/subadmin/users/drivers/add" element={<SubAdmin_AddDriver />} />
-              <Route path="/subadmin/users/drivers/:id" element={<SubAdmin_DriverDetail />} />
-              <Route path="/subadmin/users/pa" element={<SubAdmin_PAList />} />
-              <Route path="/subadmin/users/pa/add" element={<SubAdmin_AddPA />} />
-              <Route path="/subadmin/users/pa/:id" element={<SubAdmin_PADetail />} />
-              <Route path="/subadmin/users/passengers" element={<SubAdmin_Passengers />} />
-              <Route path="/subadmin/users/passengers/add" element={<SubAdmin_AddPassenger />} />
-              <Route path="/subadmin/users/passengers/:id/edit" element={<SubAdmin_EditPassenger />} />
-              <Route path="/subadmin/users/passengers/assign" element={<SubAdmin_AssignRoute />} />
-              <Route path="/subadmin/users/passengers/assign/review" element={<SubAdmin_RouteReview />} />
-              <Route path="/subadmin/users/passengers/assign/success" element={<SubAdmin_SuccessConfirmation />} />
-              <Route path="/subadmin/users/passengers/:id" element={<SubAdmin_PassengerDetail />} />
-              <Route path="/subadmin/jobs" element={<SubAdmin_JobsList />} />
-              <Route path="/subadmin/jobs/calendar" element={<SubAdmin_JobCalendar />} />
-              <Route path="/subadmin/jobs/add-job" element={<SubAdmin_AddJob />} />
-              <Route path="/subadmin/jobs/:id/edit" element={<SubAdmin_EditJob />} />
-              <Route path="/subadmin/jobs/:id" element={<SubAdmin_JobDetail />} />
+              <Route
+                path="/subadmin/approvals"
+                element={
+                  <SubAdminProtectedPage anyOf={['view_users', 'view_jobs']}>
+                    <SubAdmin_Approvals />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/drivers"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_Drivers />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/drivers/add"
+                element={
+                  <SubAdminProtectedPage permission="add_users">
+                    <SubAdmin_AddDriver />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/drivers/:id"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_DriverDetail />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/pa"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_PAList />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/pa/add"
+                element={
+                  <SubAdminProtectedPage permission="add_users">
+                    <SubAdmin_AddPA />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/pa/:id"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_PADetail />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/passengers"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_Passengers />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/passengers/add"
+                element={
+                  <SubAdminProtectedPage permission="add_users">
+                    <SubAdmin_AddPassenger />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/passengers/:id/edit"
+                element={
+                  <SubAdminProtectedPage permission="edit_profiles">
+                    <SubAdmin_EditPassenger />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/passengers/assign"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_AssignRoute />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/passengers/assign/review"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_RouteReview />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/passengers/assign/success"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_SuccessConfirmation />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/users/passengers/:id"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_PassengerDetail />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/jobs"
+                element={
+                  <SubAdminProtectedPage permission="view_jobs">
+                    <SubAdmin_JobsList />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/jobs/calendar"
+                element={
+                  <SubAdminProtectedPage permission="view_jobs">
+                    <SubAdmin_JobCalendar />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/jobs/add-job"
+                element={
+                  <SubAdminProtectedPage permission="create_jobs">
+                    <SubAdmin_AddJob />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/jobs/:id/edit"
+                element={
+                  <SubAdminProtectedPage permission="edit_jobs">
+                    <SubAdmin_EditJob />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/jobs/:id"
+                element={
+                  <SubAdminProtectedPage permission="view_jobs">
+                    <SubAdmin_JobDetail />
+                  </SubAdminProtectedPage>
+                }
+              />
               <Route path="/subadmin/notifications" element={<SubAdmin_Notifications />} />
-              <Route path="/subadmin/sos" element={<SubAdmin_SOSPage />} />
-              <Route path="/subadmin/sos/:id" element={<SubAdmin_SOSDetail />} />
+              <Route
+                path="/subadmin/sos"
+                element={
+                  <SubAdminProtectedPage anyOf={['view_jobs', 'view_users']}>
+                    <SubAdmin_SOSPage />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/subadmin/sos/:id"
+                element={
+                  <SubAdminProtectedPage anyOf={['view_jobs', 'view_users']}>
+                    <SubAdmin_SOSDetail />
+                  </SubAdminProtectedPage>
+                }
+              />
               <Route path="/subadmin/settings" element={<SubAdmin_Settings />} />
             </Route>
 

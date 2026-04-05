@@ -1,115 +1,71 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
+import { useSubAdminPermissions } from '../context/subAdminPermissionsContext';
+import { SIDEBAR_MENU_CONFIGS } from './sidebarMenuConfig';
 import {
-    MdDashboard,
-    MdBusiness,
-    MdSos,
-    MdSettings,
     MdLogout,
-    MdHistory,
-    MdPeople,
-    MdWork,
-    MdNotifications,
-    MdAssessment,
-    MdCheckCircle,
-    MdPersonAdd,
     MdExpandMore,
     MdExpandLess
 } from 'react-icons/md';
 
+const filterSubadminNavItems = (items, { can, hasAny, hasAll, loading }) => {
+    if (loading) return items;
+    return items.filter((item) => {
+        const p = item.perm;
+        if (!p) return true;
+        if (p.allOf?.length) return hasAll(p.allOf);
+        if (p.anyOf?.length) return hasAny(p.anyOf);
+        if (p.permission) return can(p.permission);
+        return true;
+    });
+};
 
 const Sidebar = ({ isOpen, onClose }) => {
     const navigate = useNavigate();
     const location = useLocation();
     const [openMenus, setOpenMenus] = useState({});
+    const { can, hasAny, hasAll, loading: permLoading } = useSubAdminPermissions();
 
     const toggleSubMenu = (name) => {
-        setOpenMenus(prev => ({ ...prev, [name]: !prev[name] }));
+        setOpenMenus((prev) => ({ ...prev, [name]: !prev[name] }));
     };
 
-    // Determine user type from path or default to superadmin
-    const userType = location.pathname.startsWith('/admin') ? 'admin' :
-        location.pathname.startsWith('/subadmin') ? 'subadmin' : 'superadmin';
+    const userType = location.pathname.startsWith('/admin')
+        ? 'admin'
+        : location.pathname.startsWith('/subadmin')
+          ? 'subadmin'
+          : 'superadmin';
 
-    const menuConfigs = {
-        superadmin: {
-            items: [
-                { name: 'Dashboard', path: '/superadmin/dashboard', icon: <MdDashboard size={20} /> },
-                { name: 'Companies', path: '/superadmin/companies/pending', icon: <MdBusiness size={20} /> },
-                { name: 'Add Admin', path: '/superadmin/add-admin', icon: <MdPersonAdd size={20} /> },
-                { name: 'SOS Monitoring', path: '/superadmin/sos', icon: <MdSos size={20} /> },
-                { name: 'System Logs', path: '/superadmin/logs', icon: <MdHistory size={20} /> },
-            ],
-            bottom: [
-                { name: 'Settings', path: '/superadmin/settings', icon: <MdSettings size={20} /> },
-            ]
-        },
-        admin: {
-            items: [
-                { name: 'Dashboard', path: '/admin/dashboard', icon: <MdDashboard size={20} /> },
-                {
-                    name: 'User Management',
-                    icon: <MdPeople size={20} />,
-                    children: [
-                        { name: 'Drivers', path: '/admin/users/drivers' },
-                        { name: 'PA', path: '/admin/users/pa' },
-                        { name: 'Subadmins', path: '/admin/users/subadmins' },
-                        { name: 'Passengers', path: '/admin/users/passengers' },
-                    ]
-                },
-                { name: 'Job Management', path: '/admin/jobs', icon: <MdWork size={20} /> },
-                { name: 'Notifications', path: '/admin/notifications', icon: <MdNotifications size={20} /> },
-                { name: 'Reports', path: '/admin/reports', icon: <MdAssessment size={20} /> },
-                { name: 'SOS Monitoring', path: '/admin/sos', icon: <MdSos size={20} /> },
-            ],
-            bottom: [
-                { name: 'Settings', path: '/admin/settings', icon: <MdSettings size={20} /> },
-            ]
-        },
-        subadmin: {
-            items: [
-                { name: 'Dashboard', path: '/subadmin/dashboard', icon: <MdDashboard size={20} /> },
-                { name: 'Approval', path: '/subadmin/approvals', icon: <MdCheckCircle size={20} /> },
-                {
-                    name: 'User Management',
-                    icon: <MdPeople size={20} />,
-                    children: [
-                        { name: 'Drivers', path: '/subadmin/users/drivers' },
-                        { name: 'PA', path: '/subadmin/users/pa' },
-                        { name: 'Passengers', path: '/subadmin/users/passengers' },
-                    ],
-                },
-                { name: 'Job Management', path: '/subadmin/jobs', icon: <MdWork size={20} /> },
-                { name: 'Notifications', path: '/subadmin/notifications', icon: <MdNotifications size={20} /> },
-                { name: 'SOS Monitoring', path: '/subadmin/sos', icon: <MdSos size={20} /> },
-            ],
-            bottom: [
-                { name: 'Settings', path: '/subadmin/settings', icon: <MdSettings size={20} /> },
-            ]
+    const { menuItems, bottomItems } = useMemo(() => {
+        const cfg = SIDEBAR_MENU_CONFIGS[userType] || SIDEBAR_MENU_CONFIGS.superadmin;
+        const stripPerm = (items) =>
+            items.map(({ perm, ...rest }) => rest);
+
+        if (userType === 'subadmin') {
+            const filtered = filterSubadminNavItems(cfg.items, {
+                can,
+                hasAny,
+                hasAll,
+                loading: permLoading,
+            });
+            return { menuItems: stripPerm(filtered), bottomItems: cfg.bottom };
         }
-    };
-
-    const currentConfig = menuConfigs[userType] || menuConfigs.superadmin;
-    const menuItems = currentConfig.items;
-    const bottomItems = currentConfig.bottom;
+        return { menuItems: cfg.items, bottomItems: cfg.bottom };
+    }, [userType, can, hasAny, hasAll, permLoading]);
 
     return (
         <>
-            {/* Mobile Overlay */}
             <div
                 className={`fixed inset-0 z-20 bg-black/50 transition-opacity lg:hidden ${isOpen ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
                 onClick={onClose}
             />
 
-            {/* Sidebar Container */}
             <aside
                 className={`fixed top-0 left-0 z-30 h-screen w-64 bg-white border-r border-gray-100 transform transition-transform duration-300 ease-in-out lg:translate-x-0 ${isOpen ? 'translate-x-0' : '-translate-x-full'}`}
             >
-                {/* Logo Section */}
                 <div className="flex items-center gap-3 px-6 h-16 border-b border-gray-50">
                     <div className="w-8 h-8 rounded-full bg-green-600 flex items-center justify-center shrink-0">
-                        {/* Simple Logo Placeholder */}
                         <span className="text-white font-bold text-xs">NST</span>
                     </div>
                     <div className="flex flex-col">
@@ -118,7 +74,6 @@ const Sidebar = ({ isOpen, onClose }) => {
                     </div>
                 </div>
 
-                {/* Navigation Section */}
                 <nav className="flex flex-col justify-between h-[calc(100vh-64px)] p-4">
                     <div className="space-y-1">
                         {menuItems.map((item) => (
@@ -126,11 +81,14 @@ const Sidebar = ({ isOpen, onClose }) => {
                                 {item.children ? (
                                     <>
                                         <button
+                                            type="button"
                                             onClick={() => toggleSubMenu(item.name)}
-                                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${openMenus[item.name] || item.children.some(child => location.pathname.startsWith(child.path))
-                                                ? 'bg-gray-50 text-gray-900'
-                                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
-                                                }`}
+                                            className={`w-full flex items-center justify-between px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                                openMenus[item.name] ||
+                                                item.children.some((child) => location.pathname.startsWith(child.path))
+                                                    ? 'bg-gray-50 text-gray-900'
+                                                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                            }`}
                                         >
                                             <div className="flex items-center gap-3">
                                                 {item.icon}
@@ -138,16 +96,24 @@ const Sidebar = ({ isOpen, onClose }) => {
                                             </div>
                                             {openMenus[item.name] ? <MdExpandLess size={18} /> : <MdExpandMore size={18} />}
                                         </button>
-                                        <div className={`ml-9 mt-1 space-y-1 overflow-hidden transition-all duration-300 ${openMenus[item.name] || item.children.some(child => location.pathname.startsWith(child.path)) ? 'max-h-40 opacity-100' : 'max-h-0 opacity-0'}`}>
+                                        <div
+                                            className={`ml-9 mt-1 space-y-1 overflow-hidden transition-all duration-300 ${
+                                                openMenus[item.name] ||
+                                                item.children.some((child) => location.pathname.startsWith(child.path))
+                                                    ? 'max-h-48 opacity-100'
+                                                    : 'max-h-0 opacity-0'
+                                            }`}
+                                        >
                                             {item.children.map((child) => (
                                                 <NavLink
                                                     key={child.name}
                                                     to={child.path}
                                                     onClick={() => window.innerWidth < 1024 && onClose()}
                                                     className={({ isActive }) =>
-                                                        `block px-3 py-2 rounded-md text-sm transition-colors ${isActive
-                                                            ? 'text-blue-700 font-semibold'
-                                                            : 'text-gray-500 hover:text-gray-900'
+                                                        `block px-3 py-2 rounded-md text-sm transition-colors ${
+                                                            isActive
+                                                                ? 'text-blue-700 font-semibold'
+                                                                : 'text-gray-500 hover:text-gray-900'
                                                         }`
                                                     }
                                                 >
@@ -161,9 +127,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                                         to={item.path}
                                         onClick={() => window.innerWidth < 1024 && onClose()}
                                         className={({ isActive }) =>
-                                            `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
-                                                ? 'bg-blue-50 text-blue-700'
-                                                : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                            `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                                isActive
+                                                    ? 'bg-blue-50 text-blue-700'
+                                                    : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                                             }`
                                         }
                                     >
@@ -182,9 +149,10 @@ const Sidebar = ({ isOpen, onClose }) => {
                                 to={item.path}
                                 onClick={() => window.innerWidth < 1024 && onClose()}
                                 className={({ isActive }) =>
-                                    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${isActive
-                                        ? 'bg-blue-50 text-blue-700' // Using blue for settings/active state consistency
-                                        : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
+                                    `flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-colors ${
+                                        isActive
+                                            ? 'bg-blue-50 text-blue-700'
+                                            : 'text-gray-600 hover:bg-gray-50 hover:text-gray-900'
                                     }`
                                 }
                             >
@@ -193,6 +161,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                             </NavLink>
                         ))}
                         <button
+                            type="button"
                             onClick={async () => {
                                 await supabase.auth.signOut();
                                 localStorage.clear();

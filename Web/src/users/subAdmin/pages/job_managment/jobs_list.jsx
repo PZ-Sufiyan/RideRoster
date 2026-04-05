@@ -31,9 +31,11 @@ import {
     updateJobAssignedPa,
 } from '../../../../services/jobService';
 import { ShimmerBlock } from '../../../../utils/Shimmer';
+import { useSubAdminPermissions } from '../../../../context/subAdminPermissionsContext';
 
 const ActiveJobs = () => {
     const navigate = useNavigate();
+    const { can } = useSubAdminPermissions();
     const [selectedRows, setSelectedRows] = useState([]);
     const [activeMenu, setActiveMenu] = useState(null);
     const [showAssignDriver, setShowAssignDriver] = useState(false);
@@ -288,13 +290,15 @@ const ActiveJobs = () => {
                         <MdEventNote size={18} />
                         View Calendar
                     </button>
-                    <button
-                        onClick={() => navigate('/subadmin/jobs/add-job')}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[14px] font-semibold hover:bg-[#003c55] transition-all shadow-sm"
-                    >
-                        <MdAdd size={20} />
-                        Create New Job
-                    </button>
+                    {can('create_jobs') ? (
+                        <button
+                            onClick={() => navigate('/subadmin/jobs/add-job')}
+                            className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[14px] font-semibold hover:bg-[#003c55] transition-all shadow-sm"
+                        >
+                            <MdAdd size={20} />
+                            Create New Job
+                        </button>
+                    ) : null}
                 </div>
             </div>
 
@@ -448,13 +452,15 @@ const ActiveJobs = () => {
                                                         </p>
                                                     </div>
                                                 </div>
-                                            ) : (
+                                            ) : can('edit_jobs') ? (
                                                 <button
                                                     onClick={() => handleAssignDriver(job)}
                                                     className="mx-auto px-4 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-[11px] font-bold border border-orange-100 hover:bg-orange-100 transition-all"
                                                 >
                                                     Assign Driver
                                                 </button>
+                                            ) : (
+                                                <span className="text-[11px] text-gray-400 font-medium">—</span>
                                             )}
                                         </td>
                                         <td className="px-6 py-5 text-center">
@@ -778,28 +784,32 @@ const ActiveJobs = () => {
                             >
                                 View Details
                             </button>
-                            <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                    const job = jobs[activeMenu];
-                                    handleAssignDriver(job);
-                                }}
-                                className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
-                            >
-                                {jobs[activeMenu].driver ? 'Reassign Driver' : 'Add Driver'}
-                            </button>
-                            <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                    const job = jobs[activeMenu];
-                                    handleAssignPA(job);
-                                }}
-                                className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium border-t border-gray-50"
-                            >
-                                {jobs[activeMenu].pa ? 'Reassign PA' : 'Add PA'}
-                            </button>
+                            {can('edit_jobs') ? (
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                        const job = jobs[activeMenu];
+                                        handleAssignDriver(job);
+                                    }}
+                                    className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
+                                >
+                                    {jobs[activeMenu].driver ? 'Reassign Driver' : 'Add Driver'}
+                                </button>
+                            ) : null}
+                            {can('edit_jobs') ? (
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => {
+                                        const job = jobs[activeMenu];
+                                        handleAssignPA(job);
+                                    }}
+                                    className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium border-t border-gray-50"
+                                >
+                                    {jobs[activeMenu].pa ? 'Reassign PA' : 'Add PA'}
+                                </button>
+                            ) : null}
                         </div>
                     </div>,
                     document.body

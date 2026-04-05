@@ -19,6 +19,7 @@ import {
     deriveJobUiStatus,
 } from '../../../../services/jobService';
 import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer';
+import { useSubAdminPermissions } from '../../../../context/subAdminPermissionsContext';
 
 const defaultAvatar = (seed) =>
     `https://i.pravatar.cc/150?u=${encodeURIComponent(String(seed))}`;
@@ -26,6 +27,7 @@ const defaultAvatar = (seed) =>
 const JobDetail = () => {
     const navigate = useNavigate();
     const { id } = useParams();
+    const { can } = useSubAdminPermissions();
     const [showCancelModal, setShowCancelModal] = useState(false);
     const [cancelReason, setCancelReason] = useState('');
     const [loading, setLoading] = useState(true);
@@ -272,23 +274,27 @@ const JobDetail = () => {
                     </p>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button
-                        type="button"
-                        onClick={() => setShowCancelModal(true)}
-                        disabled={!job || job.status === 'cancelled'}
-                        className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-500 rounded-lg bg-white hover:bg-red-50 text-[13px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                    >
-                        <MdBlock size={18} />
-                        Cancel Job
-                    </button>
-                    <button
-                        type="button"
-                        onClick={() => navigate(`/subadmin/jobs/${id}/edit`)}
-                        className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg bg-white hover:bg-gray-50 text-[13px] font-bold transition-all"
-                    >
-                        <MdEdit size={18} />
-                        Edit Job
-                    </button>
+                    {can('cancel_jobs') ? (
+                        <button
+                            type="button"
+                            onClick={() => setShowCancelModal(true)}
+                            disabled={!job || job.status === 'cancelled'}
+                            className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-500 rounded-lg bg-white hover:bg-red-50 text-[13px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+                        >
+                            <MdBlock size={18} />
+                            Cancel Job
+                        </button>
+                    ) : null}
+                    {can('edit_jobs') ? (
+                        <button
+                            type="button"
+                            onClick={() => navigate(`/subadmin/jobs/${id}/edit`)}
+                            className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg bg-white hover:bg-gray-50 text-[13px] font-bold transition-all"
+                        >
+                            <MdEdit size={18} />
+                            Edit Job
+                        </button>
+                    ) : null}
                 </div>
             </div>
 
