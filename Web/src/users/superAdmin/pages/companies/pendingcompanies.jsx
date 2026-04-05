@@ -224,7 +224,6 @@ const PendingCompanies = () => {
                                         )}
                                     </div>
                                 </th>
-                                <th className="px-6 py-4">Company ID</th>
                                 <th className="px-6 py-4 cursor-pointer hover:text-gray-700 group">
                                     <div className="flex items-center gap-1">
                                         Company Name
@@ -292,7 +291,6 @@ const PendingCompanies = () => {
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-gray-600 font-medium">{company.id}</td>
                                         <td className="px-6 py-4 font-bold text-gray-900">{company.name}</td>
                                         <td className="px-6 py-4 text-gray-500">{company.submitted}</td>
                                         <td className="px-6 py-4">

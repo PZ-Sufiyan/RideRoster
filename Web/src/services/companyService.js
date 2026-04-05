@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
+import { getSubAdminById } from './subAdminService'
 
 export const getAllCompanies = async () => {
   const { data, error } = await supabase
@@ -81,7 +82,17 @@ export const getCompanyAdmins = async (companyId = null) => {
   return data
 }
 
+/**
+ * Resolves the logged-in user's company scope (row includes `company_id`).
+ * - Role `admin`: `company_admins` row (id = auth user id).
+ * - Role `subadmin`: `sub_admins` row (id = auth user id) — not in `company_admins`, so callers must not query `company_admins` for subadmins (avoids PostgREST 406 on `.single()` with zero rows).
+ */
 export const getCompanyAdminById = async (adminId) => {
+  const role = typeof window !== 'undefined' ? localStorage.getItem('userRole') : null
+  if (role === 'subadmin') {
+    return getSubAdminById(adminId)
+  }
+
   const { data, error } = await supabase
     .from('company_admins')
     .select('*')
@@ -91,6 +102,9 @@ export const getCompanyAdminById = async (adminId) => {
   if (error) throw error
   return data
 }
+
+/** Alias for clarity in new code — same behavior as {@link getCompanyAdminById}. */
+export const getCompanyScopeForUser = getCompanyAdminById
 
 export const createCompanyAdmin = async (adminPayload) => {
   const { data, error } = await supabase

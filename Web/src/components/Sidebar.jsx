@@ -13,7 +13,6 @@ import {
     MdNotifications,
     MdAssessment,
     MdCheckCircle,
-    MdPeopleOutline,
     MdPersonAdd,
     MdExpandMore,
     MdExpandLess
@@ -72,9 +71,18 @@ const Sidebar = ({ isOpen, onClose }) => {
             items: [
                 { name: 'Dashboard', path: '/subadmin/dashboard', icon: <MdDashboard size={20} /> },
                 { name: 'Approval', path: '/subadmin/approvals', icon: <MdCheckCircle size={20} /> },
-                { name: 'Drivers', path: '/subadmin/drivers', icon: <MdPeopleOutline size={20} /> },
-                { name: 'Jobs', path: '/subadmin/jobs', icon: <MdWork size={20} /> },
-                { name: 'Notification', path: '/subadmin/notifications', icon: <MdNotifications size={20} /> },
+                {
+                    name: 'User Management',
+                    icon: <MdPeople size={20} />,
+                    children: [
+                        { name: 'Drivers', path: '/subadmin/users/drivers' },
+                        { name: 'PA', path: '/subadmin/users/pa' },
+                        { name: 'Passengers', path: '/subadmin/users/passengers' },
+                    ],
+                },
+                { name: 'Job Management', path: '/subadmin/jobs', icon: <MdWork size={20} /> },
+                { name: 'Notifications', path: '/subadmin/notifications', icon: <MdNotifications size={20} /> },
+                { name: 'SOS Monitoring', path: '/subadmin/sos', icon: <MdSos size={20} /> },
             ],
             bottom: [
                 { name: 'Settings', path: '/subadmin/settings', icon: <MdSettings size={20} /> },

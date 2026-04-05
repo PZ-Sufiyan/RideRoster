@@ -23,10 +23,12 @@ const SIDEBAR_PATHS = new Set([
     '/admin/settings',
     '/subadmin/dashboard',
     '/subadmin/approvals',
-    '/subadmin/drivers',
+    '/subadmin/users/drivers',
+    '/subadmin/users/pa',
+    '/subadmin/users/passengers',
     '/subadmin/jobs',
-    '/subadmin/job-notifications',
     '/subadmin/notifications',
+    '/subadmin/sos',
     '/subadmin/settings',
 ]);
 
@@ -186,32 +188,114 @@ const ROUTE_CRUMB_MAP = [
         ],
     },
 
-    // ─── SUBADMIN ─────────────────────────────────────────────────
+    // ─── SUBADMIN (mirrors admin paths under /subadmin) ───────────
     {
-        match: /^\/subadmin\/drivers\/add$/,
-        crumbs: () => [
-            { label: 'Drivers', to: '/subadmin/drivers' },
-            { label: 'Add New Driver' },
+        match: /^\/subadmin\/users\/drivers\/([^/]+)$/,
+        crumbs: (_, [action]) => [
+            { label: 'User Management' },
+            { label: 'Drivers', to: '/subadmin/users/drivers' },
+            { label: decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) },
         ],
     },
     {
-        match: /^\/subadmin\/drivers\/([^/]+)$/,
+        match: /^\/subadmin\/users\/pa\/([^/]+)$/,
+        crumbs: (_, [action]) => [
+            { label: 'User Management' },
+            { label: 'PA', to: '/subadmin/users/pa' },
+            { label: decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) },
+        ],
+    },
+    {
+        match: /^\/subadmin\/users\/passengers\/assign\/review$/,
         crumbs: () => [
-            { label: 'Drivers', to: '/subadmin/drivers' },
-            { label: 'Driver Profile' },
+            { label: 'User Management' },
+            { label: 'Passengers', to: '/subadmin/users/passengers' },
+            { label: 'Job Assignment', to: '/subadmin/users/passengers/assign' },
+            { label: 'Assignment Review' },
+        ],
+    },
+    {
+        match: /^\/subadmin\/users\/passengers\/assign\/success$/,
+        crumbs: () => [
+            { label: 'User Management' },
+            { label: 'Passengers', to: '/subadmin/users/passengers' },
+            { label: 'Job Assignment', to: '/subadmin/users/passengers/assign' },
+            { label: 'Assignment Confirmed' },
+        ],
+    },
+    {
+        match: /^\/subadmin\/users\/passengers\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'User Management' },
+            { label: 'Passengers', to: '/subadmin/users/passengers' },
+            { label: decodeURIComponent(id), to: `/subadmin/users/passengers/${id}` },
+            { label: 'Edit Passenger' },
+        ],
+    },
+    {
+        match: /^\/subadmin\/users\/passengers\/([^/]+)$/,
+        crumbs: (_, [action]) => [
+            { label: 'User Management' },
+            { label: 'Passengers', to: '/subadmin/users/passengers' },
+            {
+                label:
+                    action === 'assign'
+                        ? 'Job Assignment'
+                        : action === 'review'
+                          ? 'Assignment Review'
+                          : action === 'success'
+                            ? 'Assignment Confirmed'
+                            : decodeURIComponent(action)
+                                .replace(/-/g, ' ')
+                                .replace(/\b\w/g, (c) => c.toUpperCase()),
+            },
+        ],
+    },
+    {
+        match: /^\/subadmin\/jobs\/add-job$/,
+        crumbs: (_, __, searchParams) => {
+            const step = searchParams?.get('step') || '1';
+            const stepLabel = STEP_LABELS[step] || 'Create New Job';
+            return [
+                { label: 'Job Management', to: '/subadmin/jobs' },
+                { label: 'Create New Job', to: '/subadmin/jobs/add-job?step=1' },
+                ...(step !== '1' ? [{ label: stepLabel }] : []),
+            ];
+        },
+    },
+    {
+        match: /^\/subadmin\/jobs\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'Job Management', to: '/subadmin/jobs' },
+            { label: decodeURIComponent(id), to: `/subadmin/jobs/${id}` },
+            { label: 'Edit Job' },
+        ],
+    },
+    {
+        match: /^\/subadmin\/jobs\/([^/]+)$/,
+        crumbs: (_, [id]) => [
+            { label: 'Job Management', to: '/subadmin/jobs' },
+            { label: id === 'calendar' ? 'Job Calendar' : decodeURIComponent(id) },
+        ],
+    },
+    {
+        match: /^\/subadmin\/notifications\/([^/]+)$/,
+        crumbs: (_, [id]) => [
+            { label: 'Notifications', to: '/subadmin/notifications' },
+            { label: decodeURIComponent(id) },
+        ],
+    },
+    {
+        match: /^\/subadmin\/sos\/([^/]+)$/,
+        crumbs: (_, [id]) => [
+            { label: 'SOS Monitoring', to: '/subadmin/sos' },
+            { label: decodeURIComponent(id) },
         ],
     },
     {
         match: /^\/subadmin\/approvals\/([^/]+)$/,
         crumbs: (_, [id]) => [
             { label: 'Approvals', to: '/subadmin/approvals' },
-            { label: decodeURIComponent(id) },
-        ],
-    },
-    {
-        match: /^\/subadmin\/job-notifications\/([^/]+)$/,
-        crumbs: (_, [id]) => [
-            { label: 'Job Notifications', to: '/subadmin/job-notifications' },
             { label: decodeURIComponent(id) },
         ],
     },

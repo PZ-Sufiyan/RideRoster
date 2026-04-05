@@ -1,14 +1,16 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-    MdArrowBack,
     MdBlock,
+    MdCheck,
+    MdDirectionsCar,
     MdEdit,
     MdLocationOn,
+    MdPerson,
     MdWarning,
 } from 'react-icons/md';
 import { supabase } from '../../../../lib/supabaseClient';
-import { getSubAdminById } from '../../../../services/subAdminService';
+import { getCompanyAdminById } from '../../../../services/companyService';
 import {
     fetchJobDetailBundle,
     cancelJobById,
@@ -16,6 +18,7 @@ import {
     formatJobDateTimeLabel,
     deriveJobUiStatus,
 } from '../../../../services/jobService';
+import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer';
 
 const defaultAvatar = (seed) =>
     `https://i.pravatar.cc/150?u=${encodeURIComponent(String(seed))}`;
@@ -40,8 +43,8 @@ const JobDetail = () => {
             } = await supabase.auth.getSession();
             const uid = session?.user?.id;
             if (!uid) throw new Error('Not authenticated.');
-            const sub = await getSubAdminById(uid);
-            const companyId = sub?.company_id;
+            const admin = await getCompanyAdminById(uid);
+            const companyId = admin?.company_id;
             if (!companyId) throw new Error('No company linked to your account.');
             const data = await fetchJobDetailBundle(id, companyId);
             setBundle(data);
@@ -94,6 +97,68 @@ const JobDetail = () => {
         return 'Pending';
     })();
 
+    const timelineDateLabel = (() => {
+        if (!job?.job_date) return 'Nov 18, 2025';
+        const parsed = new Date(job.job_date);
+        if (Number.isNaN(parsed.getTime())) return 'Nov 18, 2025';
+        return parsed.toLocaleDateString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+        });
+    })();
+
+    const timelineItems = [
+        {
+            id: 'completed',
+            title: 'Job Completed',
+            time: `${timelineDateLabel}, 09:45 AM`,
+            note: 'Passenger dropped off successfully.',
+            state: 'success',
+            icon: MdCheck,
+        },
+        {
+            id: 'dropoff',
+            title: 'Arrived at Drop-off',
+            time: `${timelineDateLabel}, 09:42 AM`,
+            note: dropoffLine === '—' ? '123 Main Street, Anytown, USA 12345' : dropoffLine,
+            state: 'active',
+            icon: MdLocationOn,
+        },
+        {
+            id: 'onboard',
+            title: 'Passenger Onboard',
+            time: `${timelineDateLabel}, 08:55 AM`,
+            note: 'Passenger is now in the vehicle.',
+            state: 'active',
+            icon: MdPerson,
+        },
+        {
+            id: 'pickup',
+            title: 'Arrived at Pickup',
+            time: `${timelineDateLabel}, 08:50 AM`,
+            note: pickupLine === '—' ? '456 Oak Avenue, Anytown, USA 12345' : pickupLine,
+            state: 'active',
+            icon: MdLocationOn,
+        },
+        {
+            id: 'enroute',
+            title: 'En Route to Pickup',
+            time: `${timelineDateLabel}, 08:35 AM`,
+            note: '',
+            state: 'muted',
+            icon: MdDirectionsCar,
+        },
+        {
+            id: 'driver_assigned',
+            title: 'Driver Assigned',
+            time: `${timelineDateLabel}, 08:30 AM`,
+            note: driverName ? `${driverName} assigned to this job.` : 'Driver assigned to this job.',
+            state: 'muted',
+            icon: MdPerson,
+        },
+    ];
+
     const confirmCancel = async () => {
         if (!job || !id) return;
         setCancelling(true);
@@ -103,8 +168,8 @@ const JobDetail = () => {
             } = await supabase.auth.getSession();
             const uid = session?.user?.id;
             if (!uid) throw new Error('Not authenticated.');
-            const sub = await getSubAdminById(uid);
-            const companyId = sub?.company_id;
+            const admin = await getCompanyAdminById(uid);
+            const companyId = admin?.company_id;
             if (!companyId) throw new Error('No company linked to your account.');
             await cancelJobById(id, companyId);
             setShowCancelModal(false);
@@ -119,47 +184,73 @@ const JobDetail = () => {
 
     if (loading) {
         return (
-            <div className="space-y-6">
-                <button
-                    type="button"
-                    onClick={() => navigate('/subadmin/jobs')}
-                    className="flex items-center text-[14px] text-gray-500 hover:text-gray-700 font-medium transition-colors"
-                >
-                    <MdArrowBack size={18} className="mr-2" />
-                    Back to Jobs
-                </button>
-                <p className="text-[14px] text-gray-500 font-medium">Loading job…</p>
-            </div>
+            <LoadingStatus label="Loading job details" className="space-y-6">
+                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
+                    <div className="space-y-3">
+                        <ShimmerBlock className="h-8 w-64 max-w-full rounded-md" />
+                        <ShimmerBlock className="h-4 w-48 max-w-full rounded-md" />
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <ShimmerBlock className="h-10 w-28 rounded-lg" />
+                        <ShimmerBlock className="h-10 w-24 rounded-lg" />
+                    </div>
+                </div>
+
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+                    <div className="lg:col-span-2 bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+                        <ShimmerBlock className="h-6 w-80 max-w-full rounded-md mb-6" />
+                        <div className="space-y-4">
+                            {Array.from({ length: 6 }).map((_, i) => (
+                                <div key={`timeline-skeleton-${i}`} className="flex items-start gap-4">
+                                    <ShimmerBlock className="w-7 h-7 shrink-0 mt-1" rounded="rounded-full" />
+                                    <div className="flex-1 space-y-2 min-w-0">
+                                        <ShimmerBlock className="h-4 w-44 max-w-full rounded-md" />
+                                        <ShimmerBlock className="h-3 w-32 rounded-md" />
+                                        <ShimmerBlock className="h-3 w-64 max-w-full rounded-md" />
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+                    </div>
+
+                    <div className="space-y-6">
+                        <div className="bg-white border border-gray-100 rounded-3xl shadow-sm overflow-hidden">
+                            <ShimmerBlock className="h-48 w-full rounded-none" rounded="rounded-none" />
+                            <div className="p-5 space-y-4">
+                                <ShimmerBlock className="h-4 w-32 rounded-md" />
+                                <ShimmerBlock className="h-11 rounded-xl" rounded="rounded-xl" />
+                                <ShimmerBlock className="h-11 rounded-xl" rounded="rounded-xl" />
+                            </div>
+                        </div>
+                        <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm space-y-4">
+                            <ShimmerBlock className="h-5 w-36 rounded-md" />
+                            <ShimmerBlock className="h-10 rounded-xl" rounded="rounded-xl" />
+                            <ShimmerBlock className="h-10 rounded-xl" rounded="rounded-xl" />
+                            <ShimmerBlock className="h-10 rounded-xl" rounded="rounded-xl" />
+                        </div>
+                    </div>
+                </div>
+            </LoadingStatus>
         );
     }
 
     if (error && !bundle) {
         return (
             <div className="space-y-6">
+                <p className="text-[14px] text-red-600 font-medium">{error}</p>
                 <button
                     type="button"
                     onClick={() => navigate('/subadmin/jobs')}
-                    className="flex items-center text-[14px] text-gray-500 hover:text-gray-700 font-medium transition-colors"
+                    className="text-[14px] font-bold text-[#004D6D]"
                 >
-                    <MdArrowBack size={18} className="mr-2" />
-                    Back to Jobs
+                    Back to jobs
                 </button>
-                <p className="text-[14px] text-red-600 font-medium">{error}</p>
             </div>
         );
     }
 
     return (
         <div className="space-y-6">
-            <button
-                type="button"
-                onClick={() => navigate('/subadmin/jobs')}
-                className="flex items-center text-[14px] text-gray-500 hover:text-gray-700 font-medium transition-colors"
-            >
-                <MdArrowBack size={18} className="mr-2" />
-                Back to Jobs
-            </button>
-
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div>
                     <div className="flex items-center gap-3 flex-wrap">
@@ -203,17 +294,50 @@ const JobDetail = () => {
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 <div className="lg:col-span-2">
-                    <div className="bg-white border border-gray-100 rounded-[24px] p-6 shadow-sm">
-                        <h2 className="text-[18px] font-bold text-gray-900 mb-4">Job Progress Timeline</h2>
-                        <p className="text-[14px] text-gray-500 leading-relaxed">
-                            Detailed progress timeline is not available yet — we do not store per-step events in the
-                            database. Status, schedule, and stops on this page reflect the current job record.
-                        </p>
+                    <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
+                        <h2 className="text-[18px] font-bold text-gray-900 mb-4">Job Progress Timeline (Showing dummy time line for now)</h2>
+                        <div className="space-y-0.5">
+                            {timelineItems.map((item, idx) => {
+                                const Icon = item.icon;
+                                const isSuccess = item.state === 'success';
+                                const isActive = item.state === 'active';
+                                const isMuted = item.state === 'muted';
+
+                                const markerClass = isSuccess
+                                    ? 'bg-green-100 text-green-600'
+                                    : isActive
+                                    ? 'bg-[#E7F4F8] text-[#005E84]'
+                                    : 'bg-gray-100 text-gray-400';
+
+                                const titleClass = isMuted ? 'text-gray-500' : 'text-gray-900';
+                                const bodyClass = isMuted ? 'text-gray-400' : 'text-gray-500';
+
+                                return (
+                                    <div key={item.id} className="flex items-start gap-4">
+                                        <div className="relative flex flex-col items-center">
+                                            <div className={`w-7 h-7 rounded-full flex items-center justify-center ${markerClass}`}>
+                                                <Icon size={15} />
+                                            </div>
+                                            {idx < timelineItems.length - 1 && (
+                                                <div className="w-px h-10 bg-gray-200 mt-1" />
+                                            )}
+                                        </div>
+                                        <div className="pb-4 pt-0.5">
+                                            <p className={`text-[21px] font-bold leading-none ${titleClass}`}>{item.title}</p>
+                                            <p className={`text-[12px] font-medium mt-1 ${bodyClass}`}>{item.time}</p>
+                                            {item.note ? (
+                                                <p className={`text-[13px] mt-1.5 font-medium ${bodyClass}`}>{item.note}</p>
+                                            ) : null}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 </div>
 
                 <div className="space-y-6">
-                    <div className="bg-white border border-gray-100 rounded-[24px] shadow-sm overflow-hidden">
+                    <div className="bg-white border border-gray-100 rounded-3xl shadow-sm overflow-hidden">
                         <div className="h-48 bg-[#E5E7EB] relative overflow-hidden flex items-center justify-center">
                             <svg className="absolute inset-0 w-full h-full opacity-60" viewBox="0 0 400 200" preserveAspectRatio="none">
                                 <path d="M -50 150 L 150 120 L 250 80 L 450 20" stroke="white" strokeWidth="8" fill="none" />
@@ -255,7 +379,7 @@ const JobDetail = () => {
                         </div>
                     </div>
 
-                    <div className="bg-white border border-gray-100 rounded-[24px] shadow-sm p-5">
+                    <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-5">
                         <h2 className="text-[14px] font-bold text-gray-900 mb-4">Assigned Driver</h2>
                         {driverName ? (
                             <div className="flex items-center gap-3">
@@ -274,7 +398,7 @@ const JobDetail = () => {
                         )}
                     </div>
 
-                    <div className="bg-white border border-gray-100 rounded-[24px] shadow-sm p-5">
+                    <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-5">
                         <h2 className="text-[14px] font-bold text-gray-900 mb-4">Passenger Assistant</h2>
                         {paName ? (
                             <div className="flex items-center gap-3">
@@ -293,7 +417,7 @@ const JobDetail = () => {
                         )}
                     </div>
 
-                    <div className="bg-white border border-gray-100 rounded-[24px] shadow-sm p-5 border-t-4 border-t-green-500">
+                    <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-5 border-t-4 border-t-green-500">
                         <h2 className="text-[14px] font-bold text-gray-900 mb-5">Compensation</h2>
                         <div className="space-y-3.5">
                             <div className="flex items-center justify-between">
@@ -312,7 +436,7 @@ const JobDetail = () => {
             {showCancelModal && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
                     <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !cancelling && setShowCancelModal(false)} />
-                    <div className="relative w-full max-w-[440px] bg-white rounded-[24px] shadow-2xl p-8 text-center overflow-hidden">
+                    <div className="relative w-full max-w-110 bg-white rounded-3xl shadow-2xl p-8 text-center overflow-hidden">
                         <div className="flex items-center justify-center mb-6">
                             <MdWarning className="text-red-500" size={28} />
                             <h2 className="text-[20px] font-bold text-gray-900 ml-2">Cancel Job Confirmation</h2>

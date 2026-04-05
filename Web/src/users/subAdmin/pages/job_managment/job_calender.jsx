@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
     MdChevronLeft,
     MdChevronRight,
@@ -8,6 +9,7 @@ import {
 } from 'react-icons/md';
 
 const JobCalendar = () => {
+    const navigate = useNavigate();
     const [view, setView] = useState('month'); // 'month', 'week', 'day'
 
     // ─── MONTH VIEW DATA ─────────────────────────────────────────

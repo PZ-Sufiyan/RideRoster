@@ -48,13 +48,26 @@ import { RequireCompanyLinkedAdmin, RedirectIfCompanyLinked } from './components
 import SubAdmin_Login from './users/subAdmin/pages/auth/login';
 import SubAdmin_Dashboard from './users/subAdmin/pages/dashboard/dashboard';
 import SubAdmin_Approvals from './users/subAdmin/pages/approvals/approvals';
-import SubAdmin_Drivers from './users/subAdmin/pages/drivers/drivers';
-import SubAdmin_NewDriver from './users/subAdmin/pages/drivers/new_driver';
-import SubAdmin_DriverProfile from './users/subAdmin/pages/drivers/driver-profile';
-import SubAdmin_Jobs from './users/subAdmin/pages/jobs/jobs';
-import SubAdmin_NewJob from './users/subAdmin/pages/jobs/new-job';
-import SubAdmin_JobDetail from './users/subAdmin/pages/jobs/job_detail';
-import SubAdmin_EditJob from './users/subAdmin/pages/jobs/edit_job';
+import SubAdmin_Drivers from './users/subAdmin/pages/user_managment/driver/drivers';
+import SubAdmin_AddDriver from './users/subAdmin/pages/user_managment/driver/add_new_driver';
+import SubAdmin_DriverDetail from './users/subAdmin/pages/user_managment/driver/driver_detail';
+import SubAdmin_PAList from './users/subAdmin/pages/user_managment/PA/pa_list';
+import SubAdmin_AddPA from './users/subAdmin/pages/user_managment/PA/add_new_pa';
+import SubAdmin_PADetail from './users/subAdmin/pages/user_managment/PA/pa_detail';
+import SubAdmin_Passengers from './users/subAdmin/pages/user_managment/passenger/passengers';
+import SubAdmin_AddPassenger from './users/subAdmin/pages/user_managment/passenger/add_new_passenger';
+import SubAdmin_EditPassenger from './users/subAdmin/pages/user_managment/passenger/edit_passenger';
+import SubAdmin_PassengerDetail from './users/subAdmin/pages/user_managment/passenger/passenger_detail';
+import SubAdmin_AssignRoute from './users/subAdmin/pages/user_managment/passenger/assign_route';
+import SubAdmin_RouteReview from './users/subAdmin/pages/user_managment/passenger/route_review';
+import SubAdmin_SuccessConfirmation from './users/subAdmin/pages/user_managment/passenger/success_confirmation';
+import SubAdmin_JobsList from './users/subAdmin/pages/job_managment/jobs_list';
+import SubAdmin_JobDetail from './users/subAdmin/pages/job_managment/job_detail';
+import SubAdmin_EditJob from './users/subAdmin/pages/job_managment/edit_job';
+import SubAdmin_JobCalendar from './users/subAdmin/pages/job_managment/job_calender';
+import SubAdmin_AddJob from './users/subAdmin/pages/job_managment/add_job';
+import SubAdmin_SOSPage from './users/subAdmin/pages/sos/sos';
+import SubAdmin_SOSDetail from './users/subAdmin/pages/sos/sos_detail';
 import SubAdmin_Notifications from './users/subAdmin/pages/notifications/notification';
 import SubAdmin_Settings from './users/subAdmin/pages/settings/settings';
 import Home from './home';
@@ -147,18 +160,31 @@ function App() {
               </Route>
             </Route>
 
-            {/* Subadmin Group */}
+            {/* Subadmin Group — mirrors admin routes under /subadmin */}
             <Route element={<ProtectedRoute allowedRoles={['subadmin']} />}>
               <Route path="/subadmin/dashboard" element={<SubAdmin_Dashboard />} />
               <Route path="/subadmin/approvals" element={<SubAdmin_Approvals />} />
-              <Route path="/subadmin/drivers" element={<SubAdmin_Drivers />} />
-              <Route path="/subadmin/drivers/add" element={<SubAdmin_NewDriver />} />
-              <Route path="/subadmin/drivers/:id" element={<SubAdmin_DriverProfile />} />
-              <Route path="/subadmin/jobs" element={<SubAdmin_Jobs />} />
-              <Route path="/subadmin/jobs/create" element={<SubAdmin_NewJob />} />
-              <Route path="/subadmin/jobs/:id" element={<SubAdmin_JobDetail />} />
+              <Route path="/subadmin/users/drivers" element={<SubAdmin_Drivers />} />
+              <Route path="/subadmin/users/drivers/add" element={<SubAdmin_AddDriver />} />
+              <Route path="/subadmin/users/drivers/:id" element={<SubAdmin_DriverDetail />} />
+              <Route path="/subadmin/users/pa" element={<SubAdmin_PAList />} />
+              <Route path="/subadmin/users/pa/add" element={<SubAdmin_AddPA />} />
+              <Route path="/subadmin/users/pa/:id" element={<SubAdmin_PADetail />} />
+              <Route path="/subadmin/users/passengers" element={<SubAdmin_Passengers />} />
+              <Route path="/subadmin/users/passengers/add" element={<SubAdmin_AddPassenger />} />
+              <Route path="/subadmin/users/passengers/:id/edit" element={<SubAdmin_EditPassenger />} />
+              <Route path="/subadmin/users/passengers/assign" element={<SubAdmin_AssignRoute />} />
+              <Route path="/subadmin/users/passengers/assign/review" element={<SubAdmin_RouteReview />} />
+              <Route path="/subadmin/users/passengers/assign/success" element={<SubAdmin_SuccessConfirmation />} />
+              <Route path="/subadmin/users/passengers/:id" element={<SubAdmin_PassengerDetail />} />
+              <Route path="/subadmin/jobs" element={<SubAdmin_JobsList />} />
+              <Route path="/subadmin/jobs/calendar" element={<SubAdmin_JobCalendar />} />
+              <Route path="/subadmin/jobs/add-job" element={<SubAdmin_AddJob />} />
               <Route path="/subadmin/jobs/:id/edit" element={<SubAdmin_EditJob />} />
+              <Route path="/subadmin/jobs/:id" element={<SubAdmin_JobDetail />} />
               <Route path="/subadmin/notifications" element={<SubAdmin_Notifications />} />
+              <Route path="/subadmin/sos" element={<SubAdmin_SOSPage />} />
+              <Route path="/subadmin/sos/:id" element={<SubAdmin_SOSDetail />} />
               <Route path="/subadmin/settings" element={<SubAdmin_Settings />} />
             </Route>
 

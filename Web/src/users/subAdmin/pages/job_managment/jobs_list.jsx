@@ -282,14 +282,14 @@ const ActiveJobs = () => {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => navigate('/admin/jobs/calendar')}
+                        onClick={() => navigate('/subadmin/jobs/calendar')}
                         className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-[14px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all"
                     >
                         <MdEventNote size={18} />
                         View Calendar
                     </button>
                     <button
-                        onClick={() => navigate('/admin/jobs/add-job')}
+                        onClick={() => navigate('/subadmin/jobs/add-job')}
                         className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[14px] font-semibold hover:bg-[#003c55] transition-all shadow-sm"
                     >
                         <MdAdd size={20} />
@@ -414,7 +414,7 @@ const ActiveJobs = () => {
                                         </td>
                                         <td className="px-6 py-5">
                                             <Link
-                                                to={`/admin/jobs/${job.id}`}
+                                                to={`/subadmin/jobs/${job.id}`}
                                                 className="block max-w-md rounded-lg -m-1 p-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004D6D]/30"
                                             >
                                                 <p className="text-[14px] font-bold text-gray-900 hover:text-[#004D6D] transition-colors">
@@ -772,7 +772,7 @@ const ActiveJobs = () => {
                                     const job = jobs[activeMenu];
                                     setActiveMenu(null);
                                     setActionMenuAnchor(null);
-                                    navigate(`/admin/jobs/${job.id}`);
+                                    navigate(`/subadmin/jobs/${job.id}`);
                                 }}
                                 className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium border-b border-gray-50"
                             >
