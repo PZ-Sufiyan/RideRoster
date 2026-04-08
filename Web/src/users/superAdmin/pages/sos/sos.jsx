@@ -146,7 +146,7 @@ const SOSPage = () => {
   const shimmerRows = Array.from({ length: 4 })
 
   return (
-    <div className="flex flex-col h-[calc(100vh-64px)] overflow-hidden">
+    <div className="flex flex-col h-[calc(100vh-130px)] overflow-hidden">
       <div className="bg-white border-b border-gray-200 px-6 py-4 shrink-0">
         <h1 className="text-xl font-bold text-gray-900">Global SOS Monitoring</h1>
         <p className="text-sm text-gray-500">Live view of all active SOS alerts across the platform.</p>
