@@ -592,7 +592,7 @@ const AddNewPassenger = () => {
                         disabled={submitting}
                         className="px-5 py-2 border border-gray-300 rounded-lg text-[13px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all"
                     >
-                        {submitting ? 'Saving...' : 'Save &amp; Add Another'}
+                        {submitting ? 'Saving...' : 'Save & Add Another'}
                     </button>
                     <button
                         type="button"

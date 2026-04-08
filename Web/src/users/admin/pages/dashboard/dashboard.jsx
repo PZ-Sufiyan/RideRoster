@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineClipboardList } from 'react-icons/hi';
 import {
     MdDirectionsCar,
@@ -41,6 +41,8 @@ const Admin_Dashboard = () => {
     const [error, setError] = useState(null);
     const [data, setData] = useState(null);
     const [reportGenerating, setReportGenerating] = useState(false);
+    const [hoveredLinePointIdx, setHoveredLinePointIdx] = useState(null);
+    const lineSvgRef = useRef(null);
 
     const load = useCallback(async () => {
         setError(null);
@@ -130,19 +132,54 @@ const Admin_Dashboard = () => {
 
     const donutSegments = useMemo(() => buildDonutSegments(fleetLegend), [fleetLegend]);
 
-    const linePoints = useMemo(() => {
-        if (!data?.jobsByMonth?.length) return '';
-        const pts = data.jobsByMonth;
-        const max = data.maxMonthCount || 1;
+    const linePointObjs = useMemo(() => {
+        const pts = data?.jobsByMonth || [];
+        if (!pts.length) return [];
+        const max = data?.maxMonthCount || 1;
         const n = pts.length;
-        return pts
-            .map((m, i) => {
-                const x = 50 + (i * 400) / Math.max(n - 1, 1);
-                const y = 260 - (m.count / max) * 220;
-                return `${x},${y}`;
-            })
-            .join(' ');
+        return pts.map((m, i) => {
+            const x = 50 + (i * 400) / Math.max(n - 1, 1);
+            const y = 260 - ((m?.count || 0) / max) * 220;
+            return { x, y, count: m?.count || 0, label: m?.label };
+        });
     }, [data]);
+
+    const linePoints = useMemo(() => {
+        if (!linePointObjs.length) return '';
+        return linePointObjs.map((p) => `${p.x},${p.y}`).join(' ');
+    }, [linePointObjs]);
+
+    const hoveredLinePoint = useMemo(() => {
+        if (hoveredLinePointIdx == null) return null;
+        return linePointObjs[hoveredLinePointIdx] || null;
+    }, [hoveredLinePointIdx, linePointObjs]);
+
+    const handleLineChartMouseMove = useCallback(
+        (e) => {
+            if (!linePointObjs.length) return;
+            const svg = lineSvgRef.current;
+            if (!svg) return;
+            const rect = svg.getBoundingClientRect();
+            const w = rect.width || 1;
+            const xInViewBox = ((e.clientX - rect.left) / w) * 500; // viewBox width
+
+            let bestIdx = 0;
+            let bestDist = Infinity;
+            for (let i = 0; i < linePointObjs.length; i++) {
+                const d = Math.abs(linePointObjs[i].x - xInViewBox);
+                if (d < bestDist) {
+                    bestDist = d;
+                    bestIdx = i;
+                }
+            }
+            setHoveredLinePointIdx(bestIdx);
+        },
+        [linePointObjs]
+    );
+
+    const handleLineChartMouseLeave = useCallback(() => {
+        setHoveredLinePointIdx(null);
+    }, []);
 
     const yTicks = useMemo(() => {
         const max = data?.maxMonthCount ?? 1;
@@ -302,7 +339,14 @@ const Admin_Dashboard = () => {
                             </div>
 
                             {/* SVG Chart Content */}
-                            <svg className="absolute inset-0 w-full h-full overflow-visible" preserveAspectRatio="none" viewBox="0 0 500 300">
+                            <svg
+                                ref={lineSvgRef}
+                                className="absolute inset-0 w-full h-full overflow-visible"
+                                preserveAspectRatio="none"
+                                viewBox="0 0 500 300"
+                                onMouseMove={handleLineChartMouseMove}
+                                onMouseLeave={handleLineChartMouseLeave}
+                            >
                                 <defs>
                                     <linearGradient id="adminLineGradient" x1="0" y1="0" x2="0" y2="1">
                                         <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.1" />
@@ -316,6 +360,15 @@ const Admin_Dashboard = () => {
                                             d={`M 50 300 L ${linePoints} L 450 300 Z`}
                                             fill="url(#adminLineGradient)"
                                         />
+                                        {/* wider invisible stroke for easier hover */}
+                                        <polyline
+                                            fill="none"
+                                            stroke="transparent"
+                                            strokeWidth="14"
+                                            strokeLinecap="round"
+                                            strokeLinejoin="round"
+                                            points={linePoints}
+                                        />
                                         <polyline
                                             fill="none"
                                             stroke="#3b82f6"
@@ -324,20 +377,51 @@ const Admin_Dashboard = () => {
                                             strokeLinejoin="round"
                                             points={linePoints}
                                         />
-                                        {linePoints.split(' ').map((p, i) => {
-                                            const [x, y] = p.split(',');
+                                        {linePointObjs.map((p, i) => {
+                                            const isHovered = i === hoveredLinePointIdx;
                                             return (
-                                                <circle
-                                                    key={i}
-                                                    cx={x}
-                                                    cy={y}
-                                                    r="4"
-                                                    fill="#fff"
-                                                    stroke="#3b82f6"
-                                                    strokeWidth="2"
-                                                />
+                                                <g key={i}>
+                                                    <circle
+                                                        cx={p.x}
+                                                        cy={p.y}
+                                                        r={isHovered ? '5' : '4'}
+                                                        fill="#fff"
+                                                        stroke="#3b82f6"
+                                                        strokeWidth={isHovered ? '2.5' : '2'}
+                                                    />
+                                                </g>
                                             );
                                         })}
+                                        {hoveredLinePoint && (
+                                            <g>
+                                                <circle
+                                                    cx={hoveredLinePoint.x}
+                                                    cy={hoveredLinePoint.y}
+                                                    r="6"
+                                                    fill="rgba(59,130,246,0.12)"
+                                                    stroke="rgba(59,130,246,0.25)"
+                                                    strokeWidth="1"
+                                                />
+                                                <rect
+                                                    x={Math.max(6, Math.min(500 - 86, hoveredLinePoint.x - 40))}
+                                                    y={Math.max(6, hoveredLinePoint.y - 40)}
+                                                    width="80"
+                                                    height="22"
+                                                    rx="6"
+                                                    fill="#111827"
+                                                    opacity="0.92"
+                                                />
+                                                <text
+                                                    x={Math.max(6, Math.min(500 - 86, hoveredLinePoint.x - 40)) + 40}
+                                                    y={Math.max(6, hoveredLinePoint.y - 40) + 15}
+                                                    textAnchor="middle"
+                                                    fontSize="11"
+                                                    fill="#fff"
+                                                >
+                                                    {Number(hoveredLinePoint.count ?? 0).toLocaleString()}
+                                                </text>
+                                            </g>
+                                        )}
                                     </>
                                 )}
                             </svg>

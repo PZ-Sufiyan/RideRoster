@@ -7,9 +7,9 @@ import { MdPerson } from 'react-icons/md'
 import { getActiveSosAlerts } from '../../../../services/sosService'
 import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer'
 
-const DEFAULT_CENTER = [0, 0]
-const DEFAULT_ZOOM = 12
-const NEARBY_DRIVERS_AVAILABLE = 2
+// UK default (rough geographic center) so the map doesn't open on the ocean.
+const DEFAULT_CENTER = [54.5, -3.0]
+const DEFAULT_ZOOM = 6
 
 const formatRelativeTime = (isoString) => {
   if (!isoString) return '—'
@@ -33,12 +33,12 @@ const createSosIcon = ({ selected = false } = {}) => {
   const scale = selected ? 1.2 : 1
   return L.divIcon({
     className: '',
-    iconSize: [30 * scale, 30 * scale],
-    iconAnchor: [15 * scale, 15 * scale],
+    iconSize: [45 * scale, 45 * scale],
+    iconAnchor: [25 * scale, 25 * scale],
     html: `
       <div style="
-        width: 30px;
-        height: 30px;
+        width: 45px;
+        height: 45px;
         border-radius: 9999px;
         background: #ef4444;
         color: white;
@@ -344,10 +344,6 @@ const SOSPage = () => {
                       <span>PA: {paLabel}</span>
                     </div>
                   </div>
-
-                  <button className="text-sm font-medium text-[#0088CC] hover:text-[#006699] hover:underline transition-colors block">
-                    View nearby drivers ({NEARBY_DRIVERS_AVAILABLE} available)
-                  </button>
                 </div>
               )
             })}

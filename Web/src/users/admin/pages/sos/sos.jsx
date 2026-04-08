@@ -14,8 +14,8 @@ import {
 import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer'
 
 /** Used when there are no coordinates yet (avoids zooming to ocean at 0,0). */
-const FALLBACK_MAP_CENTER = [37.7749, -122.4194]
-const DEFAULT_ZOOM = 13
+const FALLBACK_MAP_CENTER = [54.5, -3.0]
+const DEFAULT_ZOOM = 6
 
 const formatRelativeTime = (isoString) => {
     if (!isoString) return '—'
@@ -40,12 +40,12 @@ const createSosIcon = ({ color = '#ef4444', selected = false } = {}) => {
     const safe = color || '#ef4444'
     return L.divIcon({
         className: '',
-        iconSize: [30 * scale, 30 * scale],
-        iconAnchor: [15 * scale, 15 * scale],
+        iconSize: [45 * scale, 45 * scale],
+        iconAnchor: [25 * scale, 25 * scale],
         html: `
       <div style="
-        width: 30px;
-        height: 30px;
+        width: 45px;
+        height: 45px;
         border-radius: 9999px;
         background: ${safe};
         color: white;

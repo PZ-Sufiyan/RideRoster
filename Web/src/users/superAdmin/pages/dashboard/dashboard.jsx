@@ -19,6 +19,7 @@ import { ShimmerBlock } from '../../../../utils/Shimmer'
 const Dashboard = () => {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
+    const [hoveredGrowthIndex, setHoveredGrowthIndex] = useState(null)
     const [statsData, setStatsData] = useState({
         totalCompanies: 0,
         usersTotal: 0,
@@ -119,6 +120,27 @@ const Dashboard = () => {
                 return `${x},${y}`
             })
             .join(' ')
+    }, [companyGrowth])
+
+    const lineChartPointMeta = useMemo(() => {
+        if (!companyGrowth.length) return []
+        const maxValue = Math.max(...companyGrowth.map(p => p.total || 0), 1)
+        const width = 100
+        const height = 100
+        const stepX = companyGrowth.length > 1 ? width / (companyGrowth.length - 1) : 0
+
+        return companyGrowth.map((point, index) => {
+            const x = stepX * index
+            const normalized = (point.total || 0) / maxValue
+            const y = height - normalized * height
+            return {
+                index,
+                x,
+                y,
+                label: point.label ?? '',
+                value: point.total ?? 0,
+            }
+        })
     }, [companyGrowth])
 
     const companyTypeTotals = useMemo(() => {
@@ -238,13 +260,6 @@ const Dashboard = () => {
                             <svg className="absolute inset-0 w-full h-full overflow-visible" viewBox="0 0 100 100" preserveAspectRatio="none">
                                 {companyGrowth.length > 0 && (
                                     <>
-                                        <polyline
-                                            fill="none"
-                                            stroke="#005580"
-                                            strokeWidth="1.5"
-                                            vectorEffect="non-scaling-stroke"
-                                            points={lineChartPoints}
-                                        />
                                         <defs>
                                             <linearGradient id="growthGradient" x1="0%" y1="0%" x2="0%" y2="100%">
                                                 <stop offset="0%" stopColor="#005580" stopOpacity="0.25" />
@@ -256,6 +271,56 @@ const Dashboard = () => {
                                             opacity="0.2"
                                             points={`${lineChartPoints} 100,100 0,100`}
                                         />
+                                        <polyline
+                                            fill="none"
+                                            stroke="#005580"
+                                            strokeWidth="1.5"
+                                            vectorEffect="non-scaling-stroke"
+                                            points={lineChartPoints}
+                                        />
+                                        {!loading && lineChartPointMeta.map((p) => {
+                                            const isHovered = hoveredGrowthIndex === p.index
+                                            const valueText = (p.value ?? 0)?.toLocaleString?.() ?? String(p.value ?? 0)
+
+                                            return (
+                                                <g
+                                                    key={`growth-point-${p.index}`}
+                                                    onMouseEnter={() => setHoveredGrowthIndex(p.index)}
+                                                    onMouseLeave={() => setHoveredGrowthIndex(null)}
+                                                    onFocus={() => setHoveredGrowthIndex(p.index)}
+                                                    onBlur={() => setHoveredGrowthIndex(null)}
+                                                    tabIndex={0}
+                                                    style={{ cursor: 'default' }}
+                                                >
+                                                    {/* Invisible hover target */}
+                                                    <circle cx={p.x} cy={p.y} r="6" fill="transparent" />
+
+                                                    {isHovered && (
+                                                        <>
+                                                            {/* Visible point */}
+                                                            <circle cx={p.x} cy={p.y} r="1.9" fill="#005580" />
+                                                            <circle cx={p.x} cy={p.y} r="3.2" fill="#ffffff" stroke="#005580" strokeWidth="0.9" />
+
+                                                            {/* Value label */}
+                                                            <g transform={`translate(${p.x},${Math.max(p.y - 10, 6)})`}>
+                                                                <rect x={-12} y={-7} width="24" height="12" rx="3" fill="#0f172a" opacity="0.92" />
+                                                                <text
+                                                                    x="0"
+                                                                    y="2"
+                                                                    textAnchor="middle"
+                                                                    fontSize="4.2"
+                                                                    fill="#ffffff"
+                                                                    vectorEffect="non-scaling-stroke"
+                                                                    style={{ userSelect: 'none' }}
+                                                                >
+                                                                    {valueText}
+                                                                </text>
+                                                            </g>
+                                                        </>
+                                                    )}
+                                                </g>
+                                            )
+                                        })}
                                     </>
                                 )}
                             </svg>

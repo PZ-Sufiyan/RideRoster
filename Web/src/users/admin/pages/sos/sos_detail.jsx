@@ -67,12 +67,12 @@ const createSosIcon = ({ color = '#ef4444' } = {}) => {
     const safe = color || '#ef4444'
     return L.divIcon({
         className: '',
-        iconSize: [36, 36],
-        iconAnchor: [18, 18],
+        iconSize: [45, 45],
+        iconAnchor: [25, 25],
         html: `
       <div style="
-        min-width: 36px;
-        height: 36px;
+        min-width: 45px;
+        height: 45px;
         padding: 0 8px;
         border-radius: 9999px;
         background: ${safe};
