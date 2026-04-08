@@ -15,6 +15,7 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { getCompanyAdminById, getCompanyById } from '../../../../services/companyService';
 import { getAdminCompanyDashboard } from '../../../../services/dashboardService';
 import { downloadAdminDashboardReportPdf } from '../../../../services/dashboardReportPdfService';
+import { ShimmerBlock } from '../../../../utils/Shimmer';
 
 const DONUT_CIRC = 100
 
@@ -186,13 +187,16 @@ const Admin_Dashboard = () => {
         return [max, Math.round((max * 3) / 4), Math.round(max / 2), Math.round(max / 4), 0];
     }, [data]);
 
-    const fmtInt = (n) => (loading ? '—' : Number(n ?? 0).toLocaleString());
+    const fmtInt = (n) =>
+        loading ? (
+            <ShimmerBlock className="h-8 w-16 rounded-md inline-block" />
+        ) : (
+            Number(n ?? 0).toLocaleString()
+        );
 
     const trendBlock = (pct) => {
         if (loading) {
-            return (
-                <div className="text-sm font-medium text-gray-400">—</div>
-            );
+            return <ShimmerBlock className="h-4 w-28 rounded-md" />;
         }
         const n = Number(pct) || 0;
         const cls = n >= 0 ? 'text-green-500' : 'text-red-500';
@@ -225,7 +229,7 @@ const Admin_Dashboard = () => {
                             <div>
                                 <h3 className="text-gray-500 text-sm font-medium">Total Vehicles</h3>
                                 <div className="flex items-center justify-between mt-2">
-                                    <span className="text-[28px] font-bold text-gray-900">
+                                    <span className="text-[28px] font-bold text-gray-900 flex items-center min-h-9">
                                         {fmtInt(data?.fleetHeadline)}
                                     </span>
                                     <div className="w-10 h-10 rounded-[12px] bg-blue-50 flex items-center justify-center text-blue-600">
@@ -240,7 +244,7 @@ const Admin_Dashboard = () => {
                             <div>
                                 <h3 className="text-gray-500 text-sm font-medium">Active Jobs</h3>
                                 <div className="flex items-center justify-between mt-2">
-                                    <span className="text-[28px] font-bold text-gray-900">
+                                    <span className="text-[28px] font-bold text-gray-900 flex items-center min-h-9">
                                         {fmtInt(data?.activeJobsCount)}
                                     </span>
                                     <div className="w-10 h-10 rounded-[12px] bg-green-50 flex items-center justify-center text-green-600">

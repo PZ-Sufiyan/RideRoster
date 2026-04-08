@@ -12,6 +12,8 @@ const Settings = () => {
     const [fullName, setFullName] = useState('');
     const [email, setEmail] = useState('');
     const [phone, setPhone] = useState('');
+    const [secondaryEmail, setSecondaryEmail] = useState('');
+    const [secondaryEmailError, setSecondaryEmailError] = useState('');
     const [role, setRole] = useState('Super Admin');
     const [loading, setLoading] = useState(true);
     const [saving, setSaving] = useState(false);
@@ -19,6 +21,7 @@ const Settings = () => {
         fullName: '',
         email: '',
         phone: '',
+        secondaryEmail: '',
     });
     const [toasts, setToasts] = useState([]);
     const [activeTab, setActiveTab] = useState('profile');
@@ -83,17 +86,20 @@ const Settings = () => {
                 const loadedFullName = profile?.full_name || '';
                 const loadedEmail = profile?.email || authUser?.email || '';
                 const loadedPhone = profile?.phone || '';
+                const loadedSecondaryEmail = profile?.secondary_email || '';
                 const loadedRole =
                     authUser?.app_metadata?.role === 'superadmin' ? 'Super Admin' : 'Super Admin';
 
                 setFullName(loadedFullName);
                 setEmail(loadedEmail);
                 setPhone(loadedPhone);
+                setSecondaryEmail(loadedSecondaryEmail);
                 setRole(loadedRole);
                 setInitialData({
                     fullName: loadedFullName,
                     email: loadedEmail,
                     phone: loadedPhone,
+                    secondaryEmail: loadedSecondaryEmail,
                 });
             } catch (error) {
                 pushToast('error', error?.message || 'Failed to load settings.');
@@ -137,18 +143,31 @@ const Settings = () => {
         }
     }, [failedPasswordAttempts, passwordAttemptStorageKey, passwordLockoutUntil]);
 
+    const isValidEmail = (value) =>
+        /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+
     const handleSaveChanges = async () => {
+        const trimmedSecondaryEmail = secondaryEmail.trim();
+
+        if (trimmedSecondaryEmail && !isValidEmail(trimmedSecondaryEmail)) {
+            setSecondaryEmailError('Please enter a valid email address.');
+            return;
+        }
+        setSecondaryEmailError('');
+
         try {
             setSaving(true);
             await updateCurrentSuperAdminProfile({
                 full_name: fullName.trim(),
                 phone: phone.trim(),
+                secondary_email: trimmedSecondaryEmail || null,
             });
 
             setInitialData((prev) => ({
                 ...prev,
                 fullName: fullName.trim(),
                 phone: phone.trim(),
+                secondaryEmail: trimmedSecondaryEmail,
             }));
             pushToast('success', 'Settings updated successfully.');
         } catch (error) {
@@ -162,6 +181,8 @@ const Settings = () => {
         setFullName(initialData.fullName);
         setEmail(initialData.email);
         setPhone(initialData.phone);
+        setSecondaryEmail(initialData.secondaryEmail);
+        setSecondaryEmailError('');
     };
 
     const handleUpdatePassword = async () => {
@@ -354,6 +375,31 @@ const Settings = () => {
                                     className="block w-full px-4 py-3 text-sm border border-gray-200 rounded-lg bg-gray-50/50 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-colors"
                                     disabled={loading}
                                 />
+                            </div>
+
+                            {/* Secondary Email */}
+                            <div className="space-y-2">
+                                <label className="block text-sm font-semibold text-gray-700">
+                                    Secondary Email
+                                </label>
+                                <input
+                                    type="email"
+                                    value={secondaryEmail}
+                                    onChange={(e) => {
+                                        setSecondaryEmail(e.target.value);
+                                        if (secondaryEmailError) setSecondaryEmailError('');
+                                    }}
+                                    placeholder="Optional"
+                                    className={`block w-full px-4 py-3 text-sm border rounded-lg bg-gray-50/50 text-gray-900 focus:outline-none focus:ring-1 focus:bg-white transition-colors ${
+                                        secondaryEmailError
+                                            ? 'border-red-400 focus:ring-red-400 focus:border-red-400'
+                                            : 'border-gray-200 focus:ring-blue-500 focus:border-blue-500'
+                                    }`}
+                                    disabled={loading}
+                                />
+                                {secondaryEmailError && (
+                                    <p className="text-xs text-red-500 mt-1">{secondaryEmailError}</p>
+                                )}
                             </div>
 
                             {/* Role */}

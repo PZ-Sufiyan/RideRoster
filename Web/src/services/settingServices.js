@@ -63,7 +63,7 @@ export const getCurrentSuperAdminSettings = async () => {
     };
 };
 
-export const updateCurrentSuperAdminProfile = async ({ full_name, phone }) => {
+export const updateCurrentSuperAdminProfile = async ({ full_name, phone, secondary_email }) => {
     const user = await getCurrentAuthUser();
 
     const { data, error } = await supabase
@@ -71,6 +71,7 @@ export const updateCurrentSuperAdminProfile = async ({ full_name, phone }) => {
         .update({
             full_name,
             phone,
+            secondary_email,
             updated_at: new Date().toISOString(),
         })
         .eq('id', user.id)

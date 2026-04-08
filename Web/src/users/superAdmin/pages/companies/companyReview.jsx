@@ -268,13 +268,7 @@ const CompanyReview = () => {
                             </div>
 
                             {/* Document Info Footer */}
-                            <div className="bg-white/80 backdrop-blur-sm border-t border-gray-100 px-6 py-3 flex items-center justify-between z-10">
-                                <div className="flex items-center gap-2">
-                                    <div className="p-1.5 bg-blue-50 text-blue-600 rounded">
-                                        <MdCheck size={14} />
-                                    </div>
-                                    <span className="text-xs font-semibold text-gray-600">Verified Secure Document</span>
-                                </div>
+                            <div className="bg-white/80 backdrop-blur-sm border-t border-gray-100 px-6 py-3 flex items-center justify-end z-10">
                                 <span className="text-[10px] uppercase tracking-widest font-bold text-gray-300">RideRoster Secure Viewer</span>
                             </div>
                         </div>
