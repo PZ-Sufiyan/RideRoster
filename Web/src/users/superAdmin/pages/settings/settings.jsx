@@ -445,6 +445,12 @@ const Settings = () => {
                             </p>
                         </div>
 
+                        {/* Prevent browser autofill: hidden fields + turn off autocomplete on visible fields */}
+                        <div style={{ position: 'absolute', left: '-9999px', top: 'auto', width: '1px', height: '1px', overflow: 'hidden' }} aria-hidden>
+                            <input type="text" name="prevent_autofill_username" autoComplete="off" tabIndex="-1" />
+                            <input type="password" name="prevent_autofill_password" autoComplete="new-password" tabIndex="-1" />
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-6 max-w-5xl">
                             <div className="space-y-2">
                                 <label className="block text-sm font-semibold text-gray-700">
@@ -454,7 +460,7 @@ const Settings = () => {
                                     type="email"
                                     value={email}
                                     readOnly
-                                    autoComplete="username"
+                                    autoComplete="off"
                                     className="block w-full px-4 py-3 text-sm border border-gray-200 rounded-lg bg-gray-100 text-gray-500 cursor-not-allowed"
                                 />
                             </div>
@@ -466,9 +472,10 @@ const Settings = () => {
                                 <div className="relative">
                                     <input
                                         type={showPreviousPassword ? 'text' : 'password'}
+                                        name="rr_prev_password"
                                         value={previousPassword}
                                         onChange={(e) => setPreviousPassword(e.target.value)}
-                                        autoComplete="current-password"
+                                        autoComplete="off"
                                         className="block w-full px-4 py-3 pr-12 text-sm border border-gray-200 rounded-lg bg-gray-50/50 text-gray-900 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 focus:bg-white transition-colors"
                                         disabled={updatingPassword || isPasswordLocked()}
                                     />
