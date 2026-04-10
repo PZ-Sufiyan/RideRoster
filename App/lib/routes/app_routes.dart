@@ -2,12 +2,28 @@ import 'package:flutter/material.dart';
 import '../users/driver/pages/auth/login.dart';
 import '../users/driver/pages/auth/register.dart';
 import '../users/driver/pages/dashboard/dashboard.dart';
+import '../users/driver/pages/dashboard/vehicle_check_list.dart';
+import '../users/driver/pages/job/complete_job.dart';
+import '../users/driver/pages/job/pickup.dart';
+import '../users/driver/pages/job/pickup_que.dart';
+import '../users/driver/pages/job/requested_jobs.dart';
+import '../users/driver/pages/job/route_detail.dart';
+import '../users/driver/pages/profile/profile.dart';
+import '../users/driver/pages/sos/sos.dart';
 
 class AppRoutes {
   // Route name constants
   static const String driverLogin = '/driver/login';
   static const String driverRegister = '/driver/register';
   static const String driverDashboard = '/driver/dashboard';
+  static const String vehicleChecklist = '/driver/vehicle-checklist';
+  static const String sos = '/driver/sos';
+  static const String driverProfile = '/driver/profile';
+  static const String requestedJobs = '/driver/requested-jobs';
+  static const String routeDetail = '/driver/route-detail';
+  static const String pickupQueue = '/driver/pickup-queue';
+  static const String pickupPage = '/driver/pickup';
+  static const String completeJob = '/driver/complete-job';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -19,6 +35,30 @@ class AppRoutes {
 
       case driverDashboard:
         return MaterialPageRoute(builder: (_) => const DriverDashboardPage());
+
+      case vehicleChecklist:
+        return MaterialPageRoute(builder: (_) => const VehicleCheckListPage());
+
+      case sos:
+        return MaterialPageRoute(builder: (_) => const SOSPage());
+
+      case driverProfile:
+        return MaterialPageRoute(builder: (_) => const DriverProfilePage());
+
+      case requestedJobs:
+        return MaterialPageRoute(builder: (_) => const RequestedJobsPage());
+
+      case routeDetail:
+        return MaterialPageRoute(builder: (_) => const RouteDetailPage());
+
+      case pickupQueue:
+        return MaterialPageRoute(builder: (_) => const PickupQuePage());
+
+      case pickupPage:
+        return MaterialPageRoute(builder: (_) => const PickupPage());
+
+      case completeJob:
+        return MaterialPageRoute(builder: (_) => const CompleteJobPage());
 
       default:
         return MaterialPageRoute(

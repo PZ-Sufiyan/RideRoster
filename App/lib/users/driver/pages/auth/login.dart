@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../components/app_button.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
@@ -193,38 +194,10 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
               // Sign In button
               Consumer<AuthProvider>(
                 builder: (_, auth, __) {
-                  return SizedBox(
-                    width: double.infinity,
-                    height: SizeConfig.buttonHeight,
-                    child: ElevatedButton(
-                      onPressed: auth.isLoading ? null : _onSignIn,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: AppColors.primaryLight,
-                        disabledBackgroundColor: AppColors.buttonDisabled,
-                        elevation: 0,
-                        shape: RoundedRectangleBorder(
-                          borderRadius:
-                              BorderRadius.circular(SizeConfig.radiusLG),
-                        ),
-                      ),
-                      child: auth.isLoading
-                          ? SizedBox(
-                              width: SizeConfig.r(22),
-                              height: SizeConfig.r(22),
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2.5,
-                                color: AppColors.primary,
-                              ),
-                            )
-                          : Text(
-                              'Sign In',
-                              style: TextStyle(
-                                fontSize: SizeConfig.sp(16),
-                                fontWeight: FontWeight.w600,
-                                color: AppColors.textMedium,
-                              ),
-                            ),
-                    ),
+                  return AppButton(
+                    label: 'Sign In',
+                    isLoading: auth.isLoading,
+                    onPressed: _onSignIn,
                   );
                 },
               ),
