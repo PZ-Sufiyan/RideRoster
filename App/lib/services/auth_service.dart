@@ -1,19 +1,25 @@
 import 'api_service.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-/// Auth service — currently uses dummy data.
-///
-/// TO SWAP TO REAL API:
-///   Replace every `await Future.delayed(...)` block with an actual HTTP POST.
-///   Example (using the `http` package):
-///     final response = await http.post(
-///       Uri.parse('${ApiService.baseUrl}/auth/driver/login'),
-///       body: jsonEncode({'email': email, 'password': password}),
-///       headers: {'Content-Type': 'application/json'},
-///     );
-///     final data = jsonDecode(response.body);
-///     if (response.statusCode == 200) return AuthResult.success(data['token']);
-///     return AuthResult.failure(data['message']);
 class AuthService extends ApiService {
+  SupabaseClient get _supabase => Supabase.instance.client;
+
+  static const Set<String> _allowedRoles = {
+    'driver',
+    'passenger_assistant',
+  };
+
+  String? _extractRole(User user) {
+    final appMetaRole = user.appMetadata['role']?.toString();
+    final userMetaRole = user.userMetadata?['role']?.toString();
+    return appMetaRole ?? userMetaRole;
+  }
+
+  String? _extractDisplayName(User user) {
+    return user.userMetadata?['full_name']?.toString() ??
+        user.userMetadata?['name']?.toString();
+  }
+
   // ---------------------------------------------------------------------------
   // Driver Auth
   // ---------------------------------------------------------------------------
@@ -24,9 +30,6 @@ class AuthService extends ApiService {
     required String email,
     required String password,
   }) async {
-    // --- DUMMY IMPLEMENTATION ---
-    await Future.delayed(const Duration(milliseconds: 900));
-
     if (email.isEmpty || password.isEmpty) {
       return AuthResult.failure('Email and password are required.');
     }
@@ -37,25 +40,56 @@ class AuthService extends ApiService {
       return AuthResult.failure('Password must be at least 6 characters.');
     }
 
-    // Simulate a successful login with a dummy token
-    return AuthResult.success(
-      token: 'dummy_driver_token_${DateTime.now().millisecondsSinceEpoch}',
-      userId: 'driver_001',
-      name: 'John Driver',
-      email: email,
-    );
-    // --- END DUMMY ---
+    try {
+      final response = await _supabase.auth.signInWithPassword(
+        email: email,
+        password: password,
+      );
+      final user = response.user;
+      final session = response.session;
+
+      if (user == null || session == null) {
+        return AuthResult.failure('Unable to sign in. Please try again.');
+      }
+
+      final role = _extractRole(user);
+      if (role == null || !_allowedRoles.contains(role)) {
+        await _supabase.auth.signOut();
+        return AuthResult.failure(
+          'Access denied. Only drivers and passenger assistants can sign in.',
+        );
+      }
+
+      return AuthResult.success(
+        token: session.accessToken,
+        userId: user.id,
+        name: _extractDisplayName(user),
+        email: user.email,
+      );
+    } on AuthException catch (e) {
+      return AuthResult.failure(e.message);
+    } catch (_) {
+      return AuthResult.failure(
+        'Login failed due to an unexpected error. Please try again.',
+      );
+    }
   }
 
   /// Send password-reset email.
   Future<AuthResult> driverForgotPassword({required String email}) async {
-    // --- DUMMY IMPLEMENTATION ---
-    await Future.delayed(const Duration(milliseconds: 700));
     if (!email.contains('@')) {
       return AuthResult.failure('Please enter a valid email address.');
     }
-    return AuthResult.success(message: 'Password reset link sent to $email');
-    // --- END DUMMY ---
+    try {
+      await _supabase.auth.resetPasswordForEmail(email);
+      return AuthResult.success(message: 'Password reset link sent to $email');
+    } on AuthException catch (e) {
+      return AuthResult.failure(e.message);
+    } catch (_) {
+      return AuthResult.failure(
+        'Unable to send reset link right now. Please try again.',
+      );
+    }
   }
 
   /// Register a new driver account.
@@ -103,9 +137,6 @@ class AuthService extends ApiService {
     String? dbsServiceUpdateId,
     String? safeguardingCertPath,
   }) async {
-    // --- DUMMY IMPLEMENTATION ---
-    await Future.delayed(const Duration(milliseconds: 1000));
-
     if (fullName.isEmpty || email.isEmpty || password.isEmpty) {
       return AuthResult.failure('Please complete all required fields.');
     }
@@ -113,22 +144,32 @@ class AuthService extends ApiService {
       return AuthResult.failure('Please enter a valid email address.');
     }
 
-    return AuthResult.success(
-      token: 'dummy_driver_token_${DateTime.now().millisecondsSinceEpoch}',
-      userId: 'driver_new_${DateTime.now().millisecondsSinceEpoch}',
-      name: fullName,
-      email: email,
-      message: 'Registration successful. Pending admin approval.',
-    );
-    // --- END DUMMY ---
+    try {
+      final response = await _supabase.auth.signUp(
+        email: email,
+        password: password,
+        data: {'role': 'driver', 'full_name': fullName},
+      );
+
+      return AuthResult.success(
+        token: response.session?.accessToken,
+        userId: response.user?.id,
+        name: fullName,
+        email: email,
+        message: 'Registration successful. Check your email to confirm account.',
+      );
+    } on AuthException catch (e) {
+      return AuthResult.failure(e.message);
+    } catch (_) {
+      return AuthResult.failure(
+        'Registration failed due to an unexpected error.',
+      );
+    }
   }
 
   /// Logout — clear token from storage.
   Future<void> driverLogout() async {
-    // --- DUMMY IMPLEMENTATION ---
-    await Future.delayed(const Duration(milliseconds: 300));
-    // Real: clear token from shared_preferences / secure storage
-    // --- END DUMMY ---
+    await _supabase.auth.signOut();
   }
 }
 
