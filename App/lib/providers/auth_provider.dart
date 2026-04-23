@@ -6,12 +6,16 @@ enum AuthStatus { idle, loading, authenticated, unauthenticated, error }
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
 
-  AuthStatus _status = AuthStatus.unauthenticated;
+  AuthStatus _status = AuthStatus.idle;
   String? _token;
   String? _userId;
   String? _userName;
   String? _userEmail;
   String? _errorMessage;
+
+  AuthProvider() {
+    restoreSession();
+  }
 
   // ---------------------------------------------------------------------------
   // Getters
@@ -28,6 +32,26 @@ class AuthProvider extends ChangeNotifier {
   // ---------------------------------------------------------------------------
   // Driver Login
   // ---------------------------------------------------------------------------
+  Future<void> restoreSession() async {
+    _setStatus(AuthStatus.loading);
+    final result = await _authService.restoreSession();
+    if (result.success) {
+      _token = result.token;
+      _userId = result.userId;
+      _userName = result.name;
+      _userEmail = result.email;
+      _errorMessage = null;
+      _setStatus(AuthStatus.authenticated);
+    } else {
+      _token = null;
+      _userId = null;
+      _userName = null;
+      _userEmail = null;
+      _errorMessage = null;
+      _setStatus(AuthStatus.unauthenticated);
+    }
+  }
+
   Future<bool> driverLogin({
     required String email,
     required String password,

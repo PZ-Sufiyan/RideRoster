@@ -126,6 +126,7 @@ export function derivePickupStops(selectedPassengers, pickupEdits = {}) {
       latitude: edits.latitude ?? p.pickup_latitude ?? null,
       longitude: edits.longitude ?? p.pickup_longitude ?? null,
       scheduled_time: scheduled,
+      status: 'pending',
       notes_for_driver: edits.notes_for_driver ?? '',
       passenger_ids: selectedPassengers
         .filter((x) => normalizeAddressKey(x.pickup_address) === key)
@@ -161,6 +162,7 @@ export function deriveDropoffStops(selectedPassengers, dropoffEdits = {}) {
       latitude: edits.latitude ?? p.dropoff_latitude ?? null,
       longitude: edits.longitude ?? p.dropoff_longitude ?? null,
       scheduled_time: edits.scheduled_time ?? formatTimeForInput(p.dropoff_time),
+      status: 'pending',
       notes_for_driver: edits.notes_for_driver ?? '',
       passenger_ids: selectedPassengers
         .filter((x) => normalizeAddressKey(x.dropoff_address) === key)
@@ -222,6 +224,7 @@ export function buildPickupEditsFromJobBundle(bundle, passengersById) {
       address: pu.address ?? '',
       postcode: pu.postcode ?? '',
       scheduled_time: timeInputFromDb(pu.scheduled_time),
+      status: normalizeStopStatus(pu.status),
       latitude: pu.latitude != null ? String(pu.latitude) : '',
       longitude: pu.longitude != null ? String(pu.longitude) : '',
       notes_for_driver: pu.notes_for_driver || '',
@@ -244,6 +247,7 @@ export function buildDropoffEditsFromJobBundle(bundle, passengersById) {
       address: d.address ?? '',
       postcode: d.postcode ?? '',
       scheduled_time: timeInputFromDb(d.scheduled_time),
+      status: normalizeStopStatus(d.status),
       latitude: d.latitude != null ? String(d.latitude) : '',
       longitude: d.longitude != null ? String(d.longitude) : '',
       notes_for_driver: d.notes_for_driver || '',
@@ -261,6 +265,7 @@ async function insertJobStopsAndRoutes(jobId, pickupStops, dropoffStops, selecte
     latitude: parseCoord(s.latitude),
     longitude: parseCoord(s.longitude),
     scheduled_time: toPgTime(s.scheduled_time),
+    status: normalizeStopStatus(s.status),
     notes_for_driver: s.notes_for_driver?.trim() || null,
   }))
 
@@ -286,6 +291,7 @@ async function insertJobStopsAndRoutes(jobId, pickupStops, dropoffStops, selecte
     latitude: parseCoord(s.latitude),
     longitude: parseCoord(s.longitude),
     scheduled_time: toPgTime(s.scheduled_time),
+    status: normalizeStopStatus(s.status),
     notes_for_driver: s.notes_for_driver?.trim() || null,
   }))
 
@@ -380,6 +386,14 @@ export function timeInputFromDb(t) {
   return String(t).slice(0, 5)
 }
 
+function normalizeStopStatus(status) {
+  const value = String(status || '')
+    .trim()
+    .toLowerCase()
+  if (value === 'completed') return 'completed'
+  return 'pending'
+}
+
 function parseGpsString(gps) {
   if (!gps || typeof gps !== 'string') return { latitude: null, longitude: null }
   const parts = gps.split(',').map((x) => x.trim())
@@ -469,6 +483,7 @@ export async function fetchJobDetailBundle(jobId, companyId) {
     gps:
       p.latitude != null && p.longitude != null ? `${p.latitude},${p.longitude}` : '',
     postCode: p.postcode || '',
+    status: normalizeStopStatus(p.status),
     passenger: passengerNamesForStop(p.id, routes, 'pickup_id', passengersById),
     notes: p.notes_for_driver || '',
   }))
@@ -479,6 +494,7 @@ export async function fetchJobDetailBundle(jobId, companyId) {
     gps:
       d.latitude != null && d.longitude != null ? `${d.latitude},${d.longitude}` : '',
     postCode: d.postcode || '',
+    status: normalizeStopStatus(d.status),
     passenger: passengerNamesForStop(d.id, routes, 'dropoff_id', passengersById),
     notes: d.notes_for_driver || '',
   }))
@@ -529,6 +545,7 @@ export async function updateJobPickupRow(pickupId, patch) {
     latitude,
     longitude,
     scheduled_time: patch.scheduled_time != null ? toPgTime(patch.scheduled_time) : undefined,
+    status: patch.status != null ? normalizeStopStatus(patch.status) : undefined,
     notes_for_driver: patch.notes_for_driver ?? patch.notes ?? null,
   }
   const clean = Object.fromEntries(Object.entries(row).filter(([, v]) => v !== undefined))
@@ -547,6 +564,7 @@ export async function updateJobDropoffRow(dropoffId, patch) {
     latitude,
     longitude,
     scheduled_time: patch.scheduled_time != null ? toPgTime(patch.scheduled_time) : undefined,
+    status: patch.status != null ? normalizeStopStatus(patch.status) : undefined,
     notes_for_driver: patch.notes_for_driver ?? patch.notes ?? null,
   }
   const clean = Object.fromEntries(Object.entries(row).filter(([, v]) => v !== undefined))

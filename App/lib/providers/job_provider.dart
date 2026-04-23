@@ -20,8 +20,15 @@ class JobProvider extends ChangeNotifier {
   int get activePickupIndex => _activePickupIndex;
 
   /// The pickup stop currently shown in PickupQuePage / PickupPage.
-  PickupStop? get activePickup =>
-      _job == null || _job!.pickups.isEmpty ? null : _job!.pickups[_activePickupIndex];
+  PickupStop? get activePickup {
+    if (_job == null || _job!.pickups.isEmpty) return null;
+    if (_activePickupIndex < 0 || _activePickupIndex >= _job!.pickups.length) {
+      return null;
+    }
+    final current = _job!.pickups[_activePickupIndex];
+    if (current.status != PickupStatus.pending) return null;
+    return current;
+  }
 
   /// Pending pickups after the current active one (shown greyed out in queue).
   List<PickupStop> get upcomingPickups {
@@ -41,12 +48,11 @@ class JobProvider extends ChangeNotifier {
 
     try {
       _job = await _service.fetchCurrentJob();
-      // Start at the first pending pickup (defensive — always 0 for a fresh
-      // job, but correct even if data arrives partially resolved).
-      _activePickupIndex = _job!.pickups.indexWhere(
-        (p) => p.status == PickupStatus.pending,
-      );
-      if (_activePickupIndex == -1) _activePickupIndex = 0;
+      if (_job != null) {
+        _setActiveToFirstPending();
+      } else {
+        _activePickupIndex = 0;
+      }
     } catch (e) {
       _error = e.toString();
     } finally {
@@ -58,17 +64,33 @@ class JobProvider extends ChangeNotifier {
   // ─── Status mutations ────────────────────────────────────────────────────
 
   /// Marks the current pickup as [PickupStatus.completed].
-  void markCurrentAsCompleted() {
+  Future<void> markCurrentAsCompleted() async {
     if (_job == null) return;
-    _job!.pickups[_activePickupIndex].status = PickupStatus.completed;
-    notifyListeners();
+    try {
+      final stop = _job!.pickups[_activePickupIndex];
+      await _service.updatePickupStatus(stop.id, PickupStatus.completed);
+      _job!.pickups[_activePickupIndex].status = PickupStatus.completed;
+      _error = null;
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+    }
   }
 
   /// Marks the current pickup as [PickupStatus.notPicked].
-  void markCurrentAsNotPicked() {
+  Future<void> markCurrentAsNotPicked() async {
     if (_job == null) return;
-    _job!.pickups[_activePickupIndex].status = PickupStatus.notPicked;
-    notifyListeners();
+    try {
+      final stop = _job!.pickups[_activePickupIndex];
+      await _service.updatePickupStatus(stop.id, PickupStatus.notPicked);
+      _job!.pickups[_activePickupIndex].status = PickupStatus.notPicked;
+      _error = null;
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+    }
   }
 
   /// Advances to the next pending pickup. Returns true if one exists.
@@ -81,7 +103,9 @@ class JobProvider extends ChangeNotifier {
         return true;
       }
     }
-    // No more pending pickups; check if all are resolved.
+    // No more pending pickups.
+    _activePickupIndex = _job!.pickups.length;
+    notifyListeners();
     return false;
   }
 
@@ -93,5 +117,30 @@ class JobProvider extends ChangeNotifier {
     _job = null;
     _activePickupIndex = 0;
     notifyListeners();
+  }
+
+  Future<void> completeCurrentJob({String? comments}) async {
+    if (_job == null || _job!.backendJobId.isEmpty) return;
+    try {
+      await _service.completeJob(
+        backendJobId: _job!.backendJobId,
+        comments: comments,
+      );
+      _error = null;
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+      rethrow;
+    }
+  }
+
+  void _setActiveToFirstPending() {
+    if (_job == null || _job!.pickups.isEmpty) {
+      _activePickupIndex = 0;
+      return;
+    }
+    final idx = _job!.pickups.indexWhere((p) => p.status == PickupStatus.pending);
+    _activePickupIndex = idx == -1 ? _job!.pickups.length : idx;
   }
 }

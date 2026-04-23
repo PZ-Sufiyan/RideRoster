@@ -42,6 +42,7 @@ class PickupStop {
 
 /// A job assigned to the driver.
 class JobModel {
+  final String backendJobId;
   final String jobId;
   final String routeNumber;
   final String paName;
@@ -53,6 +54,7 @@ class JobModel {
   final List<PickupStop> pickups;
 
   const JobModel({
+    this.backendJobId = '',
     required this.jobId,
     required this.routeNumber,
     required this.paName,
@@ -76,6 +78,7 @@ class JobModel {
       pickups.where((p) => p.status == PickupStatus.pending).length;
 
   bool get allPickupsResolved => pendingCount == 0;
+  bool get isDropoffPhase => allPickupsResolved;
 
   double get progressFraction =>
       totalPickups == 0 ? 0 : completedCount / totalPickups;

@@ -1,11 +1,30 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
+import '../../../../providers/auth_provider.dart';
+import '../../../../providers/job_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 
-class DriverDashboardPage extends StatelessWidget {
+class DriverDashboardPage extends StatefulWidget {
   const DriverDashboardPage({super.key});
+
+  @override
+  State<DriverDashboardPage> createState() => _DriverDashboardPageState();
+}
+
+class _DriverDashboardPageState extends State<DriverDashboardPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final provider = context.read<JobProvider>();
+      if (!provider.isLoading && provider.job == null) {
+        provider.loadJob();
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -113,7 +132,15 @@ class _DashboardAppBar extends StatelessWidget {
           ),
           // Leave button
           GestureDetector(
-            onTap: () {},
+            onTap: () async {
+              await context.read<AuthProvider>().logout();
+              if (!context.mounted) return;
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRoutes.driverLogin,
+                (route) => false,
+              );
+            },
             child: Row(
               children: [
                 Icon(
@@ -189,6 +216,114 @@ class _BadgeIcon extends StatelessWidget {
 class _CurrentJobCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    return Consumer<JobProvider>(
+      builder: (context, provider, _) {
+        if (provider.isLoading) {
+          return _CurrentJobCardShell(
+            child: SizedBox(
+              height: SizeConfig.r(80),
+              child: const Center(child: CircularProgressIndicator()),
+            ),
+          );
+        }
+
+        if (provider.error != null) {
+          return _CurrentJobCardShell(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  provider.error!,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(13),
+                    color: AppColors.textMedium,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.r(14)),
+                AppButton(
+                  label: 'Retry',
+                  height: SizeConfig.r(42),
+                  borderRadius: SizeConfig.radius,
+                  onPressed: provider.loadJob,
+                ),
+              ],
+            ),
+          );
+        }
+
+        final job = provider.job;
+        if (job == null) {
+          return _CurrentJobCardShell(
+            child: Text(
+              'No current job assigned yet.',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(13),
+                color: AppColors.textMedium,
+              ),
+            ),
+          );
+        }
+
+        final isDropoffPhase = job.isDropoffPhase;
+        final primaryTimeLabel = isDropoffPhase
+            ? 'Drop-off ETA: ${job.dropoffEta}'
+            : 'Next pickup: ${job.nextPickupTime}';
+        final actionLabel = isDropoffPhase ? 'Go to Drop-off' : 'Start Job';
+        final actionRoute = isDropoffPhase
+            ? AppRoutes.completeJob
+            : AppRoutes.routeDetail;
+
+        return _CurrentJobCardShell(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _JobInfoRow(icon: Icons.access_time, label: primaryTimeLabel),
+              SizedBox(height: SizeConfig.r(9)),
+              _JobInfoRow(
+                icon: Icons.badge_outlined,
+                label: 'Job ID: ${job.jobId}',
+              ),
+              SizedBox(height: SizeConfig.r(9)),
+              _JobInfoRow(
+                icon: Icons.group_outlined,
+                label: '${job.totalPickups} students',
+              ),
+              SizedBox(height: SizeConfig.r(9)),
+              _JobInfoRow(
+                icon: isDropoffPhase
+                    ? Icons.location_on_outlined
+                    : Icons.person_outline,
+                label: isDropoffPhase
+                    ? 'Drop-off: ${job.dropoffLocation}'
+                    : 'PA: ${job.paName}',
+              ),
+              SizedBox(height: SizeConfig.r(18)),
+              AppButton(
+                label: actionLabel,
+                height: SizeConfig.r(46),
+                borderRadius: SizeConfig.radius,
+                trailingIcon: Icon(
+                  Icons.arrow_forward,
+                  color: Colors.white,
+                  size: SizeConfig.r(18),
+                ),
+                onPressed: () => Navigator.pushNamed(context, actionRoute),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _CurrentJobCardShell extends StatelessWidget {
+  final Widget child;
+
+  const _CurrentJobCardShell({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(SizeConfig.r(18)),
@@ -208,26 +343,7 @@ class _CurrentJobCard extends StatelessWidget {
             ),
           ),
           SizedBox(height: SizeConfig.r(14)),
-          _JobInfoRow(icon: Icons.access_time, label: 'Next pickup: 8:15 AM'),
-          SizedBox(height: SizeConfig.r(9)),
-          _JobInfoRow(icon: Icons.badge_outlined, label: 'Job ID: R-2024-001'),
-          SizedBox(height: SizeConfig.r(9)),
-          _JobInfoRow(icon: Icons.group_outlined, label: '5 students'),
-          SizedBox(height: SizeConfig.r(9)),
-          _JobInfoRow(icon: Icons.person_outline, label: 'PA: Sarah Miller'),
-          SizedBox(height: SizeConfig.r(18)),
-          AppButton(
-            label: 'Start Job',
-            height: SizeConfig.r(46),
-            borderRadius: SizeConfig.radius,
-            trailingIcon: Icon(
-              Icons.arrow_forward,
-              color: Colors.white,
-              size: SizeConfig.r(18),
-            ),
-            onPressed: () =>
-                Navigator.pushNamed(context, AppRoutes.routeDetail),
-          ),
+          child,
         ],
       ),
     );
@@ -246,12 +362,16 @@ class _JobInfoRow extends StatelessWidget {
       children: [
         Icon(icon, color: const Color(0xFF0284C7), size: SizeConfig.r(16)),
         SizedBox(width: SizeConfig.r(8)),
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: SizeConfig.sp(13),
-            color: AppColors.textDark,
-            fontWeight: FontWeight.w400,
+        Expanded(
+          child: Text(
+            label,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(13),
+              color: AppColors.textDark,
+              fontWeight: FontWeight.w400,
+            ),
           ),
         ),
       ],

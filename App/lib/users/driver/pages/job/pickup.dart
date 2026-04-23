@@ -348,17 +348,14 @@ class _ActiveStopCard extends StatelessWidget {
               SizedBox(width: SizeConfig.r(10)),
               Expanded(
                 child: ElevatedButton(
-                  onPressed: () {
+                  onPressed: () async {
                     final provider = context.read<JobProvider>();
-                    provider.markCurrentAsCompleted();
+                    await provider.markCurrentAsCompleted();
                     provider.advanceToNextPickup();
                     // If that was the last pickup, go straight to complete job.
+                    if (!context.mounted) return;
                     if (provider.allResolved) {
-                      Navigator.pushNamedAndRemoveUntil(
-                        context,
-                        AppRoutes.completeJob,
-                        ModalRoute.withName(AppRoutes.routeDetail),
-                      );
+                      Navigator.pushNamed(context, AppRoutes.completeJob);
                     } else {
                       // More pickups remain — pop back to the queue.
                       Navigator.maybePop(context);
@@ -539,18 +536,10 @@ class _BottomBar extends StatelessWidget {
                 // Just decide where to navigate based on current state.
                 if (provider.allResolved) {
                   // All done — go to complete job.
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    AppRoutes.completeJob,
-                    ModalRoute.withName(AppRoutes.routeDetail),
-                  );
+                  Navigator.pushNamed(context, AppRoutes.completeJob);
                 } else {
                   // More pickups remain — go to pickup queue.
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    AppRoutes.pickupQueue,
-                    ModalRoute.withName(AppRoutes.routeDetail),
-                  );
+                  Navigator.pushNamed(context, AppRoutes.pickupQueue);
                 }
               },
       ),

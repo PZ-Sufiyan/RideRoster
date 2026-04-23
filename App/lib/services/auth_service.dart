@@ -171,6 +171,34 @@ class AuthService extends ApiService {
   Future<void> driverLogout() async {
     await _supabase.auth.signOut();
   }
+
+  /// Restore current auth session if one exists.
+  Future<AuthResult> restoreSession() async {
+    try {
+      final session = _supabase.auth.currentSession;
+      final user = _supabase.auth.currentUser;
+      if (session == null || user == null) {
+        return AuthResult.failure('No active session.');
+      }
+
+      final role = _extractRole(user);
+      if (role == null || !_allowedRoles.contains(role)) {
+        await _supabase.auth.signOut();
+        return AuthResult.failure(
+          'Access denied. Only drivers and passenger assistants can sign in.',
+        );
+      }
+
+      return AuthResult.success(
+        token: session.accessToken,
+        userId: user.id,
+        name: _extractDisplayName(user),
+        email: user.email,
+      );
+    } catch (_) {
+      return AuthResult.failure('Could not restore session.');
+    }
+  }
 }
 
 // ---------------------------------------------------------------------------

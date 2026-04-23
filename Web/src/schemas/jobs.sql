@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS public.job_pickups (
   latitude numeric(10,7) NULL,
   longitude numeric(10,7) NULL,
   scheduled_time time NULL,     -- ← per-stop pickup time
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed')),
   notes_for_driver text NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (job_id, pickup_order)
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS public.job_dropoffs (
   latitude numeric(10,7) NULL,
   longitude numeric(10,7) NULL,
   scheduled_time time NULL,     -- ← per-stop dropoff time
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'completed')),
   notes_for_driver text NULL,
   created_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (job_id, dropoff_order)

@@ -3,7 +3,8 @@ class SupabaseConfig {
   static const String url = 'https://supabase.nst-sch.com/';
 
   // Add your real Supabase anon public key here.
-  static const String anonKey = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzczNTIzMDU1LCJleHAiOjE5MzEyMDMwNTV9.eUEQ9s7p5BlF4og2-xCGHqvpsH7PJnj0rtiYhCQ501o';
+  static const String anonKey =
+      'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJyb2xlIjoiYW5vbiIsImlzcyI6InN1cGFiYXNlIiwiaWF0IjoxNzczNTIzMDU1LCJleHAiOjE5MzEyMDMwNTV9.eUEQ9s7p5BlF4og2-xCGHqvpsH7PJnj0rtiYhCQ501o';
 
   static bool get isConfigured =>
       !url.contains('YOUR_PROJECT_ID') &&

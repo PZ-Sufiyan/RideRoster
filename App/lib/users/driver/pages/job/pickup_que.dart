@@ -48,6 +48,7 @@ class PickupQuePage extends StatelessWidget {
                                   _PassengerCard(
                                     stop: active,
                                     jobId: job.jobId,
+                                    dropoffLocation: job.dropoffLocation,
                                     isActive: true,
                                     showPriority: true,
                                   ),
@@ -59,6 +60,7 @@ class PickupQuePage extends StatelessWidget {
                                           child: _PassengerCard(
                                             stop: stop,
                                             jobId: job.jobId,
+                                            dropoffLocation: job.dropoffLocation,
                                             isActive: false,
                                             showPriority: false,
                                           ),
@@ -218,12 +220,14 @@ class _Location {
 class _PassengerCard extends StatelessWidget {
   final PickupStop stop;
   final String jobId;
+  final String dropoffLocation;
   final bool isActive;
   final bool showPriority;
 
   const _PassengerCard({
     required this.stop,
     required this.jobId,
+    required this.dropoffLocation,
     required this.isActive,
     required this.showPriority,
   });
@@ -237,7 +241,7 @@ class _PassengerCard extends StatelessWidget {
     );
     final dropoff = _Location(
       label: 'Drop-off Destination',
-      address: 'Washington High School',
+      address: dropoffLocation,
       dotColor: isActive ? AppColors.error : AppColors.textLight,
     );
 
@@ -434,18 +438,11 @@ class _ActionButtons extends StatelessWidget {
           textColor: Colors.white,
           isFilled: true,
           onTap: isActive
-              ? () {
+              ? () async {
                   final provider = context.read<JobProvider>();
-                  provider.markCurrentAsNotPicked();
-                  final hasNext = provider.advanceToNextPickup();
-                  if (!hasNext) {
-                    // All resolved — go back to route detail which will
-                    // detect allResolved and show the complete button.
-                    Navigator.popUntil(
-                      context,
-                      ModalRoute.withName(AppRoutes.routeDetail),
-                    );
-                  }
+                  await provider.markCurrentAsNotPicked();
+                  if (!context.mounted) return;
+                  provider.advanceToNextPickup();
                 }
               : null,
         ),

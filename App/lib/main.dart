@@ -5,6 +5,8 @@ import 'config/supabase_config.dart';
 import 'providers/auth_provider.dart';
 import 'providers/job_provider.dart';
 import 'routes/app_routes.dart';
+import 'users/driver/pages/auth/login.dart';
+import 'users/driver/pages/dashboard/dashboard.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -56,9 +58,30 @@ class RideRosterApp extends StatelessWidget {
           ),
           scaffoldBackgroundColor: Colors.white,
         ),
-        initialRoute: AppRoutes.driverLogin,
+        home: const _AuthEntryPage(),
         onGenerateRoute: AppRoutes.generateRoute,
       ),
+    );
+  }
+}
+
+class _AuthEntryPage extends StatelessWidget {
+  const _AuthEntryPage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AuthProvider>(
+      builder: (_, auth, __) {
+        if (auth.status == AuthStatus.loading || auth.status == AuthStatus.idle) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+        if (auth.isAuthenticated) {
+          return const DriverDashboardPage();
+        }
+        return const DriverLoginPage();
+      },
     );
   }
 }
