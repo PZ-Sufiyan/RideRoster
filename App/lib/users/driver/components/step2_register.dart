@@ -22,6 +22,7 @@ class _Step2RegisterState extends State<Step2Register> {
   late final TextEditingController _regNumberCtrl;
   late final TextEditingController _taxiPlateCtrl;
   late final TextEditingController _modelCtrl;
+  late final TextEditingController _vehicleColourCtrl;
   late final TextEditingController _seatsCtrl;
 
   String? _selectedMake;
@@ -56,6 +57,8 @@ class _Step2RegisterState extends State<Step2Register> {
     _taxiPlateCtrl =
         TextEditingController(text: widget.data.taxiPlateNumber);
     _modelCtrl = TextEditingController(text: widget.data.model);
+    _vehicleColourCtrl =
+        TextEditingController(text: widget.data.vehicleColour);
     _seatsCtrl = TextEditingController(text: widget.data.passengerSeats);
     _selectedMake =
         widget.data.make.isEmpty ? null : widget.data.make;
@@ -71,6 +74,7 @@ class _Step2RegisterState extends State<Step2Register> {
     _regNumberCtrl.dispose();
     _taxiPlateCtrl.dispose();
     _modelCtrl.dispose();
+    _vehicleColourCtrl.dispose();
     _seatsCtrl.dispose();
     super.dispose();
   }
@@ -80,6 +84,7 @@ class _Step2RegisterState extends State<Step2Register> {
     widget.data.taxiPlateNumber = _taxiPlateCtrl.text.trim();
     widget.data.make = _selectedMake ?? '';
     widget.data.model = _modelCtrl.text.trim();
+    widget.data.vehicleColour = _vehicleColourCtrl.text.trim();
     widget.data.yearOfFirstRegistration = _yearOfRegistration;
     widget.data.licensingType = _selectedLicensing ?? '';
     widget.data.bodyStyle = _bodyStyle;
@@ -200,6 +205,14 @@ class _Step2RegisterState extends State<Step2Register> {
           RegField(
             controller: _modelCtrl,
             hintText: 'e.g. Prius, Vito Taxi',
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('Vehicle Colour *'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _vehicleColourCtrl,
+            hintText: 'e.g. Black',
           ),
           SizedBox(height: SizeConfig.r(18)),
 

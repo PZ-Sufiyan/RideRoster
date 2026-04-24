@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../models/driver_register_data.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
@@ -19,14 +20,30 @@ class Step1Register extends StatefulWidget {
 }
 
 class _Step1RegisterState extends State<Step1Register> {
-  late final TextEditingController _fullNameCtrl;
+  late final TextEditingController _firstNameCtrl;
+  late final TextEditingController _lastNameCtrl;
   late final TextEditingController _passwordCtrl;
+  late final TextEditingController _confirmPasswordCtrl;
   late final TextEditingController _emailCtrl;
   late final TextEditingController _companyCtrl;
+  late final FocusNode _companyFocusNode;
   late final TextEditingController _mobileCtrl;
+  late final TextEditingController _residentialAddressCtrl;
+  late final TextEditingController _emergencyContactNameCtrl;
+  late final TextEditingController _emergencyContactPhoneCtrl;
+  late final TextEditingController _passportNumberCtrl;
+  late final TextEditingController _rightToWorkCodeCtrl;
+  final _scrollCtrl = ScrollController();
+  final _companyFieldKey = GlobalKey();
 
   bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
   String _countryCode = '+1';
+  bool _isLoadingCompanies = false;
+  String? _companyLoadError;
+  String? _formError;
+  final List<String> _companyOptions = [];
+  final Map<String, String> _companyNameToId = {};
 
   static const List<String> _countryCodes = [
     '+1', '+44', '+92', '+91', '+61', '+49', '+33', '+971', '+966', '+20',
@@ -35,31 +52,127 @@ class _Step1RegisterState extends State<Step1Register> {
   @override
   void initState() {
     super.initState();
-    _fullNameCtrl = TextEditingController(text: widget.data.fullName);
+    _firstNameCtrl = TextEditingController(text: widget.data.firstName);
+    _lastNameCtrl = TextEditingController(text: widget.data.lastName);
     _passwordCtrl = TextEditingController(text: widget.data.password);
+    _confirmPasswordCtrl =
+        TextEditingController(text: widget.data.confirmPassword);
     _emailCtrl = TextEditingController(text: widget.data.email);
     _companyCtrl = TextEditingController(text: widget.data.companyName);
+    _companyFocusNode = FocusNode();
     _mobileCtrl = TextEditingController(text: widget.data.mobileNumber);
+    _residentialAddressCtrl =
+        TextEditingController(text: widget.data.residentialAddress);
+    _emergencyContactNameCtrl =
+        TextEditingController(text: widget.data.emergencyContactName);
+    _emergencyContactPhoneCtrl =
+        TextEditingController(text: widget.data.emergencyContactPhone);
+    _passportNumberCtrl = TextEditingController(text: widget.data.passportNumber);
+    _rightToWorkCodeCtrl =
+        TextEditingController(text: widget.data.rightToWorkCode);
     _countryCode = widget.data.countryCode;
+    _companyFocusNode.addListener(_onCompanyFocusChange);
+    _loadCompanies();
+  }
+
+  void _onCompanyFocusChange() {
+    if (_companyFocusNode.hasFocus) {
+      // Allow keyboard animation to start before ensuring visibility.
+      Future.delayed(const Duration(milliseconds: 220), _bringCompanyFieldIntoView);
+    }
+  }
+
+  void _bringCompanyFieldIntoView() {
+    if (!mounted) return;
+    final context = _companyFieldKey.currentContext;
+    if (context == null) return;
+    Scrollable.ensureVisible(
+      context,
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOut,
+      alignment: 0.15,
+    );
+  }
+
+  Future<void> _loadCompanies() async {
+    setState(() {
+      _isLoadingCompanies = true;
+      _companyLoadError = null;
+    });
+    try {
+      final rows = await Supabase.instance.client
+          .from('companies')
+          .select('id,company_name')
+          .order('company_name');
+      if (!mounted) return;
+
+      _companyOptions.clear();
+      _companyNameToId.clear();
+      for (final row in (rows as List)) {
+        final name = row['company_name']?.toString().trim() ?? '';
+        final id = row['id']?.toString().trim() ?? '';
+        if (name.isEmpty || id.isEmpty) continue;
+        _companyOptions.add(name);
+        _companyNameToId[name.toLowerCase()] = id;
+      }
+      setState(() => _isLoadingCompanies = false);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingCompanies = false;
+        _companyLoadError = 'Could not load companies right now.';
+      });
+    }
   }
 
   @override
   void dispose() {
-    _fullNameCtrl.dispose();
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
     _passwordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
     _emailCtrl.dispose();
     _companyCtrl.dispose();
+    _companyFocusNode.dispose();
     _mobileCtrl.dispose();
+    _residentialAddressCtrl.dispose();
+    _emergencyContactNameCtrl.dispose();
+    _emergencyContactPhoneCtrl.dispose();
+    _passportNumberCtrl.dispose();
+    _rightToWorkCodeCtrl.dispose();
+    _companyFocusNode.removeListener(_onCompanyFocusChange);
+    _scrollCtrl.dispose();
     super.dispose();
   }
 
   void _saveAndNext() {
-    widget.data.fullName = _fullNameCtrl.text.trim();
+    final firstName = _firstNameCtrl.text.trim();
+    final lastName = _lastNameCtrl.text.trim();
+    final password = _passwordCtrl.text;
+    final confirmPassword = _confirmPasswordCtrl.text;
+
+    if (password != confirmPassword) {
+      setState(() => _formError = 'Password and confirm password must match.');
+      return;
+    }
+
+    setState(() => _formError = null);
+    widget.data.firstName = firstName;
+    widget.data.lastName = lastName;
+    widget.data.fullName = '$firstName $lastName'.trim();
     widget.data.password = _passwordCtrl.text;
+    widget.data.confirmPassword = _confirmPasswordCtrl.text;
     widget.data.email = _emailCtrl.text.trim();
     widget.data.companyName = _companyCtrl.text.trim();
+    widget.data.companyId =
+        _companyNameToId[widget.data.companyName.toLowerCase()] ?? '';
     widget.data.countryCode = _countryCode;
     widget.data.mobileNumber = _mobileCtrl.text.trim();
+    widget.data.residentialAddress = _residentialAddressCtrl.text.trim();
+    widget.data.emergencyContactName = _emergencyContactNameCtrl.text.trim();
+    widget.data.emergencyContactPhone = _emergencyContactPhoneCtrl.text.trim();
+    widget.data.passportNumber = _passportNumberCtrl.text.trim();
+    widget.data.rightToWorkCode = _rightToWorkCodeCtrl.text.trim();
     widget.onNext();
   }
 
@@ -93,6 +206,8 @@ class _Step1RegisterState extends State<Step1Register> {
     SizeConfig.init(context);
 
     return SingleChildScrollView(
+      controller: _scrollCtrl,
+      keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
       padding: EdgeInsets.fromLTRB(
           SizeConfig.hPad, SizeConfig.r(28),
           SizeConfig.hPad, SizeConfig.r(32)),
@@ -116,44 +231,28 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(28)),
 
-          // Full Name
-          const RegFieldLabel('Full Name'),
+          // First Name
+          const RegFieldLabel('First Name *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
-            controller: _fullNameCtrl,
-            hintText: 'e.g. John Doe',
+            controller: _firstNameCtrl,
+            hintText: 'e.g. John',
             keyboardType: TextInputType.name,
           ),
           SizedBox(height: SizeConfig.r(18)),
 
-          // Password
-          const RegFieldLabel('Password'),
+          // Last Name
+          const RegFieldLabel('Last Name *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
-            controller: _passwordCtrl,
-            hintText: '••••••••',
-            obscureText: _obscurePassword,
-            prefixIcon: Icon(
-              Icons.lock_outline,
-              color: AppColors.inputIcon,
-              size: SizeConfig.r(20),
-            ),
-            suffixIcon: GestureDetector(
-              onTap: () =>
-                  setState(() => _obscurePassword = !_obscurePassword),
-              child: Icon(
-                _obscurePassword
-                    ? Icons.remove_red_eye_outlined
-                    : Icons.visibility_off_outlined,
-                color: AppColors.inputIcon,
-                size: SizeConfig.r(20),
-              ),
-            ),
+            controller: _lastNameCtrl,
+            hintText: 'e.g. Smith',
+            keyboardType: TextInputType.name,
           ),
           SizedBox(height: SizeConfig.r(18)),
 
           // Email Address
-          const RegFieldLabel('Email Address'),
+          const RegFieldLabel('Email Address *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
             controller: _emailCtrl,
@@ -162,17 +261,8 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
-          // Company Name
-          const RegFieldLabel('Company Name'),
-          SizedBox(height: SizeConfig.r(6)),
-          RegField(
-            controller: _companyCtrl,
-            hintText: 'john@example.com',
-          ),
-          SizedBox(height: SizeConfig.r(18)),
-
           // Mobile Number
-          const RegFieldLabel('Mobile Number'),
+          const RegFieldLabel('Mobile Number *'),
           SizedBox(height: SizeConfig.r(6)),
           Row(
             children: [
@@ -210,6 +300,252 @@ class _Step1RegisterState extends State<Step1Register> {
               ),
             ],
           ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          // Password
+          const RegFieldLabel('Password *'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _passwordCtrl,
+            hintText: '••••••••',
+            obscureText: _obscurePassword,
+            prefixIcon: Icon(
+              Icons.lock_outline,
+              color: AppColors.inputIcon,
+              size: SizeConfig.r(20),
+            ),
+            suffixIcon: GestureDetector(
+              onTap: () =>
+                  setState(() => _obscurePassword = !_obscurePassword),
+              child: Icon(
+                _obscurePassword
+                    ? Icons.remove_red_eye_outlined
+                    : Icons.visibility_off_outlined,
+                color: AppColors.inputIcon,
+                size: SizeConfig.r(20),
+              ),
+            ),
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          // Confirm Password
+          const RegFieldLabel('Confirm Password *'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _confirmPasswordCtrl,
+            hintText: '••••••••',
+            obscureText: _obscureConfirmPassword,
+            prefixIcon: Icon(
+              Icons.lock_outline,
+              color: AppColors.inputIcon,
+              size: SizeConfig.r(20),
+            ),
+            suffixIcon: GestureDetector(
+              onTap: () => setState(
+                () => _obscureConfirmPassword = !_obscureConfirmPassword,
+              ),
+              child: Icon(
+                _obscureConfirmPassword
+                    ? Icons.remove_red_eye_outlined
+                    : Icons.visibility_off_outlined,
+                color: AppColors.inputIcon,
+                size: SizeConfig.r(20),
+              ),
+            ),
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          // Company Name
+          const RegFieldLabel('Company Name *'),
+          SizedBox(height: SizeConfig.r(6)),
+          Container(
+            key: _companyFieldKey,
+            child: RawAutocomplete<String>(
+              textEditingController: _companyCtrl,
+              focusNode: _companyFocusNode,
+              optionsBuilder: (textEditingValue) {
+                if (_isLoadingCompanies || _companyOptions.isEmpty) {
+                  return const Iterable<String>.empty();
+                }
+                final query = textEditingValue.text.trim().toLowerCase();
+                if (query.isEmpty) {
+                  return _companyOptions;
+                }
+                return _companyOptions
+                    .where((name) => name.toLowerCase().contains(query));
+              },
+              onSelected: (selection) {
+                _companyCtrl.text = selection;
+                _companyCtrl.selection = TextSelection.fromPosition(
+                  TextPosition(offset: _companyCtrl.text.length),
+                );
+              },
+              fieldViewBuilder:
+                  (context, controller, focusNode, onFieldSubmitted) {
+                return TextField(
+                  controller: controller,
+                  focusNode: focusNode,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(15),
+                    color: AppColors.textDark,
+                  ),
+                  decoration: InputDecoration(
+                    hintText: 'Search company name',
+                    hintStyle: TextStyle(
+                      fontSize: SizeConfig.sp(15),
+                      color: const Color(0xFFB0BEC5),
+                    ),
+                    suffixIcon: _isLoadingCompanies
+                        ? Padding(
+                            padding: EdgeInsets.all(SizeConfig.r(12)),
+                            child: SizedBox(
+                              width: SizeConfig.r(18),
+                              height: SizeConfig.r(18),
+                              child: const CircularProgressIndicator(
+                                strokeWidth: 2,
+                              ),
+                            ),
+                          )
+                        : Icon(
+                            Icons.keyboard_arrow_down,
+                            color: AppColors.inputIcon,
+                            size: SizeConfig.r(22),
+                          ),
+                    filled: true,
+                    fillColor: const Color(0xFFF3F7FC),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: SizeConfig.r(16),
+                      vertical: SizeConfig.r(16),
+                    ),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(SizeConfig.radius),
+                      borderSide: const BorderSide(
+                        color: Color(0xFFE0E8F3),
+                        width: 1,
+                      ),
+                    ),
+                    enabledBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(SizeConfig.radius),
+                      borderSide: const BorderSide(
+                        color: Color(0xFFE0E8F3),
+                        width: 1,
+                      ),
+                    ),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(SizeConfig.radius),
+                      borderSide: const BorderSide(
+                        color: AppColors.primary,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                );
+              },
+              optionsViewBuilder: (context, onSelected, options) {
+                final optionList = options.toList();
+                if (optionList.isEmpty) {
+                  return const SizedBox.shrink();
+                }
+                final rowHeight = SizeConfig.r(52);
+                return Align(
+                  alignment: Alignment.topLeft,
+                  child: Material(
+                    elevation: 6,
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        maxWidth: MediaQuery.of(context).size.width -
+                            (SizeConfig.hPad * 2),
+                        maxHeight: rowHeight * 3,
+                      ),
+                      child: ListView.builder(
+                        primary: false,
+                        padding: EdgeInsets.zero,
+                        physics: const ClampingScrollPhysics(),
+                        shrinkWrap: true,
+                        itemCount: optionList.length,
+                        itemBuilder: (context, index) {
+                          final company = optionList[index];
+                          return SizedBox(
+                            height: rowHeight,
+                            child: ListTile(
+                              dense: true,
+                              title: Text(
+                                company,
+                                style: TextStyle(
+                                  fontSize: SizeConfig.sp(14),
+                                  color: AppColors.textDark,
+                                ),
+                              ),
+                              onTap: () => onSelected(company),
+                            ),
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+          if (_companyLoadError != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _companyLoadError!,
+              style: TextStyle(fontSize: SizeConfig.sp(12), color: AppColors.error),
+            ),
+          ],
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('Residential Address *'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _residentialAddressCtrl,
+            hintText: 'Enter residential address',
+            keyboardType: TextInputType.streetAddress,
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('Emergency Contact Name *'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _emergencyContactNameCtrl,
+            hintText: 'Enter emergency contact name',
+            keyboardType: TextInputType.name,
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('Emergency Contact Phone *'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _emergencyContactPhoneCtrl,
+            hintText: 'Enter emergency contact phone',
+            keyboardType: TextInputType.phone,
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('Passport Number'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _passportNumberCtrl,
+            hintText: 'Enter passport number',
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('Right to Work Code'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _rightToWorkCodeCtrl,
+            hintText: 'Enter right to work code',
+          ),
+          if (_formError != null) ...[
+            SizedBox(height: SizeConfig.r(12)),
+            Text(
+              _formError!,
+              style: TextStyle(fontSize: SizeConfig.sp(12), color: AppColors.error),
+            ),
+          ],
 
           SizedBox(height: SizeConfig.spaceLG),
 

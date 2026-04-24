@@ -1,13 +1,73 @@
+import 'dart:io';
+
 import 'api_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AuthService extends ApiService {
   SupabaseClient get _supabase => Supabase.instance.client;
+  static const String _companyDocsBucket = 'company-documents';
 
   static const Set<String> _allowedRoles = {
     'driver',
     'passenger_assistant',
   };
+
+  String _fileExtension(String path) {
+    final idx = path.lastIndexOf('.');
+    if (idx == -1 || idx == path.length - 1) return '';
+    return path.substring(idx + 1).toLowerCase();
+  }
+
+  String _safePathSegment(String value) {
+    final cleaned = value
+        .trim()
+        .toLowerCase()
+        .replaceAll(RegExp(r'[^a-z0-9]+'), '_')
+        .replaceAll(RegExp(r'_+'), '_')
+        .replaceAll(RegExp(r'^_|_$'), '');
+    return cleaned.isEmpty ? 'file' : cleaned;
+  }
+
+  String _buildStoragePath({
+    required String companyId,
+    required String scopeType,
+    required String scopeId,
+    required String docType,
+    required String sourcePath,
+  }) {
+    final ext = _fileExtension(sourcePath);
+    final millis = DateTime.now().millisecondsSinceEpoch;
+    final safeDoc = _safePathSegment(docType);
+    final filename = ext.isEmpty ? '${safeDoc}_$millis' : '${safeDoc}_$millis.$ext';
+    return '$companyId/$scopeType/$scopeId/$safeDoc/$filename';
+  }
+
+  Future<String?> _uploadFile({
+    required String companyId,
+    required String scopeType,
+    required String scopeId,
+    required String docType,
+    required String localPath,
+  }) async {
+    if (localPath.trim().isEmpty) return null;
+    final file = File(localPath);
+    if (!await file.exists()) return null;
+
+    final storagePath = _buildStoragePath(
+      companyId: companyId,
+      scopeType: scopeType,
+      scopeId: scopeId,
+      docType: docType,
+      sourcePath: localPath,
+    );
+
+    await _supabase.storage.from(_companyDocsBucket).upload(
+      storagePath,
+      file,
+      fileOptions: const FileOptions(upsert: true),
+    );
+    return _supabase.storage.from(_companyDocsBucket).getPublicUrl(storagePath);
+  }
 
   String? _extractRole(User user) {
     final appMetaRole = user.appMetadata['role']?.toString();
@@ -111,15 +171,25 @@ class AuthService extends ApiService {
   ///     final response = await request.send();
   Future<AuthResult> driverRegister({
     required String fullName,
+    String? firstName,
+    String? lastName,
     required String email,
     required String password,
+    required String companyId,
     required String companyName,
     required String countryCode,
     required String mobileNumber,
+    String? residentialAddress,
+    String? emergencyContactName,
+    String? emergencyContactPhone,
+    String? passportNumber,
+    String? rightToWorkCode,
     required String registrationNumber,
     required String taxiPlateNumber,
     required String make,
     required String model,
+    String? vehicleColour,
+    DateTime? yearOfFirstRegistration,
     required String licensingType,
     required String bodyStyle,
     required String passengerSeats,
@@ -136,34 +206,273 @@ class AuthService extends ApiService {
     DateTime? dbsCertExpiry,
     String? dbsServiceUpdateId,
     String? safeguardingCertPath,
+    String? licenseNumber,
+    String? v5DocumentFrontPath,
+    String? v5DocumentInsidePath,
+    String? motCertificatePath,
+    DateTime? motCertificateExpiry,
+    String? taxiLicensePlatePath,
+    String? taxiLicensePlateNumber,
+    DateTime? taxiLicensePlateExpiry,
+    String? insuranceCertificatePath,
+    DateTime? insuranceCertificateExpiry,
+    String? vehiclePhotoPath,
   }) async {
-    if (fullName.isEmpty || email.isEmpty || password.isEmpty) {
+    if (fullName.isEmpty || email.isEmpty || password.isEmpty || companyId.isEmpty) {
       return AuthResult.failure('Please complete all required fields.');
     }
     if (!email.contains('@')) {
       return AuthResult.failure('Please enter a valid email address.');
     }
 
+    if (firstName == null || firstName.trim().isEmpty) {
+      return AuthResult.failure('First name is required.');
+    }
+    if (lastName == null || lastName.trim().isEmpty) {
+      return AuthResult.failure('Last name is required.');
+    }
+    if (mobileNumber.trim().isEmpty) {
+      return AuthResult.failure('Mobile number is required.');
+    }
+    if (residentialAddress == null || residentialAddress.trim().isEmpty) {
+      return AuthResult.failure('Residential address is required.');
+    }
+    if (emergencyContactName == null || emergencyContactName.trim().isEmpty) {
+      return AuthResult.failure('Emergency contact name is required.');
+    }
+    if (emergencyContactPhone == null || emergencyContactPhone.trim().isEmpty) {
+      return AuthResult.failure('Emergency contact phone is required.');
+    }
+    if (licenseNumber == null || licenseNumber.trim().isEmpty) {
+      return AuthResult.failure('License number is required.');
+    }
+    if (taxiPlateNumber.trim().isEmpty) {
+      return AuthResult.failure('Taxi plate number is required.');
+    }
+
     try {
-      final response = await _supabase.auth.signUp(
+      final authResponse = await _supabase.auth.signUp(
         email: email,
         password: password,
-        data: {'role': 'driver', 'full_name': fullName},
+        data: {
+          'role': 'driver',
+          'full_name': fullName,
+          'company_id': companyId,
+          'company_name': companyName,
+        },
       );
 
+      final authUser = authResponse.user;
+      if (authUser == null) {
+        return AuthResult.failure('Could not create auth account.');
+      }
+
+      final driverInsert = await _supabase
+          .from('drivers')
+          .insert({
+            'id': authUser.id,
+            'company_id': companyId,
+            'first_name': firstName.trim(),
+            'last_name': lastName.trim(),
+            'email': email,
+            'phone': '$countryCode${mobileNumber.trim()}',
+            'residential_address': residentialAddress.trim(),
+            'emergency_contact_name': emergencyContactName.trim(),
+            'emergency_contact_phone': emergencyContactPhone.trim(),
+            'passport_number': passportNumber?.trim().isEmpty == true
+                ? null
+                : passportNumber?.trim(),
+            'right_to_work_code': rightToWorkCode?.trim().isEmpty == true
+                ? null
+                : rightToWorkCode?.trim(),
+            'license_no': licenseNumber.trim(),
+            'status': 'pending',
+          })
+          .select('id')
+          .single();
+
+      final driverId = driverInsert['id']?.toString();
+      if (driverId == null || driverId.isEmpty) {
+        return AuthResult.failure('Driver profile could not be created.');
+      }
+
+      final driverDocs = <Map<String, dynamic>>[];
+      Future<void> addDriverDoc({
+        required String docType,
+        required String? localPath,
+        DateTime? expiryDate,
+      }) async {
+        if (localPath == null || localPath.trim().isEmpty) return;
+        final publicUrl = await _uploadFile(
+          companyId: companyId,
+          scopeType: 'drivers',
+          scopeId: driverId,
+          docType: docType,
+          localPath: localPath,
+        );
+        if (publicUrl == null) return;
+        driverDocs.add({
+          'company_id': companyId,
+          'driver_id': driverId,
+          'document_type': docType,
+          'file_url': publicUrl,
+          'expiry_date': expiryDate?.toIso8601String().split('T').first,
+        });
+      }
+
+      await addDriverDoc(
+        docType: 'driving_license_front',
+        localPath: drivingLicenseFrontPath,
+        expiryDate: drivingLicenseExpiry,
+      );
+      await addDriverDoc(
+        docType: 'driving_license_back',
+        localPath: drivingLicenseBackPath,
+        expiryDate: drivingLicenseExpiry,
+      );
+      await addDriverDoc(
+        docType: 'taxi_badge_front',
+        localPath: taxiBadgeFrontPath,
+        expiryDate: taxiBadgeExpiry,
+      );
+      await addDriverDoc(
+        docType: 'taxi_badge_back',
+        localPath: taxiBadgeBackPath,
+        expiryDate: taxiBadgeExpiry,
+      );
+      await addDriverDoc(
+        docType: 'dbs_certificate_front',
+        localPath: dbsCertFrontPath,
+        expiryDate: dbsCertExpiry,
+      );
+      await addDriverDoc(
+        docType: 'dbs_certificate_back',
+        localPath: dbsCertBackPath,
+        expiryDate: dbsCertExpiry,
+      );
+      await addDriverDoc(
+        docType: 'safeguarding_certificate',
+        localPath: safeguardingCertPath,
+      );
+
+      if (driverDocs.isNotEmpty) {
+        await _supabase.from('driver_documents').insert(driverDocs);
+      }
+
+      final vehiclePhotoUrl = await _uploadFile(
+        companyId: companyId,
+        scopeType: 'vehicles',
+        scopeId: driverId,
+        docType: 'vehicle_photo',
+        localPath: vehiclePhotoPath ?? '',
+      );
+
+      final seats = int.tryParse(passengerSeats.trim());
+      final vehicleInsert = await _supabase
+          .from('vehicles')
+          .insert({
+            'company_id': companyId,
+            'driver_id': driverId,
+            'taxi_license_plate_number':
+                (taxiLicensePlateNumber?.trim().isNotEmpty ?? false)
+                    ? taxiLicensePlateNumber!.trim()
+                    : taxiPlateNumber.trim(),
+            'vehicle_photo_url': vehiclePhotoUrl,
+            'seating_capacity': seats,
+            'name': '$make $model'.trim(),
+            'registration_number': registrationNumber.trim().isEmpty
+                ? null
+                : registrationNumber.trim(),
+            'make': make.trim().isEmpty ? null : make.trim(),
+            'model': model.trim().isEmpty ? null : model.trim(),
+            'vehicle_colour': vehicleColour?.trim().isEmpty == true
+                ? null
+                : vehicleColour?.trim(),
+            'year_of_first_registration': yearOfFirstRegistration
+                ?.toIso8601String()
+                .split('T')
+                .first,
+            'licensing_type': licensingType.trim().isEmpty
+                ? null
+                : licensingType.trim(),
+            'body_style': bodyStyle.trim().isEmpty ? null : bodyStyle.trim(),
+            'wheelchair_accessible': wheelchairAccessible,
+          })
+          .select('id')
+          .single();
+
+      final vehicleId = vehicleInsert['id']?.toString();
+      if (vehicleId == null || vehicleId.isEmpty) {
+        return AuthResult.failure('Vehicle profile could not be created.');
+      }
+
+      final vehicleDocs = <Map<String, dynamic>>[];
+      Future<void> addVehicleDoc({
+        required String docType,
+        required String? localPath,
+        DateTime? expiryDate,
+      }) async {
+        if (localPath == null || localPath.trim().isEmpty) return;
+        final publicUrl = await _uploadFile(
+          companyId: companyId,
+          scopeType: 'vehicles',
+          scopeId: vehicleId,
+          docType: docType,
+          localPath: localPath,
+        );
+        if (publicUrl == null) return;
+        vehicleDocs.add({
+          'company_id': companyId,
+          'vehicle_id': vehicleId,
+          'document_type': docType,
+          'file_url': publicUrl,
+          'expiry_date': expiryDate?.toIso8601String().split('T').first,
+        });
+      }
+
+      await addVehicleDoc(
+        docType: 'v5_front',
+        localPath: v5DocumentFrontPath,
+      );
+      await addVehicleDoc(
+        docType: 'v5_inside',
+        localPath: v5DocumentInsidePath,
+      );
+      await addVehicleDoc(
+        docType: 'mot_certificate',
+        localPath: motCertificatePath,
+        expiryDate: motCertificateExpiry,
+      );
+      await addVehicleDoc(
+        docType: 'taxi_license_plate',
+        localPath: taxiLicensePlatePath,
+        expiryDate: taxiLicensePlateExpiry,
+      );
+      await addVehicleDoc(
+        docType: 'insurance_certificate',
+        localPath: insuranceCertificatePath,
+        expiryDate: insuranceCertificateExpiry,
+      );
+
+      if (vehicleDocs.isNotEmpty) {
+        await _supabase.from('vehicle_documents').insert(vehicleDocs);
+      }
+
       return AuthResult.success(
-        token: response.session?.accessToken,
-        userId: response.user?.id,
+        token: authResponse.session?.accessToken,
+        userId: authUser.id,
         name: fullName,
         email: email,
         message: 'Registration successful. Check your email to confirm account.',
       );
     } on AuthException catch (e) {
       return AuthResult.failure(e.message);
-    } catch (_) {
-      return AuthResult.failure(
-        'Registration failed due to an unexpected error.',
-      );
+    } on PostgrestException catch (e) {
+      return AuthResult.failure(e.message);
+    } on StorageException catch (e) {
+      return AuthResult.failure(e.message);
+    } catch (e) {
+      return AuthResult.failure('Registration failed: $e');
     }
   }
 

@@ -22,6 +22,7 @@ class Step3Register extends StatefulWidget {
 
 class _Step3RegisterState extends State<Step3Register> {
   late final TextEditingController _dbsIdCtrl;
+  late final TextEditingController _licenseNumberCtrl;
   bool _isLoading = false;
   String? _errorMessage;
 
@@ -32,11 +33,15 @@ class _Step3RegisterState extends State<Step3Register> {
     super.initState();
     _dbsIdCtrl =
         TextEditingController(text: widget.data.dbsServiceUpdateId);
+    _licenseNumberCtrl = TextEditingController(
+      text: widget.data.licenseNumber,
+    );
   }
 
   @override
   void dispose() {
     _dbsIdCtrl.dispose();
+    _licenseNumberCtrl.dispose();
     super.dispose();
   }
 
@@ -91,6 +96,15 @@ class _Step3RegisterState extends State<Step3Register> {
   Future<void> _onRegister() async {
     final d = widget.data;
     d.dbsServiceUpdateId = _dbsIdCtrl.text.trim();
+    d.licenseNumber = _licenseNumberCtrl.text.trim();
+
+    if (d.companyId.trim().isEmpty) {
+      setState(() {
+        _errorMessage =
+            'Please select a valid company from step 1 before registering.';
+      });
+      return;
+    }
 
     setState(() {
       _isLoading = true;
@@ -99,15 +113,25 @@ class _Step3RegisterState extends State<Step3Register> {
 
     final result = await _authService.driverRegister(
       fullName: d.fullName,
+      firstName: d.firstName,
+      lastName: d.lastName,
       email: d.email,
       password: d.password,
+      companyId: d.companyId,
       companyName: d.companyName,
       countryCode: d.countryCode,
       mobileNumber: d.mobileNumber,
+      residentialAddress: d.residentialAddress,
+      emergencyContactName: d.emergencyContactName,
+      emergencyContactPhone: d.emergencyContactPhone,
+      passportNumber: d.passportNumber,
+      rightToWorkCode: d.rightToWorkCode,
       registrationNumber: d.registrationNumber,
       taxiPlateNumber: d.taxiPlateNumber,
       make: d.make,
       model: d.model,
+      vehicleColour: d.vehicleColour,
+      yearOfFirstRegistration: d.yearOfFirstRegistration,
       licensingType: d.licensingType,
       bodyStyle: d.bodyStyle,
       passengerSeats: d.passengerSeats,
@@ -123,6 +147,17 @@ class _Step3RegisterState extends State<Step3Register> {
       dbsCertExpiry: d.dbsCertExpiry,
       dbsServiceUpdateId: d.dbsServiceUpdateId,
       safeguardingCertPath: d.safeguardingCert?.path,
+      licenseNumber: d.licenseNumber,
+      v5DocumentFrontPath: d.v5DocumentFront?.path,
+      v5DocumentInsidePath: d.v5DocumentInside?.path,
+      motCertificatePath: d.motCertificate?.path,
+      motCertificateExpiry: d.motCertificateExpiry,
+      taxiLicensePlatePath: d.taxiLicensePlate?.path,
+      taxiLicensePlateNumber: d.taxiPlateNumber,
+      taxiLicensePlateExpiry: d.taxiLicensePlateExpiry,
+      insuranceCertificatePath: d.insuranceCertificate?.path,
+      insuranceCertificateExpiry: d.insuranceCertificateExpiry,
+      vehiclePhotoPath: d.vehiclePhoto?.path,
     );
 
     if (!mounted) return;
@@ -166,6 +201,14 @@ class _Step3RegisterState extends State<Step3Register> {
                 color: AppColors.textMedium),
           ),
           SizedBox(height: SizeConfig.r(24)),
+
+          const RegFieldLabel('License Number *'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _licenseNumberCtrl,
+            hintText: 'Enter license number',
+          ),
+          SizedBox(height: SizeConfig.r(20)),
 
           // ── Driving License ─────────────────────────────────────────────
           const RegFieldLabel('Driving License (Front) *'),
@@ -252,6 +295,91 @@ class _Step3RegisterState extends State<Step3Register> {
             file: d.safeguardingCert,
             onTap: () => _pickFile((f) => d.safeguardingCert = f),
             subLabel: 'Must be less than 3 years old',
+          ),
+          SizedBox(height: SizeConfig.r(28)),
+
+          // ── Vehicle Information ────────────────────────────────────────
+          Text(
+            'Vehicle Information',
+            style: TextStyle(
+              fontSize: SizeConfig.sp(18),
+              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
+            ),
+          ),
+          SizedBox(height: SizeConfig.r(14)),
+
+          const RegFieldLabel('V5 Document (Front) *'),
+          SizedBox(height: SizeConfig.r(6)),
+          UploadBox(
+            file: d.v5DocumentFront,
+            onTap: () => _pickFile((f) => d.v5DocumentFront = f),
+          ),
+          SizedBox(height: SizeConfig.r(12)),
+          const RegFieldLabel('V5 Document (Inside) *'),
+          SizedBox(height: SizeConfig.r(6)),
+          UploadBox(
+            file: d.v5DocumentInside,
+            onTap: () => _pickFile((f) => d.v5DocumentInside = f),
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('MOT Certificate *'),
+          SizedBox(height: SizeConfig.r(6)),
+          UploadBox(
+            file: d.motCertificate,
+            onTap: () => _pickFile((f) => d.motCertificate = f),
+          ),
+          SizedBox(height: SizeConfig.r(10)),
+          ExpiryButton(
+            date: d.motCertificateExpiry,
+            onTap: () => _pickDate(
+              d.motCertificateExpiry,
+              (dt) => d.motCertificateExpiry = dt,
+            ),
+            formatDate: _fmt,
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('Taxi License Plate *'),
+          SizedBox(height: SizeConfig.r(6)),
+          UploadBox(
+            file: d.taxiLicensePlate,
+            onTap: () => _pickFile((f) => d.taxiLicensePlate = f),
+          ),
+          SizedBox(height: SizeConfig.r(10)),
+          ExpiryButton(
+            date: d.taxiLicensePlateExpiry,
+            onTap: () => _pickDate(
+              d.taxiLicensePlateExpiry,
+              (dt) => d.taxiLicensePlateExpiry = dt,
+            ),
+            formatDate: _fmt,
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('Insurance Certificate *'),
+          SizedBox(height: SizeConfig.r(6)),
+          UploadBox(
+            file: d.insuranceCertificate,
+            onTap: () => _pickFile((f) => d.insuranceCertificate = f),
+          ),
+          SizedBox(height: SizeConfig.r(10)),
+          ExpiryButton(
+            date: d.insuranceCertificateExpiry,
+            onTap: () => _pickDate(
+              d.insuranceCertificateExpiry,
+              (dt) => d.insuranceCertificateExpiry = dt,
+            ),
+            formatDate: _fmt,
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('Vehicle Photo *'),
+          SizedBox(height: SizeConfig.r(6)),
+          UploadBox(
+            file: d.vehiclePhoto,
+            onTap: () => _pickFile((f) => d.vehiclePhoto = f),
           ),
 
           // Error
