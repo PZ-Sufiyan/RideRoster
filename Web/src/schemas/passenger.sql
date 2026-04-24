@@ -29,6 +29,11 @@ create table if not exists public.passenger (
   dropoff_postal_code text not null,
   dropoff_time time not null,
 
+  pickup_latitude double precision,
+  pickup_longitude double precision,
+  dropoff_latitude double precision,
+  dropoff_longitude double precision,
+
   wheelchair_required boolean not null default false,
   notes text,
   assigned_job_id text,

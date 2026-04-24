@@ -25,10 +25,7 @@ import {
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
 
 const STATUS_COLORS = {
-    Pending: 'bg-amber-50 text-amber-800 border border-amber-200',
-    Approved: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
     Active: 'bg-green-50 text-green-700 border border-green-200',
-    Rejected: 'bg-red-50 text-red-600 border border-red-200',
     Suspended: 'bg-orange-50 text-orange-600 border border-orange-200',
 };
 
@@ -46,11 +43,8 @@ function formatUpdatedAt(iso) {
 }
 
 function getSubAdminRowActions(statusLabel) {
-    return ['Approve', 'Reject', 'Suspend', 'Active'].filter((action) => {
-        if (statusLabel === 'Active' && (action === 'Active' || action === 'Approve')) return false;
-        if (statusLabel === 'Approved' && action === 'Approve') return false;
-        if (statusLabel === 'Pending' && action === 'Active') return false;
-        if (statusLabel === 'Rejected' && action === 'Reject') return false;
+    return ['Suspend', 'Active'].filter((action) => {
+        if (statusLabel === 'Active' && action === 'Active') return false;
         if (statusLabel === 'Suspended' && action === 'Suspend') return false;
         return true;
     });
@@ -76,7 +70,7 @@ const SubAdminList = () => {
     const statusRef = useRef(null);
     const bulkRef = useRef(null);
 
-    const statuses = ['Status: All', 'Pending', 'Approved', 'Active', 'Rejected', 'Suspended'];
+    const statuses = ['Status: All', 'Active', 'Suspended'];
 
     useEffect(() => {
         const loadSubAdmins = async () => {
@@ -354,16 +348,12 @@ const SubAdminList = () => {
                             </button>
                             {isBulkOpen && (
                                 <div className="absolute right-0 top-full mt-1 w-40 bg-white border border-gray-100 rounded-lg shadow-lg z-40 py-1">
-                                    {['Approve', 'Reject', 'Suspend', 'Active'].map((action) => (
+                                    {['Suspend', 'Active'].map((action) => (
                                         <button
                                             key={action}
                                             disabled={isSavingStatus}
                                             onClick={() => handleBulkAction(action)}
                                             className={`block w-full text-left px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-50 ${
-                                                action === 'Approve' ? 'text-green-700 hover:bg-green-50' : ''
-                                            } ${
-                                                action === 'Reject' ? 'text-red-700 hover:bg-red-50' : ''
-                                            } ${
                                                 action === 'Suspend' ? 'text-orange-700 hover:bg-orange-50' : ''
                                             } ${
                                                 action === 'Active' ? 'text-blue-700 hover:bg-blue-50' : ''
@@ -588,8 +578,6 @@ const SubAdminList = () => {
                                     handleAction(action, openMenu.subAdminId);
                                 }}
                                 className={`block w-full text-left px-4 py-2 text-sm font-medium whitespace-nowrap transition-colors disabled:opacity-50
-                                    ${action === 'Approve' ? 'text-green-700 hover:bg-green-50' : ''}
-                                    ${action === 'Reject' ? 'text-red-700 hover:bg-red-50' : ''}
                                     ${action === 'Suspend' ? 'text-orange-700 hover:bg-orange-50' : ''}
                                     ${action === 'Active' ? 'text-blue-700 hover:bg-blue-50' : ''}
                                 `}

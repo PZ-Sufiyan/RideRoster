@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdPerson,
@@ -9,39 +9,138 @@ import {
     MdAccessTime,
     MdSettings,
     MdInfo,
+    MdArrowDropDown,
 } from 'react-icons/md';
 import { HiExclamationCircle } from 'react-icons/hi';
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
+import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
+import markerIcon from 'leaflet/dist/images/marker-icon.png';
+import markerShadow from 'leaflet/dist/images/marker-shadow.png';
 import { ToastStack } from '../../../../../utils/Toast';
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { registerPassengerWithAuthAndRecord } from '../../../../../services/passengerService';
+import { getCountries, getCountryCallingCode, parsePhoneNumberFromString } from 'libphonenumber-js';
+
+delete L.Icon.Default.prototype._getIconUrl;
+L.Icon.Default.mergeOptions({
+    iconRetinaUrl: markerIcon2x,
+    iconUrl: markerIcon,
+    shadowUrl: markerShadow,
+});
+
+const geocodeAddress = async (address, postcode) => {
+    const query = `${address}, ${postcode}, UK`;
+    const res = await fetch(
+        `https://nominatim.openstreetmap.org/search?q=${encodeURIComponent(query)}&format=json&limit=1`,
+        { headers: { 'User-Agent': 'RideRoster' } }
+    );
+    const data = await res.json();
+    if (!data.length) return null;
+    return {
+        lat: parseFloat(data[0].lat),
+        lng: parseFloat(data[0].lon),
+    };
+};
+
+function DraggableMarker({ position, onDragEnd }) {
+    return (
+        <Marker
+            position={position}
+            draggable
+            eventHandlers={{
+                dragend: (e) => onDragEnd(e.target.getLatLng()),
+            }}
+        />
+    );
+}
 
 const AddNewPassenger = () => {
     const navigate = useNavigate();
+    const countryNameDisplay = useMemo(() => new Intl.DisplayNames(['en'], { type: 'region' }), []);
+    const phoneCountries = useMemo(
+        () =>
+            getCountries()
+                .map((countryCode) => ({
+                    code: countryCode,
+                    callingCode: `+${getCountryCallingCode(countryCode)}`,
+                    name: countryNameDisplay.of(countryCode) || countryCode,
+                }))
+                .sort((a, b) => a.name.localeCompare(b.name)),
+        [countryNameDisplay]
+    );
 
     const [form, setForm] = useState({
         firstName: '',
         surname: '',
         email: '',
-        password: '',
-        confirmPassword: '',
         contact1: '',
         contact2: '',
         homeAddress: '',
-        homePostcode: 'SW1A 1AA',
+        homePostcode: '',
         pickupTime: '',
         schoolAddress: '',
-        schoolPostcode: 'E1 6AN',
+        schoolPostcode: '',
         returnTime: '',
         wheelchair: 'no',
         notes: '',
+        pickupLat: null,
+        pickupLng: null,
+        dropoffLat: null,
+        dropoffLng: null,
+        pickupLocationConfirmed: false,
+        dropoffLocationConfirmed: false,
     });
     const [toasts, setToasts] = useState([]);
     const [submitAttempted, setSubmitAttempted] = useState(false);
     const [submitting, setSubmitting] = useState(false);
+    const [pickupGeoError, setPickupGeoError] = useState(false);
+    const [dropoffGeoError, setDropoffGeoError] = useState(false);
+    const [pickupGeocoding, setPickupGeocoding] = useState(false);
+    const [dropoffGeocoding, setDropoffGeocoding] = useState(false);
+    const [phoneCountriesByField, setPhoneCountriesByField] = useState({
+        contact1: 'GB',
+        contact2: 'GB',
+    });
+    const [phoneTouched, setPhoneTouched] = useState({ contact1: false, contact2: false });
+    const [openCountryDropdown, setOpenCountryDropdown] = useState({ contact1: false, contact2: false });
+    const contact1CountryWrapRef = useRef(null);
+    const contact2CountryWrapRef = useRef(null);
 
     const handleChange = (field, value) =>
         setForm((prev) => ({ ...prev, [field]: value }));
+
+    const runGeocode = async (type, address, postcode) => {
+        const setGeocoding = type === 'pickup' ? setPickupGeocoding : setDropoffGeocoding;
+        const setGeoError = type === 'pickup' ? setPickupGeoError : setDropoffGeoError;
+        const latKey = type === 'pickup' ? 'pickupLat' : 'dropoffLat';
+        const lngKey = type === 'pickup' ? 'pickupLng' : 'dropoffLng';
+        const confirmedKey = type === 'pickup' ? 'pickupLocationConfirmed' : 'dropoffLocationConfirmed';
+
+        setGeocoding(true);
+        setGeoError(false);
+        try {
+            const result = await geocodeAddress(address, postcode);
+            if (result) {
+                setForm((prev) => ({
+                    ...prev,
+                    [latKey]: result.lat,
+                    [lngKey]: result.lng,
+                    [confirmedKey]: true,
+                }));
+            } else {
+                setGeoError(true);
+                setForm((prev) => ({ ...prev, [confirmedKey]: false }));
+            }
+        } catch {
+            setGeoError(true);
+            setForm((prev) => ({ ...prev, [confirmedKey]: false }));
+        } finally {
+            setGeocoding(false);
+        }
+    };
 
     const noteMax = 500;
 
@@ -64,8 +163,6 @@ const AddNewPassenger = () => {
         'firstName',
         'surname',
         'email',
-        'password',
-        'confirmPassword',
         'contact1',
         'homeAddress',
         'homePostcode',
@@ -83,17 +180,22 @@ const AddNewPassenger = () => {
           contact1: '',
           contact2: '',
           homeAddress: '',
-          homePostcode: 'SW1A 1AA',
+          homePostcode: '',
           pickupTime: '',
           schoolAddress: '',
-          schoolPostcode: 'E1 6AN',
+          schoolPostcode: '',
           returnTime: '',
           wheelchair: 'no',
           notes: '',
-          password: '',
-          confirmPassword: '',
+          pickupLat: null,
+          pickupLng: null,
+          dropoffLat: null,
+          dropoffLng: null,
+          pickupLocationConfirmed: false,
+          dropoffLocationConfirmed: false,
         });
-      
+        setPickupGeoError(false);
+        setDropoffGeoError(false);
         setSubmitAttempted(false);
     };
 
@@ -114,19 +216,76 @@ const AddNewPassenger = () => {
                 : 'border-gray-200 text-gray-700 focus:ring-[#004D6D]'
         }`;
 
-    const prefixedPhoneWrapClass = (key) =>
-        `flex items-center border rounded-lg overflow-hidden focus-within:ring-1 ${
-            showRequiredError(key)
+    useEffect(() => {
+        const closeOnOutsideClick = (event) => {
+            if (
+                contact1CountryWrapRef.current &&
+                !contact1CountryWrapRef.current.contains(event.target)
+            ) {
+                setOpenCountryDropdown((prev) => ({ ...prev, contact1: false }));
+            }
+
+            if (
+                contact2CountryWrapRef.current &&
+                !contact2CountryWrapRef.current.contains(event.target)
+            ) {
+                setOpenCountryDropdown((prev) => ({ ...prev, contact2: false }));
+            }
+        };
+
+        document.addEventListener('mousedown', closeOnOutsideClick);
+        return () => document.removeEventListener('mousedown', closeOnOutsideClick);
+    }, []);
+
+    const validateAndFormatPhone = (value, selectedCountry, { required = false, fieldLabel = 'Contact number' } = {}) => {
+        const trimmed = String(value || '').trim();
+        if (!trimmed) {
+            return required ? { error: `${fieldLabel} is required.`, e164: '' } : { error: '', e164: '' };
+        }
+
+        try {
+            const parsed = parsePhoneNumberFromString(trimmed, selectedCountry);
+            if (!parsed || !parsed.isValid()) {
+                return {
+                    error: `${fieldLabel} is not valid for the selected country code.`,
+                    e164: '',
+                };
+            }
+
+            if (parsed.country && parsed.country !== selectedCountry) {
+                return {
+                    error: `${fieldLabel} does not match the selected country code.`,
+                    e164: '',
+                };
+            }
+
+            return { error: '', e164: parsed.number };
+        } catch {
+            return {
+                error: `${fieldLabel} has an invalid format.`,
+                e164: '',
+            };
+        }
+    };
+
+    const contact1Phone = validateAndFormatPhone(form.contact1, phoneCountriesByField.contact1, {
+        required: true,
+        fieldLabel: 'Contact Number 1',
+    });
+    const contact2Phone = validateAndFormatPhone(form.contact2, phoneCountriesByField.contact2, {
+        required: false,
+        fieldLabel: 'Contact Number 2',
+    });
+    const showContact1Error = (submitAttempted || phoneTouched.contact1) && !!contact1Phone.error;
+    const showContact2Error = (submitAttempted || phoneTouched.contact2) && !!contact2Phone.error;
+    const phoneWrapClass = (key, hasError) =>
+        `flex items-center border rounded-lg focus-within:ring-1 ${
+            hasError || showRequiredError(key)
                 ? 'border-red-400 focus-within:ring-red-500'
                 : 'border-gray-200 focus-within:ring-[#004D6D]'
         }`;
 
     const validateForm = () => {
-        if (form.password !== form.confirmPassword) {
-            pushToast('warning', 'Passwords do not match.');
-            return false;
-        }
-        
         setSubmitAttempted(true);
         
         const missing = requiredKeys.some((key) => isMissing(key));
@@ -134,7 +293,21 @@ const AddNewPassenger = () => {
             pushToast('warning', 'Please fill in all required fields before saving passenger.');
             return false;
         }
-        
+
+        if (!form.pickupLocationConfirmed) {
+            pushToast('warning', 'Please confirm the pickup location on the map.');
+            return false;
+        }
+        if (!form.dropoffLocationConfirmed) {
+            pushToast('warning', 'Please confirm the drop-off location on the map.');
+            return false;
+        }
+
+        if (contact1Phone.error || contact2Phone.error) {
+            pushToast('warning', 'Please fix invalid contact number format.');
+            return false;
+        }
+
         pushToast('success', 'Passenger details are valid and ready to save.');
         return true;
     };
@@ -155,7 +328,11 @@ const AddNewPassenger = () => {
 
             await registerPassengerWithAuthAndRecord({
                 companyId: admin.company_id,
-                form,
+                form: {
+                    ...form,
+                    contact1: contact1Phone.e164,
+                    contact2: contact2Phone.e164,
+                },
             });
 
             pushToast('success', 'Passenger registered successfully.');
@@ -239,77 +416,96 @@ const AddNewPassenger = () => {
                             {showRequiredError('email') && <p className="text-[11px] font-semibold text-red-600">Email ID is required.</p>}
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                        {/* Password */}
-                        <div className="space-y-1.5">
-                            <label className="text-[12px] font-semibold text-gray-700">
-                            Password<span className="text-red-500">*</span>
-                            </label>
-                            <input
-                                type="password"
-                                placeholder="Enter password"
-                                value={form.password}
-                                onChange={(e) => handleChange('password', e.target.value)}
-                                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
-                            />
-                            {showRequiredError('password') && <p className="text-[11px] font-semibold text-red-600">Password is required.</p>}
-                        </div>
-
-                        {/* Confirm Password */}
-                        <div className="space-y-1.5">
-                            <label className="text-[12px] font-semibold text-gray-700">
-                            Confirm Password<span className="text-red-500">*</span>
-                            </label>
-                            <input
-                            type="password"
-                            placeholder="Confirm password"
-                            value={form.confirmPassword}
-                            onChange={(e) => handleChange('confirmPassword', e.target.value)}
-                            className={`w-full px-3 py-2.5 border rounded-lg text-[13px] focus:outline-none focus:ring-1 ${
-                                form.confirmPassword && form.password !== form.confirmPassword
-                                ? 'border-red-400 text-red-700 focus:ring-red-500'
-                                : 'border-gray-200 focus:ring-[#004D6D]'
-                            }`}
-                            />
-
-                            {form.confirmPassword && form.password !== form.confirmPassword && (
-                            <p className="text-[11px] font-semibold text-red-600">
-                                Passwords do not match
-                            </p>
-                            )}
-                        </div>
-                        </div>
-
                         {/* Contact Number 1 + 2 */}
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                                 <label className="text-[12px] font-semibold text-gray-700">
                                     Contact Number 1<span className="text-red-500">*</span>
                                 </label>
-                                <div className={prefixedPhoneWrapClass('contact1')}>
-                                    <span className="px-3 py-2.5 bg-gray-50 text-[13px] text-gray-500 font-medium border-r border-gray-200 shrink-0">+44</span>
+                                <div className={phoneWrapClass('contact1', showContact1Error)}>
+                                    <div ref={contact1CountryWrapRef} className="relative border-r border-gray-200 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => setOpenCountryDropdown((prev) => ({ ...prev, contact1: !prev.contact1 }))}
+                                            className="flex items-center gap-1 px-2 py-2.5 bg-gray-50 text-[13px] text-gray-500 font-medium hover:bg-gray-100"
+                                        >
+                                            <span>
+                                                +{getCountryCallingCode(phoneCountriesByField.contact1)}
+                                            </span>
+                                            <MdArrowDropDown size={16} />
+                                        </button>
+                                        {openCountryDropdown.contact1 && (
+                                            <div className="absolute left-0 top-full mt-1 w-56 max-h-72 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-30">
+                                                {phoneCountries.map((country) => (
+                                                    <button
+                                                        key={`contact1-${country.code}`}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setPhoneCountriesByField((prev) => ({ ...prev, contact1: country.code }));
+                                                            setOpenCountryDropdown((prev) => ({ ...prev, contact1: false }));
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 text-[12px] text-gray-700 hover:bg-gray-50"
+                                                    >
+                                                        {country.name} ({country.callingCode})
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                     <input
                                         type="tel"
-                                        placeholder="7700 900000"
+                                        placeholder="Enter phone number"
                                         value={form.contact1}
                                         onChange={(e) => handleChange('contact1', e.target.value)}
+                                        onBlur={() => setPhoneTouched((prev) => ({ ...prev, contact1: true }))}
                                         className="flex-1 px-3 py-2.5 text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none bg-white"
                                     />
                                 </div>
                                 {showRequiredError('contact1') && <p className="text-[11px] font-semibold text-red-600">Contact Number 1 is required.</p>}
+                                {showContact1Error && <p className="text-[11px] font-semibold text-red-600">{contact1Phone.error}</p>}
                             </div>
                             <div className="space-y-1.5">
                                 <label className="text-[12px] font-semibold text-gray-700">Contact Number 2 (Optional)</label>
-                                <div className="flex items-center border border-gray-200 rounded-lg overflow-hidden focus-within:ring-1 focus-within:ring-[#004D6D]">
-                                    <span className="px-3 py-2.5 bg-gray-50 text-[13px] text-gray-500 font-medium border-r border-gray-200 shrink-0">+44</span>
+                                <div className={phoneWrapClass('contact2', showContact2Error)}>
+                                    <div ref={contact2CountryWrapRef} className="relative border-r border-gray-200 shrink-0">
+                                        <button
+                                            type="button"
+                                            onClick={() => setOpenCountryDropdown((prev) => ({ ...prev, contact2: !prev.contact2 }))}
+                                            className="flex items-center gap-1 px-2 py-2.5 bg-gray-50 text-[13px] text-gray-500 font-medium hover:bg-gray-100"
+                                        >
+                                            <span>
+                                                +{getCountryCallingCode(phoneCountriesByField.contact2)}
+                                            </span>
+                                            <MdArrowDropDown size={16} />
+                                        </button>
+                                        {openCountryDropdown.contact2 && (
+                                            <div className="absolute left-0 top-full mt-1 w-56 max-h-72 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-30">
+                                                {phoneCountries.map((country) => (
+                                                    <button
+                                                        key={`contact2-${country.code}`}
+                                                        type="button"
+                                                        onClick={() => {
+                                                            setPhoneCountriesByField((prev) => ({ ...prev, contact2: country.code }));
+                                                            setOpenCountryDropdown((prev) => ({ ...prev, contact2: false }));
+                                                        }}
+                                                        className="w-full text-left px-3 py-2 text-[12px] text-gray-700 hover:bg-gray-50"
+                                                    >
+                                                        {country.name} ({country.callingCode})
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        )}
+                                    </div>
                                     <input
                                         type="tel"
-                                        placeholder="7700 900000"
+                                        placeholder="Enter phone number"
                                         value={form.contact2}
                                         onChange={(e) => handleChange('contact2', e.target.value)}
+                                        onBlur={() => setPhoneTouched((prev) => ({ ...prev, contact2: true }))}
                                         className="flex-1 px-3 py-2.5 text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none bg-white"
                                     />
                                 </div>
+                                {showContact2Error && <p className="text-[11px] font-semibold text-red-600">{contact2Phone.error}</p>}
                             </div>
                         </div>
                     </div>
@@ -343,13 +539,33 @@ const AddNewPassenger = () => {
                                     <label className="text-[12px] font-semibold text-gray-700">
                                         Post Code<span className="text-red-500">*</span>
                                     </label>
-                                    <input
-                                        type="text"
-                                        value={form.homePostcode}
-                                        onChange={(e) => handleChange('homePostcode', e.target.value)}
-                                        className={inputClass('homePostcode')}
-                                    />
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={form.homePostcode}
+                                            onChange={(e) => handleChange('homePostcode', e.target.value)}
+                                            onBlur={() => {
+                                                if (form.homeAddress.trim() && form.homePostcode.trim()) {
+                                                    runGeocode('pickup', form.homeAddress, form.homePostcode);
+                                                }
+                                            }}
+                                            className={inputClass('homePostcode')}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (form.homeAddress.trim() && form.homePostcode.trim()) {
+                                                    runGeocode('pickup', form.homeAddress, form.homePostcode);
+                                                }
+                                            }}
+                                            disabled={pickupGeocoding}
+                                            className="shrink-0 text-[11px] border border-gray-200 px-2 py-1 rounded text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                                        >
+                                            {pickupGeocoding ? '...' : 'Re-locate'}
+                                        </button>
+                                    </div>
                                     {showRequiredError('homePostcode') && <p className="text-[11px] font-semibold text-red-600">Post Code is required.</p>}
+                                    {pickupGeoError && <p className="text-[11px] font-semibold text-red-600">Could not locate address. Please check and try again.</p>}
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[12px] font-semibold text-gray-700">
@@ -374,6 +590,29 @@ const AddNewPassenger = () => {
                             <p className="text-[11px] text-gray-400 italic">
                                 "This is the default morning pickup location."
                             </p>
+
+                            {form.pickupLocationConfirmed && (
+                                <div className="mt-3">
+                                    <p className="text-[11px] font-semibold text-green-600 mb-1">📍 Location confirmed</p>
+                                    <div className="mt-1 rounded-lg overflow-hidden border border-gray-200" style={{ height: 200 }}>
+                                        <MapContainer
+                                            center={[form.pickupLat, form.pickupLng]}
+                                            zoom={15}
+                                            style={{ height: '100%', width: '100%' }}
+                                            scrollWheelZoom={false}
+                                        >
+                                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                                            <DraggableMarker
+                                                position={[form.pickupLat, form.pickupLng]}
+                                                onDragEnd={(latlng) =>
+                                                    setForm((prev) => ({ ...prev, pickupLat: latlng.lat, pickupLng: latlng.lng }))
+                                                }
+                                            />
+                                        </MapContainer>
+                                    </div>
+                                    <p className="text-[11px] text-amber-600 font-semibold mt-1">⚠ Drag pin to adjust if needed</p>
+                                </div>
+                            )}
                         </div>
 
                         {/* Drop-Off Address (School) */}
@@ -402,17 +641,37 @@ const AddNewPassenger = () => {
                                     <label className="text-[12px] font-semibold text-gray-700">
                                         Post Code<span className="text-red-500">*</span>
                                     </label>
-                                    <input
-                                        type="text"
-                                        value={form.schoolPostcode}
-                                        onChange={(e) => handleChange('schoolPostcode', e.target.value)}
-                                        className={inputClass('schoolPostcode')}
-                                    />
+                                    <div className="flex items-center gap-2">
+                                        <input
+                                            type="text"
+                                            value={form.schoolPostcode}
+                                            onChange={(e) => handleChange('schoolPostcode', e.target.value)}
+                                            onBlur={() => {
+                                                if (form.schoolAddress.trim() && form.schoolPostcode.trim()) {
+                                                    runGeocode('dropoff', form.schoolAddress, form.schoolPostcode);
+                                                }
+                                            }}
+                                            className={inputClass('schoolPostcode')}
+                                        />
+                                        <button
+                                            type="button"
+                                            onClick={() => {
+                                                if (form.schoolAddress.trim() && form.schoolPostcode.trim()) {
+                                                    runGeocode('dropoff', form.schoolAddress, form.schoolPostcode);
+                                                }
+                                            }}
+                                            disabled={dropoffGeocoding}
+                                            className="shrink-0 text-[11px] border border-gray-200 px-2 py-1 rounded text-gray-600 hover:bg-gray-50 disabled:opacity-50"
+                                        >
+                                            {dropoffGeocoding ? '...' : 'Re-locate'}
+                                        </button>
+                                    </div>
                                     {showRequiredError('schoolPostcode') && <p className="text-[11px] font-semibold text-red-600">Post Code is required.</p>}
+                                    {dropoffGeoError && <p className="text-[11px] font-semibold text-red-600">Could not locate address. Please check and try again.</p>}
                                 </div>
                                 <div className="space-y-1.5">
                                     <label className="text-[12px] font-semibold text-gray-700">
-                                        Return Time<span className="text-red-500">*</span>
+                                        Drop-off Time<span className="text-red-500">*</span>
                                     </label>
                                     <div className="relative">
                                         <input
@@ -426,13 +685,36 @@ const AddNewPassenger = () => {
                                             }`}
                                         />
                                     </div>
-                                    {showRequiredError('returnTime') && <p className="text-[11px] font-semibold text-red-600">Return Time is required.</p>}
+                                    {showRequiredError('returnTime') && <p className="text-[11px] font-semibold text-red-600">Drop-off Time is required.</p>}
                                 </div>
                             </div>
 
                             <p className="text-[11px] text-gray-400 italic">
-                                "Used for return journey scheduling."
+                                "Used for drop-off journey scheduling."
                             </p>
+
+                            {form.dropoffLocationConfirmed && (
+                                <div className="mt-3">
+                                    <p className="text-[11px] font-semibold text-green-600 mb-1">📍 Location confirmed</p>
+                                    <div className="mt-1 rounded-lg overflow-hidden border border-gray-200" style={{ height: 200 }}>
+                                        <MapContainer
+                                            center={[form.dropoffLat, form.dropoffLng]}
+                                            zoom={15}
+                                            style={{ height: '100%', width: '100%' }}
+                                            scrollWheelZoom={false}
+                                        >
+                                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                                            <DraggableMarker
+                                                position={[form.dropoffLat, form.dropoffLng]}
+                                                onDragEnd={(latlng) =>
+                                                    setForm((prev) => ({ ...prev, dropoffLat: latlng.lat, dropoffLng: latlng.lng }))
+                                                }
+                                            />
+                                        </MapContainer>
+                                    </div>
+                                    <p className="text-[11px] text-amber-600 font-semibold mt-1">⚠ Drag pin to adjust if needed</p>
+                                </div>
+                            )}
                         </div>
                     </div>
 
@@ -520,13 +802,13 @@ const AddNewPassenger = () => {
                                 </div>
                             </div>
 
-                            {/* School Drop-Off */}
+                            {/* Drop-Off */}
                             <div className="flex items-center gap-3">
                                 <div className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center shrink-0">
                                     <MdSchool size={18} className="text-orange-500" />
                                 </div>
                                 <div>
-                                    <div className="text-[11px] text-gray-500 font-medium">School Drop-Off</div>
+                                    <div className="text-[11px] text-gray-500 font-medium">Drop-Off</div>
                                     <div className="text-[15px] font-bold text-gray-800 mt-0.5">
                                         {form.returnTime
                                             ? form.returnTime

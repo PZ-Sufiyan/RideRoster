@@ -20,32 +20,23 @@ import { ShimmerBlock } from '../../../../../utils/Shimmer';
 
 const STATUS_STYLES = {
     Active: 'text-blue-600 font-bold text-[11px] uppercase tracking-wide',
-    Approved: 'text-green-600 font-bold text-[11px] uppercase tracking-wide',
-    Pending: 'text-yellow-500 font-bold text-[11px] uppercase tracking-wide',
-    Rejected: 'text-gray-500 font-bold text-[11px] uppercase tracking-wide',
-    Suspended: 'text-orange-600 font-bold text-[11px] uppercase tracking-wide',
+    Inactive: 'text-orange-600 font-bold text-[11px] uppercase tracking-wide',
 };
 
 const PASSENGER_ACTION_MENU_H = 188;
-const PASSENGER_MENU_ACTIONS = ['Approve', 'Reject', 'Suspend', 'Active'];
+const PASSENGER_MENU_ACTIONS = ['Inactive', 'Active'];
 
 function normalizePassengerStatus(raw) {
     if (raw == null || raw === '') return 'pending';
     const s = String(raw).trim().toLowerCase();
-    if (['pending', 'approve', 'reject', 'suspend', 'active'].includes(s)) return s;
-    if (s === 'approved') return 'approve';
-    if (s === 'rejected') return 'reject';
-    if (s === 'suspended') return 'suspend';
+    if (['inactive', 'active'].includes(s)) return s;
     return s;
 }
 
 function passengerStatusLabel(dbStatus) {
     const s = normalizePassengerStatus(dbStatus);
     const labels = {
-        pending: 'Pending',
-        approve: 'Approved',
-        reject: 'Rejected',
-        suspend: 'Suspended',
+        inactive: 'Inactive',
         active: 'Active',
     };
     return labels[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Pending');
@@ -53,9 +44,7 @@ function passengerStatusLabel(dbStatus) {
 
 function actionToPassengerDbStatus(action) {
     const map = {
-        Approve: 'approve',
-        Reject: 'reject',
-        Suspend: 'suspend',
+        Inactive: 'inactive',
         Active: 'active',
     };
     return map[action] ?? null;
@@ -336,7 +325,7 @@ const PassengersPage = () => {
                 {/* Status */}
                 <Dropdown
                     label="Status"
-                    options={['All', 'Active', 'Approved', 'Pending', 'Rejected', 'Suspended']}
+                    options={['All', 'Active', 'Inactive']}
                     value={statusFilter}
                     open={statusOpen}
                     setOpen={setStatusOpen}
@@ -632,9 +621,7 @@ const PassengersPage = () => {
                                 disabled={isSavingStatus}
                                 onClick={() => handlePassengerStatusAction(action, openMenu.passengerId)}
                                 className={`w-full text-left px-4 py-2.5 text-[13px] transition-colors first:rounded-t-lg last:rounded-b-lg hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed
-                                    ${action === 'Approve' ? 'text-green-600 hover:bg-green-50' : ''}
-                                    ${action === 'Reject' ? 'text-red-600 hover:bg-red-50' : ''}
-                                    ${action === 'Suspend' ? 'text-orange-600 hover:bg-orange-50' : ''}
+                                    ${action === 'Inactive' ? 'text-red-600 hover:bg-red-50' : ''}
                                     ${action === 'Active' ? 'text-blue-600 hover:bg-blue-50' : ''}
                                 `}
                             >

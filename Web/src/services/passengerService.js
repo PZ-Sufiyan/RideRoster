@@ -145,12 +145,6 @@ export const getPassengerDetailBundle = async (passengerId) => {
 export const registerPassengerWithAuthAndRecord = async ({ companyId, form }) => {
   if (!companyId) throw new Error('Company is required.')
 
-  const email = cleanString(form?.email).toLowerCase()
-  const password = form?.password
-  if (!email) throw new Error('Email is required.')
-  if (!password || String(password).length < 6) {
-    throw new Error('Password must be at least 6 characters.')
-  }
   if (!cleanString(form?.firstName)) throw new Error('First name is required.')
   if (!cleanString(form?.surname)) throw new Error('Surname is required.')
   if (!cleanString(form?.contact1)) throw new Error('Contact number 1 is required.')
@@ -161,61 +155,34 @@ export const registerPassengerWithAuthAndRecord = async ({ companyId, form }) =>
   if (!cleanString(form?.schoolPostcode)) throw new Error('Drop-off postal code is required.')
   if (!cleanString(form?.returnTime)) throw new Error('Drop-off time is required.')
 
-  let authUserId = null
-
-  try {
-    const { data: createdAuth, error: createErr } = await supabaseAdmin.auth.admin.createUser({
-      email,
-      password,
-      email_confirm: true,
-      app_metadata: { role: 'passenger' },
-      user_metadata: {
-        role: 'passenger',
-        email,
-        first_name: cleanString(form?.firstName),
-        last_name: cleanString(form?.surname),
-      },
-    })
-
-    if (createErr) throw createErr
-    if (!createdAuth?.user?.id) throw new Error('Could not create auth user.')
-    authUserId = createdAuth.user.id
-
-    const passengerPayload = {
-      id: authUserId,
-      company_id: companyId,
-      first_name: cleanString(form?.firstName),
-      surname: cleanString(form?.surname),
-      email,
-      contact_number_1: cleanString(form?.contact1),
-      contact_number_2: toNullableString(form?.contact2),
-      pickup_address: cleanString(form?.homeAddress),
-      pickup_postal_code: cleanString(form?.homePostcode),
-      pickup_time: cleanString(form?.pickupTime),
-      dropoff_address: cleanString(form?.schoolAddress),
-      dropoff_postal_code: cleanString(form?.schoolPostcode),
-      dropoff_time: cleanString(form?.returnTime),
-      wheelchair_required: cleanString(form?.wheelchair).toLowerCase() === 'yes',
-      notes: toNullableString(form?.notes),
-      status: 'pending',
-    }
-
-    const { data, error } = await supabaseAdmin
-      .from('passenger')
-      .insert(passengerPayload)
-      .select()
-      .single()
-
-    if (error) throw error
-    return data
-  } catch (err) {
-    if (authUserId) {
-      try {
-        await supabaseAdmin.auth.admin.deleteUser(authUserId)
-      } catch {
-        // best effort rollback
-      }
-    }
-    throw err
+  const passengerPayload = {
+    company_id: companyId,
+    first_name: cleanString(form?.firstName),
+    surname: cleanString(form?.surname),
+    email: toNullableString(cleanString(form?.email).toLowerCase()),
+    contact_number_1: cleanString(form?.contact1),
+    contact_number_2: toNullableString(form?.contact2),
+    pickup_address: cleanString(form?.homeAddress),
+    pickup_postal_code: cleanString(form?.homePostcode),
+    pickup_time: cleanString(form?.pickupTime),
+    dropoff_address: cleanString(form?.schoolAddress),
+    dropoff_postal_code: cleanString(form?.schoolPostcode),
+    dropoff_time: cleanString(form?.returnTime),
+    wheelchair_required: cleanString(form?.wheelchair).toLowerCase() === 'yes',
+    notes: toNullableString(form?.notes),
+    pickup_latitude: form?.pickupLat ?? null,
+    pickup_longitude: form?.pickupLng ?? null,
+    dropoff_latitude: form?.dropoffLat ?? null,
+    dropoff_longitude: form?.dropoffLng ?? null,
+    status: 'pending',
   }
+
+  const { data, error } = await supabaseAdmin
+    .from('passenger')
+    .insert(passengerPayload)
+    .select()
+    .single()
+
+  if (error) throw error
+  return data
 }

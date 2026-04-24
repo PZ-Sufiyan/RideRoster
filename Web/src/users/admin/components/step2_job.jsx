@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdDeleteOutline,
@@ -6,6 +6,7 @@ import {
     MdOutlinePinDrop,
     MdKeyboardArrowDown,
     MdPerson,
+    MdSearch,
 } from 'react-icons/md';
 import { supabase } from '../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../services/companyService';
@@ -91,7 +92,10 @@ const Step2Job = ({ setToasts }) => {
     const [dropoffEdits, setDropoffEdits] = useState({});
     const [catalog, setCatalog] = useState([]);
     const [pickIdToAdd, setPickIdToAdd] = useState('');
+    const [passengerSearch, setPassengerSearch] = useState('');
+    const [isPassengerDropdownOpen, setIsPassengerDropdownOpen] = useState(false);
     const [loading, setLoading] = useState(true);
+    const passengerDropdownRef = useRef(null);
 
     const pickupStops = useMemo(() => derivePickupStops(selectedPassengers, pickupEdits), [selectedPassengers, pickupEdits]);
     const dropoffStops = useMemo(() => deriveDropoffStops(selectedPassengers, dropoffEdits), [selectedPassengers, dropoffEdits]);
@@ -127,6 +131,16 @@ const Step2Job = ({ setToasts }) => {
         saveJobDraft({ step2: { selectedPassengers, pickupEdits, dropoffEdits } });
     }, [selectedPassengers, pickupEdits, dropoffEdits]);
 
+    useEffect(() => {
+        const onClickOutside = (event) => {
+            if (passengerDropdownRef.current && !passengerDropdownRef.current.contains(event.target)) {
+                setIsPassengerDropdownOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', onClickOutside);
+        return () => document.removeEventListener('mousedown', onClickOutside);
+    }, []);
+
     const pushToast = (type, message) =>
         setToasts((prev) => [...prev, { id: `${Date.now()}-${Math.random()}`, type, message, autoClose: true, duration: 3500 }]);
 
@@ -149,6 +163,10 @@ const Step2Job = ({ setToasts }) => {
     };
 
     const availableToAdd = catalog.filter((p) => !selectedPassengers.some((s) => s.id === p.id));
+    const filteredAvailableToAdd = availableToAdd.filter((p) =>
+        passengerDisplayName(p).toLowerCase().includes(passengerSearch.toLowerCase().trim())
+    );
+    const selectedToAdd = availableToAdd.find((p) => p.id === pickIdToAdd);
 
     // Enrich stops with resolved passenger names for StopCard
     const enrichStop = (stop) => ({
@@ -182,18 +200,48 @@ const Step2Job = ({ setToasts }) => {
                     ) : (
                         <>
                             <div className="flex flex-col sm:flex-row gap-3 mb-4">
-                                <div className="relative flex-1">
-                                    <select
-                                        value={pickIdToAdd}
-                                        onChange={(e) => setPickIdToAdd(e.target.value)}
-                                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] appearance-none focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D]"
+                                <div ref={passengerDropdownRef} className="relative flex-1">
+                                    <button
+                                        type="button"
+                                        onClick={() => setIsPassengerDropdownOpen((prev) => !prev)}
+                                        className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-left focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D]"
                                     >
-                                        <option value="">Select passenger to add</option>
-                                        {availableToAdd.map((p) => (
-                                            <option key={p.id} value={p.id}>{passengerDisplayName(p)} — {p.pickup_postal_code}</option>
-                                        ))}
-                                    </select>
+                                        {selectedToAdd ? `${passengerDisplayName(selectedToAdd)} — ${selectedToAdd.pickup_postal_code || '—'}` : 'Select passenger to add'}
+                                    </button>
                                     <MdKeyboardArrowDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
+                                    {isPassengerDropdownOpen && (
+                                        <div className="absolute top-full mt-2 left-0 right-0 bg-white border border-gray-200 rounded-xl shadow-lg z-20 p-2">
+                                            <div className="relative mb-2">
+                                                <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={18} />
+                                                <input
+                                                    type="text"
+                                                    value={passengerSearch}
+                                                    onChange={(e) => setPassengerSearch(e.target.value)}
+                                                    placeholder="Search passenger name..."
+                                                    className="w-full pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-[13px] focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
+                                                />
+                                            </div>
+                                            <div className="max-h-40 overflow-y-auto">
+                                                {filteredAvailableToAdd.length === 0 ? (
+                                                    <p className="px-2 py-2 text-[13px] text-gray-500">No passengers found.</p>
+                                                ) : (
+                                                    filteredAvailableToAdd.map((p) => (
+                                                        <button
+                                                            key={p.id}
+                                                            type="button"
+                                                            onClick={() => {
+                                                                setPickIdToAdd(p.id);
+                                                                setIsPassengerDropdownOpen(false);
+                                                            }}
+                                                            className="w-full text-left px-2 py-2 text-[13px] rounded-md hover:bg-gray-50"
+                                                        >
+                                                            {passengerDisplayName(p)} — {p.pickup_postal_code || '—'}
+                                                        </button>
+                                                    ))
+                                                )}
+                                            </div>
+                                        </div>
+                                    )}
                                 </div>
                                 <button type="button" onClick={addPassenger} disabled={!pickIdToAdd}
                                     className="px-6 py-3 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] disabled:opacity-40 disabled:cursor-not-allowed">
