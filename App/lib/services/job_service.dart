@@ -30,20 +30,30 @@ class JobService {
     if (jobId.isEmpty) return null;
 
     final results = await Future.wait([
+      // ── Pickups: now including latitude & longitude ──────────────────────
       _supabase
           .from('job_pickups')
-          .select('id, pickup_order, address, scheduled_time, status')
+          .select(
+            'id, pickup_order, address, scheduled_time, status, latitude, longitude',
+          )
           .eq('job_id', jobId)
           .order('pickup_order', ascending: true),
+
+      // ── Dropoffs: now fetching ALL rows with lat/lng ─────────────────────
       _supabase
           .from('job_dropoffs')
-          .select('address, scheduled_time')
+          .select(
+            'id, dropoff_order, address, scheduled_time, status, latitude, longitude',
+          )
           .eq('job_id', jobId)
-          .order('dropoff_order', ascending: true)
-          .limit(1),
+          .order('dropoff_order', ascending: true),
+
+      // ── Passenger routes ─────────────────────────────────────────────────
       _supabase
           .from('job_passenger_routes')
-          .select('pickup_id, passenger_id, passenger:passenger_id(first_name, surname)')
+          .select(
+            'pickup_id, passenger_id, passenger:passenger_id(first_name, surname)',
+          )
           .eq('job_id', jobId),
     ]);
 
@@ -59,6 +69,8 @@ class JobService {
 
     final paName = await _fetchPaName(jobRow['assigned_pa_id']);
     final passengerNamesByPickup = _buildPassengerNamesByPickup(routeRows);
+
+    // ── Build PickupStop list (with lat/lng) ─────────────────────────────────
     final pickups = pickupRows.map((row) {
       final pickupId = (row['id'] ?? '').toString();
       final order = _asInt(row['pickup_order']);
@@ -73,19 +85,42 @@ class JobService {
         locationName: (row['address'] ?? '').toString(),
         address: (row['address'] ?? '').toString(),
         eta: 'ETA pending',
-        scheduledTime: _formatTime(row['scheduled_time'] ?? jobRow['pickup_time']),
+        scheduledTime: _formatTime(
+          row['scheduled_time'] ?? jobRow['pickup_time'],
+        ),
         status: _toPickupStatus(row['status']),
+        // ── NEW: GPS coordinates ──────────────────────────────────────────
+        lat: _asDouble(row['latitude']),
+        lng: _asDouble(row['longitude']),
       );
     }).toList();
 
-    final dropoffAddress = dropoffRows.isNotEmpty
-        ? (dropoffRows.first['address'] ?? '').toString()
-        : '';
-    final dropoffEta = dropoffRows.isNotEmpty
-        ? _formatTime(dropoffRows.first['scheduled_time'] ?? jobRow['estimated_dropoff_time'])
-        : _formatTime(jobRow['estimated_dropoff_time']);
+    // ── Build DropoffStop list (with lat/lng) ────────────────────────────────
+    final dropoffs = dropoffRows.map((row) {
+      return DropoffStop(
+        id: (row['id'] ?? '').toString(),
+        dropoffOrder: _asInt(row['dropoff_order']),
+        address: (row['address'] ?? '').toString(),
+        scheduledTime: _formatTime(
+          row['scheduled_time'] ?? jobRow['estimated_dropoff_time'],
+        ),
+        status: _toDropoffStatus(row['status']),
+        // ── NEW: GPS coordinates ──────────────────────────────────────────
+        lat: _asDouble(row['latitude']),
+        lng: _asDouble(row['longitude']),
+      );
+    }).toList();
 
-    final nextPending = pickups.where((p) => p.status == PickupStatus.pending).toList();
+    // ── Legacy flat strings (used by existing UI widgets) ────────────────────
+    final firstDropoff = dropoffs.isNotEmpty ? dropoffs.first : null;
+    final dropoffAddress = firstDropoff?.address ?? '';
+    final dropoffEta =
+        firstDropoff?.scheduledTime ??
+        _formatTime(jobRow['estimated_dropoff_time']);
+
+    final nextPending = pickups
+        .where((p) => p.status == PickupStatus.pending)
+        .toList();
     final nextActionTime = nextPending.isNotEmpty
         ? nextPending.first.scheduledTime
         : dropoffEta;
@@ -101,15 +136,32 @@ class JobService {
       dropoffLocation: dropoffAddress,
       dropoffEta: dropoffEta,
       pickups: pickups,
+      dropoffs: dropoffs, // ← NEW
     );
   }
 
-  /// Updates the status of a pickup stop (no-op for dummy; provider owns state).
+  // ── Status mutations ────────────────────────────────────────────────────────
+
   Future<void> updatePickupStatus(String pickupId, PickupStatus status) async {
     if (pickupId.isEmpty) return;
-    await _supabase.from('job_pickups').update({
-      'status': _dbPickupStatus(status),
-    }).eq('id', pickupId);
+    await _supabase
+        .from('job_pickups')
+        .update({'status': _dbPickupStatus(status)})
+        .eq('id', pickupId);
+  }
+
+  /// Marks a single dropoff stop as completed in the DB.
+  Future<void> updateDropoffStatus(
+    String dropoffId,
+    DropoffStatus status,
+  ) async {
+    if (dropoffId.isEmpty) return;
+    await _supabase
+        .from('job_dropoffs')
+        .update({
+          'status': status == DropoffStatus.completed ? 'completed' : 'pending',
+        })
+        .eq('id', dropoffId);
   }
 
   Future<void> completeJob({
@@ -118,23 +170,21 @@ class JobService {
   }) async {
     if (backendJobId.isEmpty) return;
 
-    // Complete all drop-off stops first; only then mark the job completed.
     await _supabase
         .from('job_dropoffs')
-        .update({
-          'status': 'completed',
-        })
+        .update({'status': 'completed'})
         .eq('job_id', backendJobId);
 
-    await _supabase.from('jobs').update({
-      'status': 'completed',
-      'updated_at': DateTime.now().toIso8601String(),
-      // Jobs schema does not currently include a comments/notes column.
-    }).eq('id', backendJobId);
-    if (comments != null && comments.isNotEmpty) {
-      // Reserved for future backend column or related notes table.
-    }
+    await _supabase
+        .from('jobs')
+        .update({
+          'status': 'completed',
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('id', backendJobId);
   }
+
+  // ── Private helpers ─────────────────────────────────────────────────────────
 
   Future<String> _fetchPaName(dynamic assignedPaId) async {
     final paId = (assignedPaId ?? '').toString();
@@ -177,10 +227,19 @@ class JobService {
   PickupStatus _toPickupStatus(dynamic rawStatus) {
     final status = (rawStatus ?? '').toString().toLowerCase().trim();
     if (status == 'completed') return PickupStatus.completed;
-    if (status == 'not_picked' || status == 'no_pickup' || status == 'notpicked') {
+    if (status == 'not_picked' ||
+        status == 'no_pickup' ||
+        status == 'notpicked') {
       return PickupStatus.notPicked;
     }
     return PickupStatus.pending;
+  }
+
+  DropoffStatus _toDropoffStatus(dynamic rawStatus) {
+    final status = (rawStatus ?? '').toString().toLowerCase().trim();
+    return status == 'completed'
+        ? DropoffStatus.completed
+        : DropoffStatus.pending;
   }
 
   String _dbPickupStatus(PickupStatus status) {
@@ -198,6 +257,14 @@ class JobService {
     if (value is int) return value;
     if (value is num) return value.toInt();
     return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  /// Safely parses a DB numeric/text value to double. Returns null on failure.
+  double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
   }
 
   String _formatTime(dynamic rawTime) {

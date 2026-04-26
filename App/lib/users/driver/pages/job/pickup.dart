@@ -28,6 +28,11 @@ class PickupPage extends StatelessWidget {
               children: [
                 _buildAppBar(context, job?.routeNumber ?? ''),
                 _StatusBar(completed: completed, total: total),
+                // ── Tracking indicator banner ─────────────────────────────
+                if (provider.isTracking)
+                  _TrackingBanner(
+                    distanceMeters: provider.currentDistanceMeters,
+                  ),
                 Expanded(
                   child: job == null || active == null
                       ? const Center(child: CircularProgressIndicator())
@@ -36,7 +41,6 @@ class PickupPage extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              // Current Stop label + ETA
                               Row(
                                 mainAxisAlignment:
                                     MainAxisAlignment.spaceBetween,
@@ -60,10 +64,8 @@ class PickupPage extends StatelessWidget {
                                 ],
                               ),
                               SizedBox(height: SizeConfig.r(10)),
-                              // Active stop card
                               _ActiveStopCard(stop: active),
                               SizedBox(height: SizeConfig.r(20)),
-                              // Upcoming stops section
                               if (upcoming.isNotEmpty) ...[
                                 Text(
                                   'Upcoming Stops',
@@ -74,10 +76,13 @@ class PickupPage extends StatelessWidget {
                                   ),
                                 ),
                                 SizedBox(height: SizeConfig.r(10)),
-                                ...upcoming.take(3).map(
+                                ...upcoming
+                                    .take(3)
+                                    .map(
                                       (s) => Padding(
                                         padding: EdgeInsets.only(
-                                            bottom: SizeConfig.r(10)),
+                                          bottom: SizeConfig.r(10),
+                                        ),
                                         child: _UpcomingStopCard(
                                           number: s.stopNumber,
                                           locationName: s.locationName,
@@ -142,7 +147,6 @@ class PickupPage extends StatelessWidget {
               ),
             ),
           ),
-          // SOS button
           GestureDetector(
             onTap: () => Navigator.pushNamed(context, AppRoutes.sos),
             child: Container(
@@ -179,13 +183,56 @@ class PickupPage extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tracking Banner
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TrackingBanner extends StatelessWidget {
+  final double? distanceMeters;
+  const _TrackingBanner({this.distanceMeters});
+
+  @override
+  Widget build(BuildContext context) {
+    SizeConfig.init(context);
+    final label = distanceMeters != null
+        ? '${distanceMeters!.toStringAsFixed(0)} m away — tracking active'
+        : 'Tracking your location…';
+
+    return Container(
+      width: double.infinity,
+      color: const Color(0xFF0284C7).withValues(alpha: 0.1),
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.hPad,
+        vertical: SizeConfig.r(6),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.location_searching,
+            size: SizeConfig.r(14),
+            color: const Color(0xFF0284C7),
+          ),
+          SizedBox(width: SizeConfig.r(6)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(12),
+              color: const Color(0xFF0284C7),
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Status Bar
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StatusBar extends StatelessWidget {
   final int completed;
   final int total;
-
   const _StatusBar({required this.completed, required this.total});
 
   @override
@@ -237,12 +284,11 @@ class _StatusBar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Active Stop Card
+// Active Stop Card — Navigate button WIRED
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ActiveStopCard extends StatelessWidget {
   final PickupStop stop;
-
   const _ActiveStopCard({required this.stop});
 
   @override
@@ -257,7 +303,6 @@ class _ActiveStopCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Stop number + name
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -292,7 +337,6 @@ class _ActiveStopCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: SizeConfig.r(10)),
-          // Full address
           Text(
             stop.address,
             style: TextStyle(
@@ -301,7 +345,6 @@ class _ActiveStopCard extends StatelessWidget {
             ),
           ),
           SizedBox(height: SizeConfig.r(12)),
-          // Passenger info
           Row(
             children: [
               Icon(
@@ -335,14 +378,18 @@ class _ActiveStopCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: SizeConfig.r(16)),
-          // Action buttons
           Row(
             children: [
+              // ── Navigate button — WIRED ──────────────────────────────────
               Expanded(
                 child: AppButton(
-                  label: 'Navigate',
+                  label: stop.hasCoordinates ? 'Navigate' : 'No GPS',
                   borderRadius: SizeConfig.radiusLG,
-                  onPressed: () {},
+                  onPressed: stop.hasCoordinates
+                      ? () => context
+                            .read<JobProvider>()
+                            .navigateToCurrentPickup()
+                      : null,
                 ),
               ),
               SizedBox(width: SizeConfig.r(10)),
@@ -352,12 +399,10 @@ class _ActiveStopCard extends StatelessWidget {
                     final provider = context.read<JobProvider>();
                     await provider.markCurrentAsCompleted();
                     provider.advanceToNextPickup();
-                    // If that was the last pickup, go straight to complete job.
                     if (!context.mounted) return;
                     if (provider.allResolved) {
                       Navigator.pushNamed(context, AppRoutes.completeJob);
                     } else {
-                      // More pickups remain — pop back to the queue.
                       Navigator.maybePop(context);
                     }
                   },
@@ -367,8 +412,7 @@ class _ActiveStopCard extends StatelessWidget {
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(SizeConfig.radius),
                     ),
-                    padding:
-                        EdgeInsets.symmetric(vertical: SizeConfig.r(11)),
+                    padding: EdgeInsets.symmetric(vertical: SizeConfig.r(11)),
                   ),
                   child: Text(
                     'Pickup complete',
@@ -389,7 +433,7 @@ class _ActiveStopCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Upcoming Stop Card
+// Upcoming Stop Card (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _UpcomingStopCard extends StatelessWidget {
@@ -420,7 +464,6 @@ class _UpcomingStopCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Number circle
           Container(
             width: SizeConfig.r(30),
             height: SizeConfig.r(30),
@@ -440,7 +483,6 @@ class _UpcomingStopCard extends StatelessWidget {
             ),
           ),
           SizedBox(width: SizeConfig.r(12)),
-          // Details
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -503,12 +545,11 @@ class _UpcomingStopCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Bar
+// Bottom Bar (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomBar extends StatelessWidget {
   final PickupStop? stop;
-
   const _BottomBar({required this.stop});
 
   @override
@@ -532,13 +573,9 @@ class _BottomBar extends StatelessWidget {
             ? null
             : () {
                 final provider = context.read<JobProvider>();
-                // "Pickup complete" already advanced the index.
-                // Just decide where to navigate based on current state.
                 if (provider.allResolved) {
-                  // All done — go to complete job.
                   Navigator.pushNamed(context, AppRoutes.completeJob);
                 } else {
-                  // More pickups remain — go to pickup queue.
                   Navigator.pushNamed(context, AppRoutes.pickupQueue);
                 }
               },

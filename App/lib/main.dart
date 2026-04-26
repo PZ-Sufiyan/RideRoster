@@ -5,6 +5,8 @@ import 'config/supabase_config.dart';
 import 'providers/auth_provider.dart';
 import 'providers/job_provider.dart';
 import 'routes/app_routes.dart';
+import 'services/location_service.dart';
+import 'services/notification_service.dart';
 import 'users/driver/pages/auth/login.dart';
 import 'users/driver/pages/dashboard/dashboard.dart';
 
@@ -30,10 +32,9 @@ Future<void> main() async {
     );
     return;
   }
-  await Supabase.initialize(
-    url: normalizedUrl,
-    anonKey: normalizedAnonKey,
-  );
+  await Supabase.initialize(url: normalizedUrl, anonKey: normalizedAnonKey);
+  await LocationService().ensurePermission();
+  await NotificationService().init();
   runApp(const RideRosterApp());
 }
 
@@ -72,7 +73,8 @@ class _AuthEntryPage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (_, auth, __) {
-        if (auth.status == AuthStatus.loading || auth.status == AuthStatus.idle) {
+        if (auth.status == AuthStatus.loading ||
+            auth.status == AuthStatus.idle) {
           return const Scaffold(
             body: Center(child: CircularProgressIndicator()),
           );

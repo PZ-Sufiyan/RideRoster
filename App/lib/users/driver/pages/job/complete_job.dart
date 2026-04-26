@@ -36,6 +36,11 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
               children: [
                 _buildAppBar(context, job),
                 _StatusBar(job: job),
+                // ── Tracking indicator for dropoff ────────────────────────
+                if (provider.isTracking)
+                  _TrackingBanner(
+                    distanceMeters: provider.currentDistanceMeters,
+                  ),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: EdgeInsets.all(SizeConfig.r(16)),
@@ -44,7 +49,16 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
                       children: [
                         _buildTimeline(job),
                         SizedBox(height: SizeConfig.r(16)),
-                        _DropoffDestinationCard(job: job),
+                        _DropoffDestinationCard(
+                          job: job,
+                          // ── Navigate to dropoff button ─────────────────
+                          onNavigate:
+                              job?.currentDropoff?.hasCoordinates == true
+                              ? () => context
+                                    .read<JobProvider>()
+                                    .navigateToDropoff()
+                              : null,
+                        ),
                         SizedBox(height: SizeConfig.r(16)),
                         _JobCommentsCard(controller: _commentsController),
                         SizedBox(height: SizeConfig.r(16)),
@@ -99,7 +113,9 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
                   ),
                 ),
                 Text(
-                  pending == 0 ? 'All pickups resolved' : '$pending stops remaining',
+                  pending == 0
+                      ? 'All pickups resolved'
+                      : '$pending stops remaining',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: SizeConfig.sp(12),
@@ -144,26 +160,19 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
   }
 
   Widget _buildTimeline(JobModel? job) {
-    if (job == null) {
-      return const SizedBox.shrink();
-    }
-
+    if (job == null) return const SizedBox.shrink();
     return Column(
       children: [
-        // One timeline item per pickup stop showing its resolved status.
         ...job.pickups.map((stop) {
           final isCompleted = stop.status == PickupStatus.completed;
           return _TimelinePassengerItem(
             name: stop.passengerName,
             time: stop.scheduledTime,
             detail: isCompleted ? stop.address : 'Not Picked',
-            lineColor: isCompleted
-                ? AppColors.success
-                : AppColors.error,
+            lineColor: isCompleted ? AppColors.success : AppColors.error,
             isCompleted: isCompleted,
           );
         }),
-        // Final "Driving to Drop-off" timeline node.
         _DrivingToDropoffItem(
           dropoffEta: job.dropoffEta,
           dropoffLocation: job.dropoffLocation,
@@ -174,12 +183,55 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Tracking Banner
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _TrackingBanner extends StatelessWidget {
+  final double? distanceMeters;
+  const _TrackingBanner({this.distanceMeters});
+
+  @override
+  Widget build(BuildContext context) {
+    SizeConfig.init(context);
+    final label = distanceMeters != null
+        ? '${distanceMeters!.toStringAsFixed(0)} m to drop-off — tracking active'
+        : 'Tracking location to drop-off…';
+
+    return Container(
+      width: double.infinity,
+      color: AppColors.success.withValues(alpha: 0.1),
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.hPad,
+        vertical: SizeConfig.r(6),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.location_searching,
+            size: SizeConfig.r(14),
+            color: AppColors.success,
+          ),
+          SizedBox(width: SizeConfig.r(6)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(12),
+              color: AppColors.success,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Status Bar
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StatusBar extends StatelessWidget {
   final JobModel? job;
-
   const _StatusBar({required this.job});
 
   @override
@@ -251,7 +303,7 @@ class _StatusBar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Timeline Passenger Item
+// Timeline items (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TimelinePassengerItem extends StatelessWidget {
@@ -276,7 +328,6 @@ class _TimelinePassengerItem extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // Left: circle + connecting line
           SizedBox(
             width: SizeConfig.r(40),
             child: Column(
@@ -304,7 +355,6 @@ class _TimelinePassengerItem extends StatelessWidget {
             ),
           ),
           SizedBox(width: SizeConfig.r(12)),
-          // Right: name + time/detail
           Expanded(
             child: Padding(
               padding: EdgeInsets.only(
@@ -340,10 +390,6 @@ class _TimelinePassengerItem extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Driving to Drop-off Item
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _DrivingToDropoffItem extends StatelessWidget {
   final String dropoffEta;
   final String dropoffLocation;
@@ -359,7 +405,6 @@ class _DrivingToDropoffItem extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        // Left: blue circle with car icon (no line below)
         SizedBox(
           width: SizeConfig.r(40),
           child: Container(
@@ -378,7 +423,6 @@ class _DrivingToDropoffItem extends StatelessWidget {
           ),
         ),
         SizedBox(width: SizeConfig.r(12)),
-        // Right: title + ETA
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -414,14 +458,22 @@ class _DrivingToDropoffItem extends StatelessWidget {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Dropoff Destination Card — Navigate button ADDED
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _DropoffDestinationCard extends StatelessWidget {
   final JobModel? job;
+  // ── NEW ──────────────────────────────────────────────────────────────────
+  final VoidCallback? onNavigate;
 
-  const _DropoffDestinationCard({required this.job});
+  const _DropoffDestinationCard({required this.job, this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
     if (job == null) return const SizedBox.shrink();
+    SizeConfig.init(context);
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(SizeConfig.r(16)),
@@ -430,45 +482,83 @@ class _DropoffDestinationCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
         border: Border.all(color: AppColors.inputBorder, width: 1),
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            Icons.location_on_outlined,
-            color: AppColors.error,
-            size: SizeConfig.r(20),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.location_on_outlined,
+                color: AppColors.error,
+                size: SizeConfig.r(20),
+              ),
+              SizedBox(width: SizeConfig.r(10)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Drop-off Destination',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(13),
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    SizedBox(height: SizeConfig.r(2)),
+                    Text(
+                      job!.dropoffLocation,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(13),
+                        color: AppColors.textMedium,
+                      ),
+                    ),
+                    SizedBox(height: SizeConfig.r(4)),
+                    Text(
+                      'ETA ${job!.dropoffEta}',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(12),
+                        color: const Color(0xFF0284C7),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          SizedBox(width: SizeConfig.r(10)),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Drop-off Destination',
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(13),
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textDark,
-                  ),
+          // ── Navigate to drop-off button ───────────────────────────────────
+          SizedBox(height: SizeConfig.r(12)),
+          SizedBox(
+            width: double.infinity,
+            height: SizeConfig.r(44),
+            child: ElevatedButton.icon(
+              onPressed: onNavigate,
+              icon: Icon(
+                Icons.navigation_outlined,
+                color: Colors.white,
+                size: SizeConfig.r(16),
+              ),
+              label: Text(
+                onNavigate != null
+                    ? 'Navigate to Drop-off'
+                    : 'No GPS for Drop-off',
+                style: TextStyle(
+                  color: Colors.white,
+                  fontSize: SizeConfig.sp(14),
+                  fontWeight: FontWeight.w600,
                 ),
-                SizedBox(height: SizeConfig.r(2)),
-                Text(
-                  job!.dropoffLocation,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(13),
-                    color: AppColors.textMedium,
-                  ),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: onNavigate != null
+                    ? AppColors.success
+                    : AppColors.textLight,
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(SizeConfig.radius),
                 ),
-                SizedBox(height: SizeConfig.r(4)),
-                Text(
-                  'ETA ${job!.dropoffEta}',
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(12),
-                    color: const Color(0xFF0284C7),
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ],
@@ -478,12 +568,11 @@ class _DropoffDestinationCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Job Comments Card
+// Job Comments Card (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _JobCommentsCard extends StatelessWidget {
   final TextEditingController controller;
-
   const _JobCommentsCard({required this.controller});
 
   @override
@@ -549,12 +638,11 @@ class _JobCommentsCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Bar
+// Bottom Bar (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomBar extends StatelessWidget {
   final TextEditingController commentsController;
-
   const _BottomBar({required this.commentsController});
 
   @override
@@ -590,7 +678,6 @@ class _BottomBar extends StatelessWidget {
               );
               return;
             }
-            // Reset local job state and go back to dashboard.
             provider.reset();
             if (!context.mounted) return;
             Navigator.pushNamedAndRemoveUntil(

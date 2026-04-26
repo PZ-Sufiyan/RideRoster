@@ -20,8 +20,6 @@ class _RouteDetailPageState extends State<RouteDetailPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Only load if there is no active job. This preserves statuses and
-      // the active pickup index when navigating back from pickup_que/pickup.
       final provider = context.read<JobProvider>();
       if (provider.job == null) {
         provider.loadJob();
@@ -46,52 +44,59 @@ class _RouteDetailPageState extends State<RouteDetailPage> {
                   child: provider.isLoading
                       ? const Center(child: CircularProgressIndicator())
                       : job == null
-                          ? Center(
-                              child: Text(
-                                provider.error ?? 'No active job.',
+                      ? Center(
+                          child: Text(
+                            provider.error ?? 'No active job.',
+                            style: TextStyle(
+                              fontSize: SizeConfig.sp(14),
+                              color: AppColors.textMedium,
+                            ),
+                          ),
+                        )
+                      : SingleChildScrollView(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: SizeConfig.hPad,
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              SizedBox(height: SizeConfig.r(12)),
+                              // ── Map card — navigate button now wired ──
+                              _MapCard(
+                                totalEta: job.totalEta,
+                                totalDistance: job.totalDistance,
+                                onNavigate: () => context
+                                    .read<JobProvider>()
+                                    .navigateFullRoute(),
+                              ),
+                              SizedBox(height: SizeConfig.r(20)),
+                              Text(
+                                'Pickup Stops',
                                 style: TextStyle(
-                                  fontSize: SizeConfig.sp(14),
-                                  color: AppColors.textMedium,
+                                  fontSize: SizeConfig.sp(17),
+                                  fontWeight: FontWeight.w700,
+                                  color: AppColors.textDark,
                                 ),
                               ),
-                            )
-                          : SingleChildScrollView(
-                              padding: EdgeInsets.symmetric(
-                                  horizontal: SizeConfig.hPad),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  SizedBox(height: SizeConfig.r(12)),
-                                  _MapCard(
-                                    totalEta: job.totalEta,
-                                    totalDistance: job.totalDistance,
+                              SizedBox(height: SizeConfig.r(12)),
+                              ...job.pickups.map(
+                                (stop) => Padding(
+                                  padding: EdgeInsets.only(
+                                    bottom: SizeConfig.r(10),
                                   ),
-                                  SizedBox(height: SizeConfig.r(20)),
-                                  Text(
-                                    'Pickup Stops',
-                                    style: TextStyle(
-                                      fontSize: SizeConfig.sp(17),
-                                      fontWeight: FontWeight.w700,
-                                      color: AppColors.textDark,
-                                    ),
+                                  child: _StopCard(
+                                    number: stop.stopNumber,
+                                    address: stop.locationName,
+                                    eta: stop.eta,
+                                    status: stop.status,
+                                    hasCoordinates: stop.hasCoordinates,
                                   ),
-                                  SizedBox(height: SizeConfig.r(12)),
-                                  ...job.pickups.map(
-                                    (stop) => Padding(
-                                      padding: EdgeInsets.only(
-                                          bottom: SizeConfig.r(10)),
-                                      child: _StopCard(
-                                        number: stop.stopNumber,
-                                        address: stop.locationName,
-                                        eta: stop.eta,
-                                        status: stop.status,
-                                      ),
-                                    ),
-                                  ),
-                                  SizedBox(height: SizeConfig.r(6)),
-                                ],
+                                ),
                               ),
-                            ),
+                              SizedBox(height: SizeConfig.r(6)),
+                            ],
+                          ),
+                        ),
                 ),
                 if (job != null) _BottomBar(job: job),
               ],
@@ -104,8 +109,9 @@ class _RouteDetailPageState extends State<RouteDetailPage> {
 
   Widget _buildAppBar(BuildContext context, dynamic job) {
     final totalStudents = job?.totalPickups ?? 0;
-    final locationCount =
-        job != null ? (job.pickups.map((p) => p.locationName).toSet().length) : 0;
+    final locationCount = job != null
+        ? (job.pickups.map((p) => p.locationName).toSet().length)
+        : 0;
 
     return Padding(
       padding: EdgeInsets.symmetric(
@@ -144,7 +150,6 @@ class _RouteDetailPageState extends State<RouteDetailPage> {
               ],
             ),
           ),
-          // SOS button
           GestureDetector(
             onTap: () => Navigator.pushNamed(context, AppRoutes.sos),
             child: Container(
@@ -166,7 +171,6 @@ class _RouteDetailPageState extends State<RouteDetailPage> {
             ),
           ),
           SizedBox(width: SizeConfig.r(8)),
-          // Profile icon
           Container(
             width: SizeConfig.r(38),
             height: SizeConfig.r(38),
@@ -193,8 +197,14 @@ class _RouteDetailPageState extends State<RouteDetailPage> {
 class _MapCard extends StatelessWidget {
   final String totalEta;
   final String totalDistance;
+  // ── NEW: wired callback ───────────────────────────────────────────────────
+  final VoidCallback onNavigate;
 
-  const _MapCard({required this.totalEta, required this.totalDistance});
+  const _MapCard({
+    required this.totalEta,
+    required this.totalDistance,
+    required this.onNavigate,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -205,7 +215,6 @@ class _MapCard extends StatelessWidget {
       ),
       child: Column(
         children: [
-          // Map area
           ClipRRect(
             borderRadius: BorderRadius.vertical(
               top: Radius.circular(SizeConfig.radiusLG),
@@ -240,7 +249,6 @@ class _MapCard extends StatelessWidget {
               ),
             ),
           ),
-          // ETA + Distance + Button
           Padding(
             padding: EdgeInsets.all(SizeConfig.r(14)),
             child: Column(
@@ -257,7 +265,8 @@ class _MapCard extends StatelessWidget {
                   width: double.infinity,
                   height: SizeConfig.r(46),
                   child: ElevatedButton.icon(
-                    onPressed: () {},
+                    // ── WIRED ─────────────────────────────────────────────
+                    onPressed: onNavigate,
                     icon: Icon(
                       Icons.navigation_outlined,
                       color: Colors.white,
@@ -292,7 +301,6 @@ class _MapCard extends StatelessWidget {
 class _EtaItem extends StatelessWidget {
   final String label;
   final String value;
-
   const _EtaItem({required this.label, required this.value});
 
   @override
@@ -321,7 +329,7 @@ class _EtaItem extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Route Painter
+// Route Painter (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _RoutePainter extends CustomPainter {
@@ -337,15 +345,12 @@ class _RoutePainter extends CustomPainter {
       ..strokeWidth = 2.5
       ..strokeCap = StrokeCap.round;
 
-    // Three stop positions
     final p1 = Offset(size.width * 0.12, size.height * 0.72);
     final p2 = Offset(size.width * 0.50, size.height * 0.28);
     final p3 = Offset(size.width * 0.88, size.height * 0.22);
 
-    // Draw dashed curved path through the three points
     _drawDashedCurve(canvas, linePaint, p1, p2, p3, size);
 
-    // Draw stop dots
     for (final p in [p1, p2, p3]) {
       canvas.drawCircle(p, 6, Paint()..color = Colors.white);
       canvas.drawCircle(p, 5, dotPaint);
@@ -370,7 +375,6 @@ class _RoutePainter extends CustomPainter {
     path.cubicTo(ctrl1.dx, ctrl1.dy, ctrl2.dx, ctrl2.dy, p2.dx, p2.dy);
     path.cubicTo(ctrl3.dx, ctrl3.dy, ctrl4.dx, ctrl4.dy, p3.dx, p3.dy);
 
-    // Draw dashed by measuring path
     const dashLen = 8.0;
     const gapLen = 5.0;
     final metrics = path.computeMetrics();
@@ -379,9 +383,7 @@ class _RoutePainter extends CustomPainter {
       bool draw = true;
       while (dist < metric.length) {
         final end = min(dist + (draw ? dashLen : gapLen), metric.length);
-        if (draw) {
-          canvas.drawPath(metric.extractPath(dist, end), paint);
-        }
+        if (draw) canvas.drawPath(metric.extractPath(dist, end), paint);
         dist = end;
         draw = !draw;
       }
@@ -393,7 +395,7 @@ class _RoutePainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stop Card
+// Stop Card — now shows a GPS indicator
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StopCard extends StatelessWidget {
@@ -401,12 +403,15 @@ class _StopCard extends StatelessWidget {
   final String address;
   final String eta;
   final PickupStatus status;
+  // ── NEW ──────────────────────────────────────────────────────────────────
+  final bool hasCoordinates;
 
   const _StopCard({
     required this.number,
     required this.address,
     required this.eta,
     required this.status,
+    required this.hasCoordinates,
   });
 
   @override
@@ -424,7 +429,6 @@ class _StopCard extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Number circle
           Container(
             width: SizeConfig.r(32),
             height: SizeConfig.r(32),
@@ -443,7 +447,6 @@ class _StopCard extends StatelessWidget {
             ),
           ),
           SizedBox(width: SizeConfig.r(12)),
-          // Address + ETA
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -466,10 +469,32 @@ class _StopCard extends StatelessWidget {
                     ),
                   ),
                 ],
+                // ── GPS indicator ─────────────────────────────────────────
+                SizedBox(height: SizeConfig.r(4)),
+                Row(
+                  children: [
+                    Icon(
+                      hasCoordinates ? Icons.location_on : Icons.location_off,
+                      size: SizeConfig.r(12),
+                      color: hasCoordinates
+                          ? AppColors.success
+                          : AppColors.textLight,
+                    ),
+                    SizedBox(width: SizeConfig.r(3)),
+                    Text(
+                      hasCoordinates ? 'GPS ready' : 'No GPS data',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(11),
+                        color: hasCoordinates
+                            ? AppColors.success
+                            : AppColors.textLight,
+                      ),
+                    ),
+                  ],
+                ),
               ],
             ),
           ),
-          // Status badge
           _StatusBadge(status: status),
         ],
       ),
@@ -479,7 +504,6 @@ class _StopCard extends StatelessWidget {
 
 class _StatusBadge extends StatelessWidget {
   final PickupStatus status;
-
   const _StatusBadge({required this.status});
 
   @override
@@ -487,7 +511,6 @@ class _StatusBadge extends StatelessWidget {
     Color bg;
     Color fg;
     String label;
-
     switch (status) {
       case PickupStatus.completed:
         bg = AppColors.success.withValues(alpha: 0.15);
@@ -505,7 +528,6 @@ class _StatusBadge extends StatelessWidget {
         label = 'Pending';
         break;
     }
-
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: SizeConfig.r(8),
@@ -528,12 +550,11 @@ class _StatusBadge extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Bar
+// Bottom Bar (unchanged logic)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomBar extends StatelessWidget {
   final JobModel job;
-
   const _BottomBar({required this.job});
 
   @override
@@ -557,7 +578,6 @@ class _BottomBar extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Progress label row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -580,7 +600,6 @@ class _BottomBar extends StatelessWidget {
             ],
           ),
           SizedBox(height: SizeConfig.r(6)),
-          // Progress bar
           ClipRRect(
             borderRadius: BorderRadius.circular(SizeConfig.r(4)),
             child: LinearProgressIndicator(
