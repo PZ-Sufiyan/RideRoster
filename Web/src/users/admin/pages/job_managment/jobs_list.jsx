@@ -25,7 +25,6 @@ import { supabase } from '../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../services/companyService';
 import {
     fetchJobsListPageData,
-    driversAvailableForAssignment,
     passengerAssistantsAvailableForAssignment,
     updateJobAssignedDriver,
     updateJobAssignedPa,
@@ -229,7 +228,7 @@ const ActiveJobs = () => {
 
     const filteredDriverRows = useMemo(() => {
         if (!selectedJob || !showAssignDriver) return [];
-        const list = driversAvailableForAssignment(driversCatalog, jobsMinimal, selectedJob.id);
+        const list = driversCatalog;
         const q = driverQuery.trim().toLowerCase();
         return list
             .filter((d) => {
@@ -247,7 +246,7 @@ const ActiveJobs = () => {
                 tagColor: 'text-gray-500 bg-gray-100',
                 avatar: `https://i.pravatar.cc/150?u=${encodeURIComponent(d.id)}`,
             }));
-    }, [selectedJob, showAssignDriver, driversCatalog, jobsMinimal, driverQuery]);
+    }, [selectedJob, showAssignDriver, driversCatalog, driverQuery]);
 
     const filteredPaRows = useMemo(() => {
         if (!selectedJob || !showAssignPA) return [];
@@ -357,6 +356,7 @@ const ActiveJobs = () => {
                                 <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Job ID / Route</th>
                                 <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Schedule</th>
                                 <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Driver & Vehicle</th>
+                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Driver Status</th>
                                 <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Passengers</th>
                                 <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Status</th>
                                 <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-right pr-8">Actions</th>
@@ -389,6 +389,9 @@ const ActiveJobs = () => {
                                                     <ShimmerBlock className="h-3 w-16 rounded-md" />
                                                 </div>
                                             </div>
+                                        </td>
+                                        <td className="px-6 py-5">
+                                            <ShimmerBlock className="mx-auto h-3.5 w-16 rounded-md" />
                                         </td>
                                         <td className="px-6 py-5">
                                             <ShimmerBlock className="mx-auto h-3.5 w-10 rounded-md" />
@@ -458,6 +461,11 @@ const ActiveJobs = () => {
                                             )}
                                         </td>
                                         <td className="px-6 py-5 text-center">
+                                            <span className="text-[12px] font-semibold text-gray-700 uppercase tracking-wide">
+                                                {job.driverApprovalStatus}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-5 text-center">
                                             <div className="flex items-center justify-center gap-1.5 text-gray-600">
                                                 <MdPeopleAlt size={16} />
                                                 <span className="text-[13px] font-bold">{job.passengers}</span>
@@ -486,7 +494,7 @@ const ActiveJobs = () => {
                                 ))}
                             {!loading && jobs.length === 0 && (
                                 <tr>
-                                    <td colSpan={7} className="px-6 py-16 text-center text-[14px] text-gray-500 font-medium">
+                                    <td colSpan={8} className="px-6 py-16 text-center text-[14px] text-gray-500 font-medium">
                                         No jobs yet. Create one to get started.
                                     </td>
                                 </tr>
@@ -556,7 +564,7 @@ const ActiveJobs = () => {
                             <div className="space-y-3">
                                 {filteredDriverRows.length === 0 && (
                                     <div className="px-4 py-6 text-center text-[13px] text-gray-500 font-medium border border-dashed border-gray-200 rounded-2xl">
-                                        No drivers available (all are assigned to other jobs) or no match search.
+                                        No drivers found for the current search.
                                     </div>
                                 )}
                                 {filteredDriverRows.map((driver) => {

@@ -687,7 +687,11 @@ export async function createJobFromDraft(companyId, draft) {
 export async function updateJobAssignedDriver(jobId, driverId) {
   const { data, error } = await supabase
     .from('jobs')
-    .update({ assigned_driver_id: driverId, updated_at: new Date().toISOString() })
+    .update({
+      assigned_driver_id: driverId,
+      driver_approval_status: 'pending',
+      updated_at: new Date().toISOString(),
+    })
     .eq('id', jobId)
     .select()
     .single()
@@ -815,6 +819,7 @@ export function buildSeatCapacityByDriverId(vehicleRows) {
 }
 
 export function mapJobToListRow(job, passengerCount, driver, pa, seatCapacityTotal) {
+  const approval = String(job.driver_approval_status || '').trim()
   const ui = deriveJobUiStatus(job)
   return {
     id: job.id,
@@ -841,6 +846,7 @@ export function mapJobToListRow(job, passengerCount, driver, pa, seatCapacityTot
     passengers: formatPassengersCapacityLabel(passengerCount, seatCapacityTotal),
     status: ui.label,
     statusColor: ui.statusColor,
+    driverApprovalStatus: approval || 'N/A',
     dateTimeStr: formatJobDateTimeLabel(job.job_date, job.pickup_time),
     assigned_driver_id: job.assigned_driver_id,
     assigned_pa_id: job.assigned_pa_id,
