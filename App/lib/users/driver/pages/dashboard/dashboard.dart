@@ -4,8 +4,10 @@ import '../../../../components/app_button.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../providers/job_provider.dart';
 import '../../../../routes/app_routes.dart';
+import '../../../../services/driver_job_request_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
+import '../../models/job_request_model.dart';
 
 class DriverDashboardPage extends StatefulWidget {
   const DriverDashboardPage({super.key});
@@ -520,7 +522,33 @@ class _StatCard extends StatelessWidget {
 // Job Requests Section
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _JobRequestsSection extends StatelessWidget {
+class _JobRequestsSection extends StatefulWidget {
+  @override
+  State<_JobRequestsSection> createState() => _JobRequestsSectionState();
+}
+
+class _JobRequestsSectionState extends State<_JobRequestsSection> {
+  final DriverJobRequestService _service = DriverJobRequestService();
+  late Future<List<DriverJobRequest>> _requestsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _requestsFuture = _loadRequests();
+  }
+
+  Future<List<DriverJobRequest>> _loadRequests() async {
+    final driverId = context.read<AuthProvider>().userId;
+    if (driverId == null || driverId.trim().isEmpty) return [];
+    return _service.fetchPendingRequests(driverId: driverId);
+  }
+
+  Future<void> _refreshRequests() async {
+    setState(() {
+      _requestsFuture = _loadRequests();
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -535,18 +563,76 @@ class _JobRequestsSection extends StatelessWidget {
           ),
         ),
         SizedBox(height: SizeConfig.r(10)),
-        _JobRequestCard(
-          price: '\$45.00',
-          pickup: 'Lincoln Elementary',
-          dropoff: 'Washington High',
-          time: '7:30 AM • 8 students',
-        ),
-        SizedBox(height: SizeConfig.r(10)),
-        _JobRequestCard(
-          price: '\$38.50',
-          pickup: 'Roosevelt Middle',
-          dropoff: 'Kennedy Elementary',
-          time: '3:15 PM • 12 students',
+        FutureBuilder<List<DriverJobRequest>>(
+          future: _requestsFuture,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState == ConnectionState.waiting) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (snapshot.hasError) {
+              return Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(SizeConfig.r(14)),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Unable to load job requests.',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(13),
+                        color: AppColors.textMedium,
+                      ),
+                    ),
+                    SizedBox(height: SizeConfig.r(10)),
+                    AppButton(
+                      label: 'Retry',
+                      height: SizeConfig.r(40),
+                      borderRadius: SizeConfig.radius,
+                      onPressed: _refreshRequests,
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            final requests = snapshot.data ?? [];
+            if (requests.isEmpty) {
+              return Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(SizeConfig.r(14)),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+                ),
+                child: Text(
+                  'No pending job requests.',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(13),
+                    color: AppColors.textMedium,
+                  ),
+                ),
+              );
+            }
+
+            return Column(
+              children: requests
+                  .map(
+                    (request) => Padding(
+                      padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+                      child: _JobRequestCard(
+                        request: request,
+                        onReviewed: _refreshRequests,
+                      ),
+                    ),
+                  )
+                  .toList(),
+            );
+          },
         ),
       ],
     );
@@ -554,16 +640,12 @@ class _JobRequestsSection extends StatelessWidget {
 }
 
 class _JobRequestCard extends StatelessWidget {
-  final String price;
-  final String pickup;
-  final String dropoff;
-  final String time;
+  final DriverJobRequest request;
+  final Future<void> Function() onReviewed;
 
   const _JobRequestCard({
-    required this.price,
-    required this.pickup,
-    required this.dropoff,
-    required this.time,
+    required this.request,
+    required this.onReviewed,
   });
 
   @override
@@ -607,7 +689,7 @@ class _JobRequestCard extends StatelessWidget {
                 ),
               ),
               Text(
-                price,
+                request.earnings,
                 style: TextStyle(
                   fontSize: SizeConfig.sp(16),
                   fontWeight: FontWeight.w700,
@@ -630,7 +712,7 @@ class _JobRequestCard extends StatelessWidget {
               ),
               SizedBox(width: SizeConfig.r(8)),
               Text(
-                'Pickup: $pickup',
+                'Pickup: ${request.pickup}',
                 style: TextStyle(
                   fontSize: SizeConfig.sp(13),
                   color: AppColors.textMedium,
@@ -652,7 +734,7 @@ class _JobRequestCard extends StatelessWidget {
               ),
               SizedBox(width: SizeConfig.r(8)),
               Text(
-                'Drop-off: $dropoff',
+                'Drop-off: ${request.dropoff}',
                 style: TextStyle(
                   fontSize: SizeConfig.sp(13),
                   color: AppColors.textMedium,
@@ -671,7 +753,7 @@ class _JobRequestCard extends StatelessWidget {
               ),
               SizedBox(width: SizeConfig.r(6)),
               Text(
-                time,
+                request.timeAndStudents,
                 style: TextStyle(
                   fontSize: SizeConfig.sp(13),
                   color: AppColors.textLight,
@@ -684,8 +766,16 @@ class _JobRequestCard extends StatelessWidget {
             label: 'Review Request',
             height: SizeConfig.r(44),
             borderRadius: SizeConfig.radius,
-            onPressed: () =>
-                Navigator.pushNamed(context, AppRoutes.requestedJobs),
+            onPressed: () async {
+              final result = await Navigator.pushNamed(
+                context,
+                AppRoutes.requestedJobs,
+                arguments: request,
+              );
+              if (result == true) {
+                await onReviewed();
+              }
+            },
           ),
         ],
       ),

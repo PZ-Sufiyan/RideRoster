@@ -46,7 +46,10 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const DriverProfilePage());
 
       case requestedJobs:
-        return MaterialPageRoute(builder: (_) => const RequestedJobsPage());
+        return MaterialPageRoute(
+          settings: settings,
+          builder: (_) => const RequestedJobsPage(),
+        );
 
       case routeDetail:
         return MaterialPageRoute(builder: (_) => const RouteDetailPage());
