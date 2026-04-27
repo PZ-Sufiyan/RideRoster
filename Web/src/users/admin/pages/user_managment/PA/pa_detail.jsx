@@ -136,7 +136,6 @@ const JOB_STATUS_COLORS = {
     Active: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
     Pending: 'bg-amber-50 text-amber-800 border border-amber-200',
 };
-
 function ProfileField({ icon,label, value }) {
     return (
         <div className="flex items-start gap-3 text-sm">
