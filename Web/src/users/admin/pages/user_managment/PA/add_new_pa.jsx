@@ -160,6 +160,9 @@ const AddNewPA = () => {
         firstName: '', lastName: '', email: '', phone: '',
         password: '', confirmPassword: '',
         address: '', contactName: '', contactPhone: '',
+        nationality: '',
+        rightToWork: '',
+        isBritish: false,
     });
 
     const [passportExpiry, setPassportExpiry] = useState('');
@@ -172,6 +175,8 @@ const AddNewPA = () => {
     const [submitAttempted, setSubmitAttempted] = useState(false);
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState('');
+    const [otherCertificates, setOtherCertificates] = useState([]);
+    const [otherCertLabel, setOtherCertLabel] = useState('');
 
     const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
 
@@ -267,6 +272,14 @@ const AddNewPA = () => {
             pushToast('warning', 'Safeguarding expiry is required when a safeguarding certificate is uploaded.');
             return false;
         }
+        if (!form.nationality?.trim()) {
+            pushToast('warning', 'Nationality is required.');
+            return false;
+        }
+        if (!form.isBritish && !form.rightToWork?.trim()) {
+            pushToast('warning', 'Right to Work is required for non-British passport holders.');
+            return false;
+        }
         return true;
     };
 
@@ -304,6 +317,9 @@ const AddNewPA = () => {
                     address: form.address,
                     contactName: form.contactName,
                     contactPhone: form.contactPhone,
+                    nationality: form.nationality,
+                    rightToWork: form.isBritish ? '' : form.rightToWork,
+                    isBritish: form.isBritish,
                 },
                 expiry: {
                     passport: passportExpiry,
@@ -315,6 +331,7 @@ const AddNewPA = () => {
                     [PA_DOCUMENT_TYPES.SAFEGUARDING_CERTIFICATE]: safeguardingDoc?.file,
                     [PA_DOCUMENT_TYPES.BACKGROUND_CHECK]: backgroundCheckDoc?.file,
                     [PA_DOCUMENT_TYPES.FIRST_AID_CERTIFICATE]: firstAidDoc?.file,
+                    other_certificates: otherCertificates,
                 },
             });
             pushToast('success', 'Passenger assistant registered successfully.');
@@ -383,6 +400,45 @@ const AddNewPA = () => {
                         />
                     </div>
                     <FormField label="Residential Address" placeholder="e.g. 123 Main Street, Anytown, USA" value={form.address} onChange={set('address')} />
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <FormField
+                            label="Nationality"
+                            required
+                            placeholder="e.g. British, Pakistani, Indian"
+                            value={form.nationality}
+                            onChange={set('nationality')}
+                            showError={showRequired(form.nationality)}
+                        />
+                        <div className="flex items-end">
+                            <label className="inline-flex items-center gap-2 text-sm font-medium text-gray-700">
+                                <input
+                                    type="checkbox"
+                                    checked={form.isBritish}
+                                    onChange={(e) => {
+                                        const checked = e.target.checked;
+                                        setForm((prev) => ({
+                                            ...prev,
+                                            isBritish: checked,
+                                            nationality: checked ? 'British' : '',
+                                            rightToWork: checked ? '' : prev.rightToWork,
+                                        }));
+                                    }}
+                                    className="w-4 h-4 accent-[#005580]"
+                                />
+                                British passport holder (no right to work needed)
+                            </label>
+                        </div>
+                    </div>
+                    {!form.isBritish && (
+                        <FormField
+                            label="Right to Work"
+                            required
+                            placeholder="Enter right to work code"
+                            value={form.rightToWork}
+                            onChange={set('rightToWork')}
+                            showError={showRequired(form.rightToWork)}
+                        />
+                    )}
                 </div>
             </Section>
 
@@ -520,6 +576,63 @@ const AddNewPA = () => {
                                 onRemove={() => clearLocalDoc(setFirstAidDoc)}
                             />
                         </div>
+                    </div>
+
+                    <div className="rounded-xl border border-gray-200 p-4 space-y-3 bg-white">
+                        <p className="text-sm font-semibold text-gray-800">Other Certificates (multi upload)</p>
+                        <p className="text-xs text-gray-500">
+                            Add optional certificates like English proficiency, epilepsy certificate, etc.
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                            <input
+                                type="text"
+                                value={otherCertLabel}
+                                onChange={(e) => setOtherCertLabel(e.target.value)}
+                                placeholder="Certificate name"
+                                className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm focus:outline-none focus:ring-1 focus:ring-[#005580]"
+                            />
+                            <input
+                                id="paOtherCertificateFile"
+                                type="file"
+                                accept="application/pdf,image/jpeg,image/png,image/webp"
+                                className="w-full px-3 py-2 border border-gray-200 rounded-lg text-sm bg-white"
+                            />
+                            <button
+                                type="button"
+                                className="px-4 py-2.5 bg-gray-100 hover:bg-gray-200 rounded-lg text-sm font-medium transition-colors"
+                                onClick={() => {
+                                    const fileEl = document.getElementById('paOtherCertificateFile');
+                                    const file = fileEl?.files?.[0];
+                                    const label = otherCertLabel.trim();
+                                    if (!file || !label) {
+                                        pushToast('warning', 'Add certificate name and file before adding.');
+                                        return;
+                                    }
+                                    setOtherCertificates((prev) => [...prev, { label, file }]);
+                                    setOtherCertLabel('');
+                                    fileEl.value = '';
+                                }}
+                            >
+                                Add Certificate
+                            </button>
+                        </div>
+
+                        {otherCertificates.length > 0 && (
+                            <div className="space-y-2">
+                                {otherCertificates.map((cert, idx) => (
+                                    <div key={`${cert.label}-${idx}`} className="flex items-center justify-between gap-2 px-3 py-2 bg-gray-50 rounded-lg">
+                                        <span className="text-sm text-gray-700 truncate">{cert.label} - {cert.file?.name}</span>
+                                        <button
+                                            type="button"
+                                            className="text-xs font-medium text-red-600 hover:text-red-700"
+                                            onClick={() => setOtherCertificates((prev) => prev.filter((_, i) => i !== idx))}
+                                        >
+                                            Remove
+                                        </button>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
                     </div>
                 </div>
             </Section>

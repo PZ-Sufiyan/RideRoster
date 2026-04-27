@@ -13,6 +13,7 @@ export const PA_DOCUMENT_TYPES = {
   SAFEGUARDING_CERTIFICATE: 'safeguarding_certificate',
   BACKGROUND_CHECK: 'background_check',
   FIRST_AID_CERTIFICATE: 'first_aid_certificate',
+  OTHER_CERTIFICATE: 'other_certificate',
 }
 
 function cleanString(v) {
@@ -58,6 +59,10 @@ export async function registerPassengerAssistantWithAuthAndRecords({
   if (!cleanString(personal?.firstName)) throw new Error('First name is required.')
   if (!cleanString(personal?.lastName)) throw new Error('Last name is required.')
   if (!cleanString(personal?.phone)) throw new Error('Phone is required.')
+  if (!cleanString(personal?.nationality)) throw new Error('Nationality is required.')
+  if (!personal?.isBritish && !cleanString(personal?.rightToWork)) {
+    throw new Error('Right to Work is required for non-British passport holders.')
+  }
   if (!cleanString(personal?.contactName)) throw new Error('Emergency contact name is required.')
   if (!cleanString(personal?.contactPhone)) throw new Error('Emergency contact phone is required.')
 
@@ -117,6 +122,8 @@ export async function registerPassengerAssistantWithAuthAndRecords({
       profile_picture_url: profilePictureUrl,
       emergency_contact_name: cleanString(personal?.contactName),
       emergency_contact_phone: cleanString(personal?.contactPhone),
+      nationality: cleanString(personal?.nationality),
+      right_to_work_code: personal?.isBritish ? null : toNullableString(personal?.rightToWork),
     }
 
     const { error: paErr } = await supabaseAdmin.from('passenger_assistant').insert(assistantPayload)
@@ -150,6 +157,29 @@ export async function registerPassengerAssistantWithAuthAndRecords({
         file_name: meta.file_name,
         file_url: meta.file_url,
         expiry_date: exp,
+        verified: false,
+      })
+    }
+
+    const otherCertificates = Array.isArray(files?.other_certificates)
+      ? files.other_certificates
+      : []
+    for (const cert of otherCertificates) {
+      if (!cert?.file) continue
+      const label = cleanString(cert.label)
+      const meta = await uploadPassengerAssistantDocument({
+        companyId,
+        assistantId: authUserId,
+        documentType: PA_DOCUMENT_TYPES.OTHER_CERTIFICATE,
+        file: cert.file,
+      })
+      pushUpload(meta)
+      docRows.push({
+        passenger_assistant_id: authUserId,
+        document_type: PA_DOCUMENT_TYPES.OTHER_CERTIFICATE,
+        file_name: label ? `${label} - ${meta.file_name}` : meta.file_name,
+        file_url: meta.file_url,
+        expiry_date: null,
         verified: false,
       })
     }
