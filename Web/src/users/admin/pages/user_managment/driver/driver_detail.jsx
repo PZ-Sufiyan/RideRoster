@@ -155,7 +155,7 @@ function DocumentRow({ title, fileUrl, usesExpiry, expiryDate }) {
     };
 
     return (
-        <div className="flex items-start justify-between gap-3 py-3 border-b border-gray-50 last:border-0">
+        <div className="flex items-start justify-between gap-3 py-3.5 border-b border-gray-100 last:border-0">
             <div className="min-w-0">
                 <p className="text-sm font-semibold text-gray-800">{title}</p>
                 {expLine ? <p className="text-xs text-gray-500 mt-1">{expLine}</p> : null}
@@ -350,9 +350,9 @@ const DriverDetail = () => {
     }
 
     return (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-10">
             {/* ── Driver Header ── */}
-            <div className="bg-white border border-gray-100 rounded-xl px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)]">
+            <div className="bg-white border border-gray-100 rounded-2xl px-6 py-5 sm:px-7 flex flex-col sm:flex-row sm:items-center justify-between gap-5 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)]">
                 <div className="flex items-center gap-4">
                     <div className="relative shrink-0">
                         <img
@@ -364,18 +364,18 @@ const DriverDetail = () => {
                     </div>
                     <div>
                         <div className="flex items-center gap-2 flex-wrap">
-                            <h1 className="text-xl font-bold text-gray-900">{displayName}</h1>
+                            <h1 className="text-2xl font-bold tracking-tight text-gray-900">{displayName}</h1>
                             <span className={`text-xs font-medium px-2.5 py-0.5 rounded-full ${statusPillClass(driver.status)}`}>
                                 {formatStatusLabel(driver.status)}
                             </span>
                         </div>
-                        <p className="text-sm text-gray-400 mt-0.5">Driver ID: {driver.id}</p>
+                        <p className="text-sm text-gray-500 mt-1">Driver ID: {driver.id}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
-                        className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                        className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                     >
                         <MdMessage size={16} />
                         Send Message
@@ -383,7 +383,7 @@ const DriverDetail = () => {
                     <button
                         type="button"
                         onClick={() => navigate('/admin/users/drivers')}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm"
+                        className="flex items-center gap-2 px-4 py-2.5 bg-[#005580] text-white rounded-xl text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm"
                     >
                         <MdEdit size={16} />
                         Edit Profile
@@ -392,27 +392,32 @@ const DriverDetail = () => {
             </div>
 
             {/* ── Driver Details + Performance ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-                <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)]">
-                    <h2 className="text-sm font-bold text-gray-800 mb-4">Driver Details</h2>
-                    <div className="space-y-3 text-sm">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)]">
+                    <h2 className="text-base font-bold text-gray-900 mb-5">Driver Details</h2>
+                    <div className="space-y-3.5 text-sm">
                         {[
                             { label: 'Email Address', value: driver.email },
                             { label: 'Phone Number', value: driver.phone },
                             { label: 'Address', value: driver.residential_address },
                             { label: 'Licence number', value: driver.license_no },
+                            { label: 'Nationality', value: driver.nationality },
+                            { label: 'Right to work code', value: driver.right_to_work_code },
+                            { label: 'DBS update ID', value: driver.dbs_service_update_id },
+                            { label: 'Emergency contact', value: driver.emergency_contact_name },
+                            { label: 'Emergency phone', value: driver.emergency_contact_phone },
                             { label: 'Member Since', value: formatDate(driver.created_at) },
                         ].map(({ label, value }) => (
-                            <div key={label} className="flex justify-between items-start gap-4">
-                                <span className="text-gray-400 shrink-0">{label}</span>
+                            <div key={label} className="flex justify-between items-start gap-5">
+                                <span className="text-gray-500 shrink-0">{label}</span>
                                 <span className="text-gray-800 font-medium text-right wrap-break-word">{value || '—'}</span>
                             </div>
                         ))}
                     </div>
                 </div>
 
-                <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)]">
-                    <h2 className="text-sm font-bold text-gray-800 mb-4">Performance Overview</h2>
+                <div className="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)]">
+                    <h2 className="text-base font-bold text-gray-900 mb-5">Performance Overview</h2>
                     <div className="grid grid-cols-3 divide-x divide-gray-100">
                         <div className="flex flex-col items-center gap-1 px-4 first:pl-0">
                             <span className="text-3xl font-bold text-gray-900">{jobs.length}</span>
@@ -431,15 +436,15 @@ const DriverDetail = () => {
             </div>
 
             {/* ── Compliance (left) + Job History (right) ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
                 {/* Compliance & Documents — PA-style list */}
-                <div className="bg-white border border-gray-100 rounded-xl p-5 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)]">
-                    <h2 className="text-sm font-bold text-gray-800 mb-1">Compliance &amp; Documents</h2>
-                    <p className="text-xs text-gray-400 mb-4">Driver and vehicle files from registration (same types as Add Driver).</p>
+                <div className="bg-white border border-gray-100 rounded-2xl p-5 sm:p-6 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)]">
+                    <h2 className="text-base font-bold text-gray-900 mb-1">Compliance &amp; Documents</h2>
+                    <p className="text-xs text-gray-500 mb-5">Driver and vehicle files from registration (same types as Add Driver).</p>
 
-                    <div className="space-y-6">
+                    <div className="space-y-7">
                         <div>
-                            <h3 className="text-xs font-bold text-[#005580] uppercase tracking-wide mb-2">Driver documents</h3>
+                            <h3 className="text-xs font-bold text-[#005580] uppercase tracking-wide mb-3">Driver documents</h3>
                             {driverDocs.length === 0 ? (
                                 <p className="text-sm text-gray-500">No driver documents on file.</p>
                             ) : (
@@ -458,9 +463,9 @@ const DriverDetail = () => {
                         </div>
 
                         <div>
-                            <h3 className="text-xs font-bold text-[#005580] uppercase tracking-wide mb-2">Vehicle</h3>
+                            <h3 className="text-xs font-bold text-[#005580] uppercase tracking-wide mb-3">Vehicle</h3>
                             {vehicle ? (
-                                <div className="rounded-xl border border-gray-100 p-4 mb-3 text-sm space-y-2 bg-gray-50/40">
+                                <div className="rounded-xl border border-gray-100 p-4 mb-4 text-sm space-y-2.5 bg-gray-50/40">
                                     <div className="flex justify-between gap-4">
                                         <span className="text-gray-500">Taxi licence plate</span>
                                         <span className="font-medium text-gray-800 text-right">
@@ -471,6 +476,38 @@ const DriverDetail = () => {
                                         <span className="text-gray-500">Seating capacity</span>
                                         <span className="font-medium text-gray-800">
                                             {vehicle.seating_capacity != null ? `${vehicle.seating_capacity} passengers` : '—'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-gray-500">Registration number</span>
+                                        <span className="font-medium text-gray-800 text-right">{vehicle.registration_number || '—'}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-gray-500">Make / model</span>
+                                        <span className="font-medium text-gray-800 text-right">
+                                            {[vehicle.make, vehicle.model].filter(Boolean).join(' ') || '—'}
+                                        </span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-gray-500">Vehicle colour</span>
+                                        <span className="font-medium text-gray-800 text-right">{vehicle.vehicle_colour || '—'}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-gray-500">Year of first registration</span>
+                                        <span className="font-medium text-gray-800 text-right">{formatDate(vehicle.year_of_first_registration)}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-gray-500">Licensing type</span>
+                                        <span className="font-medium text-gray-800 text-right">{vehicle.licensing_type || '—'}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-gray-500">Body style</span>
+                                        <span className="font-medium text-gray-800 text-right">{vehicle.body_style || '—'}</span>
+                                    </div>
+                                    <div className="flex justify-between gap-4">
+                                        <span className="text-gray-500">Wheelchair accessible</span>
+                                        <span className="font-medium text-gray-800 text-right">
+                                            {vehicle.wheelchair_accessible == null ? '—' : vehicle.wheelchair_accessible ? 'Yes' : 'No'}
                                         </span>
                                     </div>
                                     {vehicle.vehicle_photo_url ? (
@@ -510,11 +547,11 @@ const DriverDetail = () => {
                 </div>
 
                 {/* Job History */}
-                <div className="bg-white border border-gray-100 rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-hidden">
+                <div className="bg-white border border-gray-100 rounded-2xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-hidden">
                     <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
                         <div>
-                            <h2 className="text-sm font-bold text-gray-800">Job History</h2>
-                            <p className="text-[11px] text-gray-400 mt-0.5">From jobs where you are assigned driver</p>
+                            <h2 className="text-base font-bold text-gray-900">Job History</h2>
+                            <p className="text-[11px] text-gray-500 mt-0.5">From jobs where you are assigned driver</p>
                         </div>
                         <button
                             type="button"

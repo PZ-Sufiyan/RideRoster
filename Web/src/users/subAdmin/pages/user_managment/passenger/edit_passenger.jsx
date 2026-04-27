@@ -29,6 +29,7 @@ const EditPassenger = () => {
         schoolPostcode: 'SP4 8RT',
         returnTime: '15:30',
         wheelchair: 'yes',
+        harness: 'no',
         notes: 'Passenger needs assistance with seatbelt. Prefers sitting in the middle row.',
     });
     const [toasts, setToasts] = useState([]);
@@ -231,6 +232,18 @@ const EditPassenger = () => {
                                     <span className="text-[13px] text-gray-700">No</span>
                                 </label>
                             </div>
+
+                            <p className="text-[12px] font-semibold text-gray-700 mt-4 mb-3">Harness Requirement</p>
+                            <div className="flex items-center gap-6">
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="harness" checked={form.harness === 'yes'} onChange={() => handleChange('harness', 'yes')} className="w-4 h-4 accent-[#004D6D]" />
+                                    <span className="text-[13px] text-gray-700">Yes</span>
+                                </label>
+                                <label className="flex items-center gap-2 cursor-pointer">
+                                    <input type="radio" name="harness" checked={form.harness === 'no'} onChange={() => handleChange('harness', 'no')} className="w-4 h-4 accent-[#004D6D]" />
+                                    <span className="text-[13px] text-gray-700">No</span>
+                                </label>
+                            </div>
                         </div>
 
                         <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-5">
@@ -281,6 +294,12 @@ const EditPassenger = () => {
                                     <span className="text-[12px] text-gray-600">Wheelchair Access</span>
                                     <span className={`text-[12px] font-semibold ${form.wheelchair === 'yes' ? 'text-blue-500' : 'text-gray-400'}`}>
                                         {form.wheelchair === 'yes' ? 'Required' : 'Not Required'}
+                                    </span>
+                                </div>
+                                <div className="flex items-center justify-between">
+                                    <span className="text-[12px] text-gray-600">Harness Access</span>
+                                    <span className={`text-[12px] font-semibold ${form.harness === 'yes' ? 'text-blue-500' : 'text-gray-400'}`}>
+                                        {form.harness === 'yes' ? 'Required' : 'Not Required'}
                                     </span>
                                 </div>
                                 <div>

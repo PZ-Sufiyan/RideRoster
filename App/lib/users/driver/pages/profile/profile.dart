@@ -1,11 +1,29 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
+import '../../../../providers/auth_provider.dart';
+import '../../../../providers/driver_profile_provider.dart';
+import '../../../../providers/job_provider.dart';
 import '../../../../routes/app_routes.dart';
+import '../../../../users/driver/models/driver_profile_model.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 
-class DriverProfilePage extends StatelessWidget {
+class DriverProfilePage extends StatefulWidget {
   const DriverProfilePage({super.key});
+
+  @override
+  State<DriverProfilePage> createState() => _DriverProfilePageState();
+}
+
+class _DriverProfilePageState extends State<DriverProfilePage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<DriverProfileProvider>().loadProfile();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -13,32 +31,65 @@ class DriverProfilePage extends StatelessWidget {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: SafeArea(
-        child: Column(
-          children: [
-            _buildAppBar(context),
-            Expanded(
-              child: SingleChildScrollView(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    _buildProfileHeader(),
-                    _buildDivider(),
-                    _buildPersonalInfo(),
-                    _buildDivider(),
-                    _buildProfessionalDetails(),
-                    _buildDivider(),
-                    _buildRequiredDocuments(),
-                    _buildDivider(),
-                    _buildCurrentRoute(context),
-                    _buildDivider(),
-                    _buildQuickActions(context),
-                    _buildDivider(),
-                    _buildSettingsList(context),
-                  ],
-                ),
+        child: Consumer<DriverProfileProvider>(
+          builder: (context, provider, _) {
+            if (provider.isLoading && !provider.hasProfile) {
+              return const Center(child: CircularProgressIndicator());
+            }
+
+            if (provider.error != null && !provider.hasProfile) {
+              return _ProfileErrorState(
+                message: provider.error!,
+                onRetry: () => context
+                    .read<DriverProfileProvider>()
+                    .loadProfile(forceRefresh: true),
+              );
+            }
+
+            final profile = provider.profile;
+            if (profile == null) {
+              return _ProfileErrorState(
+                message: 'Profile not available right now.',
+                onRetry: () => context
+                    .read<DriverProfileProvider>()
+                    .loadProfile(forceRefresh: true),
+              );
+            }
+
+            return RefreshIndicator(
+              onRefresh: () => context
+                  .read<DriverProfileProvider>()
+                  .loadProfile(forceRefresh: true),
+              child: Column(
+                children: [
+                  _buildAppBar(context),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildProfileHeader(profile),
+                          _buildDivider(),
+                          _buildPersonalInfo(profile),
+                          _buildDivider(),
+                          _buildProfessionalDetails(profile),
+                          _buildDivider(),
+                          _buildRequiredDocuments(profile),
+                          _buildDivider(),
+                          _buildCurrentRoute(context),
+                          _buildDivider(),
+                          _buildQuickActions(context),
+                          _buildDivider(),
+                          _buildSettingsList(context),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );
@@ -77,46 +128,24 @@ class DriverProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildProfileHeader() {
+  Widget _buildProfileHeader(DriverProfileModel profile) {
     return Padding(
       padding: EdgeInsets.symmetric(vertical: SizeConfig.r(20)),
       child: Center(
         child: Column(
           children: [
-            Stack(
-              children: [
-                CircleAvatar(
-                  radius: SizeConfig.r(44),
-                  backgroundColor: AppColors.primaryLight,
-                  child: Icon(
-                    Icons.person,
-                    size: SizeConfig.r(48),
-                    color: AppColors.primary,
-                  ),
-                ),
-                Positioned(
-                  bottom: 0,
-                  right: 0,
-                  child: Container(
-                    width: SizeConfig.r(26),
-                    height: SizeConfig.r(26),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFF0284C7),
-                      shape: BoxShape.circle,
-                      border: Border.all(color: Colors.white, width: 2),
-                    ),
-                    child: Icon(
-                      Icons.edit,
-                      size: SizeConfig.r(13),
-                      color: Colors.white,
-                    ),
-                  ),
-                ),
-              ],
+            CircleAvatar(
+              radius: SizeConfig.r(44),
+              backgroundColor: AppColors.primaryLight,
+              child: Icon(
+                Icons.person,
+                size: SizeConfig.r(48),
+                color: AppColors.primary,
+              ),
             ),
             SizedBox(height: SizeConfig.r(12)),
             Text(
-              'Marcus Johnson',
+              profile.fullName,
               style: TextStyle(
                 fontSize: SizeConfig.sp(18),
                 fontWeight: FontWeight.w700,
@@ -124,23 +153,9 @@ class DriverProfilePage extends StatelessWidget {
               ),
             ),
             SizedBox(height: SizeConfig.r(8)),
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.r(14),
-                vertical: SizeConfig.r(4),
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.success,
-                borderRadius: BorderRadius.circular(SizeConfig.r(20)),
-              ),
-              child: Text(
-                '● Active',
-                style: TextStyle(
-                  fontSize: SizeConfig.sp(12),
-                  fontWeight: FontWeight.w600,
-                  color: Colors.white,
-                ),
-              ),
+            _StatusBadge(
+              label: profile.statusLabel,
+              color: profile.isActive ? AppColors.success : AppColors.warning,
             ),
           ],
         ),
@@ -148,53 +163,45 @@ class DriverProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildPersonalInfo() {
+  Widget _buildPersonalInfo(DriverProfileModel profile) {
     final rows = [
-      _InfoRow('Full Name', 'Marcus Johnson'),
-      _InfoRow('Phone Number', '+92 300 1234567'),
-      _InfoRow('Email', 'm_johnson@email.com'),
-      _InfoRow('Passport Number', '42101-1234567-8'),
-      _InfoRow('Date of Birth', '15 Aug 1985'),
-      _InfoRow('Emergency Contact', '+92 301 9876543'),
+      _InfoRow('Full Name', profile.fullName),
+      _InfoRow('Phone Number', profile.phone),
+      _InfoRow('Email', profile.email),
+      _InfoRow('Address', profile.residentialAddress),
+      _InfoRow(
+        'Passport Number',
+        profile.passportNumber == null || profile.passportNumber!.isEmpty
+            ? 'Not provided'
+            : profile.passportNumber!,
+      ),
+      _InfoRow(
+        'Emergency Contact',
+        '${profile.emergencyContactName} (${profile.emergencyContactPhone})',
+      ),
+      _InfoRow(
+        'Right To Work Code',
+        profile.rightToWorkCode == null || profile.rightToWorkCode!.isEmpty
+            ? 'Not provided'
+            : profile.rightToWorkCode!,
+      ),
     ];
     return _Section(
       title: 'Personal Information',
-      trailingIcon: Icon(
-        Icons.edit,
-        size: SizeConfig.r(16),
-        color: const Color(0xFF0284C7),
-      ),
       child: _InfoTable(rows: rows),
     );
   }
 
-  Widget _buildProfessionalDetails() {
+  Widget _buildProfessionalDetails(DriverProfileModel profile) {
+    final vehicle = profile.vehicle;
     return _Section(
       title: 'Professional Details',
       child: Column(
         children: [
           _InfoRowWidget(
             label: 'License Number',
-            valueWidget: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  'DL-123456789',
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(13),
-                    color: AppColors.textDark,
-                  ),
-                ),
-                SizedBox(width: SizeConfig.r(6)),
-                _StatusBadge(label: 'Verified', color: AppColors.success),
-              ],
-            ),
-          ),
-          _dividerLine(),
-          _InfoRowWidget(
-            label: 'License Expiry',
             valueWidget: Text(
-              '15 Dec 2025',
+              profile.licenseNo.isEmpty ? '-' : profile.licenseNo,
               style: TextStyle(
                 fontSize: SizeConfig.sp(13),
                 color: AppColors.textDark,
@@ -205,7 +212,7 @@ class DriverProfilePage extends StatelessWidget {
           _InfoRowWidget(
             label: 'Vehicle Assigned',
             valueWidget: Text(
-              'Toyota Hiace',
+              vehicle?.displayName ?? 'Not assigned',
               style: TextStyle(
                 fontSize: SizeConfig.sp(13),
                 color: AppColors.textDark,
@@ -216,7 +223,20 @@ class DriverProfilePage extends StatelessWidget {
           _InfoRowWidget(
             label: 'Plate Number',
             valueWidget: Text(
-              'ABC-123',
+              vehicle?.taxiLicensePlateNumber.isNotEmpty == true
+                  ? vehicle!.taxiLicensePlateNumber
+                  : 'Not assigned',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(13),
+                color: AppColors.textDark,
+              ),
+            ),
+          ),
+          _dividerLine(),
+          _InfoRowWidget(
+            label: 'Registration #',
+            valueWidget: Text(
+              vehicle?.registrationNumber ?? 'Not provided',
               style: TextStyle(
                 fontSize: SizeConfig.sp(13),
                 color: AppColors.textDark,
@@ -228,109 +248,186 @@ class DriverProfilePage extends StatelessWidget {
     );
   }
 
-  Widget _buildRequiredDocuments() {
+  Widget _buildRequiredDocuments(DriverProfileModel profile) {
+    final driverTypes = profile.driverDocuments
+        .map((d) => d.documentType.toLowerCase())
+        .toSet();
+    final vehicleTypes = profile.vehicleDocuments
+        .map((d) => d.documentType.toLowerCase())
+        .toSet();
+
+    bool hasAny(Iterable<String> keys, Set<String> available) {
+      for (final key in keys) {
+        if (available.contains(key.toLowerCase())) return true;
+      }
+      return false;
+    }
+
     final docs = [
-      _DocData(icon: Icons.credit_card, label: 'CNIC / ID', status: 'Verified'),
-      _DocData(icon: Icons.description_outlined, label: 'Driver License', status: 'Verified'),
-      _DocData(icon: Icons.directions_car_outlined, label: 'Vehicle Ownership', status: 'Pending'),
-      _DocData(icon: Icons.person_outline, label: 'Profile Photo', status: 'Verified'),
+      _DocData(
+        icon: Icons.credit_card,
+        label: 'Passport / ID',
+        status: hasAny(const ['passport', 'passport_number'], driverTypes)
+            ? 'Uploaded'
+            : 'Missing',
+      ),
+      _DocData(
+        icon: Icons.description_outlined,
+        label: 'Driver License',
+        status:
+            hasAny(const [
+              'driving_license_front',
+              'driving_license_back',
+            ], driverTypes)
+            ? 'Uploaded'
+            : 'Missing',
+      ),
+      _DocData(
+        icon: Icons.shield_outlined,
+        label: 'DBS Certificate',
+        status:
+            hasAny(const [
+              'dbs_certificate_front',
+              'dbs_certificate_back',
+            ], driverTypes)
+            ? 'Uploaded'
+            : 'Missing',
+      ),
+      _DocData(
+        icon: Icons.directions_car_outlined,
+        label: 'Vehicle Documents',
+        status: vehicleTypes.isNotEmpty ? 'Uploaded' : 'Missing',
+      ),
     ];
+
     return _Section(
       title: 'Required Documents',
-      child: Column(
-        children: docs.map((d) => _DocRow(data: d)).toList(),
-      ),
+      child: Column(children: docs.map((d) => _DocRow(data: d)).toList()),
     );
   }
 
   Widget _buildCurrentRoute(BuildContext context) {
     return _Section(
       title: 'Current Route',
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
+      child: Consumer<JobProvider>(
+        builder: (context, jobProvider, _) {
+          final job = jobProvider.job;
+          if (job == null) {
+            return Text(
+              'No active route assigned.',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(13),
+                color: AppColors.textMedium,
+              ),
+            );
+          }
+
+          return Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(
-                Icons.location_on,
-                color: const Color(0xFF0284C7),
-                size: SizeConfig.r(20),
-              ),
-              SizedBox(width: SizeConfig.r(10)),
-              Column(
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    'Green Valley School',
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(14),
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textDark,
-                    ),
+                  Icon(
+                    Icons.location_on,
+                    color: const Color(0xFF0284C7),
+                    size: SizeConfig.r(20),
                   ),
-                  Text(
-                    'Zone A - North Campus',
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(12),
-                      color: AppColors.textLight,
+                  SizedBox(width: SizeConfig.r(10)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          job.routeNumber.isEmpty
+                              ? 'Current Job'
+                              : job.routeNumber,
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(14),
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        Text(
+                          job.dropoffLocation.isEmpty
+                              ? 'Drop-off pending'
+                              : job.dropoffLocation,
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(12),
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-            ],
-          ),
-          SizedBox(height: SizeConfig.r(10)),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.access_time,
-                color: const Color(0xFF0284C7),
-                size: SizeConfig.r(20),
-              ),
-              SizedBox(width: SizeConfig.r(10)),
-              Column(
+              SizedBox(height: SizeConfig.r(10)),
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    '7:00 AM - 8:30 AM',
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(14),
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textDark,
-                    ),
+                  Icon(
+                    Icons.access_time,
+                    color: const Color(0xFF0284C7),
+                    size: SizeConfig.r(20),
                   ),
-                  Text(
-                    'Next pickup in 45 minutes',
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(12),
-                      color: AppColors.textLight,
+                  SizedBox(width: SizeConfig.r(10)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'Next: ${job.nextPickupTime}',
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(14),
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                        Text(
+                          'PA: ${job.paName}',
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(12),
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
+              SizedBox(height: SizeConfig.r(14)),
+              AppButton(
+                label: 'View Full Job Details',
+                height: SizeConfig.r(46),
+                borderRadius: SizeConfig.radius,
+                onPressed: () =>
+                    Navigator.pushNamed(context, AppRoutes.routeDetail),
+              ),
             ],
-          ),
-          SizedBox(height: SizeConfig.r(14)),
-          AppButton(
-            label: 'View Full Job Details',
-            height: SizeConfig.r(46),
-            borderRadius: SizeConfig.radius,
-            onPressed: () {},
-          ),
-        ],
+          );
+        },
       ),
     );
   }
 
   Widget _buildQuickActions(BuildContext context) {
     final actions = [
-      _QuickAction(icon: Icons.person_outline, label: 'Profile', color: const Color(0xFF0284C7)),
-      _QuickAction(icon: Icons.description_outlined, label: 'Doc', color: AppColors.success),
-      _QuickAction(icon: Icons.check_circle_outline, label: 'Available', color: AppColors.warning),
-      _QuickAction(icon: Icons.checklist, label: 'Checklist', color: const Color(0xFF7C3AED)),
-      _QuickAction(icon: Icons.warning_amber_rounded, label: 'SOS', color: AppColors.error),
+      _QuickAction(
+        icon: Icons.description_outlined,
+        label: 'Doc',
+        color: AppColors.success,
+      ),
+      _QuickAction(
+        icon: Icons.checklist,
+        label: 'Checklist',
+        color: const Color(0xFF7C3AED),
+      ),
+      _QuickAction(
+        icon: Icons.warning_amber_rounded,
+        label: 'SOS',
+        color: AppColors.error,
+      ),
     ];
     return _Section(
       title: 'Quick Actions',
@@ -342,8 +439,16 @@ class DriverProfilePage extends StatelessWidget {
                 onTap: () {
                   if (a.label == 'Checklist') {
                     Navigator.pushNamed(context, AppRoutes.vehicleChecklist);
-                  } else if (a.label == 'SOS') {
+                    return;
+                  }
+                  if (a.label == 'SOS') {
                     Navigator.pushNamed(context, AppRoutes.sos);
+                    return;
+                  }
+                  if (a.label == 'Refresh') {
+                    context.read<DriverProfileProvider>().loadProfile(
+                      forceRefresh: true,
+                    );
                   }
                 },
                 child: Column(
@@ -356,7 +461,11 @@ class DriverProfilePage extends StatelessWidget {
                         color: a.color.withValues(alpha: 0.12),
                         shape: BoxShape.circle,
                       ),
-                      child: Icon(a.icon, color: a.color, size: SizeConfig.r(22)),
+                      child: Icon(
+                        a.icon,
+                        color: a.color,
+                        size: SizeConfig.r(22),
+                      ),
                     ),
                     SizedBox(height: SizeConfig.r(6)),
                     Text(
@@ -410,7 +519,15 @@ class DriverProfilePage extends StatelessWidget {
             label: 'Logout',
             iconColor: AppColors.error,
             labelColor: AppColors.error,
-            onTap: () {},
+            onTap: () async {
+              await context.read<AuthProvider>().logout();
+              if (!context.mounted) return;
+              Navigator.pushNamedAndRemoveUntil(
+                context,
+                AppRoutes.driverLogin,
+                (route) => false,
+              );
+            },
           ),
           SizedBox(height: SizeConfig.r(24)),
         ],
@@ -427,20 +544,53 @@ class DriverProfilePage extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Section wrapper
-// ─────────────────────────────────────────────────────────────────────────────
+class _ProfileErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ProfileErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(SizeConfig.r(20)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              size: SizeConfig.r(42),
+              color: AppColors.error,
+            ),
+            SizedBox(height: SizeConfig.r(12)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(13),
+                color: AppColors.textMedium,
+              ),
+            ),
+            SizedBox(height: SizeConfig.r(14)),
+            AppButton(
+              label: 'Retry',
+              onPressed: onRetry,
+              height: SizeConfig.r(42),
+              borderRadius: SizeConfig.radius,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
 
 class _Section extends StatelessWidget {
   final String title;
   final Widget child;
-  final Widget? trailingIcon;
 
-  const _Section({
-    required this.title,
-    required this.child,
-    this.trailingIcon,
-  });
+  const _Section({required this.title, required this.child});
 
   @override
   Widget build(BuildContext context) {
@@ -453,19 +603,13 @@ class _Section extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                title,
-                style: TextStyle(
-                  fontSize: SizeConfig.sp(15),
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textDark,
-                ),
-              ),
-              if (trailingIcon != null) trailingIcon!,
-            ],
+          Text(
+            title,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(15),
+              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
+            ),
           ),
           SizedBox(height: SizeConfig.r(12)),
           child,
@@ -474,10 +618,6 @@ class _Section extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Info table (label + value rows)
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _InfoRow {
   final String label;
@@ -493,9 +633,9 @@ class _InfoTable extends StatelessWidget {
   Widget build(BuildContext context) {
     SizeConfig.init(context);
     return Column(
-      children: rows.asMap().entries.map((e) {
-        final i = e.key;
-        final row = e.value;
+      children: rows.asMap().entries.map((entry) {
+        final i = entry.key;
+        final row = entry.value;
         return Column(
           children: [
             Padding(
@@ -503,19 +643,25 @@ class _InfoTable extends StatelessWidget {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    row.label,
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(13),
-                      color: AppColors.textLight,
+                  Expanded(
+                    child: Text(
+                      row.label,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(13),
+                        color: AppColors.textLight,
+                      ),
                     ),
                   ),
-                  Text(
-                    row.value,
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(13),
-                      color: AppColors.textDark,
-                      fontWeight: FontWeight.w500,
+                  SizedBox(width: SizeConfig.r(8)),
+                  Expanded(
+                    child: Text(
+                      row.value,
+                      textAlign: TextAlign.right,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(13),
+                        color: AppColors.textDark,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
                   ),
                 ],
@@ -530,7 +676,6 @@ class _InfoTable extends StatelessWidget {
   }
 }
 
-// Row with label on left and arbitrary widget on right
 class _InfoRowWidget extends StatelessWidget {
   final String label;
   final Widget valueWidget;
@@ -552,22 +697,22 @@ class _InfoRowWidget extends StatelessWidget {
               color: AppColors.textLight,
             ),
           ),
-          valueWidget,
+          Flexible(child: valueWidget),
         ],
       ),
     );
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Required Documents
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _DocData {
   final IconData icon;
   final String label;
   final String status;
-  const _DocData({required this.icon, required this.label, required this.status});
+  const _DocData({
+    required this.icon,
+    required this.label,
+    required this.status,
+  });
 }
 
 class _DocRow extends StatelessWidget {
@@ -577,7 +722,7 @@ class _DocRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     SizeConfig.init(context);
-    final isPending = data.status == 'Pending';
+    final isMissing = data.status == 'Missing';
     return Padding(
       padding: EdgeInsets.symmetric(vertical: SizeConfig.r(8)),
       child: Row(
@@ -608,17 +753,13 @@ class _DocRow extends StatelessWidget {
           ),
           _StatusBadge(
             label: data.status,
-            color: isPending ? AppColors.warning : AppColors.success,
+            color: isMissing ? AppColors.warning : AppColors.success,
           ),
         ],
       ),
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Reusable widgets
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _StatusBadge extends StatelessWidget {
   final String label;
@@ -654,7 +795,11 @@ class _QuickAction {
   final IconData icon;
   final String label;
   final Color color;
-  const _QuickAction({required this.icon, required this.label, required this.color});
+  const _QuickAction({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
 }
 
 class _SettingsRow extends StatelessWidget {

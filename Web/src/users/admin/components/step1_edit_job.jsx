@@ -81,9 +81,11 @@ const Step1EditJob = ({ setToasts }) => {
                                     onChange={handleChange}
                                     className={fieldClass(submitAttempted && !step1Draft.jobType.trim()) + ' appearance-none cursor-pointer'}
                                 >
-                                    <option>Regular Contract</option>
-                                    <option>One-off Trip</option>
-                                    <option>Emergency Shuttle</option>
+                                    <option>School Contract</option>
+                                    <option>College Contract</option>
+                                    <option>Centre Contract</option>
+                                    <option>Ad Hoc Contract</option>
+                                    <option>All Year Round Contract</option>
                                 </select>
                                 <MdKeyboardArrowDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
                             </div>

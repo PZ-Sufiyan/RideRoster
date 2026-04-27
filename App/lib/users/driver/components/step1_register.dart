@@ -6,11 +6,7 @@ import '../../../../utils/size_confg.dart';
 import 'register_widgets.dart';
 
 class Step1Register extends StatefulWidget {
-  const Step1Register({
-    super.key,
-    required this.data,
-    required this.onNext,
-  });
+  const Step1Register({super.key, required this.data, required this.onNext});
 
   final DriverRegisterData data;
   final VoidCallback onNext;
@@ -33,21 +29,37 @@ class _Step1RegisterState extends State<Step1Register> {
   late final TextEditingController _emergencyContactPhoneCtrl;
   late final TextEditingController _passportNumberCtrl;
   late final TextEditingController _rightToWorkCodeCtrl;
+  late final TextEditingController _nationalityCtrl;
   final _scrollCtrl = ScrollController();
   final _companyFieldKey = GlobalKey();
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  String _countryCode = '+1';
+  String _countryCode = '+44';
   bool _isLoadingCompanies = false;
   String? _companyLoadError;
   String? _formError;
   final List<String> _companyOptions = [];
   final Map<String, String> _companyNameToId = {};
 
+  /// true  → driver is British (nationality locked, right-to-work hidden)
+  /// false → driver must type nationality and may enter right-to-work code
+  bool _isBritish = false;
+
   static const List<String> _countryCodes = [
-    '+1', '+44', '+92', '+91', '+61', '+49', '+33', '+971', '+966', '+20',
+    '+1',
+    '+44',
+    '+92',
+    '+91',
+    '+61',
+    '+49',
+    '+33',
+    '+971',
+    '+966',
+    '+20',
   ];
+
+  // ── Init / dispose ─────────────────────────────────────────────────────────
 
   @override
   void initState() {
@@ -55,39 +67,82 @@ class _Step1RegisterState extends State<Step1Register> {
     _firstNameCtrl = TextEditingController(text: widget.data.firstName);
     _lastNameCtrl = TextEditingController(text: widget.data.lastName);
     _passwordCtrl = TextEditingController(text: widget.data.password);
-    _confirmPasswordCtrl =
-        TextEditingController(text: widget.data.confirmPassword);
+    _confirmPasswordCtrl = TextEditingController(
+      text: widget.data.confirmPassword,
+    );
     _emailCtrl = TextEditingController(text: widget.data.email);
     _companyCtrl = TextEditingController(text: widget.data.companyName);
     _companyFocusNode = FocusNode();
     _mobileCtrl = TextEditingController(text: widget.data.mobileNumber);
-    _residentialAddressCtrl =
-        TextEditingController(text: widget.data.residentialAddress);
-    _emergencyContactNameCtrl =
-        TextEditingController(text: widget.data.emergencyContactName);
-    _emergencyContactPhoneCtrl =
-        TextEditingController(text: widget.data.emergencyContactPhone);
-    _passportNumberCtrl = TextEditingController(text: widget.data.passportNumber);
-    _rightToWorkCodeCtrl =
-        TextEditingController(text: widget.data.rightToWorkCode);
+    _residentialAddressCtrl = TextEditingController(
+      text: widget.data.residentialAddress,
+    );
+    _emergencyContactNameCtrl = TextEditingController(
+      text: widget.data.emergencyContactName,
+    );
+    _emergencyContactPhoneCtrl = TextEditingController(
+      text: widget.data.emergencyContactPhone,
+    );
+    _passportNumberCtrl = TextEditingController(
+      text: widget.data.passportNumber,
+    );
+    _rightToWorkCodeCtrl = TextEditingController(
+      text: widget.data.rightToWorkCode,
+    );
     _countryCode = widget.data.countryCode;
     _companyFocusNode.addListener(_onCompanyFocusChange);
+
+    // Restore nationality state
+    final savedNationality = widget.data.nationality;
+    if (savedNationality == 'British') {
+      _isBritish = true;
+      _nationalityCtrl = TextEditingController(text: 'British');
+    } else {
+      _isBritish = false;
+      _nationalityCtrl = TextEditingController(text: savedNationality);
+    }
+
     _loadCompanies();
   }
 
+  @override
+  void dispose() {
+    _firstNameCtrl.dispose();
+    _lastNameCtrl.dispose();
+    _passwordCtrl.dispose();
+    _confirmPasswordCtrl.dispose();
+    _emailCtrl.dispose();
+    _companyCtrl.dispose();
+    _companyFocusNode.removeListener(_onCompanyFocusChange);
+    _companyFocusNode.dispose();
+    _mobileCtrl.dispose();
+    _residentialAddressCtrl.dispose();
+    _emergencyContactNameCtrl.dispose();
+    _emergencyContactPhoneCtrl.dispose();
+    _passportNumberCtrl.dispose();
+    _rightToWorkCodeCtrl.dispose();
+    _nationalityCtrl.dispose();
+    _scrollCtrl.dispose();
+    super.dispose();
+  }
+
+  // ── Company autocomplete helpers ───────────────────────────────────────────
+
   void _onCompanyFocusChange() {
     if (_companyFocusNode.hasFocus) {
-      // Allow keyboard animation to start before ensuring visibility.
-      Future.delayed(const Duration(milliseconds: 220), _bringCompanyFieldIntoView);
+      Future.delayed(
+        const Duration(milliseconds: 220),
+        _bringCompanyFieldIntoView,
+      );
     }
   }
 
   void _bringCompanyFieldIntoView() {
     if (!mounted) return;
-    final context = _companyFieldKey.currentContext;
-    if (context == null) return;
+    final ctx = _companyFieldKey.currentContext;
+    if (ctx == null) return;
     Scrollable.ensureVisible(
-      context,
+      ctx,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOut,
       alignment: 0.15,
@@ -105,7 +160,6 @@ class _Step1RegisterState extends State<Step1Register> {
           .select('id,company_name')
           .order('company_name');
       if (!mounted) return;
-
       _companyOptions.clear();
       _companyNameToId.clear();
       for (final row in (rows as List)) {
@@ -125,34 +179,37 @@ class _Step1RegisterState extends State<Step1Register> {
     }
   }
 
-  @override
-  void dispose() {
-    _firstNameCtrl.dispose();
-    _lastNameCtrl.dispose();
-    _passwordCtrl.dispose();
-    _confirmPasswordCtrl.dispose();
-    _emailCtrl.dispose();
-    _companyCtrl.dispose();
-    _companyFocusNode.dispose();
-    _mobileCtrl.dispose();
-    _residentialAddressCtrl.dispose();
-    _emergencyContactNameCtrl.dispose();
-    _emergencyContactPhoneCtrl.dispose();
-    _passportNumberCtrl.dispose();
-    _rightToWorkCodeCtrl.dispose();
-    _companyFocusNode.removeListener(_onCompanyFocusChange);
-    _scrollCtrl.dispose();
-    super.dispose();
+  // ── Nationality helpers ────────────────────────────────────────────────────
+
+  void _onBritishToggle(bool value) {
+    setState(() {
+      _isBritish = value;
+      if (value) {
+        _nationalityCtrl.text = 'British';
+        // British nationals have no right-to-work requirement
+        _rightToWorkCodeCtrl.clear();
+      } else {
+        _nationalityCtrl.clear();
+      }
+    });
   }
+
+  // ── Save & next ────────────────────────────────────────────────────────────
 
   void _saveAndNext() {
     final firstName = _firstNameCtrl.text.trim();
     final lastName = _lastNameCtrl.text.trim();
     final password = _passwordCtrl.text;
     final confirmPassword = _confirmPasswordCtrl.text;
+    final nationality = _nationalityCtrl.text.trim();
 
     if (password != confirmPassword) {
       setState(() => _formError = 'Password and confirm password must match.');
+      return;
+    }
+
+    if (nationality.isEmpty) {
+      setState(() => _formError = 'Please enter your nationality.');
       return;
     }
 
@@ -160,8 +217,8 @@ class _Step1RegisterState extends State<Step1Register> {
     widget.data.firstName = firstName;
     widget.data.lastName = lastName;
     widget.data.fullName = '$firstName $lastName'.trim();
-    widget.data.password = _passwordCtrl.text;
-    widget.data.confirmPassword = _confirmPasswordCtrl.text;
+    widget.data.password = password;
+    widget.data.confirmPassword = confirmPassword;
     widget.data.email = _emailCtrl.text.trim();
     widget.data.companyName = _companyCtrl.text.trim();
     widget.data.companyId =
@@ -172,34 +229,45 @@ class _Step1RegisterState extends State<Step1Register> {
     widget.data.emergencyContactName = _emergencyContactNameCtrl.text.trim();
     widget.data.emergencyContactPhone = _emergencyContactPhoneCtrl.text.trim();
     widget.data.passportNumber = _passportNumberCtrl.text.trim();
-    widget.data.rightToWorkCode = _rightToWorkCodeCtrl.text.trim();
+    widget.data.nationality = nationality;
+    // British nationals skip right-to-work; others may provide it
+    widget.data.rightToWorkCode = _isBritish
+        ? ''
+        : _rightToWorkCodeCtrl.text.trim();
     widget.onNext();
   }
+
+  // ── Country code picker ────────────────────────────────────────────────────
 
   void _showCountryCodePicker() {
     showModalBottomSheet<void>(
       context: context,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(
-            top: Radius.circular(SizeConfig.r(16))),
+          top: Radius.circular(SizeConfig.r(16)),
+        ),
       ),
       builder: (_) => ListView(
         shrinkWrap: true,
         children: _countryCodes
-            .map((code) => ListTile(
-                  title: Text(code),
-                  trailing: code == _countryCode
-                      ? const Icon(Icons.check, color: AppColors.primary)
-                      : null,
-                  onTap: () {
-                    setState(() => _countryCode = code);
-                    Navigator.pop(context);
-                  },
-                ))
+            .map(
+              (code) => ListTile(
+                title: Text(code),
+                trailing: code == _countryCode
+                    ? const Icon(Icons.check, color: AppColors.primary)
+                    : null,
+                onTap: () {
+                  setState(() => _countryCode = code);
+                  Navigator.pop(context);
+                },
+              ),
+            )
             .toList(),
       ),
     );
   }
+
+  // ── Build ──────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -209,12 +277,15 @@ class _Step1RegisterState extends State<Step1Register> {
       controller: _scrollCtrl,
       keyboardDismissBehavior: ScrollViewKeyboardDismissBehavior.manual,
       padding: EdgeInsets.fromLTRB(
-          SizeConfig.hPad, SizeConfig.r(28),
-          SizeConfig.hPad, SizeConfig.r(32)),
+        SizeConfig.hPad,
+        SizeConfig.r(28),
+        SizeConfig.hPad,
+        SizeConfig.r(32),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Heading
+          // ── Heading ───────────────────────────────────────────────────────
           Text(
             'Personal Details',
             style: TextStyle(
@@ -227,11 +298,13 @@ class _Step1RegisterState extends State<Step1Register> {
           Text(
             "Let's start with your basic information.",
             style: TextStyle(
-                fontSize: SizeConfig.sp(14), color: AppColors.primary),
+              fontSize: SizeConfig.sp(14),
+              color: AppColors.primary,
+            ),
           ),
           SizedBox(height: SizeConfig.r(28)),
 
-          // First Name
+          // ── First Name ────────────────────────────────────────────────────
           const RegFieldLabel('First Name *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
@@ -241,7 +314,7 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
-          // Last Name
+          // ── Last Name ─────────────────────────────────────────────────────
           const RegFieldLabel('Last Name *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
@@ -251,7 +324,7 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
-          // Email Address
+          // ── Email ─────────────────────────────────────────────────────────
           const RegFieldLabel('Email Address *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
@@ -261,7 +334,7 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
-          // Mobile Number
+          // ── Mobile Number ─────────────────────────────────────────────────
           const RegFieldLabel('Mobile Number *'),
           SizedBox(height: SizeConfig.r(6)),
           Row(
@@ -270,14 +343,14 @@ class _Step1RegisterState extends State<Step1Register> {
                 onTap: _showCountryCodePicker,
                 child: Container(
                   height: SizeConfig.inputHeight,
-                  padding: EdgeInsets.symmetric(
-                      horizontal: SizeConfig.r(14)),
+                  padding: EdgeInsets.symmetric(horizontal: SizeConfig.r(14)),
                   decoration: BoxDecoration(
                     color: const Color(0xFFF3F7FC),
-                    borderRadius:
-                        BorderRadius.circular(SizeConfig.radius),
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
                     border: Border.all(
-                        color: const Color(0xFFE0E8F3), width: 1),
+                      color: const Color(0xFFE0E8F3),
+                      width: 1,
+                    ),
                   ),
                   child: Center(
                     child: Text(
@@ -302,7 +375,7 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
-          // Password
+          // ── Password ──────────────────────────────────────────────────────
           const RegFieldLabel('Password *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
@@ -315,8 +388,7 @@ class _Step1RegisterState extends State<Step1Register> {
               size: SizeConfig.r(20),
             ),
             suffixIcon: GestureDetector(
-              onTap: () =>
-                  setState(() => _obscurePassword = !_obscurePassword),
+              onTap: () => setState(() => _obscurePassword = !_obscurePassword),
               child: Icon(
                 _obscurePassword
                     ? Icons.remove_red_eye_outlined
@@ -328,7 +400,7 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
-          // Confirm Password
+          // ── Confirm Password ──────────────────────────────────────────────
           const RegFieldLabel('Confirm Password *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
@@ -355,7 +427,7 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
-          // Company Name
+          // ── Company Name ──────────────────────────────────────────────────
           const RegFieldLabel('Company Name *'),
           SizedBox(height: SizeConfig.r(6)),
           Container(
@@ -368,11 +440,10 @@ class _Step1RegisterState extends State<Step1Register> {
                   return const Iterable<String>.empty();
                 }
                 final query = textEditingValue.text.trim().toLowerCase();
-                if (query.isEmpty) {
-                  return _companyOptions;
-                }
-                return _companyOptions
-                    .where((name) => name.toLowerCase().contains(query));
+                if (query.isEmpty) return _companyOptions;
+                return _companyOptions.where(
+                  (n) => n.toLowerCase().contains(query),
+                );
               },
               onSelected: (selection) {
                 _companyCtrl.text = selection;
@@ -382,70 +453,74 @@ class _Step1RegisterState extends State<Step1Register> {
               },
               fieldViewBuilder:
                   (context, controller, focusNode, onFieldSubmitted) {
-                return TextField(
-                  controller: controller,
-                  focusNode: focusNode,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(15),
-                    color: AppColors.textDark,
-                  ),
-                  decoration: InputDecoration(
-                    hintText: 'Search company name',
-                    hintStyle: TextStyle(
-                      fontSize: SizeConfig.sp(15),
-                      color: const Color(0xFFB0BEC5),
-                    ),
-                    suffixIcon: _isLoadingCompanies
-                        ? Padding(
-                            padding: EdgeInsets.all(SizeConfig.r(12)),
-                            child: SizedBox(
-                              width: SizeConfig.r(18),
-                              height: SizeConfig.r(18),
-                              child: const CircularProgressIndicator(
-                                strokeWidth: 2,
+                    return TextField(
+                      controller: controller,
+                      focusNode: focusNode,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(15),
+                        color: AppColors.textDark,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'Search company name',
+                        hintStyle: TextStyle(
+                          fontSize: SizeConfig.sp(15),
+                          color: const Color(0xFFB0BEC5),
+                        ),
+                        suffixIcon: _isLoadingCompanies
+                            ? Padding(
+                                padding: EdgeInsets.all(SizeConfig.r(12)),
+                                child: SizedBox(
+                                  width: SizeConfig.r(18),
+                                  height: SizeConfig.r(18),
+                                  child: const CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                              )
+                            : Icon(
+                                Icons.keyboard_arrow_down,
+                                color: AppColors.inputIcon,
+                                size: SizeConfig.r(22),
                               ),
-                            ),
-                          )
-                        : Icon(
-                            Icons.keyboard_arrow_down,
-                            color: AppColors.inputIcon,
-                            size: SizeConfig.r(22),
+                        filled: true,
+                        fillColor: const Color(0xFFF3F7FC),
+                        contentPadding: EdgeInsets.symmetric(
+                          horizontal: SizeConfig.r(16),
+                          vertical: SizeConfig.r(16),
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            SizeConfig.radius,
                           ),
-                    filled: true,
-                    fillColor: const Color(0xFFF3F7FC),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: SizeConfig.r(16),
-                      vertical: SizeConfig.r(16),
-                    ),
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(SizeConfig.radius),
-                      borderSide: const BorderSide(
-                        color: Color(0xFFE0E8F3),
-                        width: 1,
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE0E8F3),
+                            width: 1,
+                          ),
+                        ),
+                        enabledBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            SizeConfig.radius,
+                          ),
+                          borderSide: const BorderSide(
+                            color: Color(0xFFE0E8F3),
+                            width: 1,
+                          ),
+                        ),
+                        focusedBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(
+                            SizeConfig.radius,
+                          ),
+                          borderSide: const BorderSide(
+                            color: AppColors.primary,
+                            width: 1.5,
+                          ),
+                        ),
                       ),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(SizeConfig.radius),
-                      borderSide: const BorderSide(
-                        color: Color(0xFFE0E8F3),
-                        width: 1,
-                      ),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(SizeConfig.radius),
-                      borderSide: const BorderSide(
-                        color: AppColors.primary,
-                        width: 1.5,
-                      ),
-                    ),
-                  ),
-                );
-              },
+                    );
+                  },
               optionsViewBuilder: (context, onSelected, options) {
                 final optionList = options.toList();
-                if (optionList.isEmpty) {
-                  return const SizedBox.shrink();
-                }
+                if (optionList.isEmpty) return const SizedBox.shrink();
                 final rowHeight = SizeConfig.r(52);
                 return Align(
                   alignment: Alignment.topLeft,
@@ -455,7 +530,8 @@ class _Step1RegisterState extends State<Step1Register> {
                     borderRadius: BorderRadius.circular(SizeConfig.radius),
                     child: ConstrainedBox(
                       constraints: BoxConstraints(
-                        maxWidth: MediaQuery.of(context).size.width -
+                        maxWidth:
+                            MediaQuery.of(context).size.width -
                             (SizeConfig.hPad * 2),
                         maxHeight: rowHeight * 3,
                       ),
@@ -493,11 +569,100 @@ class _Step1RegisterState extends State<Step1Register> {
             SizedBox(height: SizeConfig.r(6)),
             Text(
               _companyLoadError!,
-              style: TextStyle(fontSize: SizeConfig.sp(12), color: AppColors.error),
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
             ),
           ],
           SizedBox(height: SizeConfig.r(18)),
 
+          // ── Nationality ───────────────────────────────────────────────────
+          const RegFieldLabel('Nationality *'),
+          SizedBox(height: SizeConfig.r(8)),
+
+          // British quick-select toggle
+          GestureDetector(
+            onTap: () => _onBritishToggle(!_isBritish),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 150),
+              padding: EdgeInsets.symmetric(
+                horizontal: SizeConfig.r(16),
+                vertical: SizeConfig.r(12),
+              ),
+              decoration: BoxDecoration(
+                color: _isBritish
+                    ? AppColors.primary.withValues(alpha: 0.08)
+                    : const Color(0xFFF3F7FC),
+                borderRadius: BorderRadius.circular(SizeConfig.radius),
+                border: Border.all(
+                  color: _isBritish
+                      ? AppColors.primary
+                      : const Color(0xFFE0E8F3),
+                  width: _isBritish ? 1.5 : 1,
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _isBritish
+                        ? Icons.check_circle
+                        : Icons.radio_button_unchecked,
+                    color: _isBritish
+                        ? AppColors.primary
+                        : const Color(0xFFB0BEC5),
+                    size: SizeConfig.r(20),
+                  ),
+                  SizedBox(width: SizeConfig.r(12)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          'British',
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(14),
+                            fontWeight: FontWeight.w600,
+                            color: _isBritish
+                                ? AppColors.primary
+                                : AppColors.textDark,
+                          ),
+                        ),
+                        Text(
+                          'No right to work code required',
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(12),
+                            color: _isBritish
+                                ? AppColors.primary.withValues(alpha: 0.75)
+                                : AppColors.textLight,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Non-British: show nationality text field
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            child: _isBritish
+                ? const SizedBox.shrink()
+                : Padding(
+                    padding: EdgeInsets.only(top: SizeConfig.r(10)),
+                    child: RegField(
+                      controller: _nationalityCtrl,
+                      hintText: 'e.g. Pakistani, Indian, Nigerian...',
+                      keyboardType: TextInputType.text,
+                    ),
+                  ),
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          // ── Residential Address ───────────────────────────────────────────
           const RegFieldLabel('Residential Address *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
@@ -507,6 +672,7 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
+          // ── Emergency Contact ─────────────────────────────────────────────
           const RegFieldLabel('Emergency Contact Name *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
@@ -525,6 +691,7 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
+          // ── Passport ──────────────────────────────────────────────────────
           const RegFieldLabel('Passport Number'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
@@ -533,17 +700,35 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
-          const RegFieldLabel('Right to Work Code'),
-          SizedBox(height: SizeConfig.r(6)),
-          RegField(
-            controller: _rightToWorkCodeCtrl,
-            hintText: 'Enter right to work code',
+          // ── Right to Work — only shown for non-British ─────────────────────
+          AnimatedSize(
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeInOut,
+            child: _isBritish
+                ? const SizedBox.shrink()
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const RegFieldLabel('Right to Work Code'),
+                      SizedBox(height: SizeConfig.r(6)),
+                      RegField(
+                        controller: _rightToWorkCodeCtrl,
+                        hintText: 'Enter right to work code',
+                      ),
+                      SizedBox(height: SizeConfig.r(18)),
+                    ],
+                  ),
           ),
+
+          // ── Form error ────────────────────────────────────────────────────
           if (_formError != null) ...[
-            SizedBox(height: SizeConfig.r(12)),
+            SizedBox(height: SizeConfig.r(4)),
             Text(
               _formError!,
-              style: TextStyle(fontSize: SizeConfig.sp(12), color: AppColors.error),
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
             ),
           ],
 

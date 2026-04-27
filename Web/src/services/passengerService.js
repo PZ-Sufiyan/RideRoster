@@ -169,6 +169,7 @@ export const registerPassengerWithAuthAndRecord = async ({ companyId, form }) =>
     dropoff_postal_code: cleanString(form?.schoolPostcode),
     dropoff_time: cleanString(form?.returnTime),
     wheelchair_required: cleanString(form?.wheelchair).toLowerCase() === 'yes',
+    harness_required: cleanString(form?.harness).toLowerCase() === 'yes',
     notes: toNullableString(form?.notes),
     pickup_latitude: form?.pickupLat ?? null,
     pickup_longitude: form?.pickupLng ?? null,

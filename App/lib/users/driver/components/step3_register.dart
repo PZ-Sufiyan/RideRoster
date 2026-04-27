@@ -31,11 +31,8 @@ class _Step3RegisterState extends State<Step3Register> {
   @override
   void initState() {
     super.initState();
-    _dbsIdCtrl =
-        TextEditingController(text: widget.data.dbsServiceUpdateId);
-    _licenseNumberCtrl = TextEditingController(
-      text: widget.data.licenseNumber,
-    );
+    _dbsIdCtrl = TextEditingController(text: widget.data.dbsServiceUpdateId);
+    _licenseNumberCtrl = TextEditingController(text: widget.data.licenseNumber);
   }
 
   @override
@@ -74,8 +71,7 @@ class _Step3RegisterState extends State<Step3Register> {
       helpText: 'Select Expiry Date',
       builder: (context, child) => Theme(
         data: Theme.of(context).copyWith(
-          colorScheme:
-              const ColorScheme.light(primary: AppColors.primary),
+          colorScheme: const ColorScheme.light(primary: AppColors.primary),
         ),
         child: child!,
       ),
@@ -85,13 +81,166 @@ class _Step3RegisterState extends State<Step3Register> {
 
   String _fmt(DateTime d) {
     const m = [
-      '', 'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
-      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec',
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
     ];
     return '${d.day} ${m[d.month]} ${d.year}';
   }
 
-  // ── Submit via AuthService ─────────────────────────────────────────────────
+  // ── Other certificates helpers ─────────────────────────────────────────────
+
+  /// Opens a bottom sheet to get the certificate label, then opens the
+  /// file picker. Adds the result to [widget.data.otherCertificates].
+  Future<void> _addOtherCertificate() async {
+    final labelCtrl = TextEditingController();
+    final label = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
+          top: Radius.circular(SizeConfig.r(16)),
+        ),
+      ),
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.fromLTRB(
+            SizeConfig.hPad,
+            SizeConfig.r(24),
+            SizeConfig.hPad,
+            MediaQuery.of(ctx).viewInsets.bottom + SizeConfig.r(24),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Certificate Name',
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(16),
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
+              ),
+              SizedBox(height: SizeConfig.r(6)),
+              Text(
+                'e.g. English Proficiency, Epilepsy Certificate',
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(13),
+                  color: AppColors.textLight,
+                ),
+              ),
+              SizedBox(height: SizeConfig.r(14)),
+              TextField(
+                controller: labelCtrl,
+                autofocus: true,
+                textCapitalization: TextCapitalization.words,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(15),
+                  color: AppColors.textDark,
+                ),
+                decoration: InputDecoration(
+                  hintText: 'Enter certificate name',
+                  hintStyle: TextStyle(
+                    fontSize: SizeConfig.sp(15),
+                    color: const Color(0xFFB0BEC5),
+                  ),
+                  filled: true,
+                  fillColor: const Color(0xFFF3F7FC),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: SizeConfig.r(16),
+                    vertical: SizeConfig.r(14),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE0E8F3),
+                      width: 1,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE0E8F3),
+                      width: 1,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    borderSide: const BorderSide(
+                      color: AppColors.primary,
+                      width: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+              SizedBox(height: SizeConfig.r(16)),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    padding: EdgeInsets.symmetric(vertical: SizeConfig.r(14)),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    ),
+                  ),
+                  onPressed: () {
+                    final text = labelCtrl.text.trim();
+                    if (text.isNotEmpty) {
+                      Navigator.pop(ctx, text);
+                    }
+                  },
+                  child: Text(
+                    'Continue to Upload',
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(15),
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+
+    if (label == null || label.isEmpty) return;
+
+    // Now open file picker
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+      withData: false,
+      withReadStream: false,
+    );
+
+    if (result != null && result.files.isNotEmpty) {
+      setState(() {
+        widget.data.otherCertificates.add(
+          OtherCertificate(label: label, file: result.files.first),
+        );
+      });
+    }
+  }
+
+  void _removeOtherCertificate(int index) {
+    setState(() => widget.data.otherCertificates.removeAt(index));
+  }
+
+  // ── Submit ─────────────────────────────────────────────────────────────────
 
   Future<void> _onRegister() async {
     final d = widget.data;
@@ -125,6 +274,7 @@ class _Step3RegisterState extends State<Step3Register> {
       emergencyContactName: d.emergencyContactName,
       emergencyContactPhone: d.emergencyContactPhone,
       passportNumber: d.passportNumber,
+      nationality: d.nationality,
       rightToWorkCode: d.rightToWorkCode,
       registrationNumber: d.registrationNumber,
       taxiPlateNumber: d.taxiPlateNumber,
@@ -158,6 +308,11 @@ class _Step3RegisterState extends State<Step3Register> {
       insuranceCertificatePath: d.insuranceCertificate?.path,
       insuranceCertificateExpiry: d.insuranceCertificateExpiry,
       vehiclePhotoPath: d.vehiclePhoto?.path,
+      // Pass other certificates as parallel lists for the auth service
+      otherCertificateLabels: d.otherCertificates.map((c) => c.label).toList(),
+      otherCertificatePaths: d.otherCertificates
+          .map((c) => c.file.path ?? '')
+          .toList(),
     );
 
     if (!mounted) return;
@@ -173,6 +328,8 @@ class _Step3RegisterState extends State<Step3Register> {
     }
   }
 
+  // ── Build ──────────────────────────────────────────────────────────────────
+
   @override
   Widget build(BuildContext context) {
     SizeConfig.init(context);
@@ -180,8 +337,11 @@ class _Step3RegisterState extends State<Step3Register> {
 
     return SingleChildScrollView(
       padding: EdgeInsets.fromLTRB(
-          SizeConfig.hPad, SizeConfig.r(28),
-          SizeConfig.hPad, SizeConfig.r(32)),
+        SizeConfig.hPad,
+        SizeConfig.r(28),
+        SizeConfig.hPad,
+        SizeConfig.r(32),
+      ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -197,11 +357,13 @@ class _Step3RegisterState extends State<Step3Register> {
           Text(
             'Upload required documents to verify your identity.',
             style: TextStyle(
-                fontSize: SizeConfig.sp(14),
-                color: AppColors.textMedium),
+              fontSize: SizeConfig.sp(14),
+              color: AppColors.textMedium,
+            ),
           ),
           SizedBox(height: SizeConfig.r(24)),
 
+          // ── License Number ────────────────────────────────────────────────
           const RegFieldLabel('License Number *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
@@ -210,7 +372,7 @@ class _Step3RegisterState extends State<Step3Register> {
           ),
           SizedBox(height: SizeConfig.r(20)),
 
-          // ── Driving License ─────────────────────────────────────────────
+          // ── Driving License ───────────────────────────────────────────────
           const RegFieldLabel('Driving License (Front) *'),
           SizedBox(height: SizeConfig.r(6)),
           UploadBox(
@@ -228,12 +390,14 @@ class _Step3RegisterState extends State<Step3Register> {
           ExpiryButton(
             date: d.drivingLicenseExpiry,
             onTap: () => _pickDate(
-                d.drivingLicenseExpiry, (dt) => d.drivingLicenseExpiry = dt),
+              d.drivingLicenseExpiry,
+              (dt) => d.drivingLicenseExpiry = dt,
+            ),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(20)),
 
-          // ── Taxi Badge ──────────────────────────────────────────────────
+          // ── Taxi Badge ────────────────────────────────────────────────────
           const RegFieldLabel('Taxi Badge (Front) *'),
           SizedBox(height: SizeConfig.r(6)),
           UploadBox(
@@ -250,13 +414,13 @@ class _Step3RegisterState extends State<Step3Register> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.taxiBadgeExpiry,
-            onTap: () => _pickDate(
-                d.taxiBadgeExpiry, (dt) => d.taxiBadgeExpiry = dt),
+            onTap: () =>
+                _pickDate(d.taxiBadgeExpiry, (dt) => d.taxiBadgeExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(20)),
 
-          // ── DBS Certificate ─────────────────────────────────────────────
+          // ── DBS Certificate ───────────────────────────────────────────────
           const RegFieldLabel('DBS Certificate (Front) *'),
           SizedBox(height: SizeConfig.r(6)),
           UploadBox(
@@ -273,13 +437,13 @@ class _Step3RegisterState extends State<Step3Register> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.dbsCertExpiry,
-            onTap: () => _pickDate(
-                d.dbsCertExpiry, (dt) => d.dbsCertExpiry = dt),
+            onTap: () =>
+                _pickDate(d.dbsCertExpiry, (dt) => d.dbsCertExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(20)),
 
-          // ── DBS Service Update ID ───────────────────────────────────────
+          // ── DBS Service Update ID ─────────────────────────────────────────
           const RegFieldLabel('DBS Service Update ID (C Number) *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
@@ -288,7 +452,7 @@ class _Step3RegisterState extends State<Step3Register> {
           ),
           SizedBox(height: SizeConfig.r(20)),
 
-          // ── Derby City Safeguarding Certificate ─────────────────────────
+          // ── Derby City Safeguarding Certificate ───────────────────────────
           const RegFieldLabel('Derby City Safeguarding Certificate'),
           SizedBox(height: SizeConfig.r(6)),
           UploadBox(
@@ -298,7 +462,169 @@ class _Step3RegisterState extends State<Step3Register> {
           ),
           SizedBox(height: SizeConfig.r(28)),
 
-          // ── Vehicle Information ────────────────────────────────────────
+          // ── Other Certificates ────────────────────────────────────────────
+          Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'Other Certificates',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(15),
+                        fontWeight: FontWeight.w600,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    Text(
+                      'English proficiency, epilepsy certificate, etc.',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(12),
+                        color: AppColors.textLight,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              GestureDetector(
+                onTap: _addOtherCertificate,
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SizeConfig.r(12),
+                    vertical: SizeConfig.r(8),
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary.withValues(alpha: 0.08),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(8)),
+                    border: Border.all(
+                      color: AppColors.primary.withValues(alpha: 0.3),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.add,
+                        color: AppColors.primary,
+                        size: SizeConfig.r(16),
+                      ),
+                      SizedBox(width: SizeConfig.r(4)),
+                      Text(
+                        'Add',
+                        style: TextStyle(
+                          fontSize: SizeConfig.sp(13),
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.primary,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: SizeConfig.r(12)),
+
+          // Uploaded other certificates list
+          if (d.otherCertificates.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                vertical: SizeConfig.r(18),
+                horizontal: SizeConfig.r(16),
+              ),
+              decoration: BoxDecoration(
+                color: const Color(0xFFF8FAFD),
+                borderRadius: BorderRadius.circular(SizeConfig.radius),
+                border: Border.all(color: const Color(0xFFD4DEF0), width: 1),
+              ),
+              child: Column(
+                children: [
+                  Icon(
+                    Icons.folder_open_outlined,
+                    color: const Color(0xFFB0BEC5),
+                    size: SizeConfig.r(28),
+                  ),
+                  SizedBox(height: SizeConfig.r(6)),
+                  Text(
+                    'No additional certificates added',
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(13),
+                      color: const Color(0xFFB0BEC5),
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            ...d.otherCertificates.asMap().entries.map((entry) {
+              final index = entry.key;
+              final cert = entry.value;
+              return Padding(
+                padding: EdgeInsets.only(bottom: SizeConfig.r(8)),
+                child: Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SizeConfig.r(14),
+                    vertical: SizeConfig.r(12),
+                  ),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFF8FAFD),
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    border: Border.all(
+                      color: const Color(0xFFD4DEF0),
+                      width: 1,
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.check_circle_outline,
+                        color: AppColors.success,
+                        size: SizeConfig.r(22),
+                      ),
+                      SizedBox(width: SizeConfig.r(12)),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              cert.label,
+                              style: TextStyle(
+                                fontSize: SizeConfig.sp(14),
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                            Text(
+                              cert.file.name,
+                              style: TextStyle(
+                                fontSize: SizeConfig.sp(12),
+                                color: AppColors.textLight,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                      GestureDetector(
+                        onTap: () => _removeOtherCertificate(index),
+                        child: Icon(
+                          Icons.close,
+                          color: AppColors.textLight,
+                          size: SizeConfig.r(20),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }),
+
+          SizedBox(height: SizeConfig.r(28)),
+
+          // ── Vehicle Information ───────────────────────────────────────────
           Text(
             'Vehicle Information',
             style: TextStyle(
@@ -382,13 +708,15 @@ class _Step3RegisterState extends State<Step3Register> {
             onTap: () => _pickFile((f) => d.vehiclePhoto = f),
           ),
 
-          // Error
+          // ── Error ─────────────────────────────────────────────────────────
           if (_errorMessage != null) ...[
             SizedBox(height: SizeConfig.r(16)),
             Text(
               _errorMessage!,
               style: TextStyle(
-                  fontSize: SizeConfig.sp(13), color: AppColors.error),
+                fontSize: SizeConfig.sp(13),
+                color: AppColors.error,
+              ),
             ),
           ],
 
@@ -429,7 +757,9 @@ class UploadBox extends StatelessWidget {
       child: Container(
         width: double.infinity,
         padding: EdgeInsets.symmetric(
-            vertical: SizeConfig.r(22), horizontal: SizeConfig.r(16)),
+          vertical: SizeConfig.r(22),
+          horizontal: SizeConfig.r(16),
+        ),
         decoration: BoxDecoration(
           color: const Color(0xFFF8FAFD),
           borderRadius: BorderRadius.circular(SizeConfig.radius),
@@ -442,9 +772,7 @@ class UploadBox extends StatelessWidget {
               file != null
                   ? Icons.check_circle_outline
                   : Icons.cloud_upload_outlined,
-              color: file != null
-                  ? AppColors.success
-                  : const Color(0xFFB0BEC5),
+              color: file != null ? AppColors.success : const Color(0xFFB0BEC5),
               size: SizeConfig.r(30),
             ),
             SizedBox(height: SizeConfig.r(8)),
@@ -490,7 +818,9 @@ class ExpiryButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         padding: EdgeInsets.symmetric(
-            horizontal: SizeConfig.r(14), vertical: SizeConfig.r(10)),
+          horizontal: SizeConfig.r(14),
+          vertical: SizeConfig.r(10),
+        ),
         decoration: BoxDecoration(
           color: const Color(0xFFF3F7FC),
           borderRadius: BorderRadius.circular(SizeConfig.r(8)),
@@ -499,16 +829,17 @@ class ExpiryButton extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.calendar_today_outlined,
-                size: SizeConfig.r(16), color: AppColors.textMedium),
+            Icon(
+              Icons.calendar_today_outlined,
+              size: SizeConfig.r(16),
+              color: AppColors.textMedium,
+            ),
             SizedBox(width: SizeConfig.r(8)),
             Text(
               date != null ? formatDate(date!) : 'Expiry Date',
               style: TextStyle(
                 fontSize: SizeConfig.sp(14),
-                color: date != null
-                    ? AppColors.textDark
-                    : AppColors.textMedium,
+                color: date != null ? AppColors.textDark : AppColors.textMedium,
                 fontWeight: FontWeight.w500,
               ),
             ),

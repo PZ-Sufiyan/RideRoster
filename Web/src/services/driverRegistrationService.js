@@ -26,6 +26,20 @@ function toSeatingCapacity(v) {
   return Number.isFinite(n) ? Math.trunc(n) : null
 }
 
+function toBoolean(v) {
+  if (typeof v === 'boolean') return v
+  const s = cleanString(v).toLowerCase()
+  return s === 'true' || s === 'yes' || s === '1'
+}
+
+function sanitizeSegment(v) {
+  return cleanString(v)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+}
+
 /** Driver document enum keys required for registration (excluding optional safeguarding). */
 export const REQUIRED_DRIVER_DOC_TYPES = [
   'driving_license_front',
@@ -76,6 +90,7 @@ export async function registerDriverWithAuthAndRecords({
   if (!cleanString(personal?.address)) throw new Error('Residential address is required.')
   if (!cleanString(personal?.emergencyName)) throw new Error('Emergency contact name is required.')
   if (!cleanString(personal?.emergencyPhone)) throw new Error('Emergency contact phone is required.')
+  if (!cleanString(personal?.nationality)) throw new Error('Nationality is required.')
 
   for (const key of REQUIRED_DRIVER_DOC_TYPES) {
     if (!driverFiles[key]) throw new Error(`Missing required document: ${key.replace(/_/g, ' ')}`)
@@ -130,8 +145,10 @@ export async function registerDriverWithAuthAndRecords({
       emergency_contact_name: cleanString(personal?.emergencyName),
       emergency_contact_phone: cleanString(personal?.emergencyPhone),
       passport_number: toNullableString(personal?.passport),
+      nationality: cleanString(personal?.nationality),
       right_to_work_code: toNullableString(personal?.rightToWork),
       license_no: licenseNo,
+      dbs_service_update_id: toNullableString(personal?.dbsUpdateId),
       status: 'pending',
     }
 
@@ -143,9 +160,18 @@ export async function registerDriverWithAuthAndRecords({
       .insert({
         company_id: companyId,
         driver_id: authUserId,
-        taxi_license_plate_number: taxiPlate,
+        taxi_license_plate_number: toNullableString(vehicle?.taxiPlateNumber) || taxiPlate,
         seating_capacity: toSeatingCapacity(vehicle?.seatingCapacity),
         vehicle_photo_url: null,
+        name: cleanString(`${vehicle?.make || ''} ${vehicle?.model || ''}`) || null,
+        registration_number: toNullableString(vehicle?.registrationNumber),
+        make: toNullableString(vehicle?.make),
+        model: toNullableString(vehicle?.model),
+        vehicle_colour: toNullableString(vehicle?.vehicleColour),
+        year_of_first_registration: toDateOrNull(vehicle?.yearOfFirstRegistration),
+        licensing_type: toNullableString(vehicle?.licensingType),
+        body_style: toNullableString(vehicle?.bodyStyle),
+        wheelchair_accessible: toBoolean(vehicle?.wheelchairAccessible),
       })
       .select('id')
       .single()
@@ -200,6 +226,30 @@ export async function registerDriverWithAuthAndRecords({
         document_type: 'safeguarding_certificate',
         file_url: meta.file_url,
         expiry_date: toDateOrNull(expiry.safeguarding),
+      })
+    }
+
+    const otherCertificates = Array.isArray(driverFiles.other_certificates)
+      ? driverFiles.other_certificates
+      : []
+    for (const cert of otherCertificates) {
+      if (!cert?.file) continue
+      const label = cleanString(cert.label)
+      const safeLabel = sanitizeSegment(label || 'certificate')
+      const meta = await uploadDriverVehicleDocument({
+        companyId,
+        kind: 'driver',
+        scopeId: authUserId,
+        documentType: `other_certificate_${safeLabel}`,
+        file: cert.file,
+      })
+      pushUpload(meta)
+      driverDocRows.push({
+        company_id: companyId,
+        driver_id: authUserId,
+        document_type: 'other_certificate',
+        file_url: meta.file_url,
+        expiry_date: null,
       })
     }
 

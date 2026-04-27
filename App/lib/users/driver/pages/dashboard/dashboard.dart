@@ -70,6 +70,11 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> {
 class _DashboardAppBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final driverName = context.watch<AuthProvider>().userName?.trim();
+    final displayName = (driverName == null || driverName.isEmpty)
+        ? 'Driver'
+        : driverName;
+
     return Container(
       color: AppColors.background,
       padding: EdgeInsets.symmetric(
@@ -98,7 +103,7 @@ class _DashboardAppBar extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Marcus Johnson',
+                  displayName,
                   style: TextStyle(
                     fontSize: SizeConfig.sp(15),
                     fontWeight: FontWeight.w700,

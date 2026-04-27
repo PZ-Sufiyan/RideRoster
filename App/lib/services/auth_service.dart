@@ -7,10 +7,7 @@ class AuthService extends ApiService {
   SupabaseClient get _supabase => Supabase.instance.client;
   static const String _companyDocsBucket = 'company-documents';
 
-  static const Set<String> _allowedRoles = {
-    'driver',
-    'passenger_assistant',
-  };
+  static const Set<String> _allowedRoles = {'driver', 'passenger_assistant'};
 
   String _fileExtension(String path) {
     final idx = path.lastIndexOf('.');
@@ -38,7 +35,9 @@ class AuthService extends ApiService {
     final ext = _fileExtension(sourcePath);
     final millis = DateTime.now().millisecondsSinceEpoch;
     final safeDoc = _safePathSegment(docType);
-    final filename = ext.isEmpty ? '${safeDoc}_$millis' : '${safeDoc}_$millis.$ext';
+    final filename = ext.isEmpty
+        ? '${safeDoc}_$millis'
+        : '${safeDoc}_$millis.$ext';
     return '$companyId/$scopeType/$scopeId/$safeDoc/$filename';
   }
 
@@ -61,11 +60,13 @@ class AuthService extends ApiService {
       sourcePath: localPath,
     );
 
-    await _supabase.storage.from(_companyDocsBucket).upload(
-      storagePath,
-      file,
-      fileOptions: const FileOptions(upsert: true),
-    );
+    await _supabase.storage
+        .from(_companyDocsBucket)
+        .upload(
+          storagePath,
+          file,
+          fileOptions: const FileOptions(upsert: true),
+        );
     return _supabase.storage.from(_companyDocsBucket).getPublicUrl(storagePath);
   }
 
@@ -80,12 +81,47 @@ class AuthService extends ApiService {
         user.userMetadata?['name']?.toString();
   }
 
+  String? _buildName(String? firstName, String? lastName) {
+    final first = (firstName ?? '').trim();
+    final last = (lastName ?? '').trim();
+    final full = '$first $last'.trim();
+    return full.isEmpty ? null : full;
+  }
+
+  Future<String?> _resolveDisplayName({
+    required User user,
+    required String? role,
+  }) async {
+    final metaName = _extractDisplayName(user);
+
+    if (role == 'driver') {
+      try {
+        final row = await _supabase
+            .from('drivers')
+            .select('first_name, last_name')
+            .eq('id', user.id)
+            .maybeSingle();
+
+        if (row is Map<String, dynamic>) {
+          final tableName = _buildName(
+            row['first_name']?.toString(),
+            row['last_name']?.toString(),
+          );
+          if (tableName != null) return tableName;
+        }
+      } catch (_) {
+        // Fall back to auth metadata when profile lookup is unavailable.
+      }
+    }
+
+    return metaName;
+  }
+
   // ---------------------------------------------------------------------------
   // Driver Auth
   // ---------------------------------------------------------------------------
 
   /// Login with email/password.
-  /// Returns [AuthResult] — check [AuthResult.success] before reading [AuthResult.token].
   Future<AuthResult> driverLogin({
     required String email,
     required String password,
@@ -120,10 +156,12 @@ class AuthService extends ApiService {
         );
       }
 
+      final resolvedName = await _resolveDisplayName(user: user, role: role);
+
       return AuthResult.success(
         token: session.accessToken,
         userId: user.id,
-        name: _extractDisplayName(user),
+        name: resolvedName,
         email: user.email,
       );
     } on AuthException catch (e) {
@@ -154,21 +192,16 @@ class AuthService extends ApiService {
 
   /// Register a new driver account.
   ///
+  /// [nationality] is stored on the driver row. 'British' drivers have no
+  /// right-to-work requirement so [rightToWorkCode] will be null/empty for them.
+  ///
+  /// [otherCertificateLabels] and [otherCertificatePaths] are parallel lists
+  /// of additional certificates (English proficiency, epilepsy cert, etc.).
+  /// Each pair is uploaded as a separate `driver_documents` row with
+  /// document_type = 'other_certificate'.
+  ///
   /// TO SWAP TO REAL API:
   ///   Build a multipart/form-data request with all fields + files.
-  ///   Example:
-  ///     final request = http.MultipartRequest(
-  ///       'POST', Uri.parse('${ApiService.baseUrl}/auth/driver/register'),
-  ///     );
-  ///     request.fields['fullName'] = fullName;
-  ///     request.fields['email'] = email;
-  ///     // ... add all fields
-  ///     if (drivingLicenseFrontPath != null) {
-  ///       request.files.add(await http.MultipartFile.fromPath(
-  ///         'drivingLicenseFront', drivingLicenseFrontPath,
-  ///       ));
-  ///     }
-  ///     final response = await request.send();
   Future<AuthResult> driverRegister({
     required String fullName,
     String? firstName,
@@ -183,6 +216,9 @@ class AuthService extends ApiService {
     String? emergencyContactName,
     String? emergencyContactPhone,
     String? passportNumber,
+    // Nationality — 'British' or free-text (e.g. 'Pakistani')
+    String? nationality,
+    // Right-to-work code — null/empty for British nationals
     String? rightToWorkCode,
     required String registrationNumber,
     required String taxiPlateNumber,
@@ -194,7 +230,7 @@ class AuthService extends ApiService {
     required String bodyStyle,
     required String passengerSeats,
     required bool wheelchairAccessible,
-    // File paths — replace with real multipart upload when backend ready
+    // Driver document paths
     String? drivingLicenseFrontPath,
     String? drivingLicenseBackPath,
     DateTime? drivingLicenseExpiry,
@@ -207,6 +243,10 @@ class AuthService extends ApiService {
     String? dbsServiceUpdateId,
     String? safeguardingCertPath,
     String? licenseNumber,
+    // Other certificates — parallel lists (label + file path per entry)
+    List<String> otherCertificateLabels = const [],
+    List<String> otherCertificatePaths = const [],
+    // Vehicle document paths
     String? v5DocumentFrontPath,
     String? v5DocumentInsidePath,
     String? motCertificatePath,
@@ -218,13 +258,16 @@ class AuthService extends ApiService {
     DateTime? insuranceCertificateExpiry,
     String? vehiclePhotoPath,
   }) async {
-    if (fullName.isEmpty || email.isEmpty || password.isEmpty || companyId.isEmpty) {
+    // ── Validation ────────────────────────────────────────────────────────────
+    if (fullName.isEmpty ||
+        email.isEmpty ||
+        password.isEmpty ||
+        companyId.isEmpty) {
       return AuthResult.failure('Please complete all required fields.');
     }
     if (!email.contains('@')) {
       return AuthResult.failure('Please enter a valid email address.');
     }
-
     if (firstName == null || firstName.trim().isEmpty) {
       return AuthResult.failure('First name is required.');
     }
@@ -243,6 +286,9 @@ class AuthService extends ApiService {
     if (emergencyContactPhone == null || emergencyContactPhone.trim().isEmpty) {
       return AuthResult.failure('Emergency contact phone is required.');
     }
+    if (nationality == null || nationality.trim().isEmpty) {
+      return AuthResult.failure('Nationality is required.');
+    }
     if (licenseNumber == null || licenseNumber.trim().isEmpty) {
       return AuthResult.failure('License number is required.');
     }
@@ -250,7 +296,15 @@ class AuthService extends ApiService {
       return AuthResult.failure('Taxi plate number is required.');
     }
 
+    // Validate other-certificate lists are consistent
+    if (otherCertificateLabels.length != otherCertificatePaths.length) {
+      return AuthResult.failure(
+        'Other certificate data is inconsistent. Please try again.',
+      );
+    }
+
     try {
+      // ── 1. Create auth user ──────────────────────────────────────────────
       final authResponse = await _supabase.auth.signUp(
         email: email,
         password: password,
@@ -267,6 +321,7 @@ class AuthService extends ApiService {
         return AuthResult.failure('Could not create auth account.');
       }
 
+      // ── 2. Insert driver row ─────────────────────────────────────────────
       final driverInsert = await _supabase
           .from('drivers')
           .insert({
@@ -282,10 +337,15 @@ class AuthService extends ApiService {
             'passport_number': passportNumber?.trim().isEmpty == true
                 ? null
                 : passportNumber?.trim(),
+            'nationality': nationality.trim(),
+            // British nationals have no right-to-work requirement
             'right_to_work_code': rightToWorkCode?.trim().isEmpty == true
                 ? null
                 : rightToWorkCode?.trim(),
             'license_no': licenseNumber.trim(),
+            'dbs_service_update_id': dbsServiceUpdateId?.trim().isEmpty == true
+                ? null
+                : dbsServiceUpdateId?.trim(),
             'status': 'pending',
           })
           .select('id')
@@ -296,7 +356,9 @@ class AuthService extends ApiService {
         return AuthResult.failure('Driver profile could not be created.');
       }
 
+      // ── 3. Upload & insert driver documents ──────────────────────────────
       final driverDocs = <Map<String, dynamic>>[];
+
       Future<void> addDriverDoc({
         required String docType,
         required String? localPath,
@@ -355,10 +417,44 @@ class AuthService extends ApiService {
         localPath: safeguardingCertPath,
       );
 
+      // Other certificates — upload each with its user-defined label stored
+      // in the document_type field as 'other_certificate' and the label
+      // encoded in the path so it is traceable in storage.
+      for (var i = 0; i < otherCertificateLabels.length; i++) {
+        final label = otherCertificateLabels[i];
+        final path = otherCertificatePaths[i];
+        if (path.trim().isEmpty) continue;
+
+        // Use the label as part of the storage docType so files are grouped
+        // by name inside storage (e.g. other_certificate_english_proficiency/)
+        final safeLabel = _safePathSegment(label);
+        final storageDocType = 'other_certificate_$safeLabel';
+
+        final publicUrl = await _uploadFile(
+          companyId: companyId,
+          scopeType: 'drivers',
+          scopeId: driverId,
+          docType: storageDocType,
+          localPath: path,
+        );
+        if (publicUrl == null) continue;
+
+        driverDocs.add({
+          'company_id': companyId,
+          'driver_id': driverId,
+          // Stored as 'other_certificate' enum value in the DB.
+          // The human-readable label is recoverable from the file_url path.
+          'document_type': 'other_certificate',
+          'file_url': publicUrl,
+          'expiry_date': null,
+        });
+      }
+
       if (driverDocs.isNotEmpty) {
         await _supabase.from('driver_documents').insert(driverDocs);
       }
 
+      // ── 4. Upload vehicle photo & insert vehicle row ──────────────────────
       final vehiclePhotoUrl = await _uploadFile(
         companyId: companyId,
         scopeType: 'vehicles',
@@ -375,8 +471,8 @@ class AuthService extends ApiService {
             'driver_id': driverId,
             'taxi_license_plate_number':
                 (taxiLicensePlateNumber?.trim().isNotEmpty ?? false)
-                    ? taxiLicensePlateNumber!.trim()
-                    : taxiPlateNumber.trim(),
+                ? taxiLicensePlateNumber!.trim()
+                : taxiPlateNumber.trim(),
             'vehicle_photo_url': vehiclePhotoUrl,
             'seating_capacity': seats,
             'name': '$make $model'.trim(),
@@ -406,7 +502,9 @@ class AuthService extends ApiService {
         return AuthResult.failure('Vehicle profile could not be created.');
       }
 
+      // ── 5. Upload & insert vehicle documents ─────────────────────────────
       final vehicleDocs = <Map<String, dynamic>>[];
+
       Future<void> addVehicleDoc({
         required String docType,
         required String? localPath,
@@ -430,10 +528,7 @@ class AuthService extends ApiService {
         });
       }
 
-      await addVehicleDoc(
-        docType: 'v5_front',
-        localPath: v5DocumentFrontPath,
-      );
+      await addVehicleDoc(docType: 'v5_front', localPath: v5DocumentFrontPath);
       await addVehicleDoc(
         docType: 'v5_inside',
         localPath: v5DocumentInsidePath,
@@ -463,7 +558,8 @@ class AuthService extends ApiService {
         userId: authUser.id,
         name: fullName,
         email: email,
-        message: 'Registration successful. Check your email to confirm account.',
+        message:
+            'Registration successful. Check your email to confirm account.',
       );
     } on AuthException catch (e) {
       return AuthResult.failure(e.message);
@@ -498,10 +594,12 @@ class AuthService extends ApiService {
         );
       }
 
+      final resolvedName = await _resolveDisplayName(user: user, role: role);
+
       return AuthResult.success(
         token: session.accessToken,
         userId: user.id,
-        name: _extractDisplayName(user),
+        name: resolvedName,
         email: user.email,
       );
     } catch (_) {

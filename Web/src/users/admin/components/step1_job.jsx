@@ -10,7 +10,7 @@ const Step1Job = ({ setToasts }) => {
         const s1 = d.step1 || {};
         return {
             jobName: s1.job_name ?? '',
-            jobType: s1.job_type || 'Regular Contract',
+            jobType: s1.job_type || 'School Contract',
             clientName: s1.client_school_name ?? '',
             internalId: s1.internal_job_id ?? '',
         };
@@ -113,9 +113,11 @@ const Step1Job = ({ setToasts }) => {
                                     onChange={handleChange}
                                     className={fieldClass(submitAttempted && !formData.jobType.trim()) + ' appearance-none cursor-pointer'}
                                 >
-                                    <option>Regular Contract</option>
-                                    <option>One-off Trip</option>
-                                    <option>Emergency Shuttle</option>
+                                    <option>School Contract</option>
+                                    <option>College Contract</option>
+                                    <option>Centre Contract</option>
+                                    <option>Ad Hoc Contract</option>
+                                    <option>All Year Round Contract</option>
                                 </select>
                                 <MdKeyboardArrowDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
                             </div>
