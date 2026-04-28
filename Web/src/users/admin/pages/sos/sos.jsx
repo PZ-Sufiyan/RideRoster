@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
+import { Circle, MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
 import { MdPerson } from 'react-icons/md'
@@ -69,6 +69,7 @@ const Admin_SOSPage = () => {
     const [error, setError] = useState(null)
     const [activeSosAlerts, setActiveSosAlerts] = useState([])
     const [selectedSosId, setSelectedSosId] = useState(null)
+    const [radiusKm, setRadiusKm] = useState(10)
 
     const load = useCallback(async () => {
         setError(null)
@@ -133,6 +134,10 @@ const Admin_SOSPage = () => {
     }, [activeSosAlerts])
 
     const mapKey = useMemo(() => mapCenter.join(','), [mapCenter])
+    const selectedSosAlert = useMemo(
+        () => activeSosAlerts.find((alert) => alert.id === selectedSosId) || null,
+        [activeSosAlerts, selectedSosId]
+    )
 
     const activeCount = activeSosAlerts.length
     const shimmerRows = Array.from({ length: 3 })
@@ -239,7 +244,11 @@ const Admin_SOSPage = () => {
                                             type="button"
                                             onClick={(e) => {
                                                 e.stopPropagation()
-                                                navigate(`/admin/sos/${alert.id}`)
+                                                navigate(
+                                                    `/admin/sos/${alert.id}?radius=${encodeURIComponent(
+                                                        radiusKm.toFixed(1)
+                                                    )}`
+                                                )
                                             }}
                                             className="mt-3 text-sm font-medium text-[#005580] hover:text-[#003d5c] hover:underline transition-colors"
                                         >
@@ -315,6 +324,20 @@ const Admin_SOSPage = () => {
                                 </Marker>
                             )
                         })}
+                        {selectedSosAlert &&
+                            Number.isFinite(selectedSosAlert.latitude) &&
+                            Number.isFinite(selectedSosAlert.longitude) && (
+                                <Circle
+                                    center={[selectedSosAlert.latitude, selectedSosAlert.longitude]}
+                                    radius={radiusKm * 1000}
+                                    pathOptions={{
+                                        color: '#3b82f6',
+                                        fillColor: '#60a5fa',
+                                        fillOpacity: 0.15,
+                                        weight: 2,
+                                    }}
+                                />
+                            )}
                     </MapContainer>
                     {!loading && activeSosAlerts.length === 0 && (
                         <div className="absolute inset-0 z-[300] flex items-center justify-center pointer-events-none bg-white/55">
@@ -328,6 +351,28 @@ const Admin_SOSPage = () => {
                         <span className="text-[10px] text-gray-500 font-medium">
                             Live map · OpenStreetMap
                         </span>
+                    </div>
+                    <div className="absolute top-4 right-4 bg-white/95 backdrop-blur-sm px-4 py-3 rounded-xl border border-gray-200 shadow-sm z-[400] w-[250px]">
+                        <label
+                            htmlFor="sos-radius-slider"
+                            className="block text-xs text-gray-500 font-semibold mb-1"
+                        >
+                            Radius:
+                        </label>
+                        <div className="text-2xl font-bold text-gray-900 mb-2">
+                            {radiusKm.toFixed(1)} km
+                        </div>
+                        <input
+                            id="sos-radius-slider"
+                            type="range"
+                            min={1}
+                            max={50}
+                            step={0.5}
+                            value={radiusKm}
+                            onChange={(event) => setRadiusKm(Number(event.target.value))}
+                            className="w-full accent-blue-500"
+                            aria-label="Adjust SOS radius in kilometers"
+                        />
                     </div>
                 </div>
             </div>

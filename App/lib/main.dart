@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
@@ -8,6 +9,7 @@ import 'providers/job_provider.dart';
 import 'routes/app_routes.dart';
 import 'services/location_service.dart';
 import 'services/notification_service.dart';
+import 'services/sos_location_service.dart';
 import 'users/driver/pages/auth/login.dart';
 import 'users/driver/pages/dashboard/dashboard.dart';
 
@@ -61,9 +63,113 @@ class RideRosterApp extends StatelessWidget {
           ),
           scaffoldBackgroundColor: Colors.white,
         ),
-        home: const _AuthEntryPage(),
+        home: const _AppRuntimeGuard(),
         onGenerateRoute: AppRoutes.generateRoute,
       ),
+    );
+  }
+}
+
+class _AppRuntimeGuard extends StatefulWidget {
+  const _AppRuntimeGuard();
+
+  @override
+  State<_AppRuntimeGuard> createState() => _AppRuntimeGuardState();
+}
+
+class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
+    with WidgetsBindingObserver {
+  final LocationService _locationService = LocationService();
+  final SosLocationService _sosLocationService = SosLocationService();
+  bool _locationReady = false;
+  bool _isCheckingLocation = true;
+  String? _lastAuthUserId;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _enforceLocationRequirement();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _enforceLocationRequirement();
+      _resumeSosTrackingIfAuthenticated();
+      return;
+    }
+
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused ||
+        state == AppLifecycleState.detached) {
+      _sosLocationService.setDriverOffline();
+    }
+  }
+
+  Future<void> _enforceLocationRequirement() async {
+    if (!mounted) return;
+    setState(() => _isCheckingLocation = true);
+    final hasPermission = await _locationService.ensurePermission();
+    if (!mounted) return;
+    setState(() {
+      _locationReady = hasPermission;
+      _isCheckingLocation = false;
+    });
+  }
+
+  Future<void> _startSosTrackingIfAuthenticated() async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isAuthenticated) return;
+
+    final currentUserId = auth.userId;
+    if (currentUserId == null || currentUserId.isEmpty) return;
+    if (_lastAuthUserId == currentUserId) return;
+
+    _lastAuthUserId = currentUserId;
+    await _sosLocationService.refresh();
+  }
+
+  Future<void> _resumeSosTrackingIfAuthenticated() async {
+    final auth = context.read<AuthProvider>();
+    if (!auth.isAuthenticated) return;
+    await _sosLocationService.refresh();
+  }
+
+  Future<void> _stopSosTracking() async {
+    if (_lastAuthUserId == null) return;
+    _lastAuthUserId = null;
+    await _sosLocationService.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Consumer<AuthProvider>(
+      builder: (_, auth, __) {
+        if (auth.isAuthenticated) {
+          _startSosTrackingIfAuthenticated();
+        } else {
+          _stopSosTracking();
+        }
+
+        if (_isCheckingLocation) {
+          return const Scaffold(
+            body: Center(child: CircularProgressIndicator()),
+          );
+        }
+
+        if (!_locationReady) {
+          return LocationRequiredPage(onRetry: _enforceLocationRequirement);
+        }
+
+        return const _AuthEntryPage();
+      },
     );
   }
 }
@@ -126,6 +232,68 @@ class MissingConfigApp extends StatelessWidget {
                   ),
                 ],
               ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class LocationRequiredPage extends StatelessWidget {
+  final Future<void> Function() onRetry;
+
+  const LocationRequiredPage({super.key, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(
+                  Icons.location_off_outlined,
+                  color: Colors.redAccent,
+                  size: 52,
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Location Access Required',
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 12),
+                const Text(
+                  'RideRoster requires location service and location permission at all times while the app is open.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 14, color: Colors.black87),
+                ),
+                const SizedBox(height: 20),
+                Wrap(
+                  spacing: 10,
+                  runSpacing: 10,
+                  alignment: WrapAlignment.center,
+                  children: [
+                    ElevatedButton(
+                      onPressed: Geolocator.openLocationSettings,
+                      child: const Text('Open Location Settings'),
+                    ),
+                    ElevatedButton(
+                      onPressed: Geolocator.openAppSettings,
+                      child: const Text('Open App Settings'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 16),
+                OutlinedButton(
+                  onPressed: onRetry,
+                  child: const Text('Retry'),
+                ),
+              ],
             ),
           ),
         ),

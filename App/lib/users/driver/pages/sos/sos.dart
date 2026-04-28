@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import '../../../../services/sos_location_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 
@@ -13,10 +14,13 @@ class SOSPage extends StatefulWidget {
 class _SOSPageState extends State<SOSPage>
     with SingleTickerProviderStateMixin {
   late final AnimationController _controller;
+  final SosLocationService _sosLocationService = SosLocationService();
+  bool _isSubmittingSos = false;
 
   @override
   void initState() {
     super.initState();
+    _sosLocationService.init();
     _controller = AnimationController(
       vsync: this,
       duration: const Duration(seconds: 3),
@@ -28,15 +32,42 @@ class _SOSPageState extends State<SOSPage>
     });
   }
 
-  void _onSOSTriggered() {
-    // TODO: dispatch SOS alert
+  Future<void> _onSOSTriggered() async {
+    if (_isSubmittingSos) return;
+
+    setState(() => _isSubmittingSos = true);
+    try {
+      final sosId = await _sosLocationService.createSosAlert();
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('SOS alert sent successfully (#$sosId).'),
+          backgroundColor: const Color(0xFF16A34A),
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error.toString().replaceFirst('Exception: ', '')),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+    } finally {
+      _controller.reset();
+      if (mounted) {
+        setState(() => _isSubmittingSos = false);
+      }
+    }
   }
 
   void _onLongPressStart(LongPressStartDetails _) {
+    if (_isSubmittingSos) return;
     _controller.forward();
   }
 
   void _onLongPressEnd(LongPressEndDetails _) {
+    if (_isSubmittingSos) return;
     if (_controller.status != AnimationStatus.completed) {
       _controller.reverse();
     }
@@ -44,6 +75,7 @@ class _SOSPageState extends State<SOSPage>
 
   @override
   void dispose() {
+    _sosLocationService.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -194,14 +226,26 @@ class _SOSPageState extends State<SOSPage>
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(
-                        Icons.notifications,
-                        color: const Color(0xFFEF4444),
-                        size: SizeConfig.r(36),
-                      ),
+                      if (_isSubmittingSos)
+                        SizedBox(
+                          width: SizeConfig.r(28),
+                          height: SizeConfig.r(28),
+                          child: const CircularProgressIndicator(
+                            strokeWidth: 2.5,
+                            valueColor: AlwaysStoppedAnimation<Color>(
+                              Color(0xFFEF4444),
+                            ),
+                          ),
+                        )
+                      else
+                        Icon(
+                          Icons.notifications,
+                          color: const Color(0xFFEF4444),
+                          size: SizeConfig.r(36),
+                        ),
                       SizedBox(height: SizeConfig.r(4)),
                       Text(
-                        'SOS',
+                        _isSubmittingSos ? 'Sending' : 'SOS',
                         style: TextStyle(
                           fontSize: SizeConfig.sp(14),
                           fontWeight: FontWeight.w700,

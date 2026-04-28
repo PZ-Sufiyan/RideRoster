@@ -1,8 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react'
-import { MapContainer, Marker, TileLayer } from 'react-leaflet'
-import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
-import { useNavigate, useParams } from 'react-router-dom'
+import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
     MdClose,
     MdWarning,
@@ -14,13 +12,13 @@ import { supabase } from '../../../../lib/supabaseClient'
 import { getCompanyAdminById } from '../../../../services/companyService'
 import {
     getSosDetailForCompany,
-    getSosUrgencyPresentation,
     resolveSosForCompany,
     reverseGeocodeAddress,
+    updateSosNotesForCompany,
 } from '../../../../services/sosService'
 import { LoadingStatus } from '../../../../utils/Shimmer'
-
-const DEFAULT_MAP_ZOOM = 15
+import SOSMapView from './components/SOSMapView'
+import { useSOSMonitor } from './hooks/useSOSMonitor'
 
 const formatRelativeTime = (isoString) => {
     if (!isoString) return '—'
@@ -63,36 +61,24 @@ const jobIdLabel = (job) => {
     return job.job_name || '—'
 }
 
-const createSosIcon = ({ color = '#ef4444' } = {}) => {
-    const safe = color || '#ef4444'
-    return L.divIcon({
-        className: '',
-        iconSize: [45, 45],
-        iconAnchor: [25, 25],
-        html: `
-      <div style="
-        min-width: 45px;
-        height: 45px;
-        padding: 0 8px;
-        border-radius: 9999px;
-        background: ${safe};
-        color: white;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        font-weight: 800;
-        font-size: 11px;
-        border: 3px solid white;
-        box-shadow: 0 6px 18px rgba(0,0,0,0.25);
-      ">
-        SOS
-      </div>
-    `,
-    })
+const toRadians = (value) => (value * Math.PI) / 180
+const distanceKmBetween = (lat1, lng1, lat2, lng2) => {
+    const earthRadiusKm = 6371
+    const dLat = toRadians(lat2 - lat1)
+    const dLng = toRadians(lng2 - lng1)
+    const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(toRadians(lat1)) *
+            Math.cos(toRadians(lat2)) *
+            Math.sin(dLng / 2) *
+            Math.sin(dLng / 2)
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+    return earthRadiusKm * c
 }
 
 const SOSDetail = () => {
     const navigate = useNavigate()
+    const location = useLocation()
     const { id: sosId } = useParams()
 
     const [loading, setLoading] = useState(true)
@@ -100,6 +86,18 @@ const SOSDetail = () => {
     const [detail, setDetail] = useState(null)
     const [locationLabel, setLocationLabel] = useState(null)
     const [resolving, setResolving] = useState(false)
+    const [savingNotes, setSavingNotes] = useState(false)
+    const [companyId, setCompanyId] = useState(null)
+    const [noteMessage, setNoteMessage] = useState('')
+
+    const { activeSOS, drivers } = useSOSMonitor(companyId)
+
+    const radiusKm = useMemo(() => {
+        const params = new URLSearchParams(location.search)
+        const raw = Number(params.get('radius'))
+        if (!Number.isFinite(raw) || raw <= 0) return 10
+        return raw
+    }, [location.search])
 
     const load = useCallback(async () => {
         setError(null)
@@ -122,6 +120,7 @@ const SOSDetail = () => {
                 setError('No company linked to your account.')
                 return
             }
+            setCompanyId(companyId)
             if (!sosId) {
                 setError('Missing SOS id.')
                 return
@@ -133,6 +132,7 @@ const SOSDetail = () => {
                 return
             }
             setDetail(data)
+            setNoteMessage(data.sos?.notes || '')
 
             const lat = Number(data.sos?.latitude)
             const lng = Number(data.sos?.longitude)
@@ -151,18 +151,6 @@ const SOSDetail = () => {
     useEffect(() => {
         load()
     }, [load])
-
-    const mapCenter = useMemo(() => {
-        if (!detail?.sos) return [37.7749, -122.4194]
-        const lat = Number(detail.sos.latitude)
-        const lng = Number(detail.sos.longitude)
-        if (!Number.isFinite(lat) || !Number.isFinite(lng)) return [37.7749, -122.4194]
-        return [lat, lng]
-    }, [detail])
-
-    const mapKey = mapCenter.join(',')
-
-    const urgency = detail ? getSosUrgencyPresentation(detail.sos?.notes) : null
 
     const hasValidCoords =
         detail &&
@@ -198,6 +186,31 @@ const SOSDetail = () => {
     const paLabel = detail?.passengerAssistant
         ? [detail.passengerAssistant.first_name, detail.passengerAssistant.surname].filter(Boolean).join(' ')
         : null
+    const sosPoint = detail?.sos || activeSOS || null
+
+    const nearbyDrivers = useMemo(() => {
+        if (!sosPoint) return []
+        const sosLat = Number(sosPoint.latitude)
+        const sosLng = Number(sosPoint.longitude)
+        if (!Number.isFinite(sosLat) || !Number.isFinite(sosLng)) return []
+
+        return drivers
+            .map((driver) => {
+                const lat = Number(driver.latitude)
+                const lng = Number(driver.longitude)
+                if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
+
+                const distanceKm = distanceKmBetween(sosLat, sosLng, lat, lng)
+                if (distanceKm > radiusKm) return null
+
+                return {
+                    ...driver,
+                    distanceKm,
+                }
+            })
+            .filter(Boolean)
+            .sort((a, b) => a.distanceKm - b.distanceKm)
+    }, [drivers, radiusKm, sosPoint])
 
     const handleResolve = async () => {
         if (!detail?.sos?.id || resolving) return
@@ -222,6 +235,30 @@ const SOSDetail = () => {
         }
     }
 
+    const handleSaveNotes = async () => {
+        if (!detail?.sos?.id || !companyId || savingNotes) return
+        setSavingNotes(true)
+        setError(null)
+        try {
+            const updated = await updateSosNotesForCompany(detail.sos.id, companyId, noteMessage)
+            setDetail((current) =>
+                current
+                    ? {
+                          ...current,
+                          sos: {
+                              ...current.sos,
+                              notes: updated.notes,
+                          },
+                      }
+                    : current
+            )
+        } catch (e) {
+            setError(e?.message || 'Could not save notes.')
+        } finally {
+            setSavingNotes(false)
+        }
+    }
+
     const status = detail?.sos?.status
     const isResolved = status === 'resolved' || status === 'cancelled'
 
@@ -230,22 +267,7 @@ const SOSDetail = () => {
             {/* Map */}
             <div className="absolute inset-0 z-0">
                 {!loading && detail && hasValidCoords ? (
-                    <MapContainer
-                        key={mapKey}
-                        center={mapCenter}
-                        zoom={DEFAULT_MAP_ZOOM}
-                        scrollWheelZoom
-                        style={{ height: '100%', width: '100%' }}
-                    >
-                        <TileLayer
-                            attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-                            url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                        />
-                        <Marker
-                            position={[Number(detail.sos.latitude), Number(detail.sos.longitude)]}
-                            icon={createSosIcon({ color: urgency?.markerColor })}
-                        />
-                    </MapContainer>
+                    <SOSMapView activeSOS={sosPoint} drivers={nearbyDrivers} radiusKm={radiusKm} />
                 ) : (
                     <div className="w-full h-full bg-[#e8eef3] flex items-center justify-center px-6">
                         {loading ? (
@@ -404,6 +426,64 @@ const SOSDetail = () => {
                                             {formatRelativeTime(detail.sos.created_at)})
                                         </p>
                                     </div>
+                                </div>
+                            </section>
+
+                            <section>
+                                <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider text-[11px]">
+                                    Nearby Drivers ({nearbyDrivers.length}) within {radiusKm.toFixed(1)} km
+                                </h3>
+                                {nearbyDrivers.length === 0 ? (
+                                    <p className="text-sm text-gray-500">
+                                        No online drivers are currently inside this radius.
+                                    </p>
+                                ) : (
+                                    <div className="space-y-2.5">
+                                        {nearbyDrivers.map((driver) => (
+                                            <div
+                                                key={driver.driver_id}
+                                                className="border border-gray-100 rounded-lg p-3 space-y-1.5"
+                                            >
+                                                <div className="flex items-center justify-between gap-3">
+                                                    <p className="text-sm font-semibold text-gray-900 truncate">
+                                                        {driver.driver_name}
+                                                    </p>
+                                                    <p className="text-xs font-semibold text-blue-600 whitespace-nowrap">
+                                                        {driver.distanceKm.toFixed(2)} km
+                                                    </p>
+                                                </div>
+                                                <p className="text-xs text-gray-500 truncate">
+                                                    Vehicle: {driver.vehicle_plate || '—'}
+                                                </p>
+                                                <p className="text-xs text-gray-500 truncate">
+                                                    Last update: {formatRelativeTime(driver.updated_at)}
+                                                </p>
+                                            </div>
+                                        ))}
+                                    </div>
+                                )}
+                            </section>
+
+                            <section>
+                                <h3 className="text-sm font-bold text-gray-700 mb-3 uppercase tracking-wider text-[11px]">
+                                    Note Message
+                                </h3>
+                                <div className="space-y-2.5">
+                                    <textarea
+                                        rows={4}
+                                        value={noteMessage}
+                                        onChange={(e) => setNoteMessage(e.target.value)}
+                                        placeholder="Add notes for this SOS alert"
+                                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm text-gray-800 resize-y focus:outline-none focus:ring-2 focus:ring-blue-200"
+                                    />
+                                    <button
+                                        type="button"
+                                        onClick={handleSaveNotes}
+                                        disabled={savingNotes || !detail?.sos?.id}
+                                        className="px-4 py-2 bg-[#005580] text-white rounded-lg text-sm font-semibold hover:bg-[#004766] disabled:opacity-50 disabled:pointer-events-none"
+                                    >
+                                        {savingNotes ? 'Saving...' : 'Save Notes'}
+                                    </button>
                                 </div>
                             </section>
                         </>

@@ -286,6 +286,30 @@ export const resolveSosForCompany = async (sosId, companyId) => {
 }
 
 /**
+ * Updates SOS notes when the row belongs to the company.
+ */
+export const updateSosNotesForCompany = async (sosId, companyId, notes) => {
+  if (!sosId || !companyId) throw new Error('SOS id and company are required.')
+
+  const normalizedNotes = typeof notes === 'string' ? notes.trim() : ''
+
+  const { data, error } = await supabase
+    .from('sos')
+    .update({
+      notes: normalizedNotes || null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', sosId)
+    .eq('company_id', companyId)
+    .select('id, notes')
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) throw new Error('SOS alert not found or access denied.')
+  return data
+}
+
+/**
  * Best-effort reverse geocode for map UI (OpenStreetMap Nominatim). Returns null on failure.
  */
 export const reverseGeocodeAddress = async (latitude, longitude) => {
