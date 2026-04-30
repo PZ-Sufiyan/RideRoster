@@ -32,7 +32,6 @@ const Step1EditJob = ({ setToasts }) => {
             ]);
             return;
         }
-        if (!id) return;
         navigate(`/admin/jobs/${id}/edit?step=2`);
     };
 
@@ -49,7 +48,8 @@ const Step1EditJob = ({ setToasts }) => {
                 <div>
                     <h1 className="text-[22px] font-bold text-gray-900 leading-tight">Step 1 of 3: Route Information</h1>
                     <p className="text-[13px] text-gray-500 mt-1">
-                        Job name is fixed. Update type, client, and internal ID. Nothing is saved to the server until you press Save Changes on the last step.
+                        Job name is fixed after creation. Update city, type, client, and internal ID here.
+                        Nothing is saved until you press Save Changes on the last step.
                     </p>
                 </div>
             </div>
@@ -62,14 +62,29 @@ const Step1EditJob = ({ setToasts }) => {
                     </div>
 
                     <div className="space-y-6">
+                        {/* Job name — read-only */}
                         <div className="space-y-2">
                             <label className="text-[13px] font-bold text-gray-700">Job Name / Route Title</label>
-                            <div className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-xl text-[14px] text-gray-700">
+                            <div className="w-full px-4 py-3 bg-gray-100 border border-gray-200 rounded-xl text-[14px] text-gray-500 select-none">
                                 {jobNameDisplay}
                             </div>
-                            <p className="text-[12px] text-gray-500">This title cannot be changed after the job is created.</p>
+                            <p className="text-[12px] text-gray-400">This title cannot be changed after the job is created.</p>
                         </div>
 
+                        {/* City */}
+                        <div className="space-y-2">
+                            <label className="text-[13px] font-bold text-gray-700">City</label>
+                            <input
+                                type="text"
+                                name="city"
+                                value={step1Draft.city}
+                                onChange={handleChange}
+                                placeholder="e.g., Manchester"
+                                className="w-full px-4 py-3 bg-[#F9FAFB] border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/20 focus:border-[#004D6D] transition-all"
+                            />
+                        </div>
+
+                        {/* Job Type */}
                         <div className="space-y-2">
                             <label className="text-[13px] font-bold text-gray-700">
                                 Job Type <span className="text-red-500">*</span>
@@ -94,6 +109,7 @@ const Step1EditJob = ({ setToasts }) => {
                             )}
                         </div>
 
+                        {/* Client / School Name */}
                         <div className="space-y-2">
                             <label className="text-[13px] font-bold text-gray-700">
                                 Client / School Name <span className="text-red-500">*</span>
@@ -111,6 +127,7 @@ const Step1EditJob = ({ setToasts }) => {
                             )}
                         </div>
 
+                        {/* Internal Job ID */}
                         <div className="space-y-2">
                             <label className="text-[13px] font-bold text-gray-700">Internal Job ID (Optional)</label>
                             <input
@@ -125,7 +142,8 @@ const Step1EditJob = ({ setToasts }) => {
                     </div>
                 </div>
 
-                <div className="relative rounded-2xl border border-gray-100 shadow-sm overflow-hidden h-125 lg:h-full min-h-125">
+                {/* Map Preview — decorative, matches Step1Job */}
+                <div className="relative rounded-2xl border border-gray-100 shadow-sm overflow-hidden h-[500px] lg:h-full min-h-[500px]">
                     <div
                         className="absolute inset-0 bg-[#E5E7EB]"
                         style={{
@@ -136,18 +154,12 @@ const Step1EditJob = ({ setToasts }) => {
                     >
                         <div className="absolute inset-0 bg-white/20 backdrop-blur-[1px]">
                             {[
-                                { top: '30%', left: '45%' },
-                                { top: '35%', left: '48%' },
-                                { top: '40%', left: '42%' },
-                                { top: '45%', left: '55%' },
-                                { top: '50%', left: '40%' },
-                                { top: '55%', left: '50%' },
-                                { top: '60%', left: '45%' },
-                                { top: '38%', left: '52%' },
-                                { top: '32%', left: '38%' },
-                                { top: '42%', left: '40%' },
-                                { top: '28%', left: '58%' },
-                                { top: '52%', left: '62%' },
+                                { top: '30%', left: '45%' }, { top: '35%', left: '48%' },
+                                { top: '40%', left: '42%' }, { top: '45%', left: '55%' },
+                                { top: '50%', left: '40%' }, { top: '55%', left: '50%' },
+                                { top: '60%', left: '45%' }, { top: '38%', left: '52%' },
+                                { top: '32%', left: '38%' }, { top: '42%', left: '40%' },
+                                { top: '28%', left: '58%' }, { top: '52%', left: '62%' },
                                 { top: '48%', left: '35%' },
                             ].map((pin, i) => (
                                 <div key={i} className="absolute transform -translate-x-1/2 -translate-y-full" style={{ top: pin.top, left: pin.left }}>
@@ -162,19 +174,14 @@ const Step1EditJob = ({ setToasts }) => {
                         </div>
                     </div>
                     <div className="absolute right-4 bottom-4 flex flex-col gap-2">
-                        <button type="button" className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95">
-                            <MdAdd size={20} />
-                        </button>
-                        <button type="button" className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95">
-                            <MdGpsFixed size={20} />
-                        </button>
-                        <button type="button" className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95">
-                            <MdRemove size={20} />
-                        </button>
+                        <button type="button" className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"><MdAdd size={20} /></button>
+                        <button type="button" className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"><MdGpsFixed size={20} /></button>
+                        <button type="button" className="p-2 bg-white rounded-lg shadow-md hover:bg-gray-50 text-gray-600 transition-all active:scale-95"><MdRemove size={20} /></button>
                     </div>
                 </div>
             </div>
 
+            {/* Bottom Bar */}
             <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-between z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
                 <button
                     type="button"
@@ -188,7 +195,7 @@ const Step1EditJob = ({ setToasts }) => {
                     onClick={handleNext}
                     className="flex items-center gap-2 px-8 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/20 active:scale-95"
                 >
-                    Next: Pickups & Drop-offs
+                    Next: Passengers & Order
                     <MdTrendingFlat size={20} />
                 </button>
             </div>

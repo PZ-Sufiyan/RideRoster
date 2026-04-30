@@ -11,7 +11,15 @@ import {
     MdChevronRight,
 } from 'react-icons/md';
 
-const TABS = ['All Notifications', 'Unread', 'SOS Alerts', 'Job Updates', 'System', 'Day-off Requests'];
+const TABS = [
+    'All Notifications',
+    'Unread',
+    'SOS Alerts',
+    'Job Updates',
+    'System',
+    'Staff Day of Requests',
+    'School Closure Days',
+];
 
 const todayNotifications = [
     {

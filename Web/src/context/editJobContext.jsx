@@ -1,19 +1,20 @@
 /* eslint-disable react-refresh/only-export-components -- context + hook pattern */
-import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import React, {
+    createContext, useCallback, useContext,
+    useEffect, useMemo, useRef, useState,
+} from 'react';
 import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { getCompanyAdminById } from '../services/companyService';
 import {
     fetchJobDetailBundle,
+    fetchJobSchedulePassengers,
     fetchJobsListPageData,
-    getPassengersForJobCreation,
-    buildPickupEditsFromJobBundle,
-    buildDropoffEditsFromJobBundle,
-    replaceJobStopsAndRoutes,
     timeInputFromDb,
-    updateJobById,
     toPgTime,
 } from '../services/jobService';
+
+// ── Context ───────────────────────────────────────────────────────────────────
 
 const EditJobContext = createContext(null);
 
@@ -23,6 +24,8 @@ export function useEditJob() {
     return ctx;
 }
 
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function parseMoneyInput(v) {
     if (v == null || String(v).trim() === '') return null;
     const n = Number(String(v).replace(/[^0-9.]/g, ''));
@@ -30,41 +33,147 @@ function parseMoneyInput(v) {
     return n;
 }
 
+function parseCoord(value) {
+    if (value == null || value === '') return null;
+    const n = Number(value);
+    return Number.isFinite(n) ? n : null;
+}
+
+const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+
+/**
+ * Build passenger_schedules INSERT rows from the ordered passenger array.
+ * Mirrors the private helper in jobService — kept here so saveAllChanges
+ * can call it without making that function public.
+ */
+function buildScheduleRows(jobId, selectedPassengers, hasOutbound, hasInbound, eveningStartTime) {
+    const rows = [];
+
+    for (let idx = 0; idx < selectedPassengers.length; idx++) {
+        const p = selectedPassengers[idx];
+        const stopOrder  = idx + 1;
+        const schedule   = p.weekly_schedule || {};
+        const activeDays = WEEKDAY_KEYS.filter((d) => Boolean(schedule[d]));
+
+        const pickupAddr = p.primary_pickup_address   ?? p.pickup_address    ?? '';
+        const pickupPost = p.primary_pickup_postcode  ?? p.pickup_postal_code ?? '';
+        const pickupLat  = parseCoord(p.primary_pickup_latitude  ?? p.pickup_latitude  ?? null);
+        const pickupLng  = parseCoord(p.primary_pickup_longitude ?? p.pickup_longitude ?? null);
+        const pickupTime = timeInputFromDb(p.primary_pickup_time ?? p.pickup_time ?? '');
+
+        const eduAddr    = p.educational_site_address   ?? p.dropoff_address    ?? '';
+        const eduPost    = p.educational_site_postcode  ?? p.dropoff_postal_code ?? '';
+        const eduLat     = parseCoord(p.educational_site_latitude  ?? p.dropoff_latitude  ?? null);
+        const eduLng     = parseCoord(p.educational_site_longitude ?? p.dropoff_longitude ?? null);
+        const dropoffTime = timeInputFromDb(p.educational_site_dropoff_time ?? p.dropoff_time ?? '');
+
+        for (const day of activeDays) {
+            if (hasOutbound && pickupAddr && eduAddr) {
+                rows.push({
+                    job_id:            jobId,
+                    passenger_id:      p.id,
+                    weekday:           day,
+                    direction:         'outbound',
+                    stop_order:        stopOrder,
+                    pickup_address:    pickupAddr,
+                    pickup_postcode:   pickupPost || null,
+                    pickup_latitude:   pickupLat,
+                    pickup_longitude:  pickupLng,
+                    pickup_time:       toPgTime(pickupTime) || '08:00:00',
+                    dropoff_address:   eduAddr,
+                    dropoff_postcode:  eduPost || null,
+                    dropoff_latitude:  eduLat,
+                    dropoff_longitude: eduLng,
+                    dropoff_time:      toPgTime(dropoffTime) || null,
+                    exception_date:    null,
+                    exception_type:    null,
+                    notes:             null,
+                });
+            }
+            if (hasInbound && eduAddr && pickupAddr) {
+                rows.push({
+                    job_id:            jobId,
+                    passenger_id:      p.id,
+                    weekday:           day,
+                    direction:         'inbound',
+                    stop_order:        stopOrder,
+                    pickup_address:    eduAddr,
+                    pickup_postcode:   eduPost || null,
+                    pickup_latitude:   eduLat,
+                    pickup_longitude:  eduLng,
+                    pickup_time:       toPgTime(eveningStartTime) || '15:00:00',
+                    dropoff_address:   pickupAddr,
+                    dropoff_postcode:  pickupPost || null,
+                    dropoff_latitude:  pickupLat,
+                    dropoff_longitude: pickupLng,
+                    dropoff_time:      null,
+                    exception_date:    null,
+                    exception_type:    null,
+                    notes:             null,
+                });
+            }
+        }
+    }
+    return rows;
+}
+
+// ── Provider ──────────────────────────────────────────────────────────────────
+
 export function EditJobProvider({ children }) {
     const { id: jobId } = useParams();
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [companyId, setCompanyId] = useState(null);
-    const [bundle, setBundle] = useState(null);
-    const [driversCatalog, setDriversCatalog] = useState([]);
-    const [pasCatalog, setPasCatalog] = useState([]);
-    const [jobsMinimal, setJobsMinimal] = useState([]);
 
+    // ── Remote state ──
+    const [loading,        setLoading]        = useState(true);
+    const [error,          setError]          = useState(null);
+    const [companyId,      setCompanyId]      = useState(null);
+    const [bundle,         setBundle]         = useState(null);
+    const [driversCatalog, setDriversCatalog] = useState([]);
+    const [pasCatalog,     setPasCatalog]     = useState([]);
+    const [jobsMinimal,    setJobsMinimal]    = useState([]);
+
+    // ── Step 1 draft ──
     const [step1Draft, setStep1Draft] = useState({
-        jobType: 'Regular Contract',
+        city:       '',
+        jobType:    'School Contract',
         clientName: '',
         internalId: '',
     });
+
+    // ── Step 2 draft — full passenger objects in pickup order ──
+    const [selectedPassengers, setSelectedPassengers] = useState([]);
+    const [step2Loaded,        setStep2Loaded]        = useState(false);
+
+    // ── Step 3 draft ──
     const [step3Draft, setStep3Draft] = useState({
-        jobDate: '',
-        pickupTime: '',
-        estDropoff: '',
-        driverPay: '',
+        semesterStart:         '',
+        semesterEnd:           '',
+        hasOutbound:           true,
+        hasInbound:            true,
+        morningStartTime:      '',
+        morningEndTime:        '',
+        eveningStartTime:      '',
+        driverPay:             '',
         passengerAssistantPay: '',
-        isRecurring: false,
     });
-    const [passengerIdsDraft, setPassengerIdsDraft] = useState([]);
-    const [pickupEdits, setPickupEdits] = useState({});
-    const [dropoffEdits, setDropoffEdits] = useState({});
-    const [step2StopsHydrated, setStep2StopsHydrated] = useState(false);
+
+    // ── Driver / PA draft ──
     const [draftDriverId, setDraftDriverId] = useState(null);
-    const [draftPaId, setDraftPaId] = useState(null);
+    const [draftPaId,     setDraftPaId]     = useState(null);
 
+    // ── Save state ──
     const [saveInProgress, setSaveInProgress] = useState(false);
-    const [draftsHydrated, setDraftsHydrated] = useState(false);
 
+    // Guard: only hydrate drafts once per jobId
     const draftsHydratedRef = useRef(false);
-    const initialPassengerIdsRef = useRef(new Set());
+
+    // Reset guard when job changes
+    useEffect(() => {
+        draftsHydratedRef.current = false;
+        setStep2Loaded(false);
+        setSelectedPassengers([]);
+    }, [jobId]);
+
+    // ── Load ──────────────────────────────────────────────────────────────────
 
     const load = useCallback(async (opts = {}) => {
         const silent = opts.silent === true;
@@ -72,9 +181,7 @@ export function EditJobProvider({ children }) {
         if (!silent) setLoading(true);
         setError(null);
         try {
-            const {
-                data: { session },
-            } = await supabase.auth.getSession();
+            const { data: { session } } = await supabase.auth.getSession();
             const uid = session?.user?.id;
             if (!uid) throw new Error('Not authenticated.');
             const admin = await getCompanyAdminById(uid);
@@ -82,16 +189,18 @@ export function EditJobProvider({ children }) {
             if (!cid) throw new Error('No company linked to your account.');
             setCompanyId(cid);
 
-            const [detail, listData] = await Promise.all([
+            const [detail, listData, schedPax] = await Promise.all([
                 fetchJobDetailBundle(jobId, cid),
                 fetchJobsListPageData(cid),
+                fetchJobSchedulePassengers(jobId),
             ]);
 
             setBundle(detail);
-            setDriversCatalog(listData.drivers);
-            setPasCatalog(listData.passengerAssistants);
-            setJobsMinimal(listData.jobsMinimal);
-            return detail;
+            setDriversCatalog(listData.drivers          || []);
+            setPasCatalog(listData.passengerAssistants  || []);
+            setJobsMinimal(listData.jobsMinimal         || []);
+
+            return { detail, schedPax };
         } catch (e) {
             setError(e?.message || 'Could not load job.');
             setBundle(null);
@@ -101,203 +210,194 @@ export function EditJobProvider({ children }) {
         }
     }, [jobId]);
 
-    useEffect(() => {
-        load();
-    }, [load]);
+    // ── Hydrate drafts from DB (once per jobId) ───────────────────────────────
 
     useEffect(() => {
-        draftsHydratedRef.current = false;
-        setDraftsHydrated(false);
-        setPickupEdits({});
-        setDropoffEdits({});
-        setStep2StopsHydrated(false);
-    }, [jobId]);
-
-    useEffect(() => {
-        if (!bundle?.job || !companyId || !draftsHydrated) return;
         let cancelled = false;
-        setStep2StopsHydrated(false);
         (async () => {
-            try {
-                const rows = await getPassengersForJobCreation(companyId);
-                const byId = new Map(rows.map((p) => [p.id, p]));
-                if (cancelled) return;
-                setPickupEdits(buildPickupEditsFromJobBundle(bundle, byId));
-                setDropoffEdits(buildDropoffEditsFromJobBundle(bundle, byId));
-                setStep2StopsHydrated(true);
-            } catch {
-                if (!cancelled) {
-                    setPickupEdits({});
-                    setDropoffEdits({});
-                    setStep2StopsHydrated(true);
-                }
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [bundle, companyId, draftsHydrated]);
+            const result = await load();
+            if (!result || cancelled) return;
+            if (draftsHydratedRef.current) return;
+            draftsHydratedRef.current = true;
 
-    useEffect(() => {
-        if (!bundle?.job || draftsHydratedRef.current) return;
-        draftsHydratedRef.current = true;
-        const j = bundle.job;
-        setStep1Draft({
-            jobType: j.job_type || 'Regular Contract',
-            clientName: j.client_school_name || '',
-            internalId: j.internal_job_id || '',
-        });
-        const ids = [...new Set((bundle.routes || []).map((r) => r.passenger_id).filter(Boolean))];
-        setPassengerIdsDraft(ids);
-        initialPassengerIdsRef.current = new Set(ids);
-        setStep3Draft({
-            jobDate: j.job_date || '',
-            pickupTime: timeInputFromDb(j.pickup_time),
-            estDropoff: timeInputFromDb(j.estimated_dropoff_time),
-            driverPay: j.driver_pay != null && j.driver_pay !== '' ? String(j.driver_pay) : '',
-            passengerAssistantPay:
-                j.passenger_assistant_pay != null && j.passenger_assistant_pay !== '' ? String(j.passenger_assistant_pay) : '',
-            isRecurring: Boolean(j.is_recurring),
-        });
-        setDraftDriverId(j.assigned_driver_id ?? null);
-        setDraftPaId(j.assigned_pa_id ?? null);
-        setDraftsHydrated(true);
-    }, [bundle, jobId]);
+            const { detail, schedPax } = result;
+            const j = detail.job;
+
+            setStep1Draft({
+                city:       j.city               ?? '',
+                jobType:    j.job_type            ?? 'School Contract',
+                clientName: j.client_school_name  ?? '',
+                internalId: j.internal_job_id     ?? '',
+            });
+
+            setStep3Draft({
+                semesterStart:         j.semester_start          ?? '',
+                semesterEnd:           j.semester_end            ?? '',
+                hasOutbound:           j.has_outbound            !== false,
+                hasInbound:            j.has_inbound             !== false,
+                morningStartTime:      timeInputFromDb(j.morning_start_time) ?? '',
+                morningEndTime:        timeInputFromDb(j.morning_end_time)   ?? '',
+                eveningStartTime:      timeInputFromDb(j.evening_start_time) ?? '',
+                driverPay:             j.driver_pay              != null ? String(j.driver_pay) : '',
+                passengerAssistantPay: j.passenger_assistant_pay != null ? String(j.passenger_assistant_pay) : '',
+            });
+
+            setDraftDriverId(j.assigned_driver_id ?? null);
+            setDraftPaId(j.assigned_pa_id         ?? null);
+
+            // schedPax is already ordered by stop_order ASC from fetchJobSchedulePassengers
+            setSelectedPassengers(schedPax || []);
+            setStep2Loaded(true);
+        })();
+        return () => { cancelled = true; };
+    }, [load]); // `load` is stable per jobId (useCallback + [jobId])
+
+    // ── Save ──────────────────────────────────────────────────────────────────
 
     const saveAllChanges = useCallback(async () => {
-        if (!jobId || !companyId || !bundle?.job) throw new Error('Missing job data.');
-        const s1 = step1Draft;
-        const s3 = step3Draft;
-        if (!s1.clientName?.trim() || !s1.jobType?.trim()) {
-            throw new Error('Please fill in client and job type (step 1).');
-        }
-        if (!s3.jobDate || !s3.pickupTime || !s3.estDropoff) {
-            throw new Error('Please fill in job date and times (step 3).');
-        }
-        if (passengerIdsDraft.length === 0) {
-            throw new Error('Add at least one passenger (step 2).');
-        }
+        if (!jobId || !companyId) throw new Error('Missing job or company data.');
+
+        // Validation — throw so the step component can catch and toast
+        if (!step1Draft.clientName?.trim()) throw new Error('Client / School Name is required.');
+        if (!step1Draft.jobType?.trim())    throw new Error('Job Type is required.');
+        if (!step3Draft.semesterStart)      throw new Error('Semester start date is required.');
+        if (!step3Draft.semesterEnd)        throw new Error('Semester end date is required.');
+        if (step3Draft.semesterEnd < step3Draft.semesterStart)
+            throw new Error('Semester end must be after start date.');
+        if (!step3Draft.hasOutbound && !step3Draft.hasInbound)
+            throw new Error('Enable at least one direction.');
+        if (step3Draft.hasOutbound && !step3Draft.morningStartTime)
+            throw new Error('Morning start time is required.');
+        if (step3Draft.hasOutbound && !step3Draft.morningEndTime)
+            throw new Error('Morning end time is required.');
+        if (step3Draft.hasInbound && !step3Draft.eveningStartTime)
+            throw new Error('Evening start time is required.');
+        if (selectedPassengers.length === 0)
+            throw new Error('Add at least one passenger.');
 
         setSaveInProgress(true);
         try {
-            await updateJobById(jobId, companyId, {
-                job_type: s1.jobType.trim(),
-                client_school_name: s1.clientName.trim(),
-                internal_job_id: s1.internalId.trim() || null,
-                job_date: s3.jobDate,
-                pickup_time: toPgTime(s3.pickupTime),
-                estimated_dropoff_time: toPgTime(s3.estDropoff),
-                is_recurring: s3.isRecurring,
-                recurrence_pattern: s3.isRecurring ? { frequency: 'weekly' } : null,
-                driver_pay: parseMoneyInput(s3.driverPay),
-                passenger_assistant_pay: parseMoneyInput(s3.passengerAssistantPay),
-                assigned_driver_id: draftDriverId,
-                assigned_pa_id: draftPaId,
-            });
+            // 1 ── Update jobs row
+            const { error: jobErr } = await supabase
+                .from('jobs')
+                .update({
+                    city:                    step1Draft.city.trim()       || null,
+                    job_type:                step1Draft.jobType.trim(),
+                    client_school_name:      step1Draft.clientName.trim(),
+                    internal_job_id:         step1Draft.internalId.trim() || null,
+                    semester_start:          step3Draft.semesterStart,
+                    semester_end:            step3Draft.semesterEnd,
+                    has_outbound:            Boolean(step3Draft.hasOutbound),
+                    has_inbound:             Boolean(step3Draft.hasInbound),
+                    morning_start_time:      toPgTime(step3Draft.morningStartTime) || null,
+                    morning_end_time:        toPgTime(step3Draft.morningEndTime)   || null,
+                    evening_start_time:      toPgTime(step3Draft.eveningStartTime) || null,
+                    driver_pay:              parseMoneyInput(step3Draft.driverPay),
+                    passenger_assistant_pay: parseMoneyInput(step3Draft.passengerAssistantPay),
+                    assigned_driver_id:      draftDriverId || null,
+                    assigned_pa_id:          draftPaId     || null,
+                    updated_at:              new Date().toISOString(),
+                })
+                .eq('id', jobId)
+                .eq('company_id', companyId);
 
-            const catalog = await getPassengersForJobCreation(companyId);
-            const byId = new Map(catalog.map((p) => [p.id, p]));
-            const selected = passengerIdsDraft.map((id) => byId.get(id)).filter(Boolean);
-            if (selected.length !== passengerIdsDraft.length) {
-                throw new Error('One or more passengers could not be loaded. Refresh and try again.');
+            if (jobErr) throw jobErr;
+
+            // 2 ── Delete only BASE schedule rows (exception_date IS NULL).
+            //      Exception rows set by admin are intentionally preserved.
+            const { error: delErr } = await supabase
+                .from('passenger_schedules')
+                .delete()
+                .eq('job_id', jobId)
+                .is('exception_date', null);
+
+            if (delErr) throw delErr;
+
+            // 3 ── Re-insert base rows from the current passenger order
+            const newRows = buildScheduleRows(
+                jobId,
+                selectedPassengers,
+                Boolean(step3Draft.hasOutbound),
+                Boolean(step3Draft.hasInbound),
+                step3Draft.eveningStartTime || '',
+            );
+
+            if (newRows.length > 0) {
+                const { error: insErr } = await supabase
+                    .from('passenger_schedules')
+                    .insert(newRows);
+                if (insErr) throw insErr;
             }
-            await replaceJobStopsAndRoutes(jobId, selected, pickupEdits, dropoffEdits);
 
-            initialPassengerIdsRef.current = new Set(passengerIdsDraft);
-
-            const detail = await load({ silent: true });
-            if (detail) {
+            // 4 ── Silent reload to re-sync local state with what the DB now holds
+            const result = await load({ silent: true });
+            if (result) {
+                const { detail, schedPax } = result;
                 const j = detail.job;
                 setStep1Draft({
-                    jobType: j.job_type || 'Regular Contract',
-                    clientName: j.client_school_name || '',
-                    internalId: j.internal_job_id || '',
+                    city:       j.city               ?? '',
+                    jobType:    j.job_type            ?? 'School Contract',
+                    clientName: j.client_school_name  ?? '',
+                    internalId: j.internal_job_id     ?? '',
                 });
-                const newIds = [...new Set((detail.routes || []).map((r) => r.passenger_id).filter(Boolean))];
-                setPassengerIdsDraft(newIds);
-                initialPassengerIdsRef.current = new Set(newIds);
                 setStep3Draft({
-                    jobDate: j.job_date || '',
-                    pickupTime: timeInputFromDb(j.pickup_time),
-                    estDropoff: timeInputFromDb(j.estimated_dropoff_time),
-                    driverPay: j.driver_pay != null && j.driver_pay !== '' ? String(j.driver_pay) : '',
-                    passengerAssistantPay:
-                        j.passenger_assistant_pay != null && j.passenger_assistant_pay !== ''
-                            ? String(j.passenger_assistant_pay)
-                            : '',
-                    isRecurring: Boolean(j.is_recurring),
+                    semesterStart:         j.semester_start          ?? '',
+                    semesterEnd:           j.semester_end            ?? '',
+                    hasOutbound:           j.has_outbound            !== false,
+                    hasInbound:            j.has_inbound             !== false,
+                    morningStartTime:      timeInputFromDb(j.morning_start_time) ?? '',
+                    morningEndTime:        timeInputFromDb(j.morning_end_time)   ?? '',
+                    eveningStartTime:      timeInputFromDb(j.evening_start_time) ?? '',
+                    driverPay:             j.driver_pay              != null ? String(j.driver_pay) : '',
+                    passengerAssistantPay: j.passenger_assistant_pay != null ? String(j.passenger_assistant_pay) : '',
                 });
                 setDraftDriverId(j.assigned_driver_id ?? null);
-                setDraftPaId(j.assigned_pa_id ?? null);
+                setDraftPaId(j.assigned_pa_id         ?? null);
+                setSelectedPassengers(schedPax || []);
             }
         } finally {
             setSaveInProgress(false);
         }
     }, [
-        jobId,
-        companyId,
-        bundle,
-        step1Draft,
-        step3Draft,
-        passengerIdsDraft,
-        draftDriverId,
-        draftPaId,
-        pickupEdits,
-        dropoffEdits,
+        jobId, companyId,
+        step1Draft, step3Draft,
+        selectedPassengers,
+        draftDriverId, draftPaId,
         load,
     ]);
 
-    const value = useMemo(
-        () => ({
-            loading,
-            error,
-            companyId,
-            jobId,
-            bundle,
-            refetch: load,
-            driversCatalog,
-            pasCatalog,
-            jobsMinimal,
-            pickupEdits,
-            setPickupEdits,
-            dropoffEdits,
-            setDropoffEdits,
-            step2StopsHydrated,
-            step1Draft,
-            setStep1Draft,
-            step3Draft,
-            setStep3Draft,
-            passengerIdsDraft,
-            setPassengerIdsDraft,
-            draftDriverId,
-            setDraftDriverId,
-            draftPaId,
-            setDraftPaId,
-            saveAllChanges,
-            saveInProgress,
-        }),
-        [
-            loading,
-            error,
-            companyId,
-            jobId,
-            bundle,
-            load,
-            driversCatalog,
-            pasCatalog,
-            jobsMinimal,
-            pickupEdits,
-            dropoffEdits,
-            step2StopsHydrated,
-            step1Draft,
-            step3Draft,
-            passengerIdsDraft,
-            draftDriverId,
-            draftPaId,
-            saveAllChanges,
-            saveInProgress,
-        ]
-    );
+    // ── Context value (memoised to avoid cascading renders) ───────────────────
 
-    return <EditJobContext.Provider value={value}>{children}</EditJobContext.Provider>;
+    const value = useMemo(() => ({
+        // Remote
+        loading, error, companyId, jobId,
+        bundle, refetch: load,
+        driversCatalog, pasCatalog, jobsMinimal,
+        // Step 1
+        step1Draft, setStep1Draft,
+        // Step 2
+        selectedPassengers, setSelectedPassengers, step2Loaded,
+        // Step 3
+        step3Draft, setStep3Draft,
+        // Driver / PA
+        draftDriverId, setDraftDriverId,
+        draftPaId,     setDraftPaId,
+        // Save
+        saveAllChanges, saveInProgress,
+    }), [
+        loading, error, companyId, jobId,
+        bundle, load,
+        driversCatalog, pasCatalog, jobsMinimal,
+        step1Draft,
+        selectedPassengers, step2Loaded,
+        step3Draft,
+        draftDriverId, draftPaId,
+        saveAllChanges, saveInProgress,
+    ]);
+
+    return (
+        <EditJobContext.Provider value={value}>
+            {children}
+        </EditJobContext.Provider>
+    );
 }

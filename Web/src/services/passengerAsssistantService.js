@@ -227,10 +227,10 @@ export const getJobsByAssignedPassengerAssistant = async (companyId, paId) => {
   if (!companyId || !paId) return []
   const { data, error } = await supabase
     .from('jobs')
-    .select('id, internal_job_id, job_name, job_date, status, company_id, assigned_pa_id')
+    .select('id, internal_job_id, job_name, semester_start, created_at, status, company_id, assigned_pa_id')
     .eq('company_id', companyId)
     .eq('assigned_pa_id', paId)
-    .order('job_date', { ascending: false })
+    .order('created_at', { ascending: false })
 
   if (error) throw error
   return data || []

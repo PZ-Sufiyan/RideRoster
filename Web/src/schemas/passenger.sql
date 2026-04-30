@@ -1,46 +1,72 @@
 -- Passenger Bookings table
-create table if not exists public.passenger (
-  id uuid primary key default gen_random_uuid(),
-
-  company_id uuid not null
-    references public.companies(id)
-    on delete cascade,
-
-  passenger_id uuid not null
-    references public.passenger(id)
-    on delete cascade,
-
-  -- passenger details
+create table public.passenger (
+  id uuid not null default gen_random_uuid (),
+  company_id uuid not null,
   first_name text not null,
   surname text not null,
-  email text,
-
-  -- phone numbers (store as text to support +44 / spaces / leading zeros)
+  email text null,
   contact_number_1 text not null,
-  contact_number_2 text,
-
-  -- pickup (home)
-  pickup_address text not null,
-  pickup_postal_code text not null,
-  pickup_time time not null,
-
-  -- drop-off (school)
-  dropoff_address text not null,
-  dropoff_postal_code text not null,
-  dropoff_time time not null,
-
-  pickup_latitude double precision,
-  pickup_longitude double precision,
-  dropoff_latitude double precision,
-  dropoff_longitude double precision,
-
+  contact_number_2 text null,
+  primary_pickup_address text not null,
+  primary_pickup_postcode text not null,
+  primary_pickup_time time without time zone not null,
+  educational_site_address text not null,
+  educational_site_postcode text not null,
+  educational_site_dropoff_time time without time zone not null,
   wheelchair_required boolean not null default false,
-  notes text,
-  assigned_job_id text,
+  notes text null,
+  assigned_job_id text null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  status text not null default 'active'::text,
+  primary_pickup_latitude text null,
+  educational_site_latitude text null,
+  educational_site_longitude text null,
+  primary_pickup_longitude text null,
+  harness_required boolean not null default false,
+  weekly_schedule jsonb not null default '{"fri": false, "mon": false, "sat": false, "sun": false, "thu": false, "tue": false, "wed": false}'::jsonb,
+  constraint passenger_pkey primary key (id),
+  constraint passenger_company_id_fkey foreign KEY (company_id) references companies (id) on delete CASCADE
+) TABLESPACE pg_default;
 
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+create index IF not exists idx_passenger_company_id on public.passenger using btree (company_id) TABLESPACE pg_default;
+
+-- =====================================================
+-- Passenger Locations Table
+-- =====================================================
+
+create table public.passenger_locations (
+  id uuid not null default gen_random_uuid (),
+  passenger_id uuid not null,
+  location_type text not null,
+  address text not null,
+  postcode text not null,
+  latitude numeric(10, 7) null,
+  longitude numeric(10, 7) null,
+  label text null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  constraint passenger_locations_pkey primary key (id),
+  constraint uq_passenger_location_type unique (passenger_id, location_type),
+  constraint passenger_locations_passenger_id_fkey foreign KEY (passenger_id) references passenger (id) on delete CASCADE,
+  constraint chk_location_type check (
+    (
+      location_type = any (
+        array[
+          'secondary_pickup'::text,
+          'educational_site_1'::text,
+          'respite'::text
+        ]
+      )
+    )
+  )
+) TABLESPACE pg_default;
+
+create index IF not exists idx_passenger_locations_passenger on public.passenger_locations using btree (passenger_id) TABLESPACE pg_default;
+
+
+
+
 
 -- Indexes
 create index if not exists idx_passenger_company_id

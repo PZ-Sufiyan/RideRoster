@@ -498,7 +498,7 @@ const PADetail = () => {
                                                 </td>
                                                 <td className="px-5 py-3.5 text-gray-700 min-w-[140px]">{job.job_name || '—'}</td>
                                                 <td className="px-5 py-3.5 text-gray-500 whitespace-nowrap">
-                                                    {formatDate(job.job_date)}
+                                                    {formatDate(job.semester_start || job.created_at)}
                                                 </td>
                                                 <td className="px-5 py-3.5">
                                                     <span

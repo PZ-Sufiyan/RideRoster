@@ -1,166 +1,105 @@
 -- =====================================================
 -- Drivers Table
 -- =====================================================
-
-create extension if not exists pgcrypto;
-
-create table if not exists public.drivers (
-  id uuid primary key default gen_random_uuid(),
-
-  company_id uuid not null
-    references public.companies(id)
-    on delete cascade,
-
+create table public.drivers (
+  id uuid not null default gen_random_uuid (),
+  company_id uuid not null,
   first_name text not null,
   last_name text not null,
   email text not null,
   phone text not null,
-
   residential_address text not null,
-
   emergency_contact_name text not null,
   emergency_contact_phone text not null,
+  passport_number text null,
+  right_to_work_code text null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  license_no text not null,
+  status text null,
+  dbs_service_update_id text null,
+  nationality text null,
+  constraint drivers_pkey primary key (id),
+  constraint drivers_company_id_fkey foreign KEY (company_id) references companies (id) on delete CASCADE,
+  constraint drivers_id_auth_fkey foreign KEY (id) references auth.users (id) on delete CASCADE
+) TABLESPACE pg_default;
 
-  passport_number text,
-  right_to_work_code text,
-  license_no text NOT NULL,
-  status text,
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
+create index IF not exists idx_drivers_company on public.drivers using btree (company_id) TABLESPACE pg_default;
 
-create index if not exists idx_drivers_company
-on public.drivers(company_id);
-
-create unique index if not exists uq_drivers_email
-on public.drivers(email);
-
-
--- =====================================================
--- Driver Document Type Enum
--- =====================================================
-
-do $$
-begin
-  if not exists (select 1 from pg_type where typname = 'driver_document_type') then
-    create type public.driver_document_type as enum (
-      'driving_license_front',
-      'driving_license_back',
-      'taxi_badge_front',
-      'taxi_badge_back',
-      'dbs_certificate_front',
-      'dbs_certificate_back',
-      'safeguarding_certificate'
-    );
-  end if;
-end$$;
-
+create unique INDEX IF not exists uq_drivers_email on public.drivers using btree (email) TABLESPACE pg_default;
 
 -- =====================================================
--- Driver Documents Table
+-- Driver Document 
 -- =====================================================
 
-create table if not exists public.driver_documents (
-  id uuid primary key default gen_random_uuid(),
-
-  company_id uuid not null
-    references public.companies(id)
-    on delete cascade,
-
-  driver_id uuid not null
-    references public.drivers(id)
-    on delete cascade,
-
+create table public.driver_documents (
+  id uuid not null default gen_random_uuid (),
+  company_id uuid not null,
+  driver_id uuid not null,
   document_type public.driver_document_type not null,
-
   file_url text not null,
-  expiry_date date,
+  expiry_date date null,
+  uploaded_at timestamp with time zone not null default now(),
+  constraint driver_documents_pkey primary key (id),
+  constraint driver_documents_company_id_fkey foreign KEY (company_id) references companies (id) on delete CASCADE,
+  constraint driver_documents_driver_id_fkey foreign KEY (driver_id) references drivers (id) on delete CASCADE
+) TABLESPACE pg_default;
 
-  uploaded_at timestamptz not null default now()
-);
+create index IF not exists idx_driver_documents_driver on public.driver_documents using btree (driver_id) TABLESPACE pg_default;
 
-create index if not exists idx_driver_documents_driver
-on public.driver_documents(driver_id);
+create index IF not exists idx_driver_documents_company on public.driver_documents using btree (company_id) TABLESPACE pg_default;
 
-create index if not exists idx_driver_documents_company
-on public.driver_documents(company_id);
 
 
 -- =====================================================
 -- Vehicles Table
 -- =====================================================
 
-create table if not exists public.vehicles (
-  id uuid primary key default gen_random_uuid(),
+create table public.vehicles (
+  id uuid not null default gen_random_uuid (),
+  company_id uuid not null,
+  driver_id uuid null,
+  vehicle_photo_url text null,
+  seating_capacity integer null,
+  created_at timestamp with time zone not null default now(),
+  updated_at timestamp with time zone not null default now(),
+  taxi_license_plate_number text not null,
+  name text null,
+  registration_number text null,
+  make text null,
+  model text null,
+  vehicle_colour text null,
+  year_of_first_registration date null,
+  licensing_type text null,
+  body_style text null,
+  wheelchair_accessible boolean not null default false,
+  constraint vehicles_pkey primary key (id),
+  constraint vehicles_company_id_fkey foreign KEY (company_id) references companies (id) on delete CASCADE,
+  constraint vehicles_driver_id_fkey foreign KEY (driver_id) references drivers (id) on delete set null
+) TABLESPACE pg_default;
 
-  company_id uuid not null
-    references public.companies(id)
-    on delete cascade,
+create index IF not exists idx_vehicles_company on public.vehicles using btree (company_id) TABLESPACE pg_default;
 
-  driver_id uuid
-    references public.drivers(id)
-    on delete set null,
-
-  taxi_license_plate_number text NOT NULL,
-
-  vehicle_photo_url text,
-
-  seating_capacity integer,
-
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
-);
-
-create index if not exists idx_vehicles_company
-on public.vehicles(company_id);
-
-create index if not exists idx_vehicles_driver
-on public.vehicles(driver_id);
-
-
--- =====================================================
--- Vehicle Document Type Enum
--- =====================================================
-
-do $$
-begin
-  if not exists (select 1 from pg_type where typname = 'vehicle_document_type') then
-    create type public.vehicle_document_type as enum (
-      'v5_front',
-      'v5_inside',
-      'mot_certificate',
-      'taxi_license_plate',
-      'insurance_certificate'
-    );
-  end if;
-end$$;
+create index IF not exists idx_vehicles_driver on public.vehicles using btree (driver_id) TABLESPACE pg_default;
 
 
 -- =====================================================
 -- Vehicle Documents Table
 -- =====================================================
 
-create table if not exists public.vehicle_documents (
-  id uuid primary key default gen_random_uuid(),
-
-  company_id uuid not null
-    references public.companies(id)
-    on delete cascade,
-
-  vehicle_id uuid not null
-    references public.vehicles(id)
-    on delete cascade,
-
+create table public.vehicle_documents (
+  id uuid not null default gen_random_uuid (),
+  company_id uuid not null,
+  vehicle_id uuid not null,
   document_type public.vehicle_document_type not null,
-
   file_url text not null,
-  expiry_date date,
+  expiry_date date null,
+  uploaded_at timestamp with time zone not null default now(),
+  constraint vehicle_documents_pkey primary key (id),
+  constraint vehicle_documents_company_id_fkey foreign KEY (company_id) references companies (id) on delete CASCADE,
+  constraint vehicle_documents_vehicle_id_fkey foreign KEY (vehicle_id) references vehicles (id) on delete CASCADE
+) TABLESPACE pg_default;
 
-  uploaded_at timestamptz not null default now()
-);
+create index IF not exists idx_vehicle_documents_vehicle on public.vehicle_documents using btree (vehicle_id) TABLESPACE pg_default;
 
-create index if not exists idx_vehicle_documents_vehicle
-on public.vehicle_documents(vehicle_id);
-
-create index if not exists idx_vehicle_documents_company
-on public.vehicle_documents(company_id);
+create index IF not exists idx_vehicle_documents_company on public.vehicle_documents using btree (company_id) TABLESPACE pg_default;

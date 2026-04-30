@@ -25,13 +25,12 @@ const PA_STATUS_DB = {
     APPROVE: 'approve',
     REJECT: 'reject',
     SUSPEND: 'suspend',
-    ACTIVE: 'active',
 };
 
 function normalizePaStatus(raw) {
     if (raw == null || raw === '') return PA_STATUS_DB.PENDING;
     const s = String(raw).trim().toLowerCase();
-    if (['pending', 'approve', 'reject', 'suspend', 'active'].includes(s)) return s;
+    if (['pending', 'approve', 'reject', 'suspend'].includes(s)) return s;
     if (s === 'approved') return PA_STATUS_DB.APPROVE;
     if (s === 'rejected') return PA_STATUS_DB.REJECT;
     if (s === 'suspended') return PA_STATUS_DB.SUSPEND;
@@ -45,7 +44,6 @@ function paStatusLabel(dbStatus) {
         [PA_STATUS_DB.APPROVE]: 'Approved',
         [PA_STATUS_DB.REJECT]: 'Rejected',
         [PA_STATUS_DB.SUSPEND]: 'Suspended',
-        [PA_STATUS_DB.ACTIVE]: 'Active',
     };
     return labels[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Pending');
 }
@@ -62,14 +60,13 @@ const ITEMS_PER_PAGE = 10;
 
 const PA_ACTION_MENU_H = 188;
 
-const PA_MENU_ACTIONS = ['Approve', 'Reject', 'Suspend', 'Active'];
+const PA_MENU_ACTIONS = ['Approve', 'Reject', 'Suspend'];
 
 function actionToDbStatus(action) {
     const map = {
         Approve: PA_STATUS_DB.APPROVE,
         Reject: PA_STATUS_DB.REJECT,
         Suspend: PA_STATUS_DB.SUSPEND,
-        Active: PA_STATUS_DB.ACTIVE,
     };
     return map[action] ?? null;
 }
@@ -94,7 +91,7 @@ const PAListPage = () => {
     const statusRef = useRef(null);
     const bulkRef = useRef(null);
 
-    const statuses = ['All Statuses', 'Pending', 'Approved', 'Rejected', 'Suspended', 'Active'];
+    const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended'];
 
     useEffect(() => {
         const loadPassengerAssistants = async () => {
