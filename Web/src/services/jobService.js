@@ -108,42 +108,63 @@ export function passengerDisplayName(p) {
   return [p.first_name, p.surname].filter(Boolean).join(' ').trim() || 'Passenger'
 }
 
-// ── Stop derivation (updated for renamed columns) ─────────────────────────────
+// ── Stop derivation ───────────────────────────────────────────────────────────
+
+/**
+ * Build a grouping key for a pickup stop.
+ * Groups by: normalised address + postcode + pickup_time
+ * This means two passengers at the same address but different pickup times
+ * will produce SEPARATE stops — which is intentional and correct.
+ */
+function pickupStopKey(p) {
+  const addr    = normalizeAddressKey(p.primary_pickup_address ?? p.pickup_address ?? '')
+  const post    = (p.primary_pickup_postcode ?? p.pickup_postal_code ?? '').trim().toLowerCase()
+  const rawTime = p.primary_pickup_time ?? p.pickup_time ?? ''
+  const time    = formatTimeForInput(rawTime) || '__none__'
+  return `${addr}|${post}|${time}`
+}
 
 /**
  * Derive unique OUTBOUND pickup stops (primary_pickup_address → educational_site).
- * One stop per distinct pickup address across all selected passengers.
+ *
+ * Grouping rule: address + postcode + pickup_time must ALL match for passengers
+ * to share a stop. If the pickup time differs, a separate stop is created even
+ * when the address and postcode are identical.
  */
 export function derivePickupStops(selectedPassengers, pickupEdits = {}) {
-  const seen = new Set()
+  const seen  = new Set()
   const stops = []
 
   for (const p of selectedPassengers) {
-    // Use renamed column — fall back to old name for any legacy rows still in DB
     const addr = p.primary_pickup_address ?? p.pickup_address ?? ''
-    const key = normalizeAddressKey(addr)
+    const key  = normalizeAddressKey(addr)
     if (!key) continue
-    if (seen.has(key)) continue
-    seen.add(key)
 
-    const edits = pickupEdits[key] || {}
-    const rawTime = p.primary_pickup_time ?? p.pickup_time ?? ''
+    const stopKey = pickupStopKey(p)
+    if (seen.has(stopKey)) continue
+    seen.add(stopKey)
+
+    const rawTime      = p.primary_pickup_time ?? p.pickup_time ?? ''
+    const formattedTime = formatTimeForInput(rawTime)
+
+    const edits     = pickupEdits[stopKey] || {}
     const scheduled =
       edits.scheduled_time != null && edits.scheduled_time !== ''
         ? edits.scheduled_time
-        : formatTimeForInput(rawTime)
+        : formattedTime
 
     stops.push({
-      addressKey: key,
-      address: edits.address ?? addr,
-      postcode: edits.postcode ?? (p.primary_pickup_postcode ?? p.pickup_postal_code ?? ''),
-      latitude: edits.latitude ?? (p.primary_pickup_latitude ?? p.pickup_latitude ?? null),
-      longitude: edits.longitude ?? (p.primary_pickup_longitude ?? p.pickup_longitude ?? null),
-      scheduled_time: scheduled,
-      status: 'pending',
+      addressKey:       stopKey,
+      address:          edits.address  ?? addr,
+      postcode:         edits.postcode ?? (p.primary_pickup_postcode ?? p.pickup_postal_code ?? ''),
+      latitude:         edits.latitude  ?? (p.primary_pickup_latitude  ?? p.pickup_latitude  ?? null),
+      longitude:        edits.longitude ?? (p.primary_pickup_longitude ?? p.pickup_longitude ?? null),
+      scheduled_time:   scheduled,
+      status:           'pending',
       notes_for_driver: edits.notes_for_driver ?? '',
+      // Only include passengers whose address + postcode + time all match this stop
       passenger_ids: selectedPassengers
-        .filter((x) => normalizeAddressKey(x.primary_pickup_address ?? x.pickup_address ?? '') === key)
+        .filter((x) => pickupStopKey(x) === stopKey)
         .map((x) => x.id),
     })
   }
@@ -154,31 +175,31 @@ export function derivePickupStops(selectedPassengers, pickupEdits = {}) {
 
 /**
  * Derive unique OUTBOUND dropoff stops (educational_site_address).
- * One stop per distinct dropoff address.
+ * One stop per distinct dropoff address — educational site is shared regardless
+ * of per-passenger dropoff time, so grouping is by address only.
  */
 export function deriveDropoffStops(selectedPassengers, dropoffEdits = {}) {
-  const seen = new Set()
+  const seen  = new Set()
   const stops = []
 
   for (const p of selectedPassengers) {
-    // Use renamed column — fall back to old name for legacy rows
     const addr = p.educational_site_address ?? p.dropoff_address ?? ''
-    const key = normalizeAddressKey(addr)
+    const key  = normalizeAddressKey(addr)
     if (!key) continue
     if (seen.has(key)) continue
     seen.add(key)
 
-    const edits = dropoffEdits[key] || {}
+    const edits   = dropoffEdits[key] || {}
     const rawTime = p.educational_site_dropoff_time ?? p.dropoff_time ?? ''
 
     stops.push({
-      addressKey: key,
-      address: edits.address ?? addr,
-      postcode: edits.postcode ?? (p.educational_site_postcode ?? p.dropoff_postal_code ?? ''),
-      latitude: edits.latitude ?? (p.educational_site_latitude ?? p.dropoff_latitude ?? null),
-      longitude: edits.longitude ?? (p.educational_site_longitude ?? p.dropoff_longitude ?? null),
-      scheduled_time: edits.scheduled_time ?? formatTimeForInput(rawTime),
-      status: 'pending',
+      addressKey:       key,
+      address:          edits.address  ?? addr,
+      postcode:         edits.postcode ?? (p.educational_site_postcode ?? p.dropoff_postal_code ?? ''),
+      latitude:         edits.latitude  ?? (p.educational_site_latitude  ?? p.dropoff_latitude  ?? null),
+      longitude:        edits.longitude ?? (p.educational_site_longitude ?? p.dropoff_longitude ?? null),
+      scheduled_time:   edits.scheduled_time ?? formatTimeForInput(rawTime),
+      status:           'pending',
       notes_for_driver: edits.notes_for_driver ?? '',
       passenger_ids: selectedPassengers
         .filter((x) => normalizeAddressKey(x.educational_site_address ?? x.dropoff_address ?? '') === key)
@@ -202,85 +223,81 @@ function formatTimeForInput(t) {
  * Build passenger_schedules rows for a job from selected passengers.
  * Creates one outbound + one inbound row per active weekday per passenger.
  *
- * Outbound: pickup_time = passenger's primary_pickup_time
+ * Outbound: pickup_time  = passenger's primary_pickup_time
  *           dropoff_time = passenger's educational_site_dropoff_time
- *           stop_order = position in the selectedPassengers array (1-based)
- * Inbound:  pickup_time = job's evening_start_time (route-level, not per-passenger)
- *           stop_order = same index (evening reversal handled at query time via DESC)
+ *           stop_order   = position in the selectedPassengers array (1-based)
+ * Inbound:  pickup_time  = job's evening_start_time (route-level, not per-passenger)
+ *           stop_order   = same index (evening reversal handled at query time via DESC)
  */
 function buildPassengerScheduleRows(jobId, selectedPassengers, hasOutbound, hasInbound, eveningStartTime) {
   const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
   const rows = []
 
   for (let passengerIndex = 0; passengerIndex < selectedPassengers.length; passengerIndex++) {
-    const p = selectedPassengers[passengerIndex]
-    const stopOrder = passengerIndex + 1  // 1-based, reflects drag order from Step 2
+    const p         = selectedPassengers[passengerIndex]
+    const stopOrder = passengerIndex + 1
 
-    const schedule = p.weekly_schedule || {}
+    const schedule   = p.weekly_schedule || {}
     const activeDays = WEEKDAY_KEYS.filter((d) => Boolean(schedule[d]))
 
-    // Primary pickup address
-    const pickupAddr = p.primary_pickup_address ?? p.pickup_address ?? ''
+    const pickupAddr    = p.primary_pickup_address   ?? p.pickup_address    ?? ''
     const pickupPostcode = p.primary_pickup_postcode ?? p.pickup_postal_code ?? ''
-    const pickupLat = p.primary_pickup_latitude ?? p.pickup_latitude ?? null
-    const pickupLng = p.primary_pickup_longitude ?? p.pickup_longitude ?? null
-    const pickupTime = formatTimeForInput(p.primary_pickup_time ?? p.pickup_time ?? '')
+    const pickupLat     = p.primary_pickup_latitude  ?? p.pickup_latitude   ?? null
+    const pickupLng     = p.primary_pickup_longitude ?? p.pickup_longitude  ?? null
+    const pickupTime    = formatTimeForInput(p.primary_pickup_time ?? p.pickup_time ?? '')
 
-    // Educational site address
-    const eduAddr = p.educational_site_address ?? p.dropoff_address ?? ''
-    const eduPostcode = p.educational_site_postcode ?? p.dropoff_postal_code ?? ''
-    const eduLat = p.educational_site_latitude ?? p.dropoff_latitude ?? null
-    const eduLng = p.educational_site_longitude ?? p.dropoff_longitude ?? null
+    const eduAddr     = p.educational_site_address   ?? p.dropoff_address    ?? ''
+    const eduPostcode = p.educational_site_postcode  ?? p.dropoff_postal_code ?? ''
+    const eduLat      = p.educational_site_latitude  ?? p.dropoff_latitude   ?? null
+    const eduLng      = p.educational_site_longitude ?? p.dropoff_longitude  ?? null
     const dropoffTime = formatTimeForInput(p.educational_site_dropoff_time ?? p.dropoff_time ?? '')
 
     for (const day of activeDays) {
       // Outbound: home → school (morning)
       if (hasOutbound && pickupAddr && eduAddr) {
         rows.push({
-          job_id: jobId,
-          passenger_id: p.id,
-          weekday: day,
-          direction: 'outbound',
-          stop_order: stopOrder,
-          pickup_address: pickupAddr,
-          pickup_postcode: pickupPostcode || null,
-          pickup_latitude: parseCoord(pickupLat),
-          pickup_longitude: parseCoord(pickupLng),
-          pickup_time: toPgTime(pickupTime) || '08:00:00',
-          dropoff_address: eduAddr,
-          dropoff_postcode: eduPostcode || null,
-          dropoff_latitude: parseCoord(eduLat),
+          job_id:            jobId,
+          passenger_id:      p.id,
+          weekday:           day,
+          direction:         'outbound',
+          stop_order:        stopOrder,
+          pickup_address:    pickupAddr,
+          pickup_postcode:   pickupPostcode || null,
+          pickup_latitude:   parseCoord(pickupLat),
+          pickup_longitude:  parseCoord(pickupLng),
+          pickup_time:       toPgTime(pickupTime) || '08:00:00',
+          dropoff_address:   eduAddr,
+          dropoff_postcode:  eduPostcode || null,
+          dropoff_latitude:  parseCoord(eduLat),
           dropoff_longitude: parseCoord(eduLng),
-          dropoff_time: toPgTime(dropoffTime) || null,
-          exception_date: null,
-          exception_type: null,
-          notes: null,
+          dropoff_time:      toPgTime(dropoffTime) || null,
+          exception_date:    null,
+          exception_type:    null,
+          notes:             null,
         })
       }
 
       // Inbound: school → home (evening)
-      // stop_order is same index — query uses DESC to reverse for evening
-      // pickup_time comes from the job's evening_start_time, not per-passenger
       if (hasInbound && eduAddr && pickupAddr) {
         rows.push({
-          job_id: jobId,
-          passenger_id: p.id,
-          weekday: day,
-          direction: 'inbound',
-          stop_order: stopOrder,
-          pickup_address: eduAddr,
-          pickup_postcode: eduPostcode || null,
-          pickup_latitude: parseCoord(eduLat),
-          pickup_longitude: parseCoord(eduLng),
-          pickup_time: toPgTime(eveningStartTime) || '15:00:00',
-          dropoff_address: pickupAddr,
-          dropoff_postcode: pickupPostcode || null,
-          dropoff_latitude: parseCoord(pickupLat),
+          job_id:            jobId,
+          passenger_id:      p.id,
+          weekday:           day,
+          direction:         'inbound',
+          stop_order:        stopOrder,
+          pickup_address:    eduAddr,
+          pickup_postcode:   eduPostcode || null,
+          pickup_latitude:   parseCoord(eduLat),
+          pickup_longitude:  parseCoord(eduLng),
+          pickup_time:       toPgTime(eveningStartTime) || '15:00:00',
+          dropoff_address:   pickupAddr,
+          dropoff_postcode:  pickupPostcode || null,
+          dropoff_latitude:  parseCoord(pickupLat),
           dropoff_longitude: parseCoord(pickupLng),
-          dropoff_time: null,
-          exception_date: null,
-          exception_type: null,
-          notes: null,
+          dropoff_time:      null,
+          exception_date:    null,
+          exception_type:    null,
+          notes:             null,
         })
       }
     }
@@ -301,33 +318,36 @@ export async function createJobFromDraft(companyId, draft) {
   const { step1, step2, step3 } = draft
   const selected = step2?.selectedPassengers || []
 
-  if (!step1?.job_name?.trim()) throw new Error('Job name is required.')
+  if (!step1?.job_name?.trim())          throw new Error('Job name is required.')
   if (!step1?.client_school_name?.trim()) throw new Error('Client / school name is required.')
-  if (!step3?.semester_start) throw new Error('Semester start date is required.')
-  if (!step3?.semester_end) throw new Error('Semester end date is required.')
-  if (step3.semester_end < step3.semester_start) throw new Error('Semester end date must be after start date.')
-  if (selected.length === 0) throw new Error('Add at least one passenger.')
-  if (!step3.has_outbound && !step3.has_inbound) throw new Error('At least one of morning or evening jobs must be enabled.')
+  if (!step3?.semester_start)            throw new Error('Semester start date is required.')
+  if (!step3?.semester_end)              throw new Error('Semester end date is required.')
+  if (step3.semester_end < step3.semester_start)
+    throw new Error('Semester end date must be after start date.')
+  if (selected.length === 0)
+    throw new Error('Add at least one passenger.')
+  if (!step3.has_outbound && !step3.has_inbound)
+    throw new Error('At least one of morning or evening jobs must be enabled.')
 
   const jobPayload = {
-    company_id: companyId,
-    job_name: step1.job_name.trim(),
-    city: step1.city.trim(),
-    job_type: step1.job_type.trim(),
-    client_school_name: step1.client_school_name.trim(),
-    internal_job_id: step1.internal_job_id?.trim() || null,
-    semester_start: step3.semester_start,
-    semester_end: step3.semester_end,
-    has_outbound: Boolean(step3.has_outbound),
-    has_inbound: Boolean(step3.has_inbound),
-    morning_start_time: toPgTime(step3.morning_start_time) || null,
-    morning_end_time: toPgTime(step3.morning_end_time) || null,
-    evening_start_time: toPgTime(step3.evening_start_time) || null,
-    driver_pay: parseOptionalMoney(step3.driver_pay),
+    company_id:              companyId,
+    job_name:                step1.job_name.trim(),
+    city:                    step1.city.trim(),
+    job_type:                step1.job_type.trim(),
+    client_school_name:      step1.client_school_name.trim(),
+    internal_job_id:         step1.internal_job_id?.trim() || null,
+    semester_start:          step3.semester_start,
+    semester_end:            step3.semester_end,
+    has_outbound:            Boolean(step3.has_outbound),
+    has_inbound:             Boolean(step3.has_inbound),
+    morning_start_time:      toPgTime(step3.morning_start_time) || null,
+    morning_end_time:        toPgTime(step3.morning_end_time)   || null,
+    evening_start_time:      toPgTime(step3.evening_start_time) || null,
+    driver_pay:              parseOptionalMoney(step3.driver_pay),
     passenger_assistant_pay: parseOptionalMoney(step3.passenger_assistant_pay),
-    status: 'draft',
-    assigned_driver_id: null,
-    assigned_pa_id: null,
+    status:                  'draft',
+    assigned_driver_id:      null,
+    assigned_pa_id:          null,
   }
 
   const { data: jobRow, error: jobErr } = await supabase
@@ -339,7 +359,6 @@ export async function createJobFromDraft(companyId, draft) {
   if (jobErr) throw jobErr
   const jobId = jobRow.id
 
-  // Generate passenger_schedules from each passenger's weekly_schedule + profile locations
   const scheduleRows = buildPassengerScheduleRows(
     jobId,
     selected,
@@ -352,7 +371,6 @@ export async function createJobFromDraft(companyId, draft) {
     const { error: schedErr } = await supabase
       .from('passenger_schedules')
       .insert(scheduleRows)
-
     if (schedErr) throw schedErr
   }
 
@@ -373,37 +391,37 @@ export function buildPassengerRouteRows(selectedPassengers, pickupStops, dropoff
     dropoffByPassenger.set(p.id, normalizeAddressKey(addr))
   }
 
-  const pickupIdByKey = new Map(pickupStops.map((s) => [s.addressKey, s]))
+  const pickupIdByKey  = new Map(pickupStops.map((s)  => [s.addressKey, s]))
   const dropoffIdByKey = new Map(dropoffStops.map((s) => [s.addressKey, s]))
 
   return selectedPassengers.map((p) => ({
-    passenger_id: p.id,
+    passenger_id:       p.id,
     wheelchair_required: Boolean(p.wheelchair_required),
-    pickup_address_key: pickupByPassenger.get(p.id),
+    pickup_address_key:  pickupByPassenger.get(p.id),
     dropoff_address_key: dropoffByPassenger.get(p.id),
-    pickupStop: pickupIdByKey.get(pickupByPassenger.get(p.id)),
+    pickupStop:  pickupIdByKey.get(pickupByPassenger.get(p.id)),
     dropoffStop: dropoffIdByKey.get(dropoffByPassenger.get(p.id)),
   }))
 }
 
 export function buildPickupEditsFromJobBundle(bundle, passengersById) {
-  const edits = {}
+  const edits      = {}
   const pickupsById = new Map((bundle.pickups || []).map((p) => [p.id, p]))
   for (const r of bundle.routes || []) {
     const pax = passengersById.get(r.passenger_id)
     if (!pax) continue
     const addr = pax.primary_pickup_address ?? pax.pickup_address ?? ''
-    const key = normalizeAddressKey(addr)
+    const key  = normalizeAddressKey(addr)
     if (!key) continue
     const pu = pickupsById.get(r.pickup_id)
     if (!pu) continue
     edits[key] = {
-      address: pu.address ?? '',
-      postcode: pu.postcode ?? '',
-      scheduled_time: timeInputFromDb(pu.scheduled_time),
-      status: normalizeStopStatus(pu.status),
-      latitude: pu.latitude != null ? String(pu.latitude) : '',
-      longitude: pu.longitude != null ? String(pu.longitude) : '',
+      address:          pu.address  ?? '',
+      postcode:         pu.postcode ?? '',
+      scheduled_time:   timeInputFromDb(pu.scheduled_time),
+      status:           normalizeStopStatus(pu.status),
+      latitude:         pu.latitude  != null ? String(pu.latitude)  : '',
+      longitude:        pu.longitude != null ? String(pu.longitude) : '',
       notes_for_driver: pu.notes_for_driver || '',
     }
   }
@@ -411,23 +429,23 @@ export function buildPickupEditsFromJobBundle(bundle, passengersById) {
 }
 
 export function buildDropoffEditsFromJobBundle(bundle, passengersById) {
-  const edits = {}
+  const edits       = {}
   const dropoffsById = new Map((bundle.dropoffs || []).map((d) => [d.id, d]))
   for (const r of bundle.routes || []) {
     const pax = passengersById.get(r.passenger_id)
     if (!pax) continue
     const addr = pax.educational_site_address ?? pax.dropoff_address ?? ''
-    const key = normalizeAddressKey(addr)
+    const key  = normalizeAddressKey(addr)
     if (!key) continue
     const d = dropoffsById.get(r.dropoff_id)
     if (!d) continue
     edits[key] = {
-      address: d.address ?? '',
-      postcode: d.postcode ?? '',
-      scheduled_time: timeInputFromDb(d.scheduled_time),
-      status: normalizeStopStatus(d.status),
-      latitude: d.latitude != null ? String(d.latitude) : '',
-      longitude: d.longitude != null ? String(d.longitude) : '',
+      address:          d.address  ?? '',
+      postcode:         d.postcode ?? '',
+      scheduled_time:   timeInputFromDb(d.scheduled_time),
+      status:           normalizeStopStatus(d.status),
+      latitude:         d.latitude  != null ? String(d.latitude)  : '',
+      longitude:        d.longitude != null ? String(d.longitude) : '',
       notes_for_driver: d.notes_for_driver || '',
     }
   }
@@ -437,13 +455,12 @@ export function buildDropoffEditsFromJobBundle(bundle, passengersById) {
 export async function replaceJobStopsAndRoutes(jobId, selectedPassengers, pickupEdits, dropoffEdits) {
   if (!jobId) throw new Error('Job id is required.')
 
-  // Check if this is a new-model job — if so, this function doesn't apply
   const { data: job } = await supabase.from('jobs').select('semester_start').eq('id', jobId).maybeSingle()
   if (job?.semester_start) {
     throw new Error('This job uses passenger schedules. Edit stops via the passenger profile instead.')
   }
 
-  const pickupStops = derivePickupStops(selectedPassengers, pickupEdits)
+  const pickupStops  = derivePickupStops(selectedPassengers, pickupEdits)
   const dropoffStops = deriveDropoffStops(selectedPassengers, dropoffEdits)
   if (pickupStops.length === 0 || dropoffStops.length === 0) {
     throw new Error('Pickup and drop-off stops could not be derived from selected passengers.')
@@ -461,14 +478,14 @@ export async function replaceJobStopsAndRoutes(jobId, selectedPassengers, pickup
 
 async function insertJobStopsAndRoutes(jobId, pickupStops, dropoffStops, selectedPassengers) {
   const pickupRows = pickupStops.map((s) => ({
-    job_id: jobId,
-    pickup_order: s.pickup_order,
-    address: s.address,
-    postcode: s.postcode,
-    latitude: parseCoord(s.latitude),
-    longitude: parseCoord(s.longitude),
-    scheduled_time: toPgTime(s.scheduled_time),
-    status: normalizeStopStatus(s.status),
+    job_id:           jobId,
+    pickup_order:     s.pickup_order,
+    address:          s.address,
+    postcode:         s.postcode,
+    latitude:         parseCoord(s.latitude),
+    longitude:        parseCoord(s.longitude),
+    scheduled_time:   toPgTime(s.scheduled_time),
+    status:           normalizeStopStatus(s.status),
     notes_for_driver: s.notes_for_driver?.trim() || null,
   }))
 
@@ -478,17 +495,20 @@ async function insertJobStopsAndRoutes(jobId, pickupStops, dropoffStops, selecte
 
   const pickupUuidByKey = new Map()
   const sortedPu = [...(insertedPickups || [])].sort((a, b) => a.pickup_order - b.pickup_order)
-  pickupStops.forEach((s, i) => { const row = sortedPu[i]; if (row) pickupUuidByKey.set(s.addressKey, row.id) })
+  pickupStops.forEach((s, i) => {
+    const row = sortedPu[i]
+    if (row) pickupUuidByKey.set(s.addressKey, row.id)
+  })
 
   const dropoffRows = dropoffStops.map((s) => ({
-    job_id: jobId,
-    dropoff_order: s.dropoff_order,
-    address: s.address,
-    postcode: s.postcode,
-    latitude: parseCoord(s.latitude),
-    longitude: parseCoord(s.longitude),
-    scheduled_time: toPgTime(s.scheduled_time),
-    status: normalizeStopStatus(s.status),
+    job_id:           jobId,
+    dropoff_order:    s.dropoff_order,
+    address:          s.address,
+    postcode:         s.postcode,
+    latitude:         parseCoord(s.latitude),
+    longitude:        parseCoord(s.longitude),
+    scheduled_time:   toPgTime(s.scheduled_time),
+    status:           normalizeStopStatus(s.status),
     notes_for_driver: s.notes_for_driver?.trim() || null,
   }))
 
@@ -498,14 +518,24 @@ async function insertJobStopsAndRoutes(jobId, pickupStops, dropoffStops, selecte
 
   const dropoffUuidByKey = new Map()
   const sortedDo = [...(insertedDropoffs || [])].sort((a, b) => a.dropoff_order - b.dropoff_order)
-  dropoffStops.forEach((s, i) => { const row = sortedDo[i]; if (row) dropoffUuidByKey.set(s.addressKey, row.id) })
+  dropoffStops.forEach((s, i) => {
+    const row = sortedDo[i]
+    if (row) dropoffUuidByKey.set(s.addressKey, row.id)
+  })
 
   const routeMeta = buildPassengerRouteRows(selectedPassengers, pickupStops, dropoffStops)
   const routeRows = routeMeta.map((r) => {
-    const pickupId = pickupUuidByKey.get(r.pickup_address_key)
+    const pickupId  = pickupUuidByKey.get(r.pickup_address_key)
     const dropoffId = dropoffUuidByKey.get(r.dropoff_address_key)
-    if (!pickupId || !dropoffId) throw new Error('Could not resolve pickup/drop-off for a passenger route.')
-    return { job_id: jobId, passenger_id: r.passenger_id, pickup_id: pickupId, dropoff_id: dropoffId, wheelchair_required: r.wheelchair_required }
+    if (!pickupId || !dropoffId)
+      throw new Error('Could not resolve pickup/drop-off for a passenger route.')
+    return {
+      job_id:              jobId,
+      passenger_id:        r.passenger_id,
+      pickup_id:           pickupId,
+      dropoff_id:          dropoffId,
+      wheelchair_required: r.wheelchair_required,
+    }
   })
 
   const { error: routeErr } = await supabase.from('job_passenger_routes').insert(routeRows)
@@ -566,15 +596,20 @@ function passengerNamesForStop(stopId, routes, key, passengersById) {
 
 /**
  * For new-model jobs (semester-based): fetch distinct passengers
- * from passenger_schedules base rows, with their full profile.
- * Returns array of passenger rows with a `activeWeekdays` field.
+ * from passenger_schedules base rows, with their FULL profile.
+ *
+ * IMPORTANT: All address, postcode, coordinate and time columns are fetched
+ * so that derivePickupStops / deriveDropoffStops / buildScheduleRows all
+ * have the data they need. Missing columns here is what caused:
+ *   - pickup times showing as "—" in Step 2 edit
+ *   - reordering a passenger nulling out address/time columns on save
  */
 export async function fetchJobSchedulePassengers(jobId) {
   if (!jobId) return []
 
   const { data: schedRows, error } = await supabase
     .from('passenger_schedules')
-    .select('passenger_id, weekday, direction')
+    .select('passenger_id, weekday, direction, stop_order')
     .eq('job_id', jobId)
     .is('exception_date', null)
 
@@ -584,25 +619,63 @@ export async function fetchJobSchedulePassengers(jobId) {
   const passengerIds = [...new Set(schedRows.map((r) => r.passenger_id).filter(Boolean))]
   if (!passengerIds.length) return []
 
+  // Select ALL columns needed by stop derivation and schedule regeneration.
+  // Never use a narrow select here — missing columns silently become undefined
+  // and get written as NULL on the next save.
   const { data: passengers, error: paxErr } = await supabase
     .from('passenger')
-    .select('id, first_name, surname, wheelchair_required, harness_required, primary_pickup_address, primary_pickup_postcode, educational_site_address, educational_site_postcode, weekly_schedule')
+    .select(`
+      id,
+      first_name,
+      surname,
+      wheelchair_required,
+      harness_required,
+      weekly_schedule,
+      primary_pickup_address,
+      primary_pickup_postcode,
+      primary_pickup_latitude,
+      primary_pickup_longitude,
+      primary_pickup_time,
+      educational_site_address,
+      educational_site_postcode,
+      educational_site_latitude,
+      educational_site_longitude,
+      educational_site_dropoff_time
+    `)
     .in('id', passengerIds)
 
   if (paxErr) throw paxErr
 
-  // Attach which weekdays each passenger is scheduled
-  return (passengers || []).map((p) => {
+  // Build a map of passenger_id → min stop_order from outbound rows so we can
+  // restore the correct pickup sequence that was saved.
+  const stopOrderByPassenger = new Map()
+  for (const r of schedRows) {
+    if (r.direction !== 'outbound') continue
+    const existing = stopOrderByPassenger.get(r.passenger_id)
+    if (existing == null || r.stop_order < existing) {
+      stopOrderByPassenger.set(r.passenger_id, r.stop_order)
+    }
+  }
+
+  // Attach active weekdays and return passengers sorted by their saved stop_order
+  const enriched = (passengers || []).map((p) => {
     const days = [...new Set(
       schedRows
         .filter((r) => r.passenger_id === p.id && r.direction === 'outbound')
         .map((r) => r.weekday)
     )]
-    return { ...p, activeWeekdays: days }
+    return {
+      ...p,
+      activeWeekdays: days,
+      _stopOrder: stopOrderByPassenger.get(p.id) ?? 9999,
+    }
   })
+
+  // Sort by stop_order ASC so the drag list restores the correct sequence
+  enriched.sort((a, b) => a._stopOrder - b._stopOrder)
+
+  return enriched
 }
-
-
 
 export async function fetchJobDetailBundle(jobId, companyId) {
   if (!jobId || !companyId) throw new Error('Job and company are required.')
@@ -612,8 +685,6 @@ export async function fetchJobDetailBundle(jobId, companyId) {
   if (jErr) throw jErr
   if (!job) throw new Error('Job not found.')
 
-  // New-model jobs (semester_start set) don't use job_pickups/dropoffs/routes
-  // Skip those queries entirely to avoid 404 errors
   const isNewModel = Boolean(job.semester_start)
 
   const [driverRes, paRes, vehRes] = await Promise.all([
@@ -629,41 +700,39 @@ export async function fetchJobDetailBundle(jobId, companyId) {
   ])
 
   if (driverRes.error) throw driverRes.error
-  if (paRes.error) throw paRes.error
-  if (vehRes.error) throw vehRes.error
+  if (paRes.error)    throw paRes.error
+  if (vehRes.error)   throw vehRes.error
 
-  // For new-model jobs return empty legacy arrays — caller uses passenger_schedules instead
   if (isNewModel) {
     return {
       job,
-      pickups: [],
-      dropoffs: [],
-      routes: [],
-      pickupStops: [],
-      dropoffStops: [],
-      driver: driverRes.data,
-      pa: paRes.data,
-      vehicle: vehRes.data,
+      pickups:        [],
+      dropoffs:       [],
+      routes:         [],
+      pickupStops:    [],
+      dropoffStops:   [],
+      driver:         driverRes.data,
+      pa:             paRes.data,
+      vehicle:        vehRes.data,
       passengersById: new Map(),
     }
   }
 
-  // Legacy model — query the old tables
   const [puRes, doRes, routesRes] = await Promise.all([
-    supabase.from('job_pickups').select('*').eq('job_id', jobId).order('pickup_order', { ascending: true }),
+    supabase.from('job_pickups').select('*').eq('job_id', jobId).order('pickup_order',  { ascending: true }),
     supabase.from('job_dropoffs').select('*').eq('job_id', jobId).order('dropoff_order', { ascending: true }),
     supabase.from('job_passenger_routes').select('id, passenger_id, pickup_id, dropoff_id, wheelchair_required').eq('job_id', jobId),
   ])
 
-  if (puRes.error) throw puRes.error
-  if (doRes.error) throw doRes.error
+  if (puRes.error)     throw puRes.error
+  if (doRes.error)     throw doRes.error
   if (routesRes.error) throw routesRes.error
 
-  const pickups = puRes.data || []
-  const dropoffs = doRes.data || []
-  const routes = routesRes.data || []
+  const pickups  = puRes.data     || []
+  const dropoffs = doRes.data     || []
+  const routes   = routesRes.data || []
 
-  const paxIds = [...new Set(routes.map((r) => r.passenger_id).filter(Boolean))]
+  const paxIds         = [...new Set(routes.map((r) => r.passenger_id).filter(Boolean))]
   const passengersById = new Map()
   if (paxIds.length > 0) {
     const { data: paxRows, error: paxErr } = await supabase
@@ -672,26 +741,31 @@ export async function fetchJobDetailBundle(jobId, companyId) {
   }
 
   const pickupStops = pickups.map((p) => ({
-    id: p.id,
-    address: p.address || '',
-    gps: p.latitude != null && p.longitude != null ? `${p.latitude},${p.longitude}` : '',
-    postCode: p.postcode || '',
-    status: normalizeStopStatus(p.status),
+    id:        p.id,
+    address:   p.address || '',
+    gps:       p.latitude != null && p.longitude != null ? `${p.latitude},${p.longitude}` : '',
+    postCode:  p.postcode || '',
+    status:    normalizeStopStatus(p.status),
     passenger: passengerNamesForStop(p.id, routes, 'pickup_id', passengersById),
-    notes: p.notes_for_driver || '',
+    notes:     p.notes_for_driver || '',
   }))
 
   const dropoffStops = dropoffs.map((d) => ({
-    id: d.id,
-    address: d.address || '',
-    gps: d.latitude != null && d.longitude != null ? `${d.latitude},${d.longitude}` : '',
-    postCode: d.postcode || '',
-    status: normalizeStopStatus(d.status),
+    id:        d.id,
+    address:   d.address || '',
+    gps:       d.latitude != null && d.longitude != null ? `${d.latitude},${d.longitude}` : '',
+    postCode:  d.postcode || '',
+    status:    normalizeStopStatus(d.status),
     passenger: passengerNamesForStop(d.id, routes, 'dropoff_id', passengersById),
-    notes: d.notes_for_driver || '',
+    notes:     d.notes_for_driver || '',
   }))
 
-  return { job, pickups, dropoffs, routes, pickupStops, dropoffStops, driver: driverRes.data, pa: paRes.data, vehicle: vehRes.data, passengersById }
+  return {
+    job, pickups, dropoffs, routes,
+    pickupStops, dropoffStops,
+    driver: driverRes.data, pa: paRes.data, vehicle: vehRes.data,
+    passengersById,
+  }
 }
 
 export async function cancelJobById(jobId, companyId) {
@@ -714,11 +788,12 @@ export async function updateJobPickupRow(pickupId, patch) {
     ? parseGpsString(patch.gps)
     : { latitude: patch.latitude ?? null, longitude: patch.longitude ?? null }
   const row = {
-    address: patch.address,
-    postcode: patch.postcode ?? patch.postCode,
-    latitude, longitude,
-    scheduled_time: patch.scheduled_time != null ? toPgTime(patch.scheduled_time) : undefined,
-    status: patch.status != null ? normalizeStopStatus(patch.status) : undefined,
+    address:          patch.address,
+    postcode:         patch.postcode ?? patch.postCode,
+    latitude,
+    longitude,
+    scheduled_time:   patch.scheduled_time != null ? toPgTime(patch.scheduled_time) : undefined,
+    status:           patch.status         != null ? normalizeStopStatus(patch.status) : undefined,
     notes_for_driver: patch.notes_for_driver ?? patch.notes ?? null,
   }
   const clean = Object.fromEntries(Object.entries(row).filter(([, v]) => v !== undefined))
@@ -731,11 +806,12 @@ export async function updateJobDropoffRow(dropoffId, patch) {
     ? parseGpsString(patch.gps)
     : { latitude: patch.latitude ?? null, longitude: patch.longitude ?? null }
   const row = {
-    address: patch.address,
-    postcode: patch.postcode ?? patch.postCode,
-    latitude, longitude,
-    scheduled_time: patch.scheduled_time != null ? toPgTime(patch.scheduled_time) : undefined,
-    status: patch.status != null ? normalizeStopStatus(patch.status) : undefined,
+    address:          patch.address,
+    postcode:         patch.postcode ?? patch.postCode,
+    latitude,
+    longitude,
+    scheduled_time:   patch.scheduled_time != null ? toPgTime(patch.scheduled_time) : undefined,
+    status:           patch.status         != null ? normalizeStopStatus(patch.status) : undefined,
     notes_for_driver: patch.notes_for_driver ?? patch.notes ?? null,
   }
   const clean = Object.fromEntries(Object.entries(row).filter(([, v]) => v !== undefined))
@@ -745,7 +821,7 @@ export async function updateJobDropoffRow(dropoffId, patch) {
 
 export function resolveJobPickupIdForPassenger(bundle, passenger) {
   const addr = passenger?.primary_pickup_address ?? passenger?.pickup_address ?? ''
-  const key = normalizeAddressKey(addr)
+  const key  = normalizeAddressKey(addr)
   if (!key) return null
   for (const p of bundle.pickups || []) {
     if (normalizeAddressKey(p.address) === key) return p.id
@@ -755,7 +831,7 @@ export function resolveJobPickupIdForPassenger(bundle, passenger) {
 
 export function resolveJobDropoffIdForPassenger(bundle, passenger) {
   const addr = passenger?.educational_site_address ?? passenger?.dropoff_address ?? ''
-  const key = normalizeAddressKey(addr)
+  const key  = normalizeAddressKey(addr)
   if (!key) return null
   for (const d of bundle.dropoffs || []) {
     if (normalizeAddressKey(d.address) === key) return d.id
@@ -765,14 +841,16 @@ export function resolveJobDropoffIdForPassenger(bundle, passenger) {
 
 export async function addPassengerRouteToJob(jobId, passenger, bundle) {
   if (!jobId || !passenger?.id) throw new Error('Job and passenger are required.')
-  const pickupId = resolveJobPickupIdForPassenger(bundle, passenger)
+  const pickupId  = resolveJobPickupIdForPassenger(bundle, passenger)
   const dropoffId = resolveJobDropoffIdForPassenger(bundle, passenger)
   if (!pickupId || !dropoffId) {
     throw new Error("This passenger's pickup and drop-off must match existing stops on this job.")
   }
   const { error } = await supabase.from('job_passenger_routes').insert({
-    job_id: jobId, passenger_id: passenger.id,
-    pickup_id: pickupId, dropoff_id: dropoffId,
+    job_id:              jobId,
+    passenger_id:        passenger.id,
+    pickup_id:           pickupId,
+    dropoff_id:          dropoffId,
     wheelchair_required: Boolean(passenger.wheelchair_required),
   })
   if (error) throw error
@@ -787,7 +865,11 @@ export async function removePassengerRouteFromJob(jobId, passengerId) {
 
 export async function updateJobAssignedDriver(jobId, driverId) {
   const { data, error } = await supabase
-    .from('jobs').update({ assigned_driver_id: driverId, driver_approval_status: 'pending', updated_at: new Date().toISOString() })
+    .from('jobs').update({
+      assigned_driver_id:      driverId,
+      driver_approval_status:  'pending',
+      updated_at:              new Date().toISOString(),
+    })
     .eq('id', jobId).select().single()
   if (error) throw error
   return data
@@ -814,7 +896,7 @@ export function formatJobDisplayId(uuid) {
 
 export function formatTimeDisplay(t) {
   if (t == null || t === '') return '—'
-  const raw = String(t)
+  const raw  = String(t)
   const hhmm = raw.length >= 5 ? raw.slice(0, 5) : raw
   const [h, m] = hhmm.split(':').map((x) => parseInt(x, 10))
   if (Number.isNaN(h) || Number.isNaN(m)) return raw
@@ -825,7 +907,7 @@ export function formatTimeDisplay(t) {
 
 function formatDurationBetween(start, end) {
   const parse = (t) => {
-    const s = String(t || '00:00:00').slice(0, 8)
+    const s     = String(t || '00:00:00').slice(0, 8)
     const parts = s.split(':').map((x) => parseInt(x, 10) || 0)
     return (parts[0] ?? 0) * 3600 + (parts[1] ?? 0) * 60 + (parts[2] ?? 0)
   }
@@ -838,40 +920,32 @@ function formatDurationBetween(start, end) {
 }
 
 export function formatJobDateTimeLabel(jobDate, pickupTime) {
-  // jobDate and pickupTime may be null in new jobs — return semester start if available
   if (!jobDate) return '—'
   const time = String(pickupTime || '00:00:00').slice(0, 5)
-  const d = new Date(`${jobDate}T${time}:00`)
+  const d    = new Date(`${jobDate}T${time}:00`)
   if (Number.isNaN(d.getTime())) return String(jobDate)
   return d.toLocaleString('en-GB', { dateStyle: 'medium', timeStyle: 'short' })
 }
 
-/**
- * Derive a job's UI status.
- * New model: active/completed derived from semester dates.
- * Legacy model: derived from status field and driver assignment.
- */
 export function deriveJobUiStatus(job) {
   const s = (job.status || 'draft').toLowerCase()
   if (s === 'cancelled') return { label: 'Cancelled', statusColor: 'bg-red-50 text-red-600 border-red-100' }
 
-  // Semester-based status for new jobs
   if (job.semester_start && job.semester_end) {
     const today = new Date().toISOString().slice(0, 10)
-    if (today > job.semester_end) return { label: 'Completed', statusColor: 'bg-gray-50 text-gray-600 border-gray-100' }
-    if (today >= job.semester_start) return { label: 'Active', statusColor: 'bg-green-50 text-green-600 border-green-100' }
+    if (today > job.semester_end)   return { label: 'Completed', statusColor: 'bg-gray-50 text-gray-600 border-gray-100' }
+    if (today >= job.semester_start) return { label: 'Active',    statusColor: 'bg-green-50 text-green-600 border-green-100' }
     return { label: 'Upcoming', statusColor: 'bg-blue-50 text-blue-600 border-blue-100' }
   }
 
-  // Legacy fallback
-  if (!job.assigned_driver_id) return { label: 'Unassigned', statusColor: 'bg-orange-50 text-orange-600 border-orange-100' }
-  if (s === 'active') return { label: 'In Progress', statusColor: 'bg-green-50 text-green-600 border-green-100' }
-  if (s === 'completed') return { label: 'Completed', statusColor: 'bg-gray-50 text-gray-600 border-gray-100' }
+  if (!job.assigned_driver_id)   return { label: 'Unassigned',  statusColor: 'bg-orange-50 text-orange-600 border-orange-100' }
+  if (s === 'active')            return { label: 'In Progress',  statusColor: 'bg-green-50 text-green-600 border-green-100' }
+  if (s === 'completed')         return { label: 'Completed',    statusColor: 'bg-gray-50 text-gray-600 border-gray-100' }
   return { label: 'Upcoming', statusColor: 'bg-blue-50 text-blue-600 border-blue-100' }
 }
 
 export function formatPassengersCapacityLabel(passengerCount, seatCapacityTotal) {
-  const n = Number(passengerCount) || 0
+  const n   = Number(passengerCount) || 0
   const cap = seatCapacityTotal == null || seatCapacityTotal === '' ? null : Number(seatCapacityTotal)
   if (cap == null || !Number.isFinite(cap) || cap <= 0) return `${n} / —`
   return `${n} / ${Math.round(cap)}`
@@ -890,20 +964,19 @@ export function buildSeatCapacityByDriverId(vehicleRows) {
 
 export function mapJobToListRow(job, passengerCount, driver, pa, seatCapacityTotal) {
   const approval = String(job.driver_approval_status || '').trim()
-  const ui = deriveJobUiStatus(job)
+  const ui       = deriveJobUiStatus(job)
 
   return {
-    id: job.id,
-    displayId: formatJobDisplayId(job.id),
-    route: job.job_name,
-    // Show morning times from job-level fields, not old pickup_time column
-    startTime: job.morning_start_time ? formatTimeDisplay(job.morning_start_time) : '—',
-    endTime: job.morning_end_time ? formatTimeDisplay(job.morning_end_time) : '—',
-    duration: (job.morning_start_time && job.morning_end_time)
+    id:          job.id,
+    displayId:   formatJobDisplayId(job.id),
+    route:       job.job_name,
+    startTime:   job.morning_start_time ? formatTimeDisplay(job.morning_start_time) : '—',
+    endTime:     job.morning_end_time   ? formatTimeDisplay(job.morning_end_time)   : '—',
+    duration:    (job.morning_start_time && job.morning_end_time)
       ? formatDurationBetween(job.morning_start_time, job.morning_end_time)
       : '—',
-    semesterStart: job.semester_start || null,
-    semesterEnd: job.semester_end || null,
+    semesterStart:   job.semester_start || null,
+    semesterEnd:     job.semester_end   || null,
     semesterDisplay: job.semester_start ? `${job.semester_start} – ${job.semester_end}` : null,
     driver: driver
       ? { id: driver.id, name: [driver.first_name, driver.last_name].filter(Boolean).join(' ').trim(), avatar: defaultAvatar(driver.id) }
@@ -912,20 +985,19 @@ export function mapJobToListRow(job, passengerCount, driver, pa, seatCapacityTot
     pa: pa
       ? { id: pa.id, name: [pa.first_name, pa.surname].filter(Boolean).join(' ').trim(), avatar: pa.profile_picture_url || defaultAvatar(pa.id) }
       : null,
-    passengers: formatPassengersCapacityLabel(passengerCount, seatCapacityTotal),
-    status: ui.label,
-    statusColor: ui.statusColor,
+    passengers:          formatPassengersCapacityLabel(passengerCount, seatCapacityTotal),
+    status:              ui.label,
+    statusColor:         ui.statusColor,
     driverApprovalStatus: approval || 'N/A',
-    // dateTimeStr uses semester_start as the reference date for display
     dateTimeStr: job.semester_start
       ? new Date(job.semester_start + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
       : '—',
     assigned_driver_id: job.assigned_driver_id,
-    assigned_pa_id: job.assigned_pa_id,
-    statusRaw: job.status,
-    has_outbound: job.has_outbound,
-    has_inbound: job.has_inbound,
-    eveningStartTime: job.evening_start_time ? formatTimeDisplay(job.evening_start_time) : '—',
+    assigned_pa_id:     job.assigned_pa_id,
+    statusRaw:          job.status,
+    has_outbound:       job.has_outbound,
+    has_inbound:        job.has_inbound,
+    eveningStartTime:   job.evening_start_time ? formatTimeDisplay(job.evening_start_time) : '—',
   }
 }
 
@@ -935,45 +1007,40 @@ export async function fetchJobsListPageData(companyId) {
   const [jobsRes, driversRes, pasRes, vehiclesRes] = await Promise.all([
     supabase.from('jobs').select('*').eq('company_id', companyId)
       .order('semester_start', { ascending: false, nullsFirst: false })
-      .order('created_at', { ascending: false }),
-    supabase.from('drivers').select('*').eq('company_id', companyId).order('last_name', { ascending: true }),
+      .order('created_at',     { ascending: false }),
+    supabase.from('drivers').select('*').eq('company_id', companyId).order('last_name',  { ascending: true }),
     supabase.from('passenger_assistant').select('*').eq('company_id', companyId).order('surname', { ascending: true }),
     supabase.from('vehicles').select('driver_id, seating_capacity').eq('company_id', companyId),
   ])
 
-  if (jobsRes.error) throw jobsRes.error
-  if (driversRes.error) throw driversRes.error
-  if (pasRes.error) throw pasRes.error
+  if (jobsRes.error)     throw jobsRes.error
+  if (driversRes.error)  throw driversRes.error
+  if (pasRes.error)      throw pasRes.error
   if (vehiclesRes.error) throw vehiclesRes.error
 
   const jobsRaw = jobsRes.data || []
-  const jobIds = jobsRaw.map((j) => j.id)
+  const jobIds  = jobsRaw.map((j) => j.id)
 
-  // Count passengers: new model uses passenger_schedules (distinct), legacy uses job_passenger_routes
   const passengerCounts = {}
   if (jobIds.length > 0) {
-    // New model count
     const { data: schedCounts } = await supabase
       .from('passenger_schedules')
       .select('job_id, passenger_id')
       .in('job_id', jobIds)
-      .is('exception_date', null) // only base rows
+      .is('exception_date', null)
 
     for (const r of schedCounts || []) {
       passengerCounts[r.job_id] = passengerCounts[r.job_id] || new Set()
       passengerCounts[r.job_id].add(r.passenger_id)
     }
 
-    // Legacy model count (for jobs without schedules)
     const { data: routesCounts } = await supabase
       .from('job_passenger_routes')
       .select('job_id')
       .in('job_id', jobIds)
 
     for (const r of routesCounts || []) {
-      if (!passengerCounts[r.job_id]) {
-        passengerCounts[r.job_id] = new Set()
-      }
+      if (!passengerCounts[r.job_id]) passengerCounts[r.job_id] = new Set()
     }
     for (const r of routesCounts || []) {
       if (passengerCounts[r.job_id] instanceof Set) {
@@ -982,20 +1049,24 @@ export async function fetchJobsListPageData(companyId) {
     }
   }
 
-  const drivers = driversRes.data || []
-  const pas = pasRes.data || []
-  const driversById = new Map(drivers.map((d) => [d.id, d]))
-  const pasById = new Map(pas.map((p) => [p.id, p]))
+  const drivers         = driversRes.data || []
+  const pas             = pasRes.data     || []
+  const driversById     = new Map(drivers.map((d) => [d.id, d]))
+  const pasById         = new Map(pas.map((p)     => [p.id, p]))
   const seatCapacityByDriverId = buildSeatCapacityByDriverId(vehiclesRes.data || [])
 
   const jobs = jobsRaw.map((job) => {
-    const countSet = passengerCounts[job.id]
-    const count = countSet instanceof Set ? countSet.size : 0
+    const countSet  = passengerCounts[job.id]
+    const count     = countSet instanceof Set ? countSet.size : 0
     const seatTotal = job.assigned_driver_id ? seatCapacityByDriverId.get(job.assigned_driver_id) ?? null : null
     return mapJobToListRow(job, count, driversById.get(job.assigned_driver_id), pasById.get(job.assigned_pa_id), seatTotal)
   })
 
-  const jobsMinimal = jobsRaw.map((j) => ({ id: j.id, assigned_driver_id: j.assigned_driver_id, assigned_pa_id: j.assigned_pa_id }))
+  const jobsMinimal = jobsRaw.map((j) => ({
+    id:                 j.id,
+    assigned_driver_id: j.assigned_driver_id,
+    assigned_pa_id:     j.assigned_pa_id,
+  }))
   return { jobs, jobsMinimal, drivers, passengerAssistants: pas }
 }
 
@@ -1013,58 +1084,41 @@ export function passengerAssistantsAvailableForAssignment(allPAs, jobsMinimal, f
 
 // ── Session tracking ──────────────────────────────────────────────────────────
 
-/**
- * Fetch today's sessions for a job (outbound + inbound).
- * If nothing today, fall back to yesterday's completed sessions.
- * Returns { morning, evening, source: 'today'|'yesterday'|'none' }
- */
 export async function fetchJobSessionsForDisplay(jobId) {
   if (!jobId) return { morning: null, evening: null, source: 'none' }
 
-  const todayIso = new Date().toISOString().slice(0, 10)
-  const yesterday = new Date()
+  const todayIso   = new Date().toISOString().slice(0, 10)
+  const yesterday  = new Date()
   yesterday.setDate(yesterday.getDate() - 1)
   const yesterdayIso = yesterday.toISOString().slice(0, 10)
 
   const { data: todaySessions, error: todayErr } = await supabase
-    .from('job_sessions')
-    .select('*')
-    .eq('job_id', jobId)
-    .eq('session_date', todayIso)
-
+    .from('job_sessions').select('*').eq('job_id', jobId).eq('session_date', todayIso)
   if (todayErr) throw todayErr
 
   if (todaySessions?.length > 0) {
     return {
       morning: todaySessions.find((s) => s.direction === 'outbound') || null,
-      evening: todaySessions.find((s) => s.direction === 'inbound') || null,
-      source: 'today',
+      evening: todaySessions.find((s) => s.direction === 'inbound')  || null,
+      source:  'today',
     }
   }
 
   const { data: yestSessions, error: yestErr } = await supabase
-    .from('job_sessions')
-    .select('*')
-    .eq('job_id', jobId)
-    .eq('session_date', yesterdayIso)
-
+    .from('job_sessions').select('*').eq('job_id', jobId).eq('session_date', yesterdayIso)
   if (yestErr) throw yestErr
 
   if (yestSessions?.length > 0) {
     return {
       morning: yestSessions.find((s) => s.direction === 'outbound') || null,
-      evening: yestSessions.find((s) => s.direction === 'inbound') || null,
-      source: 'yesterday',
+      evening: yestSessions.find((s) => s.direction === 'inbound')  || null,
+      source:  'yesterday',
     }
   }
 
   return { morning: null, evening: null, source: 'none' }
 }
 
-/**
- * Fetch all passenger rows for a session with passenger profile.
- * Morning: ordered stop_order ASC. Evening: DESC (reverse = drop-off order).
- */
 export async function fetchSessionPassengers(sessionId, direction = 'outbound') {
   if (!sessionId) return []
 

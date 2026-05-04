@@ -170,6 +170,7 @@ const ExceptionManager = ({ passengerId, jobId, weeklySchedule, locations }) => 
 
     const [exceptions, setExceptions] = useState([]);
     const [loadingEx, setLoadingEx] = useState(false);
+    const todayIso = new Date().toISOString().slice(0, 10);
 
     // Available alternative locations for radio selection
     const secondaryLoc = locations?.find((l) => l.location_type === 'secondary_pickup') || null;
@@ -184,7 +185,7 @@ const ExceptionManager = ({ passengerId, jobId, weeklySchedule, locations }) => 
         if (exceptionType === 'alternative_location' && !selectedLocationType && altLocationOptions.length > 0) {
             setSelectedLocationType(altLocationOptions[0].key);
         }
-    }, [exceptionType]);
+    }, [exceptionType, selectedLocationType, altLocationOptions]);
 
     useEffect(() => {
         if (!passengerId || !jobId) return;
@@ -195,12 +196,13 @@ const ExceptionManager = ({ passengerId, jobId, weeklySchedule, locations }) => 
             .eq('passenger_id', passengerId)
             .eq('job_id', jobId)
             .not('exception_date', 'is', null)
+            .gte('exception_date', todayIso)
             .order('exception_date', { ascending: true })
             .then(({ data, error }) => {
                 if (!error) setExceptions(data || []);
             })
             .finally(() => setLoadingEx(false));
-    }, [passengerId, jobId, saveSuccess]);
+    }, [passengerId, jobId, saveSuccess, todayIso]);
 
     const detectedWeekday = exceptionDate ? isoToWeekdayKey(exceptionDate) : null;
     const isScheduledDay = detectedWeekday && weeklySchedule?.[detectedWeekday];
@@ -226,47 +228,52 @@ const ExceptionManager = ({ passengerId, jobId, weeklySchedule, locations }) => 
 
         try {
             const weekday = isoToWeekdayKey(exceptionDate);
+            if (!weekday) throw new Error('Invalid exception date.');
 
-            // For alternative_location, we flip address fields based on direction:
-            // outbound = override pickup address (home side)
-            // inbound  = override dropoff address (home side, since school→home)
-            let pickupAddress = 'N/A';
-            let pickupPostcode = null;
-            let dropoffAddress = 'N/A';
+            // Prefer updating an existing exception row for the selected date/direction.
+            // If not present, fall back to the base weekday row.
+            const { data: existingExceptionRow, error: existingExceptionErr } = await supabase
+                .from('passenger_schedules')
+                .select('id')
+                .eq('job_id', jobId)
+                .eq('passenger_id', passengerId)
+                .eq('direction', direction)
+                .eq('exception_date', exceptionDate)
+                .maybeSingle();
 
-            if (exceptionType === 'alternative_location' && chosenLoc) {
-                if (direction === 'outbound') {
-                    pickupAddress = chosenLoc.address;
-                    pickupPostcode = chosenLoc.postcode || null;
-                    dropoffAddress = 'School'; // unchanged
-                } else {
-                    pickupAddress = 'School'; // unchanged
-                    dropoffAddress = chosenLoc.address;
-                    pickupPostcode = chosenLoc.postcode || null;
-                }
+            if (existingExceptionErr) throw existingExceptionErr;
+
+            let targetRow = existingExceptionRow;
+
+            if (!targetRow?.id) {
+                const { data: baseRow, error: baseErr } = await supabase
+                    .from('passenger_schedules')
+                    .select('id')
+                    .eq('job_id', jobId)
+                    .eq('passenger_id', passengerId)
+                    .eq('weekday', weekday)
+                    .eq('direction', direction)
+                    .is('exception_date', null)
+                    .maybeSingle();
+
+                if (baseErr) throw baseErr;
+                targetRow = baseRow;
             }
 
-            const row = {
-                job_id: jobId,
-                passenger_id: passengerId,
-                weekday,
-                direction,
-                exception_date: exceptionDate,
-                exception_type: exceptionType,
-                pickup_address: pickupAddress,
-                pickup_postcode: pickupPostcode,
-                pickup_time: '00:00:00', // required by schema, not used operationally for skip
-                dropoff_address: dropoffAddress,
-                dropoff_time: null,
-                // Store which location type was chosen so it can be displayed
-                notes: exceptionType === 'alternative_location'
-                    ? `location_type:${selectedLocationType}`
-                    : null,
-            };
+            if (!targetRow?.id) {
+                throw new Error('No schedule row found for this date and direction.');
+            }
 
             const { error } = await supabase
                 .from('passenger_schedules')
-                .upsert(row, { onConflict: 'job_id,passenger_id,weekday,direction,exception_date' });
+                .update({
+                    exception_date: exceptionDate,
+                    exception_type: exceptionType,
+                    notes: exceptionType === 'alternative_location'
+                        ? `location_type:${selectedLocationType}`
+                        : null,
+                })
+                .eq('id', targetRow.id);
 
             if (error) throw error;
 
@@ -283,11 +290,16 @@ const ExceptionManager = ({ passengerId, jobId, weeklySchedule, locations }) => 
     };
 
     const handleDeleteException = async (exceptionId) => {
-        const { error } = await supabase.from('passenger_schedules').delete().eq('id', exceptionId);
+        const { error } = await supabase
+            .from('passenger_schedules')
+            .update({
+                exception_date: null,
+                exception_type: null,
+                notes: null,
+            })
+            .eq('id', exceptionId);
         if (!error) setExceptions((prev) => prev.filter((e) => e.id !== exceptionId));
     };
-
-    const todayIso = new Date().toISOString().slice(0, 10);
 
     const typeColors = {
         skip: 'bg-red-50 text-red-600 border-red-100',

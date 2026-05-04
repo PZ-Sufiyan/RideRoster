@@ -324,6 +324,19 @@ export const syncPassengerSchedules = async (passenger) => {
   if (jobsErr) throw jobsErr
 
   for (const job of jobs || []) {
+    // Preserve this passenger's existing stop order on the job before rebuilding rows.
+    const { data: existingBaseRows, error: existingRowsErr } = await supabase
+      .from('passenger_schedules')
+      .select('stop_order')
+      .eq('job_id', job.id)
+      .eq('passenger_id', passenger.id)
+      .is('exception_date', null)
+
+    if (existingRowsErr) throw existingRowsErr
+
+    const preservedStopOrder =
+      (existingBaseRows || []).find((r) => r.stop_order !== null && r.stop_order !== undefined)?.stop_order ?? null
+
     // Delete all base rows for this passenger on this job
     const { error: delErr } = await supabase
       .from('passenger_schedules')
@@ -379,6 +392,7 @@ export const syncPassengerSchedules = async (passenger) => {
           exception_date: null,
           exception_type: null,
           notes: null,
+          stop_order: preservedStopOrder,
         })
       }
 
@@ -401,6 +415,7 @@ export const syncPassengerSchedules = async (passenger) => {
           exception_date: null,
           exception_type: null,
           notes: null,
+          stop_order: preservedStopOrder,
         })
       }
     }
