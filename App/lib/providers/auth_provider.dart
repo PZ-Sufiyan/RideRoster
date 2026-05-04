@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../services/auth_service.dart';
+import '../services/realtime_service.dart';
 
 enum AuthStatus { idle, loading, authenticated, unauthenticated, error }
 
@@ -30,7 +31,7 @@ class AuthProvider extends ChangeNotifier {
   bool get isAuthenticated => _status == AuthStatus.authenticated;
 
   // ---------------------------------------------------------------------------
-  // Driver Login
+  // Restore session
   // ---------------------------------------------------------------------------
   Future<void> restoreSession() async {
     _setStatus(AuthStatus.loading);
@@ -42,6 +43,11 @@ class AuthProvider extends ChangeNotifier {
       _userEmail = result.email;
       _errorMessage = null;
       _setStatus(AuthStatus.authenticated);
+      // Subscribe AFTER status is set and userId is populated.
+      // RealtimeService.subscribe() will also wait for the Supabase session
+      // internally, but calling it here after result.success ensures the
+      // auth token is valid before we open channels.
+      await RealtimeService().subscribe();
     } else {
       _token = null;
       _userId = null;
@@ -52,6 +58,9 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  // ---------------------------------------------------------------------------
+  // Driver login
+  // ---------------------------------------------------------------------------
   Future<bool> driverLogin({
     required String email,
     required String password,
@@ -70,6 +79,8 @@ class AuthProvider extends ChangeNotifier {
       _userEmail = result.email;
       _errorMessage = null;
       _setStatus(AuthStatus.authenticated);
+      // Subscribe after successful login — userId is now set
+      await RealtimeService().subscribe();
       return true;
     } else {
       _errorMessage = result.error;
@@ -79,13 +90,13 @@ class AuthProvider extends ChangeNotifier {
   }
 
   // ---------------------------------------------------------------------------
-  // Forgot Password
+  // Forgot password
   // ---------------------------------------------------------------------------
   Future<String?> driverForgotPassword({required String email}) async {
     _setStatus(AuthStatus.loading);
     final result = await _authService.driverForgotPassword(email: email);
     _setStatus(AuthStatus.unauthenticated);
-    if (result.success) return null; // null = no error
+    if (result.success) return null;
     return result.error;
   }
 
@@ -93,6 +104,8 @@ class AuthProvider extends ChangeNotifier {
   // Logout
   // ---------------------------------------------------------------------------
   Future<void> logout() async {
+    // Tear down realtime channels before clearing auth state
+    await RealtimeService().unsubscribe();
     await _authService.driverLogout();
     _token = null;
     _userId = null;
@@ -102,6 +115,9 @@ class AuthProvider extends ChangeNotifier {
     _setStatus(AuthStatus.unauthenticated);
   }
 
+  // ---------------------------------------------------------------------------
+  // Helpers
+  // ---------------------------------------------------------------------------
   void clearError() {
     _errorMessage = null;
     if (_status == AuthStatus.error) {

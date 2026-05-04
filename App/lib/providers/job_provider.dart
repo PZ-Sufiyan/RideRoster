@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../users/driver/models/job_model.dart';
 import '../services/job_service.dart';
+import '../services/realtime_service.dart';
 import '../services/navigation_service.dart';
 import '../services/location_service.dart';
 import '../services/location_task.dart';
@@ -8,42 +10,60 @@ import '../services/notification_service.dart';
 
 /// Manages active job + session state for the driver flow.
 ///
-/// Key change from old model:
-///   - [_job.sessionId] may be empty before the driver starts the run.
-///   - Call [ensureSessionStarted] before any status mutation — it creates
-///     the job_session + job_session_passengers rows if they don't exist yet,
-///     then refreshes the job so stop IDs are populated.
-///   - Status mutations now write to job_session_passengers (not job_pickups).
+/// Realtime behaviour:
+///   - Subscribes to RealtimeService streams on construction.
+///   - Job changes (approval_status, status) → full reload via loadJob().
+///   - Session changes → full reload (session status affects UI state).
+///   - Passenger changes → reload only if the change belongs to the
+///     current session (avoids unnecessary reloads from other sessions).
+///
+/// This means the driver's UI updates automatically when:
+///   - Admin changes job status or assigns/unassigns a driver
+///   - A session is created or completed
+///   - A passenger status is updated (by PA app, admin, or this device)
 class JobProvider extends ChangeNotifier {
   final JobService _jobService = JobService();
+  final RealtimeService _realtimeService = RealtimeService();
   final NavigationService _navService = NavigationService();
   final LocationService _locationService = LocationService();
 
   JobModel? _job;
   bool _isLoading = false;
   String? _error;
+  /// Incremented every time [loadJob] finishes (success or error). Listeners
+  /// (e.g. dashboard job requests) can refresh when this changes.
+  int _jobDataEpoch = 0;
   int _activePickupIndex = 0;
-
   bool _isTracking = false;
   double? _currentDistanceMeters;
+
+  // Realtime stream subscriptions
+  StreamSubscription<Map<String, dynamic>>? _jobSub;
+  StreamSubscription<Map<String, dynamic>>? _sessionSub;
+  StreamSubscription<Map<String, dynamic>>? _passengerSub;
+
+  // Debounce timer — prevents multiple rapid reloads from burst events
+  Timer? _reloadDebounce;
+
+  JobProvider() {
+    _listenToRealtime();
+  }
 
   // ── Public getters ────────────────────────────────────────────────────────
 
   JobModel? get job => _job;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  int get jobDataEpoch => _jobDataEpoch;
   int get activePickupIndex => _activePickupIndex;
   bool get isTracking => _isTracking;
   double? get currentDistanceMeters => _currentDistanceMeters;
-
-  /// Whether a live session exists in the DB (session was started).
   bool get sessionStarted => _job != null && _job!.sessionId.isNotEmpty;
 
   PickupStop? get activePickup {
     if (_job == null || _job!.pickups.isEmpty) return null;
-    if (_activePickupIndex < 0 || _activePickupIndex >= _job!.pickups.length) {
+    if (_activePickupIndex < 0 || _activePickupIndex >= _job!.pickups.length)
       return null;
-    }
     final current = _job!.pickups[_activePickupIndex];
     if (current.status != PickupStatus.pending) return null;
     return current;
@@ -59,42 +79,96 @@ class JobProvider extends ChangeNotifier {
 
   bool get allResolved => _job?.allPickupsResolved ?? false;
 
+  // ── Realtime setup ────────────────────────────────────────────────────────
+
+  void _listenToRealtime() {
+    // Job changes → reload everything (approval, status, assignment)
+    _jobSub = _realtimeService.onJobChange.listen((_) {
+      _scheduleReload();
+    });
+
+    // Session changes → reload (session status, started_at, completed_at)
+    _sessionSub = _realtimeService.onSessionChange.listen((_) {
+      _scheduleReload();
+    });
+
+    // Passenger changes → reload only if it's for the current session
+    _passengerSub = _realtimeService.onPassengerChange.listen((record) {
+      final sessionId = record['session_id']?.toString() ?? '';
+      final currentSessionId = _job?.sessionId ?? '';
+
+      // Only reload if this change belongs to our active session
+      if (currentSessionId.isNotEmpty && sessionId == currentSessionId) {
+        _scheduleReload();
+      }
+    });
+  }
+
+  /// Debounces rapid bursts of realtime events into a single reload.
+  /// e.g. if 5 passengers are inserted at once, we reload once after 400ms.
+  void _scheduleReload() {
+    _reloadDebounce?.cancel();
+    _reloadDebounce = Timer(const Duration(milliseconds: 400), () {
+      // Always reload on realtime — skipping while isLoading dropped events
+      // during the initial dashboard fetch.
+      loadJob(silent: true);
+    });
+  }
+
   // ── Load ──────────────────────────────────────────────────────────────────
 
-  Future<void> loadJob() async {
-    _isLoading = true;
-    _error = null;
-    notifyListeners();
+  /// [silent] = true skips the loading spinner — used for background reloads
+  /// triggered by realtime events so the UI doesn't flash.
+  Future<void> loadJob({bool silent = false}) async {
+    if (!silent) {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+    }
 
     try {
-      _job = await _jobService.fetchCurrentJob();
+      final updatedJob = await _jobService.fetchCurrentJob();
+
+      // Preserve active pickup index if the same job is reloaded
+      final sameJob =
+          updatedJob != null &&
+          _job != null &&
+          updatedJob.jobDbId == _job!.jobDbId;
+
+      _job = updatedJob;
+
       if (_job != null) {
-        _setActiveToFirstPending();
+        if (!sameJob) {
+          // Different job or first load — reset to first pending
+          _setActiveToFirstPending();
+        } else {
+          // Same job — keep the current index but clamp to valid range
+          _activePickupIndex = _activePickupIndex.clamp(
+            0,
+            _job!.pickups.length,
+          );
+        }
       } else {
         _activePickupIndex = 0;
       }
+
+      if (!silent) _error = null;
     } catch (e) {
-      _error = e.toString();
+      if (!silent) _error = e.toString();
     } finally {
-      _isLoading = false;
+      if (!silent) {
+        _isLoading = false;
+      }
+      _jobDataEpoch++;
       notifyListeners();
     }
   }
 
   // ── Session start ─────────────────────────────────────────────────────────
 
-  /// Ensures a job_session exists in the DB for today.
-  ///
-  /// Call this when the driver taps "Continue Journey" / "Start Job" for
-  /// the first time. After creation the job is reloaded so all PickupStop.id
-  /// values are real job_session_passengers UUIDs.
-  ///
-  /// Safe to call multiple times — the service upserts on the unique constraint.
   Future<void> ensureSessionStarted() async {
     final job = _job;
     if (job == null) return;
-
-    // Session already started — nothing to do
     if (job.sessionId.isNotEmpty) return;
 
     _isLoading = true;
@@ -106,7 +180,6 @@ class JobProvider extends ChangeNotifier {
         jobDbId: job.jobDbId,
         direction: job.direction,
       );
-      // Reload so stop IDs are populated from job_session_passengers
       _job = await _jobService.fetchCurrentJob();
       if (_job != null) _setActiveToFirstPending();
     } catch (e) {
@@ -121,14 +194,12 @@ class JobProvider extends ChangeNotifier {
 
   Future<void> navigateFullRoute() async {
     if (_job == null) return;
-
     final hasPermission = await _locationService.ensurePermission();
     if (!hasPermission) {
       _error = 'Location permission required for navigation.';
       notifyListeners();
       return;
     }
-
     await _navService.openFullRoute(
       pickups: _job!.pickups,
       dropoff: _job!.dropoffs.isNotEmpty ? _job!.dropoffs.first : null,
@@ -138,20 +209,17 @@ class JobProvider extends ChangeNotifier {
   Future<void> navigateToCurrentPickup() async {
     final stop = activePickup;
     if (stop == null) return;
-
     if (!stop.hasCoordinates) {
       _error = 'No GPS coordinates for this stop.';
       notifyListeners();
       return;
     }
-
     final hasPermission = await _locationService.ensurePermission();
     if (!hasPermission) {
       _error = 'Location permission required for tracking.';
       notifyListeners();
       return;
     }
-
     await _navService.openSingleStop(lat: stop.lat!, lng: stop.lng!);
     _startPickupTracking(stop);
   }
@@ -159,43 +227,36 @@ class JobProvider extends ChangeNotifier {
   Future<void> navigateToDropoff() async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
-
     if (!dropoff.hasCoordinates) {
       _error = 'No GPS coordinates for drop-off.';
       notifyListeners();
       return;
     }
-
     final hasPermission = await _locationService.ensurePermission();
     if (!hasPermission) {
       _error = 'Location permission required for tracking.';
       notifyListeners();
       return;
     }
-
     await _navService.openSingleStop(lat: dropoff.lat!, lng: dropoff.lng!);
     _startDropoffTracking(dropoff);
   }
 
   // ── Status mutations ──────────────────────────────────────────────────────
 
-  /// Marks the current pickup as picked_up in job_session_passengers.
-  /// Ensures a session exists first (creates one if needed).
   Future<void> markCurrentAsCompleted() async {
     if (_job == null) return;
     await ensureSessionStarted();
 
     try {
       final stop = _job!.pickups[_activePickupIndex];
-
-      // If session was just created, stop.id is now populated after reload.
       if (stop.id.isEmpty) {
         _error = 'Session not ready. Please try again.';
         notifyListeners();
         return;
       }
-
       await _jobService.updatePickupStatus(stop.id, PickupStatus.completed);
+      // Optimistic update — realtime will confirm
       _job!.pickups[_activePickupIndex].status = PickupStatus.completed;
       _error = null;
       notifyListeners();
@@ -205,20 +266,17 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
-  /// Marks the current pickup as missed in job_session_passengers.
   Future<void> markCurrentAsNotPicked() async {
     if (_job == null) return;
     await ensureSessionStarted();
 
     try {
       final stop = _job!.pickups[_activePickupIndex];
-
       if (stop.id.isEmpty) {
         _error = 'Session not ready. Please try again.';
         notifyListeners();
         return;
       }
-
       await _jobService.updatePickupStatus(stop.id, PickupStatus.notPicked);
       _job!.pickups[_activePickupIndex].status = PickupStatus.notPicked;
       _error = null;
@@ -229,7 +287,6 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
-  /// Marks the current dropoff as dropped_off in job_session_passengers.
   Future<void> markDropoffAsCompleted() async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
@@ -248,7 +305,6 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
-  /// Advances to the next pending pickup. Returns true if one exists.
   bool advanceToNextPickup() {
     if (_job == null) return false;
 
@@ -268,11 +324,8 @@ class JobProvider extends ChangeNotifier {
     return false;
   }
 
-  /// Completes the session — marks job_sessions.status = 'completed'.
   Future<void> completeCurrentJob({String? comments}) async {
     if (_job == null) return;
-
-    // Must have a real session to complete
     if (_job!.sessionId.isEmpty) {
       _error = 'No active session to complete.';
       notifyListeners();
@@ -370,6 +423,10 @@ class JobProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _reloadDebounce?.cancel();
+    _jobSub?.cancel();
+    _sessionSub?.cancel();
+    _passengerSub?.cancel();
     BackgroundLocationTask.stop();
     super.dispose();
   }

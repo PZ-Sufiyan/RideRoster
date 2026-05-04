@@ -7,8 +7,21 @@ import '../../../../users/driver/models/job_model.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 
-class PickupQuePage extends StatelessWidget {
+class PickupQuePage extends StatefulWidget {
   const PickupQuePage({super.key});
+
+  @override
+  State<PickupQuePage> createState() => _PickupQuePageState();
+}
+
+class _PickupQuePageState extends State<PickupQuePage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<JobProvider>().ensureSessionStarted();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -22,6 +35,7 @@ class PickupQuePage extends StatelessWidget {
             final active = provider.activePickup;
             final upcoming = provider.upcomingPickups;
             final pendingCount = job?.pendingCount ?? 0;
+            final isInbound = job?.isInbound ?? false;
 
             return Column(
               children: [
@@ -31,44 +45,45 @@ class PickupQuePage extends StatelessWidget {
                   child: job == null
                       ? const Center(child: CircularProgressIndicator())
                       : active == null
-                          ? Center(
-                              child: Text(
-                                'No more pickups.',
-                                style: TextStyle(
-                                  fontSize: SizeConfig.sp(14),
-                                  color: AppColors.textMedium,
+                      ? _AllPickupsResolved(isInbound: isInbound)
+                      : SingleChildScrollView(
+                          padding: EdgeInsets.all(SizeConfig.r(16)),
+                          child: Column(
+                            children: [
+                              _PassengerCard(
+                                stop: active,
+                                jobId: job.jobId,
+                                // For inbound: find this passenger's home
+                                // dropoff from job.dropoffs by matching id
+                                dropoffAddress: _dropoffForStop(
+                                  active,
+                                  job,
+                                  isInbound,
+                                ),
+                                isActive: true,
+                                showPriority: true,
+                              ),
+                              ...upcoming.map(
+                                (stop) => Padding(
+                                  padding: EdgeInsets.only(
+                                    top: SizeConfig.r(12),
+                                  ),
+                                  child: _PassengerCard(
+                                    stop: stop,
+                                    jobId: job.jobId,
+                                    dropoffAddress: _dropoffForStop(
+                                      stop,
+                                      job,
+                                      isInbound,
+                                    ),
+                                    isActive: false,
+                                    showPriority: false,
+                                  ),
                                 ),
                               ),
-                            )
-                          : SingleChildScrollView(
-                              padding: EdgeInsets.all(SizeConfig.r(16)),
-                              child: Column(
-                                children: [
-                                  // Current (active) pickup card
-                                  _PassengerCard(
-                                    stop: active,
-                                    jobId: job.jobId,
-                                    dropoffLocation: job.dropoffLocation,
-                                    isActive: true,
-                                    showPriority: true,
-                                  ),
-                                  // All remaining pending stops shown greyed out
-                                  ...upcoming.map(
-                                        (stop) => Padding(
-                                          padding: EdgeInsets.only(
-                                              top: SizeConfig.r(12)),
-                                          child: _PassengerCard(
-                                            stop: stop,
-                                            jobId: job.jobId,
-                                            dropoffLocation: job.dropoffLocation,
-                                            isActive: false,
-                                            showPriority: false,
-                                          ),
-                                        ),
-                                      ),
-                                ],
-                              ),
-                            ),
+                            ],
+                          ),
+                        ),
                 ),
               ],
             );
@@ -76,6 +91,31 @@ class PickupQuePage extends StatelessWidget {
         ),
       ),
     );
+  }
+
+  /// Returns the dropoff address to show on a passenger card.
+  ///
+  /// Outbound: one shared school address (job.dropoffLocation)
+  /// Inbound: each passenger's own home address from job.dropoffs,
+  ///          matched by the session passenger id (DropoffStop.id == PickupStop.id
+  ///          since they share the same job_session_passengers row)
+  String _dropoffForStop(PickupStop stop, JobModel job, bool isInbound) {
+    if (!isInbound) return job.dropoffLocation;
+
+    // Match dropoff stop by id (same job_session_passengers row)
+    // or by stop_order as fallback
+    try {
+      final match = job.dropoffs.firstWhere(
+        (d) => d.id == stop.id,
+        orElse: () => job.dropoffs.firstWhere(
+          (d) => d.dropoffOrder == stop.stopNumber,
+          orElse: () => job.dropoffs.first,
+        ),
+      );
+      return match.address;
+    } catch (_) {
+      return job.dropoffLocation;
+    }
   }
 
   Widget _buildAppBar(BuildContext context) {
@@ -106,7 +146,6 @@ class PickupQuePage extends StatelessWidget {
               ),
             ),
           ),
-          // SOS button
           GestureDetector(
             onTap: () => Navigator.pushNamed(context, AppRoutes.sos),
             child: Container(
@@ -141,17 +180,72 @@ class PickupQuePage extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// All Pickups Resolved
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AllPickupsResolved extends StatelessWidget {
+  final bool isInbound;
+  const _AllPickupsResolved({required this.isInbound});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(SizeConfig.r(24)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.check_circle_outline,
+              size: SizeConfig.r(52),
+              color: AppColors.success,
+            ),
+            SizedBox(height: SizeConfig.r(16)),
+            Text(
+              'All pickups resolved',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(17),
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
+              ),
+            ),
+            SizedBox(height: SizeConfig.r(8)),
+            Text(
+              isInbound
+                  ? 'Proceed to drop off students at their homes.'
+                  : 'Proceed to drop off students at school.',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(13),
+                color: AppColors.textMedium,
+              ),
+            ),
+            SizedBox(height: SizeConfig.r(24)),
+            AppButton(
+              label: 'Go to Drop-off',
+              borderRadius: SizeConfig.radiusLG,
+              onPressed: () => Navigator.pushReplacementNamed(
+                context,
+                AppRoutes.completeJob,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Status Bar
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StatusBar extends StatelessWidget {
   final int pendingCount;
-
   const _StatusBar({required this.pendingCount});
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return Container(
       width: double.infinity,
       color: const Color(0xFF0284C7),
@@ -198,14 +292,13 @@ class _StatusBar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Location data model (local UI helper)
+// Passenger Card
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _Location {
   final String label;
   final String address;
   final Color dotColor;
-
   const _Location({
     required this.label,
     required this.address,
@@ -213,21 +306,17 @@ class _Location {
   });
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Passenger Card
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _PassengerCard extends StatelessWidget {
   final PickupStop stop;
   final String jobId;
-  final String dropoffLocation;
+  final String dropoffAddress; // correct address for this passenger
   final bool isActive;
   final bool showPriority;
 
   const _PassengerCard({
     required this.stop,
     required this.jobId,
-    required this.dropoffLocation,
+    required this.dropoffAddress,
     required this.isActive,
     required this.showPriority,
   });
@@ -241,7 +330,7 @@ class _PassengerCard extends StatelessWidget {
     );
     final dropoff = _Location(
       label: 'Drop-off Destination',
-      address: dropoffLocation,
+      address: dropoffAddress,
       dotColor: isActive ? AppColors.error : AppColors.textLight,
     );
 
@@ -255,7 +344,6 @@ class _PassengerCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Header row: avatar + name/time + priority badge
           Row(
             children: [
               CircleAvatar(
@@ -284,7 +372,7 @@ class _PassengerCard extends StatelessWidget {
                     ),
                     SizedBox(height: SizeConfig.r(2)),
                     Text(
-                      stop.eta,
+                      stop.scheduledTime,
                       style: TextStyle(
                         fontSize: SizeConfig.sp(12),
                         color: AppColors.textLight,
@@ -297,13 +385,10 @@ class _PassengerCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: SizeConfig.r(14)),
-          // Pickup location
           _LocationRow(location: pickup, isActive: isActive),
           SizedBox(height: SizeConfig.r(10)),
-          // Dropoff location
           _LocationRow(location: dropoff, isActive: isActive),
           SizedBox(height: SizeConfig.r(16)),
-          // Action buttons
           _ActionButtons(isActive: isActive, stop: stop, jobId: jobId),
         ],
       ),
@@ -311,14 +396,9 @@ class _PassengerCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Priority Badge
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _PriorityBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: SizeConfig.r(10),
@@ -344,19 +424,13 @@ class _PriorityBadge extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Location Row
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _LocationRow extends StatelessWidget {
   final _Location location;
   final bool isActive;
-
   const _LocationRow({required this.location, required this.isActive});
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -372,25 +446,27 @@ class _LocationRow extends StatelessWidget {
           ),
         ),
         SizedBox(width: SizeConfig.r(10)),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              location.label,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                fontWeight: FontWeight.w600,
-                color: isActive ? AppColors.textDark : AppColors.textLight,
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                location.label,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(13),
+                  fontWeight: FontWeight.w600,
+                  color: isActive ? AppColors.textDark : AppColors.textLight,
+                ),
               ),
-            ),
-            Text(
-              location.address,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(12),
-                color: AppColors.textLight,
+              Text(
+                location.address,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(12),
+                  color: AppColors.textLight,
+                ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );
@@ -398,7 +474,7 @@ class _LocationRow extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Action Buttons Row
+// Action Buttons
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ActionButtons extends StatelessWidget {
@@ -414,13 +490,11 @@ class _ActionButtons extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     final activeColor = const Color(0xFF0284C7);
     final inactiveColor = AppColors.textLight;
 
     return Row(
       children: [
-        // Pickup
         _ActionBtn(
           label: 'Pickup',
           backgroundColor: isActive ? activeColor : inactiveColor,
@@ -431,7 +505,6 @@ class _ActionButtons extends StatelessWidget {
               : null,
         ),
         SizedBox(width: SizeConfig.r(8)),
-        // No pickup
         _ActionBtn(
           label: 'No pickup',
           backgroundColor: isActive ? AppColors.error : inactiveColor,
@@ -447,7 +520,6 @@ class _ActionButtons extends StatelessWidget {
               : null,
         ),
         SizedBox(width: SizeConfig.r(8)),
-        // Extended wait
         Expanded(
           child: _ActionBtn(
             label: 'Extended wait',
@@ -457,14 +529,14 @@ class _ActionButtons extends StatelessWidget {
             borderColor: isActive ? activeColor : inactiveColor,
             onTap: isActive
                 ? () => showDialog(
-                      context: context,
-                      barrierColor: Colors.black.withValues(alpha: 0.65),
-                      builder: (_) => _ExtendedWaitDialog(
-                        jobId: jobId,
-                        passengerName: stop.passengerName,
-                        pickupAddress: stop.address,
-                      ),
-                    )
+                    context: context,
+                    barrierColor: Colors.black.withValues(alpha: 0.65),
+                    builder: (_) => _ExtendedWaitDialog(
+                      jobId: jobId,
+                      passengerName: stop.passengerName,
+                      pickupAddress: stop.address,
+                    ),
+                  )
                 : null,
           ),
         ),
@@ -510,7 +582,7 @@ class _ActionBtn extends StatelessWidget {
           style: TextStyle(
             fontSize: SizeConfig.sp(12),
             fontWeight: FontWeight.w600,
-            color: isFilled ? textColor : textColor,
+            color: textColor,
           ),
         ),
       ),
@@ -519,7 +591,7 @@ class _ActionBtn extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Extended Wait Dialog
+// Extended Wait Dialog — UI only
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ExtendedWaitDialog extends StatefulWidget {
@@ -562,31 +634,16 @@ class _ExtendedWaitDialogState extends State<_ExtendedWaitDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Header row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      'Current Delivery',
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(18),
-                        fontWeight: FontWeight.w800,
-                        color: AppColors.textDark,
-                      ),
-                    ),
-                    SizedBox(width: SizeConfig.r(8)),
-                    Text(
-                      'Active',
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(14),
-                        fontWeight: FontWeight.w600,
-                        color: AppColors.success,
-                      ),
-                    ),
-                  ],
+                Text(
+                  'Extended Wait',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(18),
+                    fontWeight: FontWeight.w800,
+                    color: AppColors.textDark,
+                  ),
                 ),
                 GestureDetector(
                   onTap: () => Navigator.pop(context),
@@ -598,26 +655,7 @@ class _ExtendedWaitDialogState extends State<_ExtendedWaitDialog> {
                 ),
               ],
             ),
-            SizedBox(height: SizeConfig.r(18)),
-            // Job ID
-            Text(
-              'Job ID',
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textLight,
-              ),
-            ),
-            SizedBox(height: SizeConfig.r(4)),
-            Text(
-              widget.jobId,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(18),
-                fontWeight: FontWeight.w800,
-                color: AppColors.textDark,
-              ),
-            ),
             SizedBox(height: SizeConfig.r(16)),
-            // Customer
             Text(
               'Customer',
               style: TextStyle(
@@ -635,7 +673,6 @@ class _ExtendedWaitDialogState extends State<_ExtendedWaitDialog> {
               ),
             ),
             SizedBox(height: SizeConfig.r(16)),
-            // Pickup address card
             Container(
               width: double.infinity,
               padding: EdgeInsets.all(SizeConfig.r(14)),
@@ -681,12 +718,11 @@ class _ExtendedWaitDialogState extends State<_ExtendedWaitDialog> {
             SizedBox(height: SizeConfig.r(16)),
             Divider(height: 1, color: AppColors.inputBorder),
             SizedBox(height: SizeConfig.r(16)),
-            // Enter time manually row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 Text(
-                  'Enter Time Manually',
+                  'Wait time',
                   style: TextStyle(
                     fontSize: SizeConfig.sp(14),
                     fontWeight: FontWeight.w600,
@@ -735,9 +771,8 @@ class _ExtendedWaitDialogState extends State<_ExtendedWaitDialog> {
               ],
             ),
             SizedBox(height: SizeConfig.r(16)),
-            // Submit button
             AppButton(
-              label: 'Submit',
+              label: 'OK',
               borderRadius: SizeConfig.radiusLG,
               onPressed: () => Navigator.pop(context),
             ),

@@ -61,7 +61,6 @@ class _RouteDetailPageState extends State<RouteDetailPage> {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               SizedBox(height: SizeConfig.r(12)),
-                              // ── Map card — navigate button now wired ──
                               _MapCard(
                                 totalEta: job.totalEta,
                                 totalDistance: job.totalDistance,
@@ -197,7 +196,6 @@ class _RouteDetailPageState extends State<RouteDetailPage> {
 class _MapCard extends StatelessWidget {
   final String totalEta;
   final String totalDistance;
-  // ── NEW: wired callback ───────────────────────────────────────────────────
   final VoidCallback onNavigate;
 
   const _MapCard({
@@ -265,7 +263,6 @@ class _MapCard extends StatelessWidget {
                   width: double.infinity,
                   height: SizeConfig.r(46),
                   child: ElevatedButton.icon(
-                    // ── WIRED ─────────────────────────────────────────────
                     onPressed: onNavigate,
                     icon: Icon(
                       Icons.navigation_outlined,
@@ -316,7 +313,7 @@ class _EtaItem extends StatelessWidget {
           ),
         ),
         Text(
-          value,
+          value.isEmpty ? '—' : value,
           style: TextStyle(
             fontSize: SizeConfig.sp(16),
             fontWeight: FontWeight.w700,
@@ -329,7 +326,7 @@ class _EtaItem extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Route Painter (unchanged)
+// Route Painter
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _RoutePainter extends CustomPainter {
@@ -395,7 +392,7 @@ class _RoutePainter extends CustomPainter {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stop Card — now shows a GPS indicator
+// Stop Card
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StopCard extends StatelessWidget {
@@ -403,7 +400,6 @@ class _StopCard extends StatelessWidget {
   final String address;
   final String eta;
   final PickupStatus status;
-  // ── NEW ──────────────────────────────────────────────────────────────────
   final bool hasCoordinates;
 
   const _StopCard({
@@ -469,7 +465,6 @@ class _StopCard extends StatelessWidget {
                     ),
                   ),
                 ],
-                // ── GPS indicator ─────────────────────────────────────────
                 SizedBox(height: SizeConfig.r(4)),
                 Row(
                   children: [
@@ -515,12 +510,12 @@ class _StatusBadge extends StatelessWidget {
       case PickupStatus.completed:
         bg = AppColors.success.withValues(alpha: 0.15);
         fg = AppColors.success;
-        label = 'Completed';
+        label = 'Picked Up';
         break;
       case PickupStatus.notPicked:
         bg = AppColors.error.withValues(alpha: 0.13);
         fg = AppColors.error;
-        label = 'Not Picked';
+        label = 'Missed';
         break;
       case PickupStatus.pending:
         bg = AppColors.warning.withValues(alpha: 0.15);
@@ -550,7 +545,10 @@ class _StatusBadge extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Bar (unchanged logic)
+// Bottom Bar
+// ── KEY CHANGE: "Continue Journey" now calls ensureSessionStarted() first
+//   so that job_session + job_session_passengers rows exist before the
+//   driver reaches PickupQuePage and tries to mark pickups.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomBar extends StatelessWidget {
@@ -615,8 +613,16 @@ class _BottomBar extends StatelessWidget {
           AppButton(
             label: 'Continue Journey',
             borderRadius: SizeConfig.radiusLG,
-            onPressed: () {
+            onPressed: () async {
               final provider = context.read<JobProvider>();
+
+              // Create session + snapshot passengers if not yet started.
+              // This is the earliest point the driver has confirmed intent
+              // to start the run.
+              await provider.ensureSessionStarted();
+
+              if (!context.mounted) return;
+
               if (provider.allResolved) {
                 Navigator.pushNamed(context, AppRoutes.completeJob);
               } else {

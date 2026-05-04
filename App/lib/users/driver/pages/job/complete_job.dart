@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../components/app_button.dart';
 import '../../../../providers/job_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../users/driver/models/job_model.dart';
@@ -31,12 +32,26 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
         child: Consumer<JobProvider>(
           builder: (context, provider, _) {
             final job = provider.job;
+            final isInbound = job?.isInbound ?? false;
+
+            // For inbound: are there still pending dropoffs?
+            final pendingDropoffs =
+                job?.dropoffs
+                    .where((d) => d.status == DropoffStatus.pending)
+                    .toList() ??
+                [];
+            final allDropoffsDone =
+                job != null &&
+                job.dropoffs.isNotEmpty &&
+                pendingDropoffs.isEmpty;
+            final currentDropoff = pendingDropoffs.isNotEmpty
+                ? pendingDropoffs.first
+                : null;
 
             return Column(
               children: [
                 _buildAppBar(context, job),
                 _StatusBar(job: job),
-                // ── Tracking indicator for dropoff ────────────────────────
                 if (provider.isTracking)
                   _TrackingBanner(
                     distanceMeters: provider.currentDistanceMeters,
@@ -49,16 +64,7 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
                       children: [
                         _buildTimeline(job),
                         SizedBox(height: SizeConfig.r(16)),
-                        _DropoffDestinationCard(
-                          job: job,
-                          // ── Navigate to dropoff button ─────────────────
-                          onNavigate:
-                              job?.currentDropoff?.hasCoordinates == true
-                              ? () => context
-                                    .read<JobProvider>()
-                                    .navigateToDropoff()
-                              : null,
-                        ),
+                        _buildDropoffSection(job, provider, currentDropoff),
                         SizedBox(height: SizeConfig.r(16)),
                         _JobCommentsCard(controller: _commentsController),
                         SizedBox(height: SizeConfig.r(16)),
@@ -66,7 +72,13 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
                     ),
                   ),
                 ),
-                _BottomBar(commentsController: _commentsController),
+                _BottomBar(
+                  commentsController: _commentsController,
+                  isInbound: isInbound,
+                  allDropoffsDone: allDropoffsDone,
+                  currentDropoff: currentDropoff,
+                  job: job,
+                ),
               ],
             );
           },
@@ -161,22 +173,99 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
 
   Widget _buildTimeline(JobModel? job) {
     if (job == null) return const SizedBox.shrink();
+    final isInbound = job.isInbound;
+
     return Column(
       children: [
         ...job.pickups.map((stop) {
           final isCompleted = stop.status == PickupStatus.completed;
-          return _TimelinePassengerItem(
+          return _TimelineItem(
             name: stop.passengerName,
             time: stop.scheduledTime,
             detail: isCompleted ? stop.address : 'Not Picked',
             lineColor: isCompleted ? AppColors.success : AppColors.error,
             isCompleted: isCompleted,
+            icon: Icons.person,
           );
         }),
-        _DrivingToDropoffItem(
-          dropoffEta: job.dropoffEta,
-          dropoffLocation: job.dropoffLocation,
+        if (isInbound) ...[
+          ...job.dropoffs.map((dropoff) {
+            final isDropped = dropoff.status == DropoffStatus.completed;
+            final label = dropoff.passengerName.isNotEmpty
+                ? dropoff.passengerName
+                : 'Drop-off ${dropoff.dropoffOrder}';
+            return _TimelineItem(
+              name: label,
+              time: dropoff.scheduledTime,
+              detail: dropoff.address,
+              lineColor: isDropped
+                  ? AppColors.success
+                  : const Color(0xFF0284C7),
+              isCompleted: isDropped,
+              icon: Icons.home_outlined,
+            );
+          }),
+        ] else ...[
+          _DrivingToDropoffItem(
+            dropoffEta: job.dropoffEta,
+            dropoffLocation: job.dropoffLocation,
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildDropoffSection(
+    JobModel? job,
+    JobProvider provider,
+    DropoffStop? currentDropoff,
+  ) {
+    if (job == null) return const SizedBox.shrink();
+
+    if (!job.isInbound) {
+      return _DropoffDestinationCard(
+        title: 'Drop-off Destination',
+        address: job.dropoffLocation,
+        eta: job.dropoffEta,
+        isCompleted: job.currentDropoff?.status == DropoffStatus.completed,
+        onNavigate: job.currentDropoff?.hasCoordinates == true
+            ? () => provider.navigateToDropoff()
+            : null,
+      );
+    }
+
+    if (job.dropoffs.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          'Drop-off Stops',
+          style: TextStyle(
+            fontSize: SizeConfig.sp(16),
+            fontWeight: FontWeight.w700,
+            color: AppColors.textDark,
+          ),
         ),
+        SizedBox(height: SizeConfig.r(10)),
+        ...job.dropoffs.map((dropoff) {
+          final isCurrent = currentDropoff?.id == dropoff.id;
+          return Padding(
+            padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+            child: _DropoffDestinationCard(
+              title: dropoff.passengerName.isNotEmpty
+                  ? '${dropoff.passengerName}\'s Home'
+                  : 'Drop-off ${dropoff.dropoffOrder}',
+              address: dropoff.address,
+              eta: dropoff.scheduledTime,
+              isCompleted: dropoff.status == DropoffStatus.completed,
+              // Enable navigate only for the current pending dropoff
+              onNavigate: (isCurrent && dropoff.hasCoordinates)
+                  ? () => provider.navigateToDropoff()
+                  : null,
+            ),
+          );
+        }),
       ],
     );
   }
@@ -192,11 +281,9 @@ class _TrackingBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     final label = distanceMeters != null
         ? '${distanceMeters!.toStringAsFixed(0)} m to drop-off — tracking active'
         : 'Tracking location to drop-off…';
-
     return Container(
       width: double.infinity,
       color: AppColors.success.withValues(alpha: 0.1),
@@ -236,7 +323,6 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     final completed = job?.completedCount ?? 0;
     final total = job?.totalPickups ?? 0;
     final progress = job?.progressFraction ?? 0.0;
@@ -286,15 +372,11 @@ class _StatusBar extends StatelessWidget {
               ],
             ),
           ),
-          ClipRRect(
-            child: LinearProgressIndicator(
-              value: progress,
-              minHeight: SizeConfig.r(5),
-              backgroundColor: Colors.white.withValues(alpha: 0.25),
-              valueColor: const AlwaysStoppedAnimation<Color>(
-                AppColors.success,
-              ),
-            ),
+          LinearProgressIndicator(
+            value: progress,
+            minHeight: SizeConfig.r(5),
+            backgroundColor: Colors.white.withValues(alpha: 0.25),
+            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.success),
           ),
         ],
       ),
@@ -303,27 +385,28 @@ class _StatusBar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Timeline items (unchanged)
+// Timeline Item
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _TimelinePassengerItem extends StatelessWidget {
+class _TimelineItem extends StatelessWidget {
   final String name;
   final String time;
   final String detail;
   final Color lineColor;
   final bool isCompleted;
+  final IconData icon;
 
-  const _TimelinePassengerItem({
+  const _TimelineItem({
     required this.name,
     required this.time,
     required this.detail,
     required this.lineColor,
     required this.isCompleted,
+    required this.icon,
   });
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -341,7 +424,7 @@ class _TimelinePassengerItem extends StatelessWidget {
                   ),
                   alignment: Alignment.center,
                   child: Icon(
-                    isCompleted ? Icons.check : Icons.close,
+                    isCompleted ? Icons.check : icon,
                     color: Colors.white,
                     size: SizeConfig.r(18),
                   ),
@@ -393,7 +476,6 @@ class _TimelinePassengerItem extends StatelessWidget {
 class _DrivingToDropoffItem extends StatelessWidget {
   final String dropoffEta;
   final String dropoffLocation;
-
   const _DrivingToDropoffItem({
     required this.dropoffEta,
     required this.dropoffLocation,
@@ -401,7 +483,6 @@ class _DrivingToDropoffItem extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
@@ -459,28 +540,38 @@ class _DrivingToDropoffItem extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Dropoff Destination Card — Navigate button ADDED
+// Dropoff Destination Card
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _DropoffDestinationCard extends StatelessWidget {
-  final JobModel? job;
-  // ── NEW ──────────────────────────────────────────────────────────────────
+  final String title;
+  final String address;
+  final String eta;
+  final bool isCompleted;
   final VoidCallback? onNavigate;
 
-  const _DropoffDestinationCard({required this.job, this.onNavigate});
+  const _DropoffDestinationCard({
+    required this.title,
+    required this.address,
+    required this.eta,
+    required this.isCompleted,
+    this.onNavigate,
+  });
 
   @override
   Widget build(BuildContext context) {
-    if (job == null) return const SizedBox.shrink();
-    SizeConfig.init(context);
-
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(SizeConfig.r(16)),
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
-        border: Border.all(color: AppColors.inputBorder, width: 1),
+        border: Border.all(
+          color: isCompleted
+              ? AppColors.success.withValues(alpha: 0.4)
+              : AppColors.inputBorder,
+          width: 1,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -489,8 +580,10 @@ class _DropoffDestinationCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                Icons.location_on_outlined,
-                color: AppColors.error,
+                isCompleted
+                    ? Icons.check_circle_outline
+                    : Icons.location_on_outlined,
+                color: isCompleted ? AppColors.success : AppColors.error,
                 size: SizeConfig.r(20),
               ),
               SizedBox(width: SizeConfig.r(10)),
@@ -499,7 +592,7 @@ class _DropoffDestinationCard extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      'Drop-off Destination',
+                      title,
                       style: TextStyle(
                         fontSize: SizeConfig.sp(13),
                         fontWeight: FontWeight.w700,
@@ -508,59 +601,78 @@ class _DropoffDestinationCard extends StatelessWidget {
                     ),
                     SizedBox(height: SizeConfig.r(2)),
                     Text(
-                      job!.dropoffLocation,
+                      address,
                       style: TextStyle(
                         fontSize: SizeConfig.sp(13),
                         color: AppColors.textMedium,
                       ),
                     ),
-                    SizedBox(height: SizeConfig.r(4)),
-                    Text(
-                      'ETA ${job!.dropoffEta}',
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(12),
-                        color: const Color(0xFF0284C7),
-                        fontWeight: FontWeight.w600,
+                    if (eta.isNotEmpty && eta != '--:--') ...[
+                      SizedBox(height: SizeConfig.r(4)),
+                      Text(
+                        'ETA $eta',
+                        style: TextStyle(
+                          fontSize: SizeConfig.sp(12),
+                          color: const Color(0xFF0284C7),
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),
+              if (isCompleted)
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SizeConfig.r(8),
+                    vertical: SizeConfig.r(3),
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                  child: Text(
+                    'Done',
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(11),
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.success,
+                    ),
+                  ),
+                ),
             ],
           ),
-          // ── Navigate to drop-off button ───────────────────────────────────
-          SizedBox(height: SizeConfig.r(12)),
-          SizedBox(
-            width: double.infinity,
-            height: SizeConfig.r(44),
-            child: ElevatedButton.icon(
-              onPressed: onNavigate,
-              icon: Icon(
-                Icons.navigation_outlined,
-                color: Colors.white,
-                size: SizeConfig.r(16),
-              ),
-              label: Text(
-                onNavigate != null
-                    ? 'Navigate to Drop-off'
-                    : 'No GPS for Drop-off',
-                style: TextStyle(
+          // Navigate button — shown only for the current pending stop
+          if (!isCompleted && onNavigate != null) ...[
+            SizedBox(height: SizeConfig.r(12)),
+            SizedBox(
+              width: double.infinity,
+              height: SizeConfig.r(44),
+              child: ElevatedButton.icon(
+                onPressed: onNavigate,
+                icon: Icon(
+                  Icons.navigation_outlined,
                   color: Colors.white,
-                  fontSize: SizeConfig.sp(14),
-                  fontWeight: FontWeight.w600,
+                  size: SizeConfig.r(16),
                 ),
-              ),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: onNavigate != null
-                    ? AppColors.success
-                    : AppColors.textLight,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(SizeConfig.radius),
+                label: Text(
+                  'Navigate to Drop-off',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: SizeConfig.sp(14),
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.success,
+                  elevation: 0,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
+                  ),
                 ),
               ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -568,7 +680,7 @@ class _DropoffDestinationCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Job Comments Card (unchanged)
+// Job Comments Card
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _JobCommentsCard extends StatelessWidget {
@@ -577,7 +689,6 @@ class _JobCommentsCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(SizeConfig.r(16)),
@@ -638,16 +749,48 @@ class _JobCommentsCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Bar (unchanged)
+// Bottom Bar
+//
+// Outbound (one school dropoff):
+//   "Arrived at Drop-off" → completeCurrentJob() → dashboard
+//
+// Inbound (multiple home dropoffs):
+//   While pending dropoffs remain:
+//     "Arrived at [Name]'s Home" → markDropoffAsCompleted() → stays on page
+//   When all dropoffs done:
+//     "Complete Job" → completeCurrentJob() → dashboard
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomBar extends StatelessWidget {
   final TextEditingController commentsController;
-  const _BottomBar({required this.commentsController});
+  final bool isInbound;
+  final bool allDropoffsDone;
+  final DropoffStop? currentDropoff;
+  final JobModel? job;
+
+  const _BottomBar({
+    required this.commentsController,
+    required this.isInbound,
+    required this.allDropoffsDone,
+    required this.currentDropoff,
+    required this.job,
+  });
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
+    // Determine button label
+    String label;
+    if (!isInbound) {
+      label = 'Arrived at Drop-off';
+    } else if (allDropoffsDone) {
+      label = 'Complete Job';
+    } else {
+      final name = currentDropoff?.passengerName;
+      label = (name != null && name.isNotEmpty)
+          ? 'Arrived at ${name}\'s Home'
+          : 'Arrived at Drop-off';
+    }
+
     return Container(
       padding: EdgeInsets.fromLTRB(
         SizeConfig.hPad,
@@ -663,31 +806,11 @@ class _BottomBar extends StatelessWidget {
         width: double.infinity,
         height: SizeConfig.buttonHeight,
         child: ElevatedButton(
-          onPressed: () async {
-            final provider = context.read<JobProvider>();
-            try {
-              await provider.completeCurrentJob(
-                comments: commentsController.text.trim(),
-              );
-            } catch (_) {
-              if (!context.mounted) return;
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Failed to complete job. Please try again.'),
-                ),
-              );
-              return;
-            }
-            provider.reset();
-            if (!context.mounted) return;
-            Navigator.pushNamedAndRemoveUntil(
-              context,
-              AppRoutes.driverDashboard,
-              (route) => false,
-            );
-          },
+          onPressed: () => _handleTap(context),
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppColors.textDark,
+            backgroundColor: allDropoffsDone && isInbound
+                ? AppColors.success
+                : AppColors.textDark,
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
@@ -697,7 +820,7 @@ class _BottomBar extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               Text(
-                'Arrived at Drop-off',
+                label,
                 style: TextStyle(
                   fontSize: SizeConfig.sp(15),
                   fontWeight: FontWeight.w600,
@@ -706,7 +829,9 @@ class _BottomBar extends StatelessWidget {
               ),
               SizedBox(width: SizeConfig.r(8)),
               Icon(
-                Icons.arrow_forward,
+                allDropoffsDone && isInbound
+                    ? Icons.check
+                    : Icons.arrow_forward,
                 color: Colors.white,
                 size: SizeConfig.r(18),
               ),
@@ -714,6 +839,40 @@ class _BottomBar extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+
+  Future<void> _handleTap(BuildContext context) async {
+    final provider = context.read<JobProvider>();
+
+    if (isInbound && !allDropoffsDone) {
+      // Mark the current dropoff as completed and stay on this page.
+      // The provider will reload via realtime, updating dropoff statuses.
+      // UI rebuilds showing next pending dropoff.
+      await provider.markDropoffAsCompleted();
+      return;
+    }
+
+    // Outbound OR all inbound dropoffs done → complete the job
+    try {
+      await provider.completeCurrentJob(
+        comments: commentsController.text.trim(),
+      );
+    } catch (_) {
+      if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Failed to complete job. Please try again.'),
+        ),
+      );
+      return;
+    }
+    provider.reset();
+    if (!context.mounted) return;
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      AppRoutes.driverDashboard,
+      (route) => false,
     );
   }
 }

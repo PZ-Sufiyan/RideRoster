@@ -3,38 +3,33 @@ import '../users/driver/models/job_model.dart';
 
 /// All Supabase queries for the active job + session flow.
 ///
-/// Schema overview:
-///   jobs               → semester-based job row
-///   job_sessions       → one row per (job_id, date, direction); created on start
-///   job_session_passengers → per-passenger status within a session
-///   passenger_schedules    → base schedule rows (exception_date IS NULL)
-///                            + exception rows (exception_date IS NOT NULL)
-///   passenger              → profile including educational_site coords
+/// Key design for outbound vs inbound:
+///
+/// OUTBOUND (morning — home → school):
+///   Pickups  = passenger home addresses (different per passenger)
+///   Dropoffs = school (one shared stop, from passenger.educational_site_*)
+///
+/// INBOUND (evening — school → home):
+///   Pickups  = school address (same for all, from passenger_schedules.pickup_address)
+///   Dropoffs = passenger home addresses (different per passenger,
+///              from passenger_schedules.dropoff_address / dropoff_lat / dropoff_lng)
+///
+/// passenger_schedules.dropoff_address is the correct source for inbound
+/// dropoffs — NOT passenger.educational_site_address.
 class JobService {
   SupabaseClient get _supabase => Supabase.instance.client;
 
   // ── Fetch current job ─────────────────────────────────────────────────────
 
-  /// Returns the active job + today's session for the signed-in driver.
-  ///
-  /// Flow:
-  ///   1. Find an active job assigned to this driver (semester covers today).
-  ///   2. Determine today's weekday and direction (outbound before noon, else inbound).
-  ///   3. Check for an existing job_session for (job, today, direction).
-  ///   4. If session exists → load its job_session_passengers.
-  ///      If no session yet → build a preview from passenger_schedules
-  ///      (session is created lazily when driver taps Start Run).
-  ///   5. Map to JobModel.
   Future<JobModel?> fetchCurrentJob() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return null;
 
     final today = DateTime.now();
-    final todayDate = _dateString(today); // 'YYYY-MM-DD'
-    final weekday = _weekdayKey(today); // 'mon' | 'tue' | ...
-    final direction = _resolveDirection(today); // 'outbound' | 'inbound'
+    final todayDate = _dateString(today);
+    final weekday = _weekdayKey(today);
 
-    // ── 1. Find active job ─────────────────────────────────────────────────
+    // Find the job (direction-independent)
     final jobRows = await _supabase
         .from('jobs')
         .select(
@@ -44,7 +39,8 @@ class JobService {
           'semester_start, semester_end, status',
         )
         .eq('assigned_driver_id', userId)
-        .eq('status', 'active')
+        .eq('driver_approval_status', 'accepted')
+        .neq('status', 'cancelled')
         .lte('semester_start', todayDate)
         .gte('semester_end', todayDate)
         .limit(1);
@@ -55,31 +51,59 @@ class JobService {
     final jobDbId = (jobRow['id'] ?? '').toString();
     if (jobDbId.isEmpty) return null;
 
-    // ── 2. Check direction availability ───────────────────────────────────
+    // Load all today's sessions to decide direction
+    final allSessionsToday = await _supabase
+        .from('job_sessions')
+        .select('id, direction, status')
+        .eq('job_id', jobDbId)
+        .eq('session_date', todayDate);
+
+    final sessionMap = <String, Map<String, dynamic>>{};
+    for (final s in allSessionsToday) {
+      final dir = (s['direction'] ?? '').toString();
+      sessionMap[dir] = Map<String, dynamic>.from(s as Map);
+    }
+
+    final direction = _pickDirection(
+      jobRow: jobRow,
+      sessionMap: sessionMap,
+      now: today,
+    );
+    if (direction == null) return null;
+
     final hasDirection = direction == 'outbound'
         ? jobRow['has_outbound'] == true
         : jobRow['has_inbound'] == true;
     if (!hasDirection) return null;
 
-    // ── 3. Look for existing session today ────────────────────────────────
-    final sessionRows = await _supabase
-        .from('job_sessions')
-        .select('id, status, started_at, completed_at')
-        .eq('job_id', jobDbId)
-        .eq('session_date', todayDate)
-        .eq('direction', direction)
-        .limit(1);
+    final existingSession = sessionMap[direction];
+    final sessionId = existingSession?['id']?.toString() ?? '';
+    final sessionExists = sessionId.isNotEmpty;
 
-    String sessionId = '';
-    bool sessionExists = false;
+    // ── Build passenger rows ──────────────────────────────────────────────
 
-    if (sessionRows.isNotEmpty) {
-      sessionId = (sessionRows.first['id'] ?? '').toString();
-      sessionExists = sessionId.isNotEmpty;
-    }
-
-    // ── 4a. Session exists → load its passengers ──────────────────────────
+    // scheduleRows holds the full passenger_schedules rows (with dropoff coords)
+    // needed for both preview and time injection into session passengers.
+    List<Map<String, dynamic>> scheduleRows = [];
     List<Map<String, dynamic>> passengerRows = [];
+
+    // Always fetch schedules — needed for:
+    //   - preview (no session yet)
+    //   - time injection (session exists)
+    //   - inbound dropoff addresses (session exists, inbound direction)
+    scheduleRows = await _resolvedScheduleForDay(
+      jobDbId: jobDbId,
+      weekday: weekday,
+      direction: direction,
+      todayDate: todayDate,
+    );
+
+    // Build schedule lookup by passenger_id
+    final scheduleByPassenger = <String, Map<String, dynamic>>{};
+    for (final s in scheduleRows) {
+      final pid = (s['passenger_id'] ?? '').toString();
+      if (pid.isNotEmpty) scheduleByPassenger[pid] = s;
+    }
 
     if (sessionExists) {
       final spRows = await _supabase
@@ -95,19 +119,50 @@ class JobService {
       passengerRows = spRows
           .map((r) => Map<String, dynamic>.from(r as Map))
           .toList();
+
+      // Inject pickup_time and dropoff coords from passenger_schedules
+      for (final row in passengerRows) {
+        final pid = (row['passenger_id'] ?? '').toString();
+        final schedule = scheduleByPassenger[pid];
+        if (schedule != null) {
+          row['scheduled_time'] = schedule['pickup_time'] ?? '';
+          // Inject inbound dropoff address+coords from schedule
+          // (job_session_passengers only stores pickup coords)
+          if (direction == 'inbound') {
+            row['inbound_dropoff_address'] = schedule['dropoff_address'] ?? '';
+            row['inbound_dropoff_lat'] = schedule['dropoff_latitude'];
+            row['inbound_dropoff_lng'] = schedule['dropoff_longitude'];
+          }
+        }
+      }
     } else {
-      // ── 4b. No session yet → preview from passenger_schedules ─────────
-      passengerRows = await _buildSchedulePreview(
-        jobDbId: jobDbId,
-        weekday: weekday,
-        direction: direction,
-        today: todayDate,
-      );
+      // Preview from schedules
+      passengerRows = scheduleRows.map((r) {
+        return {
+          'id': '',
+          'passenger_id': r['passenger_id'],
+          'stop_order': r['stop_order'],
+          'status': 'pending',
+          'pickup_address': r['pickup_address'],
+          'pickup_latitude': r['pickup_latitude'],
+          'pickup_longitude': r['pickup_longitude'],
+          'dropoff_address': r['dropoff_address'] ?? '',
+          'scheduled_time': r['pickup_time'],
+          'notes': r['notes'],
+          // inbound dropoff from schedule
+          if (direction == 'inbound') ...{
+            'inbound_dropoff_address': r['dropoff_address'] ?? '',
+            'inbound_dropoff_lat': r['dropoff_latitude'],
+            'inbound_dropoff_lng': r['dropoff_longitude'],
+          },
+        };
+      }).toList();
     }
 
     if (passengerRows.isEmpty) return null;
 
-    // ── 5. Enrich with passenger profile data ─────────────────────────────
+    // ── Passenger profiles ────────────────────────────────────────────────
+
     final passengerIds = passengerRows
         .map((r) => r['passenger_id']?.toString())
         .whereType<String>()
@@ -117,7 +172,8 @@ class JobService {
 
     final profileMap = await _fetchPassengerProfiles(passengerIds);
 
-    // ── 6. Build PickupStop list ──────────────────────────────────────────
+    // ── Build PickupStop list ─────────────────────────────────────────────
+
     final pickups = <PickupStop>[];
 
     for (final row in passengerRows) {
@@ -136,8 +192,6 @@ class JobService {
       final lat = _asDouble(row['pickup_latitude']);
       final lng = _asDouble(row['pickup_longitude']);
       final order = _asInt(row['stop_order']);
-
-      // Scheduled time: from schedule preview rows OR from session rows
       final scheduledTime = _formatTime(row['scheduled_time']);
 
       pickups.add(
@@ -159,82 +213,167 @@ class JobService {
       );
     }
 
-    // ── 7. Build DropoffStop (one: the school) ────────────────────────────
-    // Use the educational site of the first passenger as the shared dropoff.
-    final firstProfile = passengerIds.isNotEmpty
-        ? profileMap[passengerIds.first]
-        : null;
+    // ── Build DropoffStop list ────────────────────────────────────────────
+    //
+    // OUTBOUND: one shared school dropoff (from passenger profile)
+    // INBOUND:  one dropoff per passenger (home address from schedule)
 
-    final dropoffAddress = (firstProfile?['educational_site_address'] ?? '')
-        .toString();
-    final dropoffLat = _asDouble(firstProfile?['educational_site_latitude']);
-    final dropoffLng = _asDouble(firstProfile?['educational_site_longitude']);
-    final dropoffTime = _formatTime(
-      firstProfile?['educational_site_dropoff_time'],
-    );
+    final dropoffs = <DropoffStop>[];
 
-    // For the dropoff stop id: use the session passenger id of first row
-    // (dropoff is tracked by marking all passengers dropped_off).
-    final dropoffStopId = passengerRows.isNotEmpty
-        ? (passengerRows.first['id'] ?? '').toString()
-        : '';
+    if (direction == 'outbound') {
+      // One shared school dropoff
+      final firstProfile = passengerIds.isNotEmpty
+          ? profileMap[passengerIds.first]
+          : null;
+      final schoolAddress = (firstProfile?['educational_site_address'] ?? '')
+          .toString();
+      final schoolLat = _asDouble(firstProfile?['educational_site_latitude']);
+      final schoolLng = _asDouble(firstProfile?['educational_site_longitude']);
+      final dropoffTime = _formatTime(
+        firstProfile?['educational_site_dropoff_time'],
+      );
+      final dropoffStopId = passengerRows.isNotEmpty
+          ? (passengerRows.first['id'] ?? '').toString()
+          : '';
 
-    final dropoffs = dropoffAddress.isNotEmpty
-        ? [
-            DropoffStop(
-              id: dropoffStopId,
-              dropoffOrder: 1,
-              address: dropoffAddress,
-              scheduledTime: dropoffTime,
-              lat: dropoffLat,
-              lng: dropoffLng,
-              status: _toDropoffStatus(
-                sessionExists && passengerRows.isNotEmpty
-                    ? passengerRows.first['status']
-                    : null,
-              ),
+      if (schoolAddress.isNotEmpty) {
+        dropoffs.add(
+          DropoffStop(
+            id: dropoffStopId,
+            dropoffOrder: 1,
+            address: schoolAddress,
+            scheduledTime: dropoffTime,
+            lat: schoolLat,
+            lng: schoolLng,
+            status: _toDropoffStatus(
+              sessionExists && passengerRows.isNotEmpty
+                  ? passengerRows.first['status']
+                  : null,
             ),
-          ]
-        : <DropoffStop>[];
+          ),
+        );
+      }
+    } else {
+      // INBOUND: one dropoff per passenger — their home address
+      for (int i = 0; i < passengerRows.length; i++) {
+        final row = passengerRows[i];
+        final passengerId = (row['passenger_id'] ?? '').toString();
+        final profile = profileMap[passengerId];
+        final firstName = (profile?['first_name'] ?? '').toString().trim();
+        final surname = (profile?['surname'] ?? '').toString().trim();
+        final fullName = [
+          firstName,
+          surname,
+        ].where((s) => s.isNotEmpty).join(' ');
 
-    // ── 8. PA name ────────────────────────────────────────────────────────
+        final homeAddress = (row['inbound_dropoff_address'] ?? '').toString();
+        final homeLat = _asDouble(row['inbound_dropoff_lat']);
+        final homeLng = _asDouble(row['inbound_dropoff_lng']);
+
+        // Dropoff time for inbound comes from schedule dropoff_time,
+        // which may be null — fall back to evening_start_time if needed
+        final schedule = scheduleByPassenger[passengerId];
+        final dropoffTime = _formatTime(schedule?['dropoff_time']);
+
+        dropoffs.add(
+          DropoffStop(
+            id: (row['id'] ?? '').toString(),
+            dropoffOrder: i + 1,
+            address: homeAddress.isNotEmpty ? homeAddress : 'Home address',
+            scheduledTime: dropoffTime,
+            lat: homeLat,
+            lng: homeLng,
+            passengerName: fullName.isEmpty ? 'Student' : fullName,
+            status: sessionExists
+                ? _toDropoffStatus(row['status'])
+                : DropoffStatus.pending,
+          ),
+        );
+      }
+    }
+
+    // ── PA name ───────────────────────────────────────────────────────────
+
     final paName = await _fetchPaName(jobRow['assigned_pa_id']);
 
-    // ── 9. Compute derived display fields ─────────────────────────────────
+    // ── Derived display fields ────────────────────────────────────────────
+
     final nextPending = pickups
         .where((p) => p.status == PickupStatus.pending)
         .toList();
+
+    // For the dashboard "Next pickup" label
     final nextPickupTime = nextPending.isNotEmpty
         ? nextPending.first.scheduledTime
-        : dropoffTime;
+        : (dropoffs.isNotEmpty ? dropoffs.first.scheduledTime : '--:--');
+
+    // Primary dropoff label for dashboard card
+    final primaryDropoffLocation = direction == 'outbound'
+        ? (dropoffs.isNotEmpty ? dropoffs.first.address : '')
+        : (dropoffs.isNotEmpty ? '${dropoffs.length} home drop-offs' : '');
+
+    // Dropoff ETA for dashboard card
+    final primaryDropoffEta = dropoffs.isNotEmpty
+        ? dropoffs.first.scheduledTime
+        : '--:--';
 
     final displayJobId = (jobRow['internal_job_id'] ?? jobDbId.substring(0, 8))
         .toString();
 
     return JobModel(
       jobDbId: jobDbId,
-      sessionId: sessionId, // empty string if session not yet created
+      sessionId: sessionId,
       jobId: displayJobId,
       routeNumber: (jobRow['job_name'] ?? '').toString(),
       paName: paName,
       nextPickupTime: nextPickupTime,
       totalEta: '',
       totalDistance: '',
-      dropoffLocation: dropoffAddress,
-      dropoffEta: dropoffTime,
+      dropoffLocation: primaryDropoffLocation,
+      dropoffEta: primaryDropoffEta,
       direction: direction,
       pickups: pickups,
       dropoffs: dropoffs,
     );
   }
 
+  // ── Direction picker ──────────────────────────────────────────────────────
+
+  String? _pickDirection({
+    required Map<String, dynamic> jobRow,
+    required Map<String, Map<String, dynamic>> sessionMap,
+    required DateTime now,
+  }) {
+    final hasOutbound = jobRow['has_outbound'] == true;
+    final hasInbound = jobRow['has_inbound'] == true;
+
+    // Priority 1: active session
+    for (final entry in sessionMap.entries) {
+      if (entry.value['status'] == 'active') return entry.key;
+    }
+
+    final outboundDone = sessionMap['outbound']?['status'] == 'completed';
+    final inboundDone = sessionMap['inbound']?['status'] == 'completed';
+
+    if ((!hasOutbound || outboundDone) && (!hasInbound || inboundDone)) {
+      return null;
+    }
+
+    final preferOutbound = now.hour < 13;
+
+    if (preferOutbound) {
+      if (hasOutbound && !outboundDone) return 'outbound';
+      if (hasInbound && !inboundDone) return 'inbound';
+    } else {
+      if (hasInbound && !inboundDone) return 'inbound';
+      if (hasOutbound && !outboundDone) return 'outbound';
+    }
+
+    return null;
+  }
+
   // ── Session management ────────────────────────────────────────────────────
 
-  /// Creates a job_session and inserts job_session_passengers from
-  /// today's passenger_schedules (with exception overrides applied).
-  ///
-  /// Returns the new session id.
-  /// Safe to call multiple times — upsert on (job_id, session_date, direction).
   Future<String> startSession({
     required String jobDbId,
     required String direction,
@@ -246,7 +385,6 @@ class JobService {
     final todayDate = _dateString(today);
     final weekday = _weekdayKey(today);
 
-    // Upsert session row
     final sessionResult = await _supabase
         .from('job_sessions')
         .upsert({
@@ -263,7 +401,6 @@ class JobService {
     final sessionId = (sessionResult['id'] ?? '').toString();
     if (sessionId.isEmpty) throw Exception('Failed to create session.');
 
-    // Check if passengers already inserted (idempotent)
     final existing = await _supabase
         .from('job_session_passengers')
         .select('id')
@@ -272,7 +409,6 @@ class JobService {
 
     if (existing.isNotEmpty) return sessionId;
 
-    // Build passenger rows from schedule
     final scheduleRows = await _resolvedScheduleForDay(
       jobDbId: jobDbId,
       weekday: weekday,
@@ -282,14 +418,12 @@ class JobService {
 
     if (scheduleRows.isEmpty) return sessionId;
 
-    // Enrich with passenger profile for addresses
     final passengerIds = scheduleRows
         .map((r) => r['passenger_id']?.toString())
         .whereType<String>()
         .toList();
 
     final profileMap = await _fetchPassengerProfiles(passengerIds);
-
     final insertRows = <Map<String, dynamic>>[];
 
     for (final row in scheduleRows) {
@@ -301,10 +435,13 @@ class JobService {
       final pickupLat = _asDouble(row['pickup_latitude']);
       final pickupLng = _asDouble(row['pickup_longitude']);
 
-      final dropoffAddress = (profile?['educational_site_address'] ?? '')
-          .toString();
-      final dropoffPostcode = (profile?['educational_site_postcode'] ?? '')
-          .toString();
+      // Dropoff address: for outbound use school, for inbound use home
+      final dropoffAddress = direction == 'outbound'
+          ? (profile?['educational_site_address'] ?? '').toString()
+          : (row['dropoff_address'] ?? '').toString();
+      final dropoffPostcode = direction == 'outbound'
+          ? (profile?['educational_site_postcode'] ?? '').toString()
+          : (row['dropoff_postcode'] ?? '').toString();
 
       insertRows.add({
         'session_id': sessionId,
@@ -330,59 +467,45 @@ class JobService {
 
   // ── Status mutations ──────────────────────────────────────────────────────
 
-  /// Marks a single pickup stop as picked_up or missed.
-  /// [pickupId] → job_session_passengers.id
   Future<void> updatePickupStatus(String pickupId, PickupStatus status) async {
     if (pickupId.isEmpty) return;
-
     final update = <String, dynamic>{
       'status': _dbPickupStatus(status),
       'updated_at': DateTime.now().toIso8601String(),
     };
-
     if (status == PickupStatus.completed) {
       update['picked_up_at'] = DateTime.now().toIso8601String();
     }
-
     await _supabase
         .from('job_session_passengers')
         .update(update)
         .eq('id', pickupId);
   }
 
-  /// Marks a dropoff stop as dropped_off.
-  /// [dropoffId] → job_session_passengers.id
   Future<void> updateDropoffStatus(
     String dropoffId,
     DropoffStatus status,
   ) async {
     if (dropoffId.isEmpty) return;
-
     final update = <String, dynamic>{
       'status': status == DropoffStatus.completed ? 'dropped_off' : 'pending',
       'updated_at': DateTime.now().toIso8601String(),
     };
-
     if (status == DropoffStatus.completed) {
       update['dropped_off_at'] = DateTime.now().toIso8601String();
     }
-
     await _supabase
         .from('job_session_passengers')
         .update(update)
         .eq('id', dropoffId);
   }
 
-  /// Completes the session:
-  ///   - Marks all remaining pending passengers as dropped_off
-  ///   - Sets job_sessions.status = 'completed'
   Future<void> completeJob({
     required String sessionId,
     String? comments,
   }) async {
     if (sessionId.isEmpty) return;
 
-    // Mark any still-pending passengers as dropped_off
     await _supabase
         .from('job_session_passengers')
         .update({
@@ -391,7 +514,7 @@ class JobService {
           'updated_at': DateTime.now().toIso8601String(),
         })
         .eq('session_id', sessionId)
-        .eq('status', 'picked_up'); // only those who were actually on board
+        .eq('status', 'picked_up');
 
     await _supabase
         .from('job_sessions')
@@ -405,56 +528,21 @@ class JobService {
 
   // ── Private helpers ───────────────────────────────────────────────────────
 
-  /// Builds a preview passenger list from passenger_schedules before a
-  /// session is started. Returns rows shaped like job_session_passengers
-  /// so the rest of the fetch logic is reusable.
-  Future<List<Map<String, dynamic>>> _buildSchedulePreview({
-    required String jobDbId,
-    required String weekday,
-    required String direction,
-    required String today,
-  }) async {
-    final rows = await _resolvedScheduleForDay(
-      jobDbId: jobDbId,
-      weekday: weekday,
-      direction: direction,
-      todayDate: today,
-    );
-
-    // Shape to match job_session_passengers columns used downstream.
-    return rows.map((r) {
-      return {
-        'id': '', // no DB id yet — session not started
-        'passenger_id': r['passenger_id'],
-        'stop_order': r['stop_order'],
-        'status': 'pending',
-        'pickup_address': r['pickup_address'],
-        'pickup_latitude': r['pickup_latitude'],
-        'pickup_longitude': r['pickup_longitude'],
-        'dropoff_address': '',
-        'scheduled_time': r['pickup_time'], // for display
-        'notes': r['notes'],
-      };
-    }).toList();
-  }
-
-  /// Fetches passenger_schedules for a given job/weekday/direction,
-  /// applying exception overrides for today's date.
-  ///
-  /// Priority: exception rows (exception_date = today) override base rows.
-  /// Rows with exception_type = 'skip' are excluded entirely.
   Future<List<Map<String, dynamic>>> _resolvedScheduleForDay({
     required String jobDbId,
     required String weekday,
     required String direction,
     required String todayDate,
   }) async {
-    // Fetch base rows
+    // Include dropoff_address + dropoff_latitude + dropoff_longitude
+    // needed for inbound per-passenger home dropoffs
     final baseRows = await _supabase
         .from('passenger_schedules')
         .select(
           'passenger_id, stop_order, pickup_address, pickup_postcode, '
-          'pickup_latitude, pickup_longitude, pickup_time, notes',
+          'pickup_latitude, pickup_longitude, pickup_time, '
+          'dropoff_address, dropoff_postcode, '
+          'dropoff_latitude, dropoff_longitude, dropoff_time, notes',
         )
         .eq('job_id', jobDbId)
         .eq('weekday', weekday)
@@ -462,19 +550,20 @@ class JobService {
         .isFilter('exception_date', null)
         .order('stop_order', ascending: direction == 'outbound');
 
-    // Fetch exception rows for today
     final exceptionRows = await _supabase
         .from('passenger_schedules')
         .select(
           'passenger_id, stop_order, pickup_address, pickup_postcode, '
-          'pickup_latitude, pickup_longitude, pickup_time, exception_type, notes',
+          'pickup_latitude, pickup_longitude, pickup_time, '
+          'dropoff_address, dropoff_postcode, '
+          'dropoff_latitude, dropoff_longitude, dropoff_time, '
+          'exception_type, notes',
         )
         .eq('job_id', jobDbId)
         .eq('weekday', weekday)
         .eq('direction', direction)
         .eq('exception_date', todayDate);
 
-    // Build exception map: passenger_id → exception row
     final exceptionMap = <String, Map<String, dynamic>>{};
     for (final row in exceptionRows) {
       final pid = (row['passenger_id'] ?? '').toString();
@@ -484,30 +573,23 @@ class JobService {
     }
 
     final result = <Map<String, dynamic>>[];
-
     for (final base in baseRows) {
       final pid = (base['passenger_id'] ?? '').toString();
       final exception = exceptionMap[pid];
-
       if (exception != null) {
-        final type = (exception['exception_type'] ?? '').toString();
-        if (type == 'skip') continue; // passenger absent today
-        // alternative_location or extra_day: use exception row data
+        if ((exception['exception_type'] ?? '') == 'skip') continue;
         result.add(Map<String, dynamic>.from(exception));
       } else {
         result.add(Map<String, dynamic>.from(base as Map));
       }
     }
-
     return result;
   }
 
-  /// Fetches passenger profiles keyed by passenger id.
   Future<Map<String, Map<String, dynamic>>> _fetchPassengerProfiles(
     List<String> passengerIds,
   ) async {
     if (passengerIds.isEmpty) return {};
-
     final rows = await _supabase
         .from('passenger')
         .select(
@@ -517,13 +599,10 @@ class JobService {
           'educational_site_dropoff_time, wheelchair_required, harness_required',
         )
         .inFilter('id', passengerIds);
-
     final map = <String, Map<String, dynamic>>{};
     for (final row in rows) {
       final id = (row['id'] ?? '').toString();
-      if (id.isNotEmpty) {
-        map[id] = Map<String, dynamic>.from(row as Map);
-      }
+      if (id.isNotEmpty) map[id] = Map<String, dynamic>.from(row as Map);
     }
     return map;
   }
@@ -531,13 +610,11 @@ class JobService {
   Future<String> _fetchPaName(dynamic assignedPaId) async {
     final paId = (assignedPaId ?? '').toString();
     if (paId.isEmpty) return 'Unassigned';
-
     final row = await _supabase
         .from('passenger_assistant')
         .select('first_name, surname')
         .eq('id', paId)
         .maybeSingle();
-
     if (row == null) return 'Unassigned';
     final first = (row['first_name'] ?? '').toString().trim();
     final last = (row['surname'] ?? '').toString().trim();
@@ -572,15 +649,9 @@ class JobService {
 
   // ── Date / time helpers ───────────────────────────────────────────────────
 
-  /// Returns 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun'
   String _weekdayKey(DateTime dt) {
     const keys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-    return keys[dt.weekday - 1]; // DateTime.monday = 1
-  }
-
-  /// Simple heuristic: before 13:00 = outbound (morning), else inbound (evening).
-  String _resolveDirection(DateTime dt) {
-    return dt.hour < 13 ? 'outbound' : 'inbound';
+    return keys[dt.weekday - 1];
   }
 
   String _dateString(DateTime dt) =>

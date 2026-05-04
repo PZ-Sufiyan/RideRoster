@@ -22,11 +22,15 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final provider = context.read<JobProvider>();
-      if (!provider.isLoading && provider.job == null) {
-        provider.loadJob();
-      }
+      _reload();
     });
+  }
+
+  /// Reload job card after actions that don't yet bump [JobProvider.jobDataEpoch]
+  /// the same frame (e.g. returning from job review). Stats & requests sync via epoch.
+  void _reload() {
+    if (!mounted) return;
+    context.read<JobProvider>().loadJob();
   }
 
   @override
@@ -51,7 +55,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage> {
                     SizedBox(height: SizeConfig.spaceSM),
                     _StatsGrid(),
                     SizedBox(height: SizeConfig.spaceSM),
-                    _JobRequestsSection(),
+                    _JobRequestsSection(onJobAccepted: _reload),
                     SizedBox(height: SizeConfig.spaceSM),
                     _QuickActionsSection(),
                     SizedBox(height: SizeConfig.spaceMD),
@@ -146,14 +150,10 @@ class _DashboardAppBar extends StatelessWidget {
                 (route) => false,
               );
             },
-            child: Row(
-              children: [
-                Icon(
-                  Icons.logout,
-                  color: AppColors.primary,
-                  size: SizeConfig.r(18),
-                ),
-              ],
+            child: Icon(
+              Icons.logout,
+              color: AppColors.primary,
+              size: SizeConfig.r(18),
             ),
           ),
           SizedBox(width: SizeConfig.r(14)),
@@ -222,7 +222,6 @@ class _CurrentJobCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<JobProvider>(
       builder: (context, provider, _) {
-        // ── Loading state ────────────────────────────────────────────────
         if (provider.isLoading) {
           return _CurrentJobCardShell(
             child: SizedBox(
@@ -232,7 +231,6 @@ class _CurrentJobCard extends StatelessWidget {
           );
         }
 
-        // ── Error state ──────────────────────────────────────────────────
         if (provider.error != null) {
           return _CurrentJobCardShell(
             child: Column(
@@ -259,7 +257,6 @@ class _CurrentJobCard extends StatelessWidget {
 
         final job = provider.job;
 
-        // ── No job assigned ──────────────────────────────────────────────
         if (job == null) {
           return _CurrentJobCardShell(
             child: Column(
@@ -273,7 +270,6 @@ class _CurrentJobCard extends StatelessWidget {
                   ),
                 ),
                 SizedBox(height: SizeConfig.r(10)),
-                // Show pending requests hint if there are any
                 Text(
                   'Check Job Requests below to accept upcoming jobs.',
                   style: TextStyle(
@@ -286,31 +282,23 @@ class _CurrentJobCard extends StatelessWidget {
           );
         }
 
-        // ── Active job ───────────────────────────────────────────────────
         final isDropoffPhase = job.isDropoffPhase;
-
-        // Direction label: outbound = Morning Run, inbound = Evening Run
         final directionLabel = job.direction == 'outbound'
             ? 'Morning Run'
             : 'Evening Run';
-
         final primaryTimeLabel = isDropoffPhase
             ? 'Drop-off ETA: ${job.dropoffEta}'
             : 'Next pickup: ${job.nextPickupTime}';
-
         final actionLabel = isDropoffPhase ? 'Go to Drop-off' : 'Start Run';
         final actionRoute = isDropoffPhase
             ? AppRoutes.completeJob
             : AppRoutes.routeDetail;
-
-        // Session badge — shows if run is already in progress
         final sessionActive = provider.sessionStarted;
 
         return _CurrentJobCardShell(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Direction + session status row
               Row(
                 children: [
                   Container(
@@ -394,7 +382,6 @@ class _CurrentJobCard extends StatelessWidget {
                     ? 'Drop-off: ${job.dropoffLocation}'
                     : 'PA: ${job.paName}',
               ),
-              // Progress bar when run is active
               if (sessionActive && job.totalPickups > 0) ...[
                 SizedBox(height: SizeConfig.r(12)),
                 Row(
@@ -511,7 +498,7 @@ class _JobInfoRow extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stats Grid — real data from Supabase
+// Stats Grid
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _StatsGrid extends StatefulWidget {
@@ -522,11 +509,33 @@ class _StatsGrid extends StatefulWidget {
 class _StatsGridState extends State<_StatsGrid> {
   final DashboardStatsService _statsService = DashboardStatsService();
   late Future<DashboardStats> _statsFuture;
+  late final JobProvider _jobProvider;
+  late final VoidCallback _onJobDataEpochChanged;
+  int _lastSyncedJobDataEpoch = -1;
 
   @override
   void initState() {
     super.initState();
+    _jobProvider = context.read<JobProvider>();
+    _lastSyncedJobDataEpoch = _jobProvider.jobDataEpoch;
     _statsFuture = _statsService.fetchStats();
+    _onJobDataEpochChanged = () {
+      final epoch = _jobProvider.jobDataEpoch;
+      if (epoch == _lastSyncedJobDataEpoch) return;
+      _lastSyncedJobDataEpoch = epoch;
+      if (!mounted) return;
+      final newFuture = _statsService.fetchStats();
+      setState(() {
+        _statsFuture = newFuture;
+      });
+    };
+    _jobProvider.addListener(_onJobDataEpochChanged);
+  }
+
+  @override
+  void dispose() {
+    _jobProvider.removeListener(_onJobDataEpochChanged);
+    super.dispose();
   }
 
   @override
@@ -534,7 +543,6 @@ class _StatsGridState extends State<_StatsGrid> {
     return FutureBuilder<DashboardStats>(
       future: _statsFuture,
       builder: (context, snapshot) {
-        // Use real data when available, zeros while loading/error
         final stats = snapshot.data ?? DashboardStats.empty;
 
         final cards = [
@@ -548,7 +556,7 @@ class _StatsGridState extends State<_StatsGrid> {
             icon: Icons.assignment_outlined,
             iconColor: AppColors.warning,
             count: '${stats.pendingRequests}',
-            label: 'Assigned Requests',
+            label: 'Pending Requests',
           ),
           _StatData(
             icon: Icons.format_list_bulleted,
@@ -664,6 +672,10 @@ class _StatCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _JobRequestsSection extends StatefulWidget {
+  /// Called when a job request is accepted so the dashboard can reload.
+  final VoidCallback onJobAccepted;
+  const _JobRequestsSection({required this.onJobAccepted});
+
   @override
   State<_JobRequestsSection> createState() => _JobRequestsSectionState();
 }
@@ -671,11 +683,33 @@ class _JobRequestsSection extends StatefulWidget {
 class _JobRequestsSectionState extends State<_JobRequestsSection> {
   final DriverJobRequestService _service = DriverJobRequestService();
   late Future<List<DriverJobRequest>> _requestsFuture;
+  late final JobProvider _jobProvider;
+  late final VoidCallback _onJobDataEpochChanged;
+  int _lastSyncedJobDataEpoch = -1;
 
   @override
   void initState() {
     super.initState();
+    _jobProvider = context.read<JobProvider>();
+    _lastSyncedJobDataEpoch = _jobProvider.jobDataEpoch;
     _requestsFuture = _loadRequests();
+    _onJobDataEpochChanged = () {
+      final epoch = _jobProvider.jobDataEpoch;
+      if (epoch == _lastSyncedJobDataEpoch) return;
+      _lastSyncedJobDataEpoch = epoch;
+      if (!mounted) return;
+      final newFuture = _loadRequests();
+      setState(() {
+        _requestsFuture = newFuture;
+      });
+    };
+    _jobProvider.addListener(_onJobDataEpochChanged);
+  }
+
+  @override
+  void dispose() {
+    _jobProvider.removeListener(_onJobDataEpochChanged);
+    super.dispose();
   }
 
   Future<List<DriverJobRequest>> _loadRequests() async {
@@ -685,9 +719,13 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
   }
 
   Future<void> _refreshRequests() async {
-    setState(() {
-      _requestsFuture = _loadRequests();
-    });
+    final newFuture = _loadRequests();
+    if (mounted) {
+      setState(() {
+        _requestsFuture = newFuture;
+      });
+    }
+    widget.onJobAccepted();
   }
 
   @override
@@ -815,7 +853,6 @@ class _JobRequestCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Badge + Price row
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
@@ -839,7 +876,6 @@ class _JobRequestCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  // Semester label
                   if (request.semesterLabel.isNotEmpty) ...[
                     SizedBox(width: SizeConfig.r(8)),
                     Text(
@@ -863,7 +899,6 @@ class _JobRequestCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: SizeConfig.r(12)),
-          // Pickup row
           Row(
             children: [
               Container(
@@ -889,7 +924,6 @@ class _JobRequestCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: SizeConfig.r(7)),
-          // Drop-off row
           Row(
             children: [
               Container(
@@ -915,7 +949,6 @@ class _JobRequestCard extends StatelessWidget {
             ],
           ),
           SizedBox(height: SizeConfig.r(7)),
-          // Time + students row
           Row(
             children: [
               Icon(
@@ -944,9 +977,7 @@ class _JobRequestCard extends StatelessWidget {
                 AppRoutes.requestedJobs,
                 arguments: request,
               );
-              if (result == true) {
-                await onReviewed();
-              }
+              if (result == true) await onReviewed();
             },
           ),
         ],

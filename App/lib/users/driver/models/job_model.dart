@@ -13,24 +13,19 @@ enum DropoffStatus { pending, completed }
 // PickupStop
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// A single passenger stop during a run.
-///
-/// [id]          → job_session_passengers.id  (used for status mutations)
-/// [stopNumber]  → job_session_passengers.stop_order
-/// [lat]/[lng]   → job_session_passengers.pickup_latitude/longitude
+/// A single passenger pickup stop during a run.
+/// [id] → job_session_passengers.id (used for status mutations)
 class PickupStop {
-  final String id; // job_session_passengers.id
-  final int stopNumber; // stop_order
+  final String id;
+  final int stopNumber;
   final String passengerName;
   final String passengerPhone;
-  final String locationName; // human-readable label (same as address)
-  final String address; // job_session_passengers.pickup_address
-  final String eta; // computed / 'ETA pending'
-  final String scheduledTime; // formatted pickup_time from passenger_schedules
-
+  final String locationName;
+  final String address;
+  final String eta;
+  final String scheduledTime;
   final double? lat;
   final double? lng;
-
   PickupStatus status;
 
   PickupStop({
@@ -70,21 +65,23 @@ class PickupStop {
 // DropoffStop
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Represents the school / educational site dropoff.
+/// A single dropoff stop.
 ///
-/// In the new schema every passenger goes to the same educational site,
-/// so there is typically one DropoffStop per session (the school address).
-/// [id] → job_session_passengers.id of the last/dropoff passenger record,
-/// used when marking dropped_off status.
+/// Outbound (morning): one shared stop — the school.
+///   passengerName = '' (not shown individually)
+///
+/// Inbound (evening): one stop per passenger — their home address.
+///   passengerName = passenger's name (shown in complete_job timeline)
+///
+/// [id] → job_session_passengers.id used to mark dropped_off status.
 class DropoffStop {
-  final String id; // job_session_passengers.id
+  final String id;
   final int dropoffOrder;
-  final String address; // passenger.educational_site_address
-  final String scheduledTime; // formatted dropoff_time
-
-  final double? lat; // passenger.educational_site_latitude
-  final double? lng; // passenger.educational_site_longitude
-
+  final String address;
+  final String scheduledTime;
+  final double? lat;
+  final double? lng;
+  final String passengerName; // used in inbound timeline
   DropoffStatus status;
 
   DropoffStop({
@@ -94,6 +91,7 @@ class DropoffStop {
     required this.scheduledTime,
     this.lat,
     this.lng,
+    this.passengerName = '',
     this.status = DropoffStatus.pending,
   });
 
@@ -104,32 +102,18 @@ class DropoffStop {
 // JobModel
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Represents the active job + session state for the signed-in driver.
-///
-/// Key IDs:
-///   [jobDbId]   → jobs.id            (UUID, used for session creation)
-///   [sessionId] → job_sessions.id    (UUID, used for passenger status updates)
-///   [jobId]     → jobs.internal_job_id or jobs.id substring (display only)
 class JobModel {
-  // ── Identity ──────────────────────────────────────────────────────────────
-  final String jobDbId; // jobs.id (UUID) — used to create/find sessions
-  final String sessionId; // job_sessions.id — used for DB mutations
-  final String jobId; // display ID (internal_job_id or UUID prefix)
-
-  // ── Display fields (unchanged from old model — UI needs these) ────────────
-  final String routeNumber; // jobs.job_name
-  final String paName; // passenger_assistant.first_name + surname
-  final String nextPickupTime; // first pending stop's scheduledTime
-  final String totalEta; // not in schema — pass '' (map card shows it)
-  final String totalDistance; // not in schema — pass ''
-  final String dropoffLocation; // educational_site_address (first passenger)
-  final String dropoffEta; // dropoff_time from schedule
-
-  // ── Direction ─────────────────────────────────────────────────────────────
-  /// 'outbound' (morning) or 'inbound' (evening)
-  final String direction;
-
-  // ── Stop lists ────────────────────────────────────────────────────────────
+  final String jobDbId;
+  final String sessionId;
+  final String jobId;
+  final String routeNumber;
+  final String paName;
+  final String nextPickupTime;
+  final String totalEta;
+  final String totalDistance;
+  final String dropoffLocation; // primary dropoff label for dashboard card
+  final String dropoffEta;
+  final String direction; // 'outbound' | 'inbound'
   final List<PickupStop> pickups;
   final List<DropoffStop> dropoffs;
 
@@ -149,28 +133,23 @@ class JobModel {
     this.dropoffs = const [],
   });
 
-  // ── Pickup helpers (used by UI — keep identical signatures) ───────────────
+  // ── Pickup helpers ────────────────────────────────────────────────────────
 
   int get totalPickups => pickups.length;
-
   int get completedCount =>
       pickups.where((p) => p.status == PickupStatus.completed).length;
-
   int get notPickedCount =>
       pickups.where((p) => p.status == PickupStatus.notPicked).length;
-
   int get pendingCount =>
       pickups.where((p) => p.status == PickupStatus.pending).length;
-
   bool get allPickupsResolved => pendingCount == 0;
   bool get isDropoffPhase => allPickupsResolved;
-
   double get progressFraction =>
       totalPickups == 0 ? 0 : completedCount / totalPickups;
 
   // ── Dropoff helpers ───────────────────────────────────────────────────────
 
-  /// First pending dropoff, or null if all done.
+  /// First pending dropoff stop — used for navigation in complete_job.
   DropoffStop? get currentDropoff {
     try {
       return dropoffs.firstWhere((d) => d.status == DropoffStatus.pending);
@@ -183,7 +162,8 @@ class JobModel {
       dropoffs.isNotEmpty &&
       dropoffs.every((d) => d.status == DropoffStatus.completed);
 
-  // ── Deprecated alias kept so existing provider code compiles ─────────────
-  /// Use [sessionId] directly. This getter exists only for backward compat.
+  bool get isInbound => direction == 'inbound';
+
+  /// Backward-compat alias
   String get backendJobId => sessionId;
 }
