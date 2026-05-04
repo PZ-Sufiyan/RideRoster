@@ -30,28 +30,21 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
-
       var permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
       if (permission != LocationPermission.always &&
-          permission != LocationPermission.whileInUse) {
+          permission != LocationPermission.whileInUse)
         return;
-      }
-
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
         ),
       );
       if (!mounted) return;
-      setState(() {
-        _currentLocation = LatLng(pos.latitude, pos.longitude);
-      });
-    } catch (_) {
-      // Keep map visible with stop markers even if current location fails.
-    }
+      setState(() => _currentLocation = LatLng(pos.latitude, pos.longitude));
+    } catch (_) {}
   }
 
   Future<void> _updateStatus({
@@ -63,15 +56,15 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
     try {
       await _service.updateApprovalStatus(jobId: request.id, status: status);
       if (!mounted) return;
-      final statusLabel = switch (status) {
+      final label = switch (status) {
         'accepted' => 'accepted',
         'rejected' => 'rejected',
         'counter request' => 'counter requested',
         _ => status,
       };
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Job $statusLabel')),
-      );
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text('Job $label')));
       Navigator.pop(context, true);
     } catch (_) {
       if (!mounted) return;
@@ -79,9 +72,7 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
         const SnackBar(content: Text('Unable to update request right now.')),
       );
     } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -107,12 +98,10 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
       body: SafeArea(
         child: Column(
           children: [
-            // ── Map area ───────────────────────────────────────────────
             _RequestedJobMap(
               stops: request.stops,
               currentLocation: _currentLocation,
             ),
-            // ── Job detail sheet ───────────────────────────────────────
             Expanded(
               child: Container(
                 decoration: BoxDecoration(
@@ -124,7 +113,6 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
                 ),
                 child: Column(
                   children: [
-                    // Drag handle
                     SizedBox(height: SizeConfig.r(10)),
                     Container(
                       width: SizeConfig.r(40),
@@ -135,7 +123,6 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
                       ),
                     ),
                     SizedBox(height: SizeConfig.r(4)),
-                    // Scrollable content
                     Expanded(
                       child: SingleChildScrollView(
                         padding: EdgeInsets.symmetric(
@@ -155,7 +142,6 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
                         ),
                       ),
                     ),
-                    // Fixed bottom buttons
                     _BottomActions(
                       isSubmitting: _isSubmitting,
                       onReject: () =>
@@ -179,7 +165,7 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Map
+// Map — school shown as blue pin, pickups as green
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _RequestedJobMap extends StatelessWidget {
@@ -190,24 +176,25 @@ class _RequestedJobMap extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Pickup stops = all non-morning-dropoff stops with coordinates
     final pickupPoints = stops
-        .where((s) => !s.isDropoff && s.hasCoordinates)
+        .where((s) => !s.isMorningDropoff && s.hasCoordinates)
         .map((s) => LatLng(s.latitude!, s.longitude!))
         .toList();
-    final dropoffPoints = stops
-        .where((s) => s.isDropoff && s.hasCoordinates)
+
+    // School = morning dropoff stop
+    final schoolPoints = stops
+        .where((s) => s.isMorningDropoff && s.hasCoordinates)
         .map((s) => LatLng(s.latitude!, s.longitude!))
         .toList();
 
     final allPoints = <LatLng>[
       if (currentLocation != null) currentLocation!,
       ...pickupPoints,
-      ...dropoffPoints,
+      ...schoolPoints,
     ];
 
-    if (allPoints.isEmpty) {
-      return _MapFallback();
-    }
+    if (allPoints.isEmpty) return _MapFallback();
 
     final center = _calculateCenter(allPoints);
     final zoom = _calculateZoom(allPoints);
@@ -224,7 +211,8 @@ class _RequestedJobMap extends StatelessWidget {
               minZoom: 3,
               maxZoom: 19,
               interactionOptions: const InteractionOptions(
-                flags: InteractiveFlag.pinchZoom |
+                flags:
+                    InteractiveFlag.pinchZoom |
                     InteractiveFlag.drag |
                     InteractiveFlag.doubleTapZoom |
                     InteractiveFlag.scrollWheelZoom,
@@ -237,9 +225,10 @@ class _RequestedJobMap extends StatelessWidget {
               ),
               MarkerLayer(
                 markers: [
+                  // Pickup stops — green
                   ...pickupPoints.map(
-                    (point) => Marker(
-                      point: point,
+                    (p) => Marker(
+                      point: p,
                       width: 28,
                       height: 28,
                       child: _MapPin(
@@ -248,23 +237,28 @@ class _RequestedJobMap extends StatelessWidget {
                       ),
                     ),
                   ),
-                  ...dropoffPoints.map(
-                    (point) => Marker(
-                      point: point,
-                      width: 28,
-                      height: 28,
+                  // School — blue
+                  ...schoolPoints.map(
+                    (p) => Marker(
+                      point: p,
+                      width: 32,
+                      height: 32,
                       child: _MapPin(
-                        color: AppColors.textDark,
-                        icon: Icons.circle,
+                        color: const Color(0xFF0284C7),
+                        icon: Icons.school,
                       ),
                     ),
                   ),
+                  // Driver location
                   if (currentLocation != null)
                     Marker(
                       point: currentLocation!,
                       width: 34,
                       height: 34,
-                      child: _MapPin(color: AppColors.primary, icon: Icons.my_location),
+                      child: _MapPin(
+                        color: AppColors.primary,
+                        icon: Icons.my_location,
+                      ),
                     ),
                 ],
               ),
@@ -275,8 +269,8 @@ class _RequestedJobMap extends StatelessWidget {
           top: SizeConfig.r(8),
           left: SizeConfig.r(8),
           child: Builder(
-            builder: (context) => GestureDetector(
-              onTap: () => Navigator.maybePop(context),
+            builder: (ctx) => GestureDetector(
+              onTap: () => Navigator.maybePop(ctx),
               child: Container(
                 width: SizeConfig.r(36),
                 height: SizeConfig.r(36),
@@ -300,32 +294,28 @@ class _RequestedJobMap extends StatelessWidget {
   LatLng _calculateCenter(List<LatLng> points) {
     var latSum = 0.0;
     var lngSum = 0.0;
-    for (final point in points) {
-      latSum += point.latitude;
-      lngSum += point.longitude;
+    for (final p in points) {
+      latSum += p.latitude;
+      lngSum += p.longitude;
     }
     return LatLng(latSum / points.length, lngSum / points.length);
   }
 
   double _calculateZoom(List<LatLng> points) {
     if (points.length <= 1) return 14;
-
     var minLat = points.first.latitude;
     var maxLat = points.first.latitude;
     var minLng = points.first.longitude;
     var maxLng = points.first.longitude;
-
-    for (final point in points) {
-      if (point.latitude < minLat) minLat = point.latitude;
-      if (point.latitude > maxLat) maxLat = point.latitude;
-      if (point.longitude < minLng) minLng = point.longitude;
-      if (point.longitude > maxLng) maxLng = point.longitude;
+    for (final p in points) {
+      if (p.latitude < minLat) minLat = p.latitude;
+      if (p.latitude > maxLat) maxLat = p.latitude;
+      if (p.longitude < minLng) minLng = p.longitude;
+      if (p.longitude > maxLng) maxLng = p.longitude;
     }
-
     final span = (maxLat - minLat).abs() > (maxLng - minLng).abs()
         ? (maxLat - minLat).abs()
         : (maxLng - minLng).abs();
-
     if (span < 0.01) return 14;
     if (span < 0.03) return 13;
     if (span < 0.08) return 12;
@@ -338,7 +328,6 @@ class _RequestedJobMap extends StatelessWidget {
 class _MapPin extends StatelessWidget {
   final Color color;
   final IconData icon;
-
   const _MapPin({required this.color, required this.icon});
 
   @override
@@ -392,13 +381,12 @@ class _MapFallback extends StatelessWidget {
             ),
           ),
         ),
-        // Back button
         Positioned(
           top: SizeConfig.r(8),
           left: SizeConfig.r(8),
           child: Builder(
-            builder: (context) => GestureDetector(
-              onTap: () => Navigator.maybePop(context),
+            builder: (ctx) => GestureDetector(
+              onTap: () => Navigator.maybePop(ctx),
               child: Container(
                 width: SizeConfig.r(36),
                 height: SizeConfig.r(36),
@@ -421,12 +409,11 @@ class _MapFallback extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Job Header (ASAP badge + price)
+// Job Header
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _JobHeader extends StatelessWidget {
   final DriverJobRequest request;
-
   const _JobHeader({required this.request});
 
   @override
@@ -435,36 +422,41 @@ class _JobHeader extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            Container(
-              padding: EdgeInsets.symmetric(
-                horizontal: SizeConfig.r(8),
-                vertical: SizeConfig.r(3),
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.warning,
-                borderRadius: BorderRadius.circular(SizeConfig.r(4)),
-              ),
-              child: Text(
-                'ASAP',
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (request.semesterLabel.isNotEmpty)
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SizeConfig.r(8),
+                    vertical: SizeConfig.r(3),
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.primary,
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                  child: Text(
+                    request.semesterLabel,
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(11),
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              SizedBox(height: SizeConfig.r(6)),
+              Text(
+                '# ${request.internalJobId ?? request.id.substring(0, 8)}',
                 style: TextStyle(
-                  fontSize: SizeConfig.sp(11),
-                  fontWeight: FontWeight.w700,
-                  color: Colors.white,
+                  fontSize: SizeConfig.sp(12),
+                  color: AppColors.textLight,
                 ),
               ),
-            ),
-            SizedBox(width: SizeConfig.r(8)),
-            Text(
-              '• #${request.internalJobId ?? request.id.substring(0, 8)}',
-              style: TextStyle(
-                fontSize: SizeConfig.sp(12),
-                color: AppColors.textLight,
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
+        SizedBox(width: SizeConfig.r(12)),
         Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           children: [
@@ -491,12 +483,11 @@ class _JobHeader extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Job Title + accessibility note
+// Job Title
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _JobTitle extends StatelessWidget {
   final DriverJobRequest request;
-
   const _JobTitle({required this.request});
 
   @override
@@ -527,42 +518,16 @@ class _JobTitle extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stops Timeline
+// Stops List — morning section then evening section
 // ─────────────────────────────────────────────────────────────────────────────
-
-class _StopItem {
-  final String type;
-  final String address;
-  final String time;
-  final bool isDropoff;
-
-  const _StopItem({
-    required this.type,
-    required this.address,
-    required this.time,
-    this.isDropoff = false,
-  });
-}
 
 class _StopsList extends StatelessWidget {
   final List<DriverJobRequestStop> stops;
-
   const _StopsList({required this.stops});
 
   @override
   Widget build(BuildContext context) {
-    final items = stops
-        .map(
-          (stop) => _StopItem(
-            type: stop.type,
-            address: stop.address,
-            time: stop.time,
-            isDropoff: stop.isDropoff,
-          ),
-        )
-        .toList();
-
-    if (items.isEmpty) {
+    if (stops.isEmpty) {
       return Text(
         'No stop details available.',
         style: TextStyle(
@@ -572,40 +537,165 @@ class _StopsList extends StatelessWidget {
       );
     }
 
+    final outboundStops = stops
+        .where((s) => s.direction == 'outbound')
+        .toList();
+    final inboundStops = stops.where((s) => s.direction == 'inbound').toList();
+
     return Column(
-      children: items.asMap().entries.map((entry) {
-        final i = entry.key;
-        final stop = entry.value;
-        final isLast = i == items.length - 1;
-        return _StopRow(stop: stop, isLast: isLast);
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Morning section
+        if (outboundStops.isNotEmpty) ...[
+          _SectionHeader(
+            label: 'Morning Run',
+            icon: Icons.wb_sunny_outlined,
+            color: const Color(0xFFF59E0B),
+          ),
+          SizedBox(height: SizeConfig.r(12)),
+          _StopsTimeline(stops: outboundStops),
+        ],
+
+        // Divider
+        if (outboundStops.isNotEmpty && inboundStops.isNotEmpty) ...[
+          SizedBox(height: SizeConfig.r(20)),
+          Row(
+            children: [
+              Expanded(child: Divider(color: AppColors.inputBorder, height: 1)),
+              Padding(
+                padding: EdgeInsets.symmetric(horizontal: SizeConfig.r(10)),
+                child: Text(
+                  'Evening',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(11),
+                    color: AppColors.textLight,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+              Expanded(child: Divider(color: AppColors.inputBorder, height: 1)),
+            ],
+          ),
+          SizedBox(height: SizeConfig.r(20)),
+        ],
+
+        // Evening section
+        if (inboundStops.isNotEmpty) ...[
+          _SectionHeader(
+            label: 'Evening Return',
+            icon: Icons.nights_stay_outlined,
+            color: const Color(0xFF7C3AED),
+          ),
+          SizedBox(height: SizeConfig.r(12)),
+          _StopsTimeline(stops: inboundStops),
+        ],
+      ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Section header chip
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SectionHeader extends StatelessWidget {
+  final String label;
+  final IconData icon;
+  final Color color;
+
+  const _SectionHeader({
+    required this.label,
+    required this.icon,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.r(10),
+        vertical: SizeConfig.r(5),
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(SizeConfig.r(6)),
+        border: Border.all(color: color.withValues(alpha: 0.25), width: 1),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: SizeConfig.r(13), color: color),
+          SizedBox(width: SizeConfig.r(5)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(12),
+              fontWeight: FontWeight.w700,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Timeline for one section
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _StopsTimeline extends StatelessWidget {
+  final List<DriverJobRequestStop> stops;
+  const _StopsTimeline({required this.stops});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: stops.asMap().entries.map((entry) {
+        final isLast = entry.key == stops.length - 1;
+        return _StopRow(stop: entry.value, isLast: isLast);
       }).toList(),
     );
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Single stop row
+// ─────────────────────────────────────────────────────────────────────────────
+
 class _StopRow extends StatelessWidget {
-  final _StopItem stop;
+  final DriverJobRequestStop stop;
   final bool isLast;
 
   const _StopRow({required this.stop, required this.isLast});
 
+  // Dot color:
+  //   Morning Pickup       → green
+  //   Morning Dropoff      → blue (school arrival)
+  //   Return from School   → purple (evening pickup)
+  Color get _dotColor {
+    if (stop.isMorningDropoff) return const Color(0xFF0284C7);
+    if (stop.isInbound) return const Color(0xFF7C3AED);
+    return AppColors.success;
+  }
+
   @override
   Widget build(BuildContext context) {
-    final dotColor = stop.isDropoff ? AppColors.textDark : AppColors.success;
+    final dotColor = _dotColor;
 
     return IntrinsicHeight(
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // Timeline column
+          // Timeline dot + connector line
           SizedBox(
-            width: SizeConfig.r(20),
+            width: SizeConfig.r(24),
             child: Column(
               children: [
                 SizedBox(height: SizeConfig.r(3)),
                 Container(
-                  width: SizeConfig.r(10),
-                  height: SizeConfig.r(10),
+                  width: SizeConfig.r(12),
+                  height: SizeConfig.r(12),
                   decoration: BoxDecoration(
                     color: dotColor,
                     shape: BoxShape.circle,
@@ -614,56 +704,67 @@ class _StopRow extends StatelessWidget {
                 if (!isLast)
                   Expanded(
                     child: Container(
-                      width: 1.5,
+                      width: 2,
                       color: AppColors.inputBorder,
-                      margin: EdgeInsets.symmetric(vertical: SizeConfig.r(2)),
+                      margin: EdgeInsets.symmetric(vertical: SizeConfig.r(3)),
                     ),
                   ),
               ],
             ),
           ),
           SizedBox(width: SizeConfig.r(10)),
-          // Stop details
+          // Content
           Expanded(
             child: Padding(
-              padding: EdgeInsets.only(bottom: isLast ? 0 : SizeConfig.r(16)),
-              child: Row(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : SizeConfig.r(20)),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '${stop.type} •',
-                          style: TextStyle(
-                            fontSize: SizeConfig.sp(12),
-                            fontWeight: FontWeight.w600,
-                            color: stop.isDropoff
-                                ? AppColors.textMedium
-                                : AppColors.success,
-                          ),
+                  // Type label + time
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        stop.type,
+                        style: TextStyle(
+                          fontSize: SizeConfig.sp(11),
+                          fontWeight: FontWeight.w700,
+                          color: dotColor,
+                          letterSpacing: 0.2,
                         ),
-                        SizedBox(height: SizeConfig.r(2)),
-                        Text(
-                          stop.address,
-                          style: TextStyle(
-                            fontSize: SizeConfig.sp(13),
-                            color: AppColors.textDark,
-                            fontWeight: FontWeight.w500,
-                          ),
+                      ),
+                      Text(
+                        stop.time,
+                        style: TextStyle(
+                          fontSize: SizeConfig.sp(12),
+                          fontWeight: FontWeight.w600,
+                          color: AppColors.textMedium,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
+                  SizedBox(height: SizeConfig.r(3)),
+                  // Address
                   Text(
-                    stop.time,
+                    stop.address,
                     style: TextStyle(
-                      fontSize: SizeConfig.sp(12),
-                      color: AppColors.textMedium,
+                      fontSize: SizeConfig.sp(13),
                       fontWeight: FontWeight.w500,
+                      color: AppColors.textDark,
                     ),
                   ),
+                  // Weekday chips
+                  if (stop.weekdays.isNotEmpty) ...[
+                    SizedBox(height: SizeConfig.r(8)),
+                    Wrap(
+                      spacing: SizeConfig.r(5),
+                      runSpacing: SizeConfig.r(4),
+                      children: stop.weekdays
+                          .map((d) => _WeekdayChip(day: d, color: dotColor))
+                          .toList(),
+                    ),
+                  ],
                 ],
               ),
             ),
@@ -675,7 +776,50 @@ class _StopRow extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Action Buttons
+// Weekday chip
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _WeekdayChip extends StatelessWidget {
+  final String day;
+  final Color color;
+  const _WeekdayChip({required this.day, required this.color});
+
+  static const _labels = {
+    'mon': 'Mon',
+    'tue': 'Tue',
+    'wed': 'Wed',
+    'thu': 'Thu',
+    'fri': 'Fri',
+    'sat': 'Sat',
+    'sun': 'Sun',
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.r(7),
+        vertical: SizeConfig.r(3),
+      ),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+        border: Border.all(color: color.withValues(alpha: 0.30), width: 1),
+      ),
+      child: Text(
+        _labels[day] ?? day,
+        style: TextStyle(
+          fontSize: SizeConfig.sp(10),
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Bottom Actions
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomActions extends StatelessWidget {
@@ -702,25 +846,22 @@ class _BottomActions extends StatelessWidget {
       ),
       decoration: BoxDecoration(
         color: AppColors.background,
-        border: Border(
-          top: BorderSide(color: AppColors.inputBorder, width: 1),
-        ),
+        border: Border(top: BorderSide(color: AppColors.inputBorder, width: 1)),
       ),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Reject + Counter Offer row
           Row(
             children: [
               Expanded(
-                child: _OutlinedActionButton(
+                child: _OutlinedBtn(
                   label: 'Reject',
                   onTap: isSubmitting ? null : onReject,
                 ),
               ),
               SizedBox(width: SizeConfig.r(12)),
               Expanded(
-                child: _OutlinedActionButton(
+                child: _OutlinedBtn(
                   label: 'Counter Offer',
                   onTap: isSubmitting ? null : onCounterOffer,
                 ),
@@ -728,7 +869,6 @@ class _BottomActions extends StatelessWidget {
             ],
           ),
           SizedBox(height: SizeConfig.r(10)),
-          // Accept Job button
           AppButton(
             label: 'Accept Job',
             height: SizeConfig.r(50),
@@ -746,11 +886,10 @@ class _BottomActions extends StatelessWidget {
   }
 }
 
-class _OutlinedActionButton extends StatelessWidget {
+class _OutlinedBtn extends StatelessWidget {
   final String label;
   final VoidCallback? onTap;
-
-  const _OutlinedActionButton({required this.label, required this.onTap});
+  const _OutlinedBtn({required this.label, required this.onTap});
 
   @override
   Widget build(BuildContext context) {

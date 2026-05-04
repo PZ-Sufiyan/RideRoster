@@ -305,8 +305,8 @@ const ExceptionManager = ({ passengerId, jobId, weeklySchedule, locations }) => 
             {!jobId && (
                 <div className="flex items-center gap-2 px-3 py-2.5 bg-amber-50 border border-amber-100 rounded-lg mb-4">
                     <MdWarningAmber size={14} className="text-amber-500 shrink-0" />
-                    <p className="text-[11px] text-amber-700 font-medium">
-                        No job linked to this passenger yet. Assign them to a job first.
+                    <p className="text-[11px] text-amber-700 font-medium leading-relaxed">
+                        This passenger is not in any job currently. Schedule exceptions apply after they are assigned to a job.
                     </p>
                 </div>
             )}
@@ -556,7 +556,7 @@ const PassengerDetail = () => {
     }, [p]);
 
     const jobTitleLine = useMemo(() => {
-        if (!job) return '—';
+        if (!job) return 'Not assigned to any job currently';
         const ref = job.internal_job_id?.trim() || job.id?.slice(0, 8) || '—';
         return `Job ${ref} – ${job.job_name || '—'}`;
     }, [job]);

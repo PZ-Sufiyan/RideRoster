@@ -23,7 +23,7 @@ class BackgroundLocationTask {
     required double targetLng,
     required Future<void> Function() onArrived,
     void Function(double distanceMeters)? onDistanceUpdate,
-    double thresholdMeters = 50,
+    double thresholdMeters = 10,
   }) async {
     // Guard: don't start a second stream if already running.
     if (_sub != null) await stop();

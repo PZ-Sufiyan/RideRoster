@@ -6,8 +6,14 @@ import '../services/location_service.dart';
 import '../services/location_task.dart';
 import '../services/notification_service.dart';
 
-/// Manages the active job state for the driver flow.
-/// All pages read from and write to this single provider.
+/// Manages active job + session state for the driver flow.
+///
+/// Key change from old model:
+///   - [_job.sessionId] may be empty before the driver starts the run.
+///   - Call [ensureSessionStarted] before any status mutation — it creates
+///     the job_session + job_session_passengers rows if they don't exist yet,
+///     then refreshes the job so stop IDs are populated.
+///   - Status mutations now write to job_session_passengers (not job_pickups).
 class JobProvider extends ChangeNotifier {
   final JobService _jobService = JobService();
   final NavigationService _navService = NavigationService();
@@ -18,10 +24,7 @@ class JobProvider extends ChangeNotifier {
   String? _error;
   int _activePickupIndex = 0;
 
-  /// True while background GPS tracking is active for any stop.
   bool _isTracking = false;
-
-  /// Distance to the current tracking target in metres (for optional UI display).
   double? _currentDistanceMeters;
 
   // ── Public getters ────────────────────────────────────────────────────────
@@ -33,7 +36,9 @@ class JobProvider extends ChangeNotifier {
   bool get isTracking => _isTracking;
   double? get currentDistanceMeters => _currentDistanceMeters;
 
-  /// The pickup stop currently shown in PickupQuePage / PickupPage.
+  /// Whether a live session exists in the DB (session was started).
+  bool get sessionStarted => _job != null && _job!.sessionId.isNotEmpty;
+
   PickupStop? get activePickup {
     if (_job == null || _job!.pickups.isEmpty) return null;
     if (_activePickupIndex < 0 || _activePickupIndex >= _job!.pickups.length) {
@@ -44,7 +49,6 @@ class JobProvider extends ChangeNotifier {
     return current;
   }
 
-  /// Pending pickups after the current active one (shown greyed out in queue).
   List<PickupStop> get upcomingPickups {
     if (_job == null) return [];
     return _job!.pickups
@@ -53,10 +57,9 @@ class JobProvider extends ChangeNotifier {
         .toList();
   }
 
-  /// True when all pickups are either completed or not picked.
   bool get allResolved => _job?.allPickupsResolved ?? false;
 
-  // ── Load ─────────────────────────────────────────────────────────────────
+  // ── Load ──────────────────────────────────────────────────────────────────
 
   Future<void> loadJob() async {
     _isLoading = true;
@@ -78,10 +81,44 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
+  // ── Session start ─────────────────────────────────────────────────────────
+
+  /// Ensures a job_session exists in the DB for today.
+  ///
+  /// Call this when the driver taps "Continue Journey" / "Start Job" for
+  /// the first time. After creation the job is reloaded so all PickupStop.id
+  /// values are real job_session_passengers UUIDs.
+  ///
+  /// Safe to call multiple times — the service upserts on the unique constraint.
+  Future<void> ensureSessionStarted() async {
+    final job = _job;
+    if (job == null) return;
+
+    // Session already started — nothing to do
+    if (job.sessionId.isNotEmpty) return;
+
+    _isLoading = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await _jobService.startSession(
+        jobDbId: job.jobDbId,
+        direction: job.direction,
+      );
+      // Reload so stop IDs are populated from job_session_passengers
+      _job = await _jobService.fetchCurrentJob();
+      if (_job != null) _setActiveToFirstPending();
+    } catch (e) {
+      _error = e.toString();
+    } finally {
+      _isLoading = false;
+      notifyListeners();
+    }
+  }
+
   // ── Navigation ────────────────────────────────────────────────────────────
 
-  /// Opens Google Maps with ALL pickup stops + dropoff as waypoints.
-  /// Called from RouteDetailPage "Start Navigation" button.
   Future<void> navigateFullRoute() async {
     if (_job == null) return;
 
@@ -98,9 +135,6 @@ class JobProvider extends ChangeNotifier {
     );
   }
 
-  /// Opens Google Maps from current location → active pickup stop only.
-  /// Called from PickupPage "Navigate" button.
-  /// Also starts background arrival tracking for this stop.
   Future<void> navigateToCurrentPickup() async {
     final stop = activePickup;
     if (stop == null) return;
@@ -111,7 +145,6 @@ class JobProvider extends ChangeNotifier {
       return;
     }
 
-    // Check location permission before anything else.
     final hasPermission = await _locationService.ensurePermission();
     if (!hasPermission) {
       _error = 'Location permission required for tracking.';
@@ -119,16 +152,10 @@ class JobProvider extends ChangeNotifier {
       return;
     }
 
-    // Open Google Maps.
     await _navService.openSingleStop(lat: stop.lat!, lng: stop.lng!);
-
-    // Start background tracking for this pickup stop.
     _startPickupTracking(stop);
   }
 
-  /// Opens Google Maps from current location → first pending dropoff.
-  /// Called from CompleteJobPage "Navigate to Drop-off" button.
-  /// Also starts background arrival tracking for the dropoff.
   Future<void> navigateToDropoff() async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
@@ -147,17 +174,27 @@ class JobProvider extends ChangeNotifier {
     }
 
     await _navService.openSingleStop(lat: dropoff.lat!, lng: dropoff.lng!);
-
     _startDropoffTracking(dropoff);
   }
 
   // ── Status mutations ──────────────────────────────────────────────────────
 
-  /// Marks the current pickup as [PickupStatus.completed].
+  /// Marks the current pickup as picked_up in job_session_passengers.
+  /// Ensures a session exists first (creates one if needed).
   Future<void> markCurrentAsCompleted() async {
     if (_job == null) return;
+    await ensureSessionStarted();
+
     try {
       final stop = _job!.pickups[_activePickupIndex];
+
+      // If session was just created, stop.id is now populated after reload.
+      if (stop.id.isEmpty) {
+        _error = 'Session not ready. Please try again.';
+        notifyListeners();
+        return;
+      }
+
       await _jobService.updatePickupStatus(stop.id, PickupStatus.completed);
       _job!.pickups[_activePickupIndex].status = PickupStatus.completed;
       _error = null;
@@ -168,11 +205,20 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
-  /// Marks the current pickup as [PickupStatus.notPicked].
+  /// Marks the current pickup as missed in job_session_passengers.
   Future<void> markCurrentAsNotPicked() async {
     if (_job == null) return;
+    await ensureSessionStarted();
+
     try {
       final stop = _job!.pickups[_activePickupIndex];
+
+      if (stop.id.isEmpty) {
+        _error = 'Session not ready. Please try again.';
+        notifyListeners();
+        return;
+      }
+
       await _jobService.updatePickupStatus(stop.id, PickupStatus.notPicked);
       _job!.pickups[_activePickupIndex].status = PickupStatus.notPicked;
       _error = null;
@@ -183,10 +229,11 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
-  /// Marks the current (first pending) dropoff as completed.
+  /// Marks the current dropoff as dropped_off in job_session_passengers.
   Future<void> markDropoffAsCompleted() async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
+
     try {
       await _jobService.updateDropoffStatus(
         dropoff.id,
@@ -205,7 +252,6 @@ class JobProvider extends ChangeNotifier {
   bool advanceToNextPickup() {
     if (_job == null) return false;
 
-    // Stop any existing tracking — we're moving to a new stop.
     BackgroundLocationTask.stop();
     _isTracking = false;
     _currentDistanceMeters = null;
@@ -222,16 +268,23 @@ class JobProvider extends ChangeNotifier {
     return false;
   }
 
+  /// Completes the session — marks job_sessions.status = 'completed'.
   Future<void> completeCurrentJob({String? comments}) async {
-    if (_job == null || _job!.backendJobId.isEmpty) return;
+    if (_job == null) return;
 
-    // Stop any active tracking.
+    // Must have a real session to complete
+    if (_job!.sessionId.isEmpty) {
+      _error = 'No active session to complete.';
+      notifyListeners();
+      return;
+    }
+
     await BackgroundLocationTask.stop();
     _isTracking = false;
 
     try {
       await _jobService.completeJob(
-        backendJobId: _job!.backendJobId,
+        sessionId: _job!.sessionId,
         comments: comments,
       );
       _error = null;
@@ -243,7 +296,6 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
-  /// Reset the job (e.g. after job completion).
   void reset() {
     BackgroundLocationTask.stop();
     _job = null;
@@ -268,15 +320,11 @@ class JobProvider extends ChangeNotifier {
         notifyListeners();
       },
       onArrived: () async {
-        // Auto-complete the pickup in DB.
         await markCurrentAsCompleted();
-
-        // Fire local notification.
         await NotificationService().showArrivalNotification(
           stop.locationName,
           isPickup: true,
         );
-
         _isTracking = false;
         _currentDistanceMeters = null;
         notifyListeners();
@@ -298,12 +346,10 @@ class JobProvider extends ChangeNotifier {
       },
       onArrived: () async {
         await markDropoffAsCompleted();
-
         await NotificationService().showArrivalNotification(
           dropoff.address,
           isPickup: false,
         );
-
         _isTracking = false;
         _currentDistanceMeters = null;
         notifyListeners();

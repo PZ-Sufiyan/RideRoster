@@ -4,6 +4,7 @@ import '../../../../components/app_button.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../providers/job_provider.dart';
 import '../../../../routes/app_routes.dart';
+import '../../../../services/dashboard_stats_service.dart';
 import '../../../../services/driver_job_request_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
@@ -85,7 +86,6 @@ class _DashboardAppBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          // Avatar — tap to open profile
           GestureDetector(
             onTap: () => Navigator.pushNamed(context, AppRoutes.driverProfile),
             child: CircleAvatar(
@@ -99,7 +99,6 @@ class _DashboardAppBar extends StatelessWidget {
             ),
           ),
           SizedBox(width: SizeConfig.r(10)),
-          // Name + Status
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -137,7 +136,6 @@ class _DashboardAppBar extends StatelessWidget {
               ],
             ),
           ),
-          // Leave button
           GestureDetector(
             onTap: () async {
               await context.read<AuthProvider>().logout();
@@ -159,7 +157,6 @@ class _DashboardAppBar extends StatelessWidget {
             ),
           ),
           SizedBox(width: SizeConfig.r(14)),
-          // Notification bell
           _BadgeIcon(
             icon: Icons.notifications_outlined,
             badgeColor: AppColors.warning,
@@ -225,6 +222,7 @@ class _CurrentJobCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<JobProvider>(
       builder: (context, provider, _) {
+        // ── Loading state ────────────────────────────────────────────────
         if (provider.isLoading) {
           return _CurrentJobCardShell(
             child: SizedBox(
@@ -234,6 +232,7 @@ class _CurrentJobCard extends StatelessWidget {
           );
         }
 
+        // ── Error state ──────────────────────────────────────────────────
         if (provider.error != null) {
           return _CurrentJobCardShell(
             child: Column(
@@ -259,31 +258,121 @@ class _CurrentJobCard extends StatelessWidget {
         }
 
         final job = provider.job;
+
+        // ── No job assigned ──────────────────────────────────────────────
         if (job == null) {
           return _CurrentJobCardShell(
-            child: Text(
-              'No current job assigned yet.',
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textMedium,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'No active job assigned for today.',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(13),
+                    color: AppColors.textMedium,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.r(10)),
+                // Show pending requests hint if there are any
+                Text(
+                  'Check Job Requests below to accept upcoming jobs.',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(12),
+                    color: AppColors.textLight,
+                  ),
+                ),
+              ],
             ),
           );
         }
 
+        // ── Active job ───────────────────────────────────────────────────
         final isDropoffPhase = job.isDropoffPhase;
+
+        // Direction label: outbound = Morning Run, inbound = Evening Run
+        final directionLabel = job.direction == 'outbound'
+            ? 'Morning Run'
+            : 'Evening Run';
+
         final primaryTimeLabel = isDropoffPhase
             ? 'Drop-off ETA: ${job.dropoffEta}'
             : 'Next pickup: ${job.nextPickupTime}';
-        final actionLabel = isDropoffPhase ? 'Go to Drop-off' : 'Start Job';
+
+        final actionLabel = isDropoffPhase ? 'Go to Drop-off' : 'Start Run';
         final actionRoute = isDropoffPhase
             ? AppRoutes.completeJob
             : AppRoutes.routeDetail;
+
+        // Session badge — shows if run is already in progress
+        final sessionActive = provider.sessionStarted;
 
         return _CurrentJobCardShell(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Direction + session status row
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SizeConfig.r(8),
+                      vertical: SizeConfig.r(3),
+                    ),
+                    decoration: BoxDecoration(
+                      color: job.direction == 'outbound'
+                          ? const Color(0xFF0284C7).withValues(alpha: 0.12)
+                          : AppColors.warning.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                    child: Text(
+                      directionLabel,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(11),
+                        fontWeight: FontWeight.w600,
+                        color: job.direction == 'outbound'
+                            ? const Color(0xFF0284C7)
+                            : AppColors.warning,
+                      ),
+                    ),
+                  ),
+                  if (sessionActive) ...[
+                    SizedBox(width: SizeConfig.r(8)),
+                    Container(
+                      padding: EdgeInsets.symmetric(
+                        horizontal: SizeConfig.r(8),
+                        vertical: SizeConfig.r(3),
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppColors.success.withValues(alpha: 0.12),
+                        borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: SizeConfig.r(6),
+                            height: SizeConfig.r(6),
+                            decoration: const BoxDecoration(
+                              color: AppColors.success,
+                              shape: BoxShape.circle,
+                            ),
+                          ),
+                          SizedBox(width: SizeConfig.r(4)),
+                          Text(
+                            'In Progress',
+                            style: TextStyle(
+                              fontSize: SizeConfig.sp(11),
+                              fontWeight: FontWeight.w600,
+                              color: AppColors.success,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              SizedBox(height: SizeConfig.r(12)),
               _JobInfoRow(icon: Icons.access_time, label: primaryTimeLabel),
               SizedBox(height: SizeConfig.r(9)),
               _JobInfoRow(
@@ -293,7 +382,8 @@ class _CurrentJobCard extends StatelessWidget {
               SizedBox(height: SizeConfig.r(9)),
               _JobInfoRow(
                 icon: Icons.group_outlined,
-                label: '${job.totalPickups} students',
+                label:
+                    '${job.totalPickups} student${job.totalPickups == 1 ? '' : 's'}',
               ),
               SizedBox(height: SizeConfig.r(9)),
               _JobInfoRow(
@@ -304,6 +394,42 @@ class _CurrentJobCard extends StatelessWidget {
                     ? 'Drop-off: ${job.dropoffLocation}'
                     : 'PA: ${job.paName}',
               ),
+              // Progress bar when run is active
+              if (sessionActive && job.totalPickups > 0) ...[
+                SizedBox(height: SizeConfig.r(12)),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Picked up ${job.completedCount} of ${job.totalPickups}',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(12),
+                        color: AppColors.textMedium,
+                      ),
+                    ),
+                    Text(
+                      '${(job.progressFraction * 100).round()}%',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(12),
+                        fontWeight: FontWeight.w600,
+                        color: const Color(0xFF0284C7),
+                      ),
+                    ),
+                  ],
+                ),
+                SizedBox(height: SizeConfig.r(6)),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  child: LinearProgressIndicator(
+                    value: job.progressFraction,
+                    minHeight: SizeConfig.r(5),
+                    backgroundColor: AppColors.inputBorder,
+                    valueColor: const AlwaysStoppedAnimation<Color>(
+                      Color(0xFF0284C7),
+                    ),
+                  ),
+                ),
+              ],
               SizedBox(height: SizeConfig.r(18)),
               AppButton(
                 label: actionLabel,
@@ -326,7 +452,6 @@ class _CurrentJobCard extends StatelessWidget {
 
 class _CurrentJobCardShell extends StatelessWidget {
   final Widget child;
-
   const _CurrentJobCardShell({required this.child});
 
   @override
@@ -360,7 +485,6 @@ class _CurrentJobCardShell extends StatelessWidget {
 class _JobInfoRow extends StatelessWidget {
   final IconData icon;
   final String label;
-
   const _JobInfoRow({required this.icon, required this.label});
 
   @override
@@ -387,51 +511,74 @@ class _JobInfoRow extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Stats Grid
+// Stats Grid — real data from Supabase
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _StatsGrid extends StatelessWidget {
+class _StatsGrid extends StatefulWidget {
+  @override
+  State<_StatsGrid> createState() => _StatsGridState();
+}
+
+class _StatsGridState extends State<_StatsGrid> {
+  final DashboardStatsService _statsService = DashboardStatsService();
+  late Future<DashboardStats> _statsFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _statsFuture = _statsService.fetchStats();
+  }
+
   @override
   Widget build(BuildContext context) {
-    final stats = [
-      _StatData(
-        icon: Icons.directions_car,
-        iconColor: AppColors.primary,
-        count: '2',
-        label: 'Jobs Today',
-      ),
-      _StatData(
-        icon: Icons.assignment_outlined,
-        iconColor: AppColors.warning,
-        count: '3',
-        label: 'Assigned Requests',
-      ),
-      _StatData(
-        icon: Icons.format_list_bulleted,
-        iconColor: AppColors.primaryDark,
-        count: '2',
-        label: 'Checklist Pending',
-        onTap: () => Navigator.pushNamed(context, AppRoutes.vehicleChecklist),
-      ),
-      _StatData(
-        icon: Icons.check_circle,
-        iconColor: AppColors.success,
-        count: '12',
-        label: 'Completed Jobs',
-      ),
-    ];
+    return FutureBuilder<DashboardStats>(
+      future: _statsFuture,
+      builder: (context, snapshot) {
+        // Use real data when available, zeros while loading/error
+        final stats = snapshot.data ?? DashboardStats.empty;
 
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: stats.length,
-      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        mainAxisSpacing: SizeConfig.r(10),
-        crossAxisSpacing: SizeConfig.r(10),
-        childAspectRatio: 1.35,
-      ),
-      itemBuilder: (_, i) => _StatCard(data: stats[i]),
+        final cards = [
+          _StatData(
+            icon: Icons.directions_car,
+            iconColor: AppColors.primary,
+            count: '${stats.jobsToday}',
+            label: 'Jobs Today',
+          ),
+          _StatData(
+            icon: Icons.assignment_outlined,
+            iconColor: AppColors.warning,
+            count: '${stats.pendingRequests}',
+            label: 'Assigned Requests',
+          ),
+          _StatData(
+            icon: Icons.format_list_bulleted,
+            iconColor: AppColors.primaryDark,
+            count: '0',
+            label: 'Checklist Pending',
+            onTap: () =>
+                Navigator.pushNamed(context, AppRoutes.vehicleChecklist),
+          ),
+          _StatData(
+            icon: Icons.check_circle,
+            iconColor: AppColors.success,
+            count: '${stats.completedJobs}',
+            label: 'Completed Jobs',
+          ),
+        ];
+
+        return GridView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: cards.length,
+          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+            crossAxisCount: 2,
+            mainAxisSpacing: SizeConfig.r(10),
+            crossAxisSpacing: SizeConfig.r(10),
+            childAspectRatio: 1.35,
+          ),
+          itemBuilder: (_, i) => _StatCard(data: cards[i]),
+        );
+      },
     );
   }
 }
@@ -454,7 +601,6 @@ class _StatData {
 
 class _StatCard extends StatelessWidget {
   final _StatData data;
-
   const _StatCard({required this.data});
 
   @override
@@ -481,40 +627,35 @@ class _StatCard extends StatelessWidget {
           children: [
             Icon(data.icon, color: data.iconColor, size: SizeConfig.r(20)),
             SizedBox(height: SizeConfig.r(8)),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  data.count,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(24),
-                    fontWeight: FontWeight.w800,
-                    color: AppColors.textDark,
-                    height: 1.1,
-                  ),
-                ),
-                Text(
-                  data.label,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(12),
-                    fontWeight: FontWeight.w500,
-                    color: AppColors.textMedium,
-                  ),
-                ),
-                SizedBox(height: SizeConfig.r(2)),
-                Text(
-                  'Updated just now',
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(10),
-                    color: AppColors.textLight,
-                  ),
-                ),
-              ],
+            Text(
+              data.count,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(24),
+                fontWeight: FontWeight.w800,
+                color: AppColors.textDark,
+                height: 1.1,
+              ),
+            ),
+            Text(
+              data.label,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                fontWeight: FontWeight.w500,
+                color: AppColors.textMedium,
+              ),
+            ),
+            SizedBox(height: SizeConfig.r(2)),
+            Text(
+              'Updated just now',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(10),
+                color: AppColors.textLight,
+              ),
             ),
           ],
         ),
-      ), // Container
-    ); // GestureDetector
+      ),
+    );
   }
 }
 
@@ -571,36 +712,11 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
             }
 
             if (snapshot.hasError) {
-              return Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(SizeConfig.r(14)),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Unable to load job requests.',
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(13),
-                        color: AppColors.textMedium,
-                      ),
-                    ),
-                    SizedBox(height: SizeConfig.r(10)),
-                    AppButton(
-                      label: 'Retry',
-                      height: SizeConfig.r(40),
-                      borderRadius: SizeConfig.radius,
-                      onPressed: _refreshRequests,
-                    ),
-                  ],
-                ),
-              );
+              return _RequestsErrorCard(onRetry: _refreshRequests);
             }
 
             final requests = snapshot.data ?? [];
+
             if (requests.isEmpty) {
               return Container(
                 width: double.infinity,
@@ -639,14 +755,47 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
   }
 }
 
+class _RequestsErrorCard extends StatelessWidget {
+  final VoidCallback onRetry;
+  const _RequestsErrorCard({required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(SizeConfig.r(14)),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Unable to load job requests.',
+            style: TextStyle(
+              fontSize: SizeConfig.sp(13),
+              color: AppColors.textMedium,
+            ),
+          ),
+          SizedBox(height: SizeConfig.r(10)),
+          AppButton(
+            label: 'Retry',
+            height: SizeConfig.r(40),
+            borderRadius: SizeConfig.radius,
+            onPressed: onRetry,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _JobRequestCard extends StatelessWidget {
   final DriverJobRequest request;
   final Future<void> Function() onReviewed;
 
-  const _JobRequestCard({
-    required this.request,
-    required this.onReviewed,
-  });
+  const _JobRequestCard({required this.request, required this.onReviewed});
 
   @override
   Widget build(BuildContext context) {
@@ -670,23 +819,38 @@ class _JobRequestCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Container(
-                padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.r(10),
-                  vertical: SizeConfig.r(4),
-                ),
-                decoration: BoxDecoration(
-                  color: AppColors.primary,
-                  borderRadius: BorderRadius.circular(SizeConfig.r(20)),
-                ),
-                child: Text(
-                  'New',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: SizeConfig.sp(11),
-                    fontWeight: FontWeight.w600,
+              Row(
+                children: [
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SizeConfig.r(10),
+                      vertical: SizeConfig.r(4),
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppColors.primary,
+                      borderRadius: BorderRadius.circular(SizeConfig.r(20)),
+                    ),
+                    child: Text(
+                      'New',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: SizeConfig.sp(11),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                   ),
-                ),
+                  // Semester label
+                  if (request.semesterLabel.isNotEmpty) ...[
+                    SizedBox(width: SizeConfig.r(8)),
+                    Text(
+                      request.semesterLabel,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(11),
+                        color: AppColors.textLight,
+                      ),
+                    ),
+                  ],
+                ],
               ),
               Text(
                 request.earnings,
@@ -711,11 +875,15 @@ class _JobRequestCard extends StatelessWidget {
                 ),
               ),
               SizedBox(width: SizeConfig.r(8)),
-              Text(
-                'Pickup: ${request.pickup}',
-                style: TextStyle(
-                  fontSize: SizeConfig.sp(13),
-                  color: AppColors.textMedium,
+              Expanded(
+                child: Text(
+                  'Pickup: ${request.pickup}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(13),
+                    color: AppColors.textMedium,
+                  ),
                 ),
               ),
             ],
@@ -733,17 +901,21 @@ class _JobRequestCard extends StatelessWidget {
                 ),
               ),
               SizedBox(width: SizeConfig.r(8)),
-              Text(
-                'Drop-off: ${request.dropoff}',
-                style: TextStyle(
-                  fontSize: SizeConfig.sp(13),
-                  color: AppColors.textMedium,
+              Expanded(
+                child: Text(
+                  'Drop-off: ${request.dropoff}',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(13),
+                    color: AppColors.textMedium,
+                  ),
                 ),
               ),
             ],
           ),
           SizedBox(height: SizeConfig.r(7)),
-          // Time row
+          // Time + students row
           Row(
             children: [
               Icon(
@@ -833,7 +1005,6 @@ class _QuickActionsSection extends StatelessWidget {
           ),
         ),
         SizedBox(height: SizeConfig.r(10)),
-        // Row 1: 3 items
         Row(
           children: List.generate(3, (i) {
             return Expanded(
@@ -845,13 +1016,12 @@ class _QuickActionsSection extends StatelessWidget {
           }),
         ),
         SizedBox(height: SizeConfig.r(10)),
-        // Row 2: 2 items (left-aligned in same 3-col grid)
         Row(
           children: [
             Expanded(child: _QuickActionCard(data: actions[3])),
             SizedBox(width: SizeConfig.r(10)),
             Expanded(child: _QuickActionCard(data: actions[4])),
-            Expanded(child: const SizedBox()),
+            const Expanded(child: SizedBox()),
           ],
         ),
       ],
@@ -875,7 +1045,6 @@ class _QuickActionData {
 
 class _QuickActionCard extends StatelessWidget {
   final _QuickActionData data;
-
   const _QuickActionCard({required this.data});
 
   @override

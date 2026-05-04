@@ -94,8 +94,18 @@ export const getPassengerDetailBundle = async (passengerId) => {
       .order('created_at', { ascending: false })
       .limit(1)
 
-    if (routeListErr) throw routeListErr
-    jobId = routeRows?.[0]?.job_id ?? null
+    if (routeListErr) {
+      // Legacy table may be dropped or not exposed in API — treat as no job, not a fatal error
+      const msg = String(routeListErr.message || '')
+      const legacyTableUnavailable =
+        routeListErr.code === 'PGRST205' ||
+        routeListErr.code === '42P01' ||
+        routeListErr.status === 404 ||
+        /schema cache|could not find the table|relation .+ does not exist/i.test(msg)
+      if (!legacyTableUnavailable) throw routeListErr
+    } else {
+      jobId = routeRows?.[0]?.job_id ?? null
+    }
   }
 
   if (!jobId) {

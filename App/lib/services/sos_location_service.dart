@@ -5,6 +5,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'location_service.dart';
 
+/// Handles SOS alert creation and live location streaming.
+///
+/// Changes from old version:
+///   - Removed job_passenger_routes passenger count query (table deleted).
+///   - Replaced with job_session_passengers count for today's active session.
+///   - Removed .order('job_date') / .order('pickup_time') — jobs are now
+///     semester-based; ordering is by semester_start instead.
 class SosLocationService {
   SosLocationService._internal();
   static final SosLocationService _instance = SosLocationService._internal();
@@ -27,7 +34,6 @@ class SosLocationService {
     if (_initialized) return;
     _initialized = true;
     await _ensureDriverContext();
-
     await _subscribeToSos();
     await _syncCurrentActiveSos();
   }
@@ -68,6 +74,7 @@ class SosLocationService {
     );
     _latestPosition = position;
 
+    // ── Vehicle lookup (unchanged) ────────────────────────────────────────
     final vehicles = await _supabase
         .from('vehicles')
         .select('id')
@@ -77,19 +84,26 @@ class SosLocationService {
     if (vehicles.isEmpty) {
       throw StateError('No assigned vehicle found for this driver.');
     }
-
     final vehicleId = vehicles.first['id']?.toString();
     if (vehicleId == null || vehicleId.isEmpty) {
       throw StateError('No assigned vehicle found for this driver.');
     }
 
+    // ── Active job lookup (semester-based, no job_date ordering) ─────────
+    final today = DateTime.now();
+    final todayDate =
+        '${today.year.toString().padLeft(4, '0')}-'
+        '${today.month.toString().padLeft(2, '0')}-'
+        '${today.day.toString().padLeft(2, '0')}';
+
     final activeJobs = await _supabase
         .from('jobs')
         .select('id, assigned_pa_id')
         .eq('assigned_driver_id', driverId)
-        .filter('status', 'not.in', '(completed,cancelled)')
-        .order('job_date', ascending: true)
-        .order('pickup_time', ascending: true)
+        .eq('status', 'active')
+        .lte('semester_start', todayDate)
+        .gte('semester_end', todayDate)
+        .order('semester_start', ascending: true)
         .limit(1);
 
     String? jobId;
@@ -99,24 +113,60 @@ class SosLocationService {
     if (activeJobs.isNotEmpty) {
       final activeJob = Map<String, dynamic>.from(activeJobs.first);
       final resolvedJobId = activeJob['id']?.toString();
+
       if (resolvedJobId != null && resolvedJobId.isNotEmpty) {
         jobId = resolvedJobId;
         passengerAssistantId = activeJob['assigned_pa_id']?.toString();
 
-        final routeRows = await _supabase
-            .from('job_passenger_routes')
-            .select('passenger_id')
-            .eq('job_id', resolvedJobId);
+        // ── Passenger count from today's active session ───────────────────
+        // Use job_session_passengers instead of the deleted job_passenger_routes.
+        final sessionRows = await _supabase
+            .from('job_sessions')
+            .select('id')
+            .eq('job_id', resolvedJobId)
+            .eq('session_date', todayDate)
+            .eq('status', 'active')
+            .limit(1);
 
-        final uniquePassengers = routeRows
-            .map((row) => row['passenger_id']?.toString())
-            .whereType<String>()
-            .where((id) => id.isNotEmpty)
-            .toSet();
-        passengerCount = uniquePassengers.length;
+        if (sessionRows.isNotEmpty) {
+          final sessionId = sessionRows.first['id']?.toString();
+          if (sessionId != null && sessionId.isNotEmpty) {
+            final spRows = await _supabase
+                .from('job_session_passengers')
+                .select('passenger_id')
+                .eq('session_id', sessionId)
+                .neq('status', 'missed'); // count on-board passengers only
+
+            final uniquePassengers = spRows
+                .map((r) => r['passenger_id']?.toString())
+                .whereType<String>()
+                .where((id) => id.isNotEmpty)
+                .toSet();
+            passengerCount = uniquePassengers.length;
+          }
+        } else {
+          // Session not started yet — count scheduled passengers for today
+          final weekdayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+          final weekday = weekdayKeys[today.weekday - 1];
+
+          final scheduleRows = await _supabase
+              .from('passenger_schedules')
+              .select('passenger_id')
+              .eq('job_id', resolvedJobId)
+              .eq('weekday', weekday)
+              .isFilter('exception_date', null);
+
+          final uniquePassengers = scheduleRows
+              .map((r) => r['passenger_id']?.toString())
+              .whereType<String>()
+              .where((id) => id.isNotEmpty)
+              .toSet();
+          passengerCount = uniquePassengers.length;
+        }
       }
     }
 
+    // ── Insert SOS alert ──────────────────────────────────────────────────
     final insertPayload = <String, dynamic>{
       'vehicle_id': vehicleId,
       'company_id': companyId,
@@ -146,6 +196,8 @@ class SosLocationService {
     return sosId;
   }
 
+  // ── Realtime subscription (unchanged logic) ───────────────────────────────
+
   Future<void> _subscribeToSos() async {
     final companyId = _companyId;
     final driverId = _driverId;
@@ -170,7 +222,6 @@ class SosLocationService {
         final sosId = row['id']?.toString();
         if (sosId == null || sosId.isEmpty) return;
         if (status != 'active') return;
-
         _activeSosId = sosId;
         await _startLocationStream();
       },
@@ -190,7 +241,6 @@ class SosLocationService {
         final status = row['status']?.toString();
         final sosId = row['id']?.toString();
         if (sosId == null || sosId.isEmpty) return;
-
         if (status != 'active') {
           if (_activeSosId == null || _activeSosId == sosId) {
             _activeSosId = null;
@@ -200,7 +250,7 @@ class SosLocationService {
       },
     );
 
-    await channel.subscribe();
+    channel.subscribe();
     _sosChannel = channel;
   }
 
@@ -236,15 +286,16 @@ class SosLocationService {
 
     _streaming = true;
 
-    _locationSub = Geolocator.getPositionStream(
-      locationSettings: const LocationSettings(
-        accuracy: LocationAccuracy.high,
-        distanceFilter: 5,
-      ),
-    ).listen((position) async {
-      _latestPosition = position;
-      await _upsertLocation(position: position, isOnline: true);
-    });
+    _locationSub =
+        Geolocator.getPositionStream(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.high,
+            distanceFilter: 5,
+          ),
+        ).listen((position) async {
+          _latestPosition = position;
+          await _upsertLocation(position: position, isOnline: true);
+        });
   }
 
   Future<void> _upsertLocation({
