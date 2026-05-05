@@ -1,6 +1,6 @@
 class SupabaseConfig {
   // Add your real Supabase project URL here.
-  static const String url = 'https://supabase.nst-sch.com/';
+  static const String url = 'https://supabase.nst-sch.com';
 
   // Add your real Supabase anon public key here.
   static const String anonKey =
