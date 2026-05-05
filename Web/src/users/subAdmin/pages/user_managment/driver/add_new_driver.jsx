@@ -5,6 +5,7 @@ import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { registerDriverWithAuthAndRecords } from '../../../../../services/driverRegistrationService';
 import { ToastStack } from '../../../../../utils/Toast';
+import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
 // ─── Reusable: Text Input ─────────────────────────────────────
 const FormField = ({ label, required, placeholder, value, onChange, type = 'text', className = '', showError = false, errorText = 'This field is required.' }) => (
@@ -241,6 +242,15 @@ const initialFilesState = {
 
 const AddNewDriver = () => {
     const navigate = useNavigate();
+    const { can } = useSubAdminPermissions();
+    const canAddUsers = can('add_users');
+    if (!canAddUsers) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to add users.
+            </div>
+        );
+    }
     const [currentStep] = useState(1);
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState('');
@@ -443,7 +453,7 @@ const AddNewDriver = () => {
     };
 
     return (
-        <div className="mx-auto max-w-6xl space-y-0 pb-10">
+        <div className="mx-auto space-y-0 pb-10">
             <ToastStack
                 toasts={toasts}
                 onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))}
@@ -625,35 +635,40 @@ const AddNewDriver = () => {
                         </div>
                         <ExpiryDateField value={form.safeguardingExpiry} onChange={setExpiry('safeguardingExpiry')} />
 
-                        <div className="space-y-3 rounded-xl border border-dashed border-gray-200 bg-white p-4">
-                            <label className="text-xs font-semibold text-gray-600">Other Certificates (optional)</label>
-                            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                                <input id="otherCertLabel" type="text" placeholder="Certificate label" className="px-3.5 py-3 border border-gray-200 rounded-xl text-sm" />
-                                <input id="otherCertFile" type="file" accept="application/pdf,image/jpeg,image/png" className="px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white" />
-                                <button
-                                    type="button"
-                                    className="px-4 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium transition-colors"
-                                    onClick={() => {
-                                        const labelEl = document.getElementById('otherCertLabel');
-                                        const fileEl = document.getElementById('otherCertFile');
-                                        const label = labelEl?.value?.trim();
-                                        const file = fileEl?.files?.[0];
-                                        if (!label || !file) return;
-                                        setOtherCertificates((prev) => [...prev, { label, file }]);
-                                        labelEl.value = '';
-                                        fileEl.value = '';
-                                    }}
-                                >
-                                    Add Certificate
-                                </button>
-                            </div>
-                            {otherCertificates.map((cert, idx) => (
-                                <div key={`${cert.label}-${idx}`} className="flex items-center justify-between px-3 py-2.5 bg-gray-50 rounded-lg text-sm">
-                                    <span>{cert.label} - {cert.file?.name}</span>
-                                    <button type="button" className="text-red-600" onClick={() => setOtherCertificates((prev) => prev.filter((_, i) => i !== idx))}>Remove</button>
-                                </div>
-                            ))}
+                    </div>
+                </div>
+
+                {/* ── Other Certificates ── */}
+                <div className="rounded-xl border border-gray-100 bg-gray-50/40 p-4 sm:p-5 lg:p-6">
+                    <SectionHeading title="Other Certificates" />
+                    <div className="space-y-3 rounded-xl border border-dashed border-gray-200 bg-white p-4">
+                        <label className="text-xs font-semibold text-gray-600">Other Certificates (optional)</label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                            <input id="otherCertLabel" type="text" placeholder="Certificate label" className="px-3.5 py-3 border border-gray-200 rounded-xl text-sm" />
+                            <input id="otherCertFile" type="file" accept="application/pdf,image/jpeg,image/png" className="px-3 py-3 border border-gray-200 rounded-xl text-sm bg-white" />
+                            <button
+                                type="button"
+                                className="px-4 py-3 bg-gray-100 hover:bg-gray-200 rounded-xl text-sm font-medium transition-colors"
+                                onClick={() => {
+                                    const labelEl = document.getElementById('otherCertLabel');
+                                    const fileEl = document.getElementById('otherCertFile');
+                                    const label = labelEl?.value?.trim();
+                                    const file = fileEl?.files?.[0];
+                                    if (!label || !file) return;
+                                    setOtherCertificates((prev) => [...prev, { label, file }]);
+                                    labelEl.value = '';
+                                    fileEl.value = '';
+                                }}
+                            >
+                                Add Certificate
+                            </button>
                         </div>
+                        {otherCertificates.map((cert, idx) => (
+                            <div key={`${cert.label}-${idx}`} className="flex items-center justify-between px-3 py-2.5 bg-gray-50 rounded-lg text-sm">
+                                <span>{cert.label} - {cert.file?.name}</span>
+                                <button type="button" className="text-red-600" onClick={() => setOtherCertificates((prev) => prev.filter((_, i) => i !== idx))}>Remove</button>
+                            </div>
+                        ))}
                     </div>
                 </div>
 

@@ -6,9 +6,19 @@ import {
     MdPeople,
     MdSupport,
 } from 'react-icons/md';
+import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
 const AssignRoute = () => {
     const navigate = useNavigate();
+    const { can } = useSubAdminPermissions();
+    const canEditProfiles = can('edit_profiles');
+    if (!canEditProfiles) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to assign routes.
+            </div>
+        );
+    }
     const [selectedJob, setSelectedJob] = useState('North District - Morning Shuttle (RT-104)');
 
     const passengers = [

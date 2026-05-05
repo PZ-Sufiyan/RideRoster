@@ -6,9 +6,19 @@ import {
     MdCheckBoxOutlineBlank,
     MdCheckBox,
 } from 'react-icons/md';
+import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
 const RouteReview = () => {
     const navigate = useNavigate();
+    const { can } = useSubAdminPermissions();
+    const canEditProfiles = can('edit_profiles');
+    if (!canEditProfiles) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to review route assignments.
+            </div>
+        );
+    }
     const [isConfirmed, setIsConfirmed] = useState(false);
 
     const passengers = [

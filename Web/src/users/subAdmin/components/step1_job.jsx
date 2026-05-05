@@ -9,8 +9,9 @@ const Step1Job = ({ setToasts }) => {
         const d = loadJobDraft();
         const s1 = d.step1 || {};
         return {
+            city: s1.city ?? '',
             jobName: s1.job_name ?? '',
-            jobType: s1.job_type || 'Regular Contract',
+            jobType: s1.job_type || 'School Contract',
             clientName: s1.client_school_name ?? '',
             internalId: s1.internal_job_id ?? '',
         };
@@ -20,6 +21,7 @@ const Step1Job = ({ setToasts }) => {
     useEffect(() => {
         saveJobDraft({
             step1: {
+                city: formData.city,
                 job_name: formData.jobName,
                 job_type: formData.jobType,
                 client_school_name: formData.clientName,
@@ -50,6 +52,7 @@ const Step1Job = ({ setToasts }) => {
         }
         saveJobDraft({
             step1: {
+                city: formData.city.trim(),
                 job_name: formData.jobName.trim(),
                 job_type: formData.jobType.trim(),
                 client_school_name: formData.clientName.trim(),
@@ -83,7 +86,17 @@ const Step1Job = ({ setToasts }) => {
                         <h2 className="text-[18px] font-bold text-gray-900">Route Details</h2>
                         <p className="text-[14px] text-gray-500 mt-1">Start by defining the basic information for this job.</p>
                     </div>
-
+                    <div className="space-y-2">
+    <label className="text-[13px] font-bold text-gray-700">City</label>
+    <input
+        type="text"
+        name="city"
+        value={formData.city}
+        onChange={handleChange}
+        placeholder="e.g., Manchester"
+        className="w-full px-4 py-3 bg-[#F9FAFB] border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/20 focus:border-[#004D6D] transition-all"
+    />
+</div>
                     <div className="space-y-6">
                         <div className="space-y-2">
                             <label className="text-[13px] font-bold text-gray-700">
@@ -113,9 +126,11 @@ const Step1Job = ({ setToasts }) => {
                                     onChange={handleChange}
                                     className={fieldClass(submitAttempted && !formData.jobType.trim()) + ' appearance-none cursor-pointer'}
                                 >
-                                    <option>Regular Contract</option>
-                                    <option>One-off Trip</option>
-                                    <option>Emergency Shuttle</option>
+                                    <option>School Contract</option>
+                                    <option>College Contract</option>
+                                    <option>Centre Contract</option>
+                                    <option>Ad Hoc Contract</option>
+                                    <option>All Year Round Contract</option>
                                 </select>
                                 <MdKeyboardArrowDown className="absolute right-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={20} />
                             </div>

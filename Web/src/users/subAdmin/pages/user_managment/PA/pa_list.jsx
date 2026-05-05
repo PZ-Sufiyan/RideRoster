@@ -18,6 +18,7 @@ import {
     updatePassengerAssistant,
 } from '../../../../../services/passengerAsssistantService';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
+import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
 /** DB `passenger_assistant.status` values (lowercase) */
 const PA_STATUS_DB = {
@@ -25,13 +26,12 @@ const PA_STATUS_DB = {
     APPROVE: 'approve',
     REJECT: 'reject',
     SUSPEND: 'suspend',
-    ACTIVE: 'active',
 };
 
 function normalizePaStatus(raw) {
     if (raw == null || raw === '') return PA_STATUS_DB.PENDING;
     const s = String(raw).trim().toLowerCase();
-    if (['pending', 'approve', 'reject', 'suspend', 'active'].includes(s)) return s;
+    if (['pending', 'approve', 'reject', 'suspend'].includes(s)) return s;
     if (s === 'approved') return PA_STATUS_DB.APPROVE;
     if (s === 'rejected') return PA_STATUS_DB.REJECT;
     if (s === 'suspended') return PA_STATUS_DB.SUSPEND;
@@ -45,7 +45,6 @@ function paStatusLabel(dbStatus) {
         [PA_STATUS_DB.APPROVE]: 'Approved',
         [PA_STATUS_DB.REJECT]: 'Rejected',
         [PA_STATUS_DB.SUSPEND]: 'Suspended',
-        [PA_STATUS_DB.ACTIVE]: 'Active',
     };
     return labels[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Pending');
 }
@@ -62,14 +61,13 @@ const ITEMS_PER_PAGE = 10;
 
 const PA_ACTION_MENU_H = 188;
 
-const PA_MENU_ACTIONS = ['Approve', 'Reject', 'Suspend', 'Active'];
+const PA_MENU_ACTIONS = ['Approve', 'Reject', 'Suspend'];
 
 function actionToDbStatus(action) {
     const map = {
         Approve: PA_STATUS_DB.APPROVE,
         Reject: PA_STATUS_DB.REJECT,
         Suspend: PA_STATUS_DB.SUSPEND,
-        Active: PA_STATUS_DB.ACTIVE,
     };
     return map[action] ?? null;
 }
@@ -77,9 +75,20 @@ function actionToDbStatus(action) {
 // ─── Component ────────────────────────────────────────────────
 const PAListPage = () => {
     const navigate = useNavigate();
+    const { can } = useSubAdminPermissions();
+    const canViewUsers = can('view_users');
+    const canAddUsers = can('add_users');
+    const canManageUsers = can('edit_profiles') || can('deactivate_users');
+    if (!canViewUsers) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to view users.
+            </div>
+        );
+    }
     const [pas, setPas] = useState([]);
     const [search, setSearch] = useState('');
-    const [statusFilter, setStatusFilter] = useState('All Statuses');
+    const [statusFilter, setStatusFilter] = useState('All');
     const [selectedRows, setSelectedRows] = useState([]);
     const [openMenu, setOpenMenu] = useState(null);
     const [isStatusOpen, setIsStatusOpen] = useState(false);
@@ -94,7 +103,7 @@ const PAListPage = () => {
     const statusRef = useRef(null);
     const bulkRef = useRef(null);
 
-    const statuses = ['All Statuses', 'Pending', 'Approved', 'Rejected', 'Suspended', 'Active'];
+    const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended'];
 
     useEffect(() => {
         const loadPassengerAssistants = async () => {
@@ -168,7 +177,7 @@ const PAListPage = () => {
             p.email.toLowerCase().includes(q) ||
             p.phone.toLowerCase().includes(q) ||
             p.paId.toLowerCase().includes(q);
-        const matchStatus = statusFilter === 'All Statuses' || paStatusLabel(p.statusDb) === statusFilter;
+        const matchStatus = statusFilter === 'All' || paStatusLabel(p.statusDb) === statusFilter;
         return matchSearch && matchStatus;
     });
 
@@ -180,6 +189,7 @@ const PAListPage = () => {
     }, [currentPage, totalPages]);
 
     const handleAction = async (action, paId) => {
+        if (!canManageUsers) return;
         const nextDb = actionToDbStatus(action);
         if (!nextDb) return;
         setStatusUpdateError('');
@@ -197,6 +207,7 @@ const PAListPage = () => {
     };
 
     const handleBulkAction = async (action) => {
+        if (!canManageUsers) return;
         const nextDb = actionToDbStatus(action);
         if (!nextDb || selectedRows.length === 0) {
             setIsBulkOpen(false);
@@ -263,13 +274,15 @@ const PAListPage = () => {
                     <h1 className="text-2xl font-bold text-gray-900">Passenger Assistants</h1>
                     <p className="text-sm text-gray-500 mt-1">Manage all passenger assistants in your company.</p>
                 </div>
-                <button
-                    onClick={() => navigate('/subadmin/users/pa/add')}
-                    className="flex items-center gap-2 px-4 py-2.5 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm shrink-0"
-                >
-                    <MdAdd size={18} />
-                    Add New PA
-                </button>
+                {canAddUsers ? (
+                    <button
+                        onClick={() => navigate('/subadmin/users/pa/add')}
+                        className="flex items-center gap-2 px-4 py-2.5 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm shrink-0"
+                    >
+                        <MdAdd size={18} />
+                        Add New PA
+                    </button>
+                ) : null}
             </div>
 
             {/* ── Card ── */}
@@ -323,6 +336,7 @@ const PAListPage = () => {
                         </div>
                     </div>
 
+                    {canManageUsers ? (
                     <div className="flex flex-wrap items-center gap-2">
                         <div className="relative" ref={bulkRef}>
                             <button
@@ -363,6 +377,7 @@ const PAListPage = () => {
                             )}
                         </div>
                     </div>
+                    ) : null}
                     </div>
                 </div>
 
@@ -499,7 +514,8 @@ const PAListPage = () => {
                                                         left: Math.max(8, rect.right - width),
                                                     });
                                                 }}
-                                                className={`p-1.5 rounded-lg text-gray-500 transition-colors ${isSavingStatus ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
+                                                disabled={isSavingStatus || !canManageUsers}
+                                                className={`p-1.5 rounded-lg text-gray-500 transition-colors ${isSavingStatus || !canManageUsers ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}`}
                                             >
                                                 <MdMoreVert size={18} />
                                             </button>
@@ -568,7 +584,8 @@ const PAListPage = () => {
                 </div>
             </div>
 
-            {openMenu &&
+            {canManageUsers &&
+                openMenu &&
                 paMenuActions.length > 0 &&
                 createPortal(
                     <div

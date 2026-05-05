@@ -10,9 +10,20 @@ import {
     MdSend
 } from 'react-icons/md';
 import { HiCheckCircle } from 'react-icons/hi';
+import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
 const SuccessConfirmation = () => {
     const navigate = useNavigate();
+    const { can } = useSubAdminPermissions();
+    const canViewUsers = can('view_users');
+
+    if (!canViewUsers) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to view users.
+            </div>
+        );
+    }
 
     const assignedPassengers = [
         { name: 'Sarah Jenkins', type: 'Wheelchair Access Required', avatar: 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=150&h=150' },

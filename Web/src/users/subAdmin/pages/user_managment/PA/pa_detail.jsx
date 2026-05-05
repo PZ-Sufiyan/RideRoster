@@ -25,6 +25,7 @@ import {
     PA_DOCUMENT_TYPES,
 } from '../../../../../services/passengerAsssistantService';
 import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
+import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
 const ITEMS_PER_PAGE = 5;
 
@@ -136,7 +137,6 @@ const JOB_STATUS_COLORS = {
     Active: 'bg-emerald-50 text-emerald-800 border border-emerald-200',
     Pending: 'bg-amber-50 text-amber-800 border border-amber-200',
 };
-
 function ProfileField({ icon,label, value }) {
     return (
         <div className="flex items-start gap-3 text-sm">
@@ -155,6 +155,16 @@ function ProfileField({ icon,label, value }) {
 const PADetail = () => {
     const navigate = useNavigate();
     const { id } = useParams();
+    const { can } = useSubAdminPermissions();
+    const canViewUsers = can('view_users');
+
+    if (!canViewUsers) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to view users.
+            </div>
+        );
+    }
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');

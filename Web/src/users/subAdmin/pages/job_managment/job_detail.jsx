@@ -1,28 +1,75 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
-    MdBlock,
-    MdCheck,
-    MdDirectionsCar,
-    MdEdit,
-    MdLocationOn,
-    MdPerson,
-    MdWarning,
+    MdBlock, MdEdit, MdWarning, MdWbSunny, MdNightlight,
+    MdCalendarToday, MdPeopleAlt, MdAccessible, MdSchool, MdHome,
+    MdCheckCircle, MdCancel, MdRadioButtonUnchecked, MdRefresh, MdInfoOutline,
 } from 'react-icons/md';
 import { supabase } from '../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../services/companyService';
 import {
     fetchJobDetailBundle,
+    fetchJobSchedulePassengers,
+    fetchJobSessionsForDisplay,
+    fetchSessionPassengers,
     cancelJobById,
     formatJobDisplayId,
-    formatJobDateTimeLabel,
     deriveJobUiStatus,
+    formatTimeDisplay,
 } from '../../../../services/jobService';
 import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer';
 import { useSubAdminPermissions } from '../../../../context/subAdminPermissionsContext';
 
-const defaultAvatar = (seed) =>
-    `https://i.pravatar.cc/150?u=${encodeURIComponent(String(seed))}`;
+const defaultAvatar = (seed) => `https://i.pravatar.cc/150?u=${encodeURIComponent(String(seed))}`;
+const WEEKDAY_LABELS = { mon: 'Mon', tue: 'Tue', wed: 'Wed', thu: 'Thu', fri: 'Fri', sat: 'Sat', sun: 'Sun' };
+const WEEKDAY_ORDER = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
+const InfoRow = ({ label, value, valueClass = 'text-gray-800' }) => (
+    <div className="flex items-center justify-between gap-3 py-2 border-b border-gray-50 last:border-0">
+        <span className="text-[12px] text-gray-500 font-medium shrink-0">{label}</span>
+        <span className={`text-[13px] font-bold text-right ${valueClass}`}>{value}</span>
+    </div>
+);
+const STATUS_CFG = {
+    pending: { label: 'Pending', cls: 'bg-gray-100 text-gray-500', Icon: MdRadioButtonUnchecked },
+    picked_up: { label: 'Picked Up', cls: 'bg-blue-50 text-blue-600', Icon: MdCheckCircle },
+    missed: { label: 'Missed', cls: 'bg-red-50 text-red-600', Icon: MdCancel },
+    dropped_off: { label: 'Dropped Off', cls: 'bg-green-50 text-green-600', Icon: MdCheckCircle },
+};
+const StatusBadge = ({ status }) => {
+    const { label, cls, Icon } = STATUS_CFG[status] || STATUS_CFG.pending;
+    return <span className={`inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full ${cls}`}><Icon size={11} />{label}</span>;
+};
+const formatSemesterDate = (iso) => (!iso ? '—' : new Date(iso + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }));
+const formatTimestamp = (iso) => (!iso ? '—' : new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }));
+const passengerDisplayName = (p) => [p?.first_name, p?.surname].filter(Boolean).join(' ').trim() || 'Passenger';
+
+const SessionCard = ({ session, direction, jobHasDirection, sessionPassengers, paxLoading }) => {
+    const isMorning = direction === 'outbound';
+    const Icon = isMorning ? MdWbSunny : MdNightlight;
+    const label = isMorning ? 'Morning' : 'Evening';
+    const accentBg = isMorning ? 'bg-amber-50' : 'bg-indigo-50';
+    const accentBorder = isMorning ? 'border-amber-200' : 'border-indigo-200';
+    const accentText = isMorning ? 'text-amber-500' : 'text-indigo-500';
+    const barColor = isMorning ? 'bg-amber-500' : 'bg-indigo-500';
+    const total = sessionPassengers.length;
+    const done = sessionPassengers.filter((p) => p.status === 'dropped_off').length;
+    const missed = sessionPassengers.filter((p) => p.status === 'missed').length;
+    const pct = total > 0 ? Math.round((done / total) * 100) : 0;
+    if (!jobHasDirection) return <div className="rounded-xl border border-dashed border-gray-200 p-4 opacity-50"><div className="flex items-center gap-2"><Icon size={14} className="text-gray-400" /><span className="text-[13px] font-bold text-gray-400">{label}</span></div><p className="text-[11px] text-gray-400 mt-1">Disabled for this job</p></div>;
+    if (!session) return <div className={`rounded-xl border border-dashed ${accentBorder} ${accentBg}/30 p-4`}><div className="flex items-center justify-between mb-2"><div className="flex items-center gap-2"><Icon size={14} className={accentText} /><span className="text-[13px] font-bold text-gray-700">{label}</span></div><span className="text-[10px] font-bold text-gray-400 bg-gray-100 px-1.5 py-0.5 rounded-full">Not Started</span></div><p className="text-[11px] text-gray-500">Session created when driver starts from the app.</p></div>;
+    const statusLabel = session.status === 'active' ? 'In Progress' : session.status === 'completed' ? 'Completed' : 'Pending';
+    const statusCls = session.status === 'active' ? 'bg-green-100 text-green-700' : session.status === 'completed' ? 'bg-gray-100 text-gray-600' : 'bg-yellow-100 text-yellow-700';
+    return (
+        <div className={`rounded-xl border ${session.status === 'active' ? accentBorder : 'border-gray-200'} bg-white overflow-hidden`}>
+            <div className={`flex items-center justify-between px-4 py-3 ${session.status === 'active' ? accentBg : 'bg-gray-50'} border-b border-gray-100`}>
+                <div className="flex items-center gap-2"><Icon size={14} className={accentText} /><span className="text-[13px] font-bold text-gray-800">{label}</span></div>
+                <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${statusCls}`}>{statusLabel}</span>
+            </div>
+            {total > 0 && <div className="px-4 py-2.5 border-b border-gray-50"><div className="flex justify-between text-[11px] mb-1.5"><span className="text-gray-500">{done}/{total} completed{missed > 0 ? <span className="text-red-500 ml-1.5">· {missed} missed</span> : null}</span><span className="font-bold text-gray-600">{pct}%</span></div><div className="w-full h-1.5 bg-gray-100 rounded-full overflow-hidden"><div className={`h-full rounded-full ${barColor}`} style={{ width: `${pct}%` }} /></div></div>}
+            {paxLoading ? <div className="px-4 py-3 space-y-2"><ShimmerBlock className="h-8 rounded-lg" /><ShimmerBlock className="h-8 rounded-lg" /></div> : sessionPassengers.length === 0 ? <p className="px-4 py-3 text-[11px] text-gray-400 italic">No passengers in this session yet.</p> : <div className="divide-y divide-gray-50">{sessionPassengers.map((sp, idx) => <div key={sp.id} className="flex items-center gap-3 px-4 py-2.5"><div className="w-5 h-5 rounded-full text-[10px] font-bold flex items-center justify-center shrink-0 bg-gray-100 text-gray-500">{idx + 1}</div><div className="flex-1 min-w-0"><p className="text-[12px] font-semibold text-gray-800 truncate">{passengerDisplayName(sp.passenger || {})}{sp.passenger?.wheelchair_required ? <MdAccessible size={11} className="inline ml-1 text-blue-500" /> : null}</p><p className="text-[10px] text-gray-400 truncate">{sp.pickup_address}</p></div><StatusBadge status={sp.status} /><span className="text-[10px] text-gray-400 shrink-0">{sp.picked_up_at ? formatTimestamp(sp.picked_up_at) : ''}</span></div>)}</div>}
+        </div>
+    );
+};
 
 const JobDetail = () => {
     const navigate = useNavigate();
@@ -33,454 +80,118 @@ const JobDetail = () => {
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState(null);
     const [bundle, setBundle] = useState(null);
+    const [passengers, setPassengers] = useState([]);
     const [cancelling, setCancelling] = useState(false);
+    const [sessions, setSessions] = useState({ morning: null, evening: null, source: 'none' });
+    const [morningPax, setMorningPax] = useState([]);
+    const [eveningPax, setEveningPax] = useState([]);
+    const [sessionsLoading, setSessionsLoading] = useState(true);
+    const [paxLoading, setPaxLoading] = useState(false);
+    const [lastRefreshed, setLastRefreshed] = useState(null);
 
     const load = useCallback(async () => {
         if (!id) return;
-        setLoading(true);
-        setError(null);
+        setLoading(true); setError(null);
         try {
-            const {
-                data: { session },
-            } = await supabase.auth.getSession();
+            const { data: { session } } = await supabase.auth.getSession();
             const uid = session?.user?.id;
             if (!uid) throw new Error('Not authenticated.');
             const admin = await getCompanyAdminById(uid);
             const companyId = admin?.company_id;
             if (!companyId) throw new Error('No company linked to your account.');
-            const data = await fetchJobDetailBundle(id, companyId);
-            setBundle(data);
+            const [data, pax] = await Promise.all([fetchJobDetailBundle(id, companyId), fetchJobSchedulePassengers(id)]);
+            setBundle(data); setPassengers(pax);
         } catch (e) {
-            setError(e?.message || 'Could not load job.');
-            setBundle(null);
-        } finally {
-            setLoading(false);
-        }
+            setError(e?.message || 'Could not load job.'); setBundle(null);
+        } finally { setLoading(false); }
     }, [id]);
-
-    useEffect(() => {
-        load();
-    }, [load]);
+    const loadSessions = useCallback(async () => {
+        if (!id) return;
+        setSessionsLoading(true);
+        try {
+            const data = await fetchJobSessionsForDisplay(id);
+            setSessions(data);
+            setPaxLoading(true);
+            const [mPax, ePax] = await Promise.all([data.morning ? fetchSessionPassengers(data.morning.id, 'outbound') : Promise.resolve([]), data.evening ? fetchSessionPassengers(data.evening.id, 'inbound') : Promise.resolve([])]);
+            setMorningPax(mPax); setEveningPax(ePax); setLastRefreshed(new Date());
+        } finally { setSessionsLoading(false); setPaxLoading(false); }
+    }, [id]);
+    useEffect(() => { load(); }, [load]);
+    useEffect(() => { loadSessions(); }, [loadSessions]);
 
     const job = bundle?.job;
     const ui = job ? deriveJobUiStatus(job) : { label: '', statusColor: '' };
-    const pickups = bundle?.pickups || [];
-    const dropoffs = bundle?.dropoffs || [];
-    const pickupLine =
-        pickups.length > 0 ? pickups[0]?.address?.trim() || '—' : '—';
-    const dropoffLine =
-        dropoffs.length > 0
-            ? dropoffs[dropoffs.length - 1]?.address?.trim() || '—'
-            : '—';
-
-    const driverName = bundle?.driver
-        ? [bundle.driver.first_name, bundle.driver.last_name].filter(Boolean).join(' ').trim()
-        : null;
-    const vehicleLabel =
-        bundle?.vehicle?.taxi_license_plate_number ||
-        bundle?.driver?.license_no ||
-        null;
-
-    const paName = bundle?.pa
-        ? [bundle.pa.first_name, bundle.pa.surname].filter(Boolean).join(' ').trim()
-        : null;
-
-    const totalPay =
-        (Number(job?.driver_pay) || 0) + (Number(job?.passenger_assistant_pay) || 0);
-    const totalPayDisplay =
-        totalPay > 0
-            ? `£${totalPay.toFixed(2)}`
-            : '—';
-
-    const paymentLabel = (() => {
-        const s = (job?.status || '').toLowerCase();
-        if (s === 'cancelled') return 'N/A';
-        if (s === 'completed') return 'Complete';
-        return 'Pending';
-    })();
-
-    const timelineDateLabel = (() => {
-        if (!job?.job_date) return 'Nov 18, 2025';
-        const parsed = new Date(job.job_date);
-        if (Number.isNaN(parsed.getTime())) return 'Nov 18, 2025';
-        return parsed.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-        });
-    })();
-
-    const timelineItems = [
-        {
-            id: 'completed',
-            title: 'Job Completed',
-            time: `${timelineDateLabel}, 09:45 AM`,
-            note: 'Passenger dropped off successfully.',
-            state: 'success',
-            icon: MdCheck,
-        },
-        {
-            id: 'dropoff',
-            title: 'Arrived at Drop-off',
-            time: `${timelineDateLabel}, 09:42 AM`,
-            note: dropoffLine === '—' ? '123 Main Street, Anytown, USA 12345' : dropoffLine,
-            state: 'active',
-            icon: MdLocationOn,
-        },
-        {
-            id: 'onboard',
-            title: 'Passenger Onboard',
-            time: `${timelineDateLabel}, 08:55 AM`,
-            note: 'Passenger is now in the vehicle.',
-            state: 'active',
-            icon: MdPerson,
-        },
-        {
-            id: 'pickup',
-            title: 'Arrived at Pickup',
-            time: `${timelineDateLabel}, 08:50 AM`,
-            note: pickupLine === '—' ? '456 Oak Avenue, Anytown, USA 12345' : pickupLine,
-            state: 'active',
-            icon: MdLocationOn,
-        },
-        {
-            id: 'enroute',
-            title: 'En Route to Pickup',
-            time: `${timelineDateLabel}, 08:35 AM`,
-            note: '',
-            state: 'muted',
-            icon: MdDirectionsCar,
-        },
-        {
-            id: 'driver_assigned',
-            title: 'Driver Assigned',
-            time: `${timelineDateLabel}, 08:30 AM`,
-            note: driverName ? `${driverName} assigned to this job.` : 'Driver assigned to this job.',
-            state: 'muted',
-            icon: MdPerson,
-        },
-    ];
+    const driverName = bundle?.driver ? [bundle.driver.first_name, bundle.driver.last_name].filter(Boolean).join(' ') : null;
+    const vehicleLabel = bundle?.vehicle?.taxi_license_plate_number || bundle?.driver?.license_no || null;
+    const paName = bundle?.pa ? [bundle.pa.first_name, bundle.pa.surname].filter(Boolean).join(' ') : null;
+    const totalPay = (Number(job?.driver_pay) || 0) + (Number(job?.passenger_assistant_pay) || 0);
+    const hasActive = sessions.morning?.status === 'active' || sessions.evening?.status === 'active';
 
     const confirmCancel = async () => {
-        if (!job || !id) return;
+        if (!job || !id || !can('cancel_jobs')) return;
         setCancelling(true);
         try {
-            const {
-                data: { session },
-            } = await supabase.auth.getSession();
+            const { data: { session } } = await supabase.auth.getSession();
             const uid = session?.user?.id;
-            if (!uid) throw new Error('Not authenticated.');
             const admin = await getCompanyAdminById(uid);
-            const companyId = admin?.company_id;
-            if (!companyId) throw new Error('No company linked to your account.');
-            await cancelJobById(id, companyId);
+            await cancelJobById(id, admin?.company_id);
             setShowCancelModal(false);
-            setCancelReason('');
             navigate('/subadmin/jobs');
         } catch (e) {
             setError(e?.message || 'Could not cancel job.');
-        } finally {
-            setCancelling(false);
-        }
+        } finally { setCancelling(false); }
     };
 
-    if (loading) {
-        return (
-            <LoadingStatus label="Loading job details" className="space-y-6">
-                <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
-                    <div className="space-y-3">
-                        <ShimmerBlock className="h-8 w-64 max-w-full rounded-md" />
-                        <ShimmerBlock className="h-4 w-48 max-w-full rounded-md" />
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <ShimmerBlock className="h-10 w-28 rounded-lg" />
-                        <ShimmerBlock className="h-10 w-24 rounded-lg" />
-                    </div>
-                </div>
-
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                    <div className="lg:col-span-2 bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
-                        <ShimmerBlock className="h-6 w-80 max-w-full rounded-md mb-6" />
-                        <div className="space-y-4">
-                            {Array.from({ length: 6 }).map((_, i) => (
-                                <div key={`timeline-skeleton-${i}`} className="flex items-start gap-4">
-                                    <ShimmerBlock className="w-7 h-7 shrink-0 mt-1" rounded="rounded-full" />
-                                    <div className="flex-1 space-y-2 min-w-0">
-                                        <ShimmerBlock className="h-4 w-44 max-w-full rounded-md" />
-                                        <ShimmerBlock className="h-3 w-32 rounded-md" />
-                                        <ShimmerBlock className="h-3 w-64 max-w-full rounded-md" />
-                                    </div>
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-
-                    <div className="space-y-6">
-                        <div className="bg-white border border-gray-100 rounded-3xl shadow-sm overflow-hidden">
-                            <ShimmerBlock className="h-48 w-full rounded-none" rounded="rounded-none" />
-                            <div className="p-5 space-y-4">
-                                <ShimmerBlock className="h-4 w-32 rounded-md" />
-                                <ShimmerBlock className="h-11 rounded-xl" rounded="rounded-xl" />
-                                <ShimmerBlock className="h-11 rounded-xl" rounded="rounded-xl" />
-                            </div>
-                        </div>
-                        <div className="bg-white border border-gray-100 rounded-3xl p-5 shadow-sm space-y-4">
-                            <ShimmerBlock className="h-5 w-36 rounded-md" />
-                            <ShimmerBlock className="h-10 rounded-xl" rounded="rounded-xl" />
-                            <ShimmerBlock className="h-10 rounded-xl" rounded="rounded-xl" />
-                            <ShimmerBlock className="h-10 rounded-xl" rounded="rounded-xl" />
-                        </div>
-                    </div>
-                </div>
-            </LoadingStatus>
-        );
-    }
-
-    if (error && !bundle) {
-        return (
-            <div className="space-y-6">
-                <p className="text-[14px] text-red-600 font-medium">{error}</p>
-                <button
-                    type="button"
-                    onClick={() => navigate('/subadmin/jobs')}
-                    className="text-[14px] font-bold text-[#004D6D]"
-                >
-                    Back to jobs
-                </button>
-            </div>
-        );
-    }
+    if (loading) return <LoadingStatus label="Loading job details" className="space-y-6"><ShimmerBlock className="h-8 w-64 rounded-md" /><ShimmerBlock className="h-40 rounded-xl" /></LoadingStatus>;
+    if (error && !bundle) return <div className="space-y-4"><p className="text-[14px] text-red-600 font-medium">{error}</p><button type="button" onClick={() => navigate('/subadmin/jobs')} className="text-[14px] font-bold text-[#004D6D]">Back to jobs</button></div>;
 
     return (
         <div className="space-y-6">
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4">
                 <div>
                     <div className="flex items-center gap-3 flex-wrap">
-                        <h1 className="text-[24px] font-bold text-gray-900">
-                            Job ID: {job ? formatJobDisplayId(job.id) : '—'}
-                        </h1>
-                        {job && (
-                            <span
-                                className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-bold border ${ui.statusColor}`}
-                            >
-                                <div className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
-                                {ui.label}
-                            </span>
-                        )}
+                        <h1 className="text-[24px] font-bold text-gray-900">{job ? formatJobDisplayId(job.id) : '—'}</h1>
+                        {job ? <span className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-[12px] font-bold border ${ui.statusColor}`}><div className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />{ui.label}</span> : null}
                     </div>
-                    <p className="text-[14px] text-gray-500 mt-1 font-medium">
-                        Scheduled for:{' '}
-                        {job ? formatJobDateTimeLabel(job.job_date, job.pickup_time) : '—'}
-                    </p>
+                    <p className="text-[14px] text-gray-500 mt-1 font-medium">{job?.job_name || '—'}{job?.client_school_name ? ` · ${job.client_school_name}` : ''}</p>
+                    {job?.semester_start ? <p className="text-[13px] text-[#004D6D] font-semibold mt-0.5">{formatSemesterDate(job.semester_start)} – {formatSemesterDate(job.semester_end)}</p> : null}
                 </div>
                 <div className="flex items-center gap-3">
-                    {can('cancel_jobs') ? (
-                        <button
-                            type="button"
-                            onClick={() => setShowCancelModal(true)}
-                            disabled={!job || job.status === 'cancelled'}
-                            className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-500 rounded-lg bg-white hover:bg-red-50 text-[13px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                        >
-                            <MdBlock size={18} />
-                            Cancel Job
-                        </button>
-                    ) : null}
-                    {can('edit_jobs') ? (
-                        <button
-                            type="button"
-                            onClick={() => navigate(`/subadmin/jobs/${id}/edit`)}
-                            className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg bg-white hover:bg-gray-50 text-[13px] font-bold transition-all"
-                        >
-                            <MdEdit size={18} />
-                            Edit Job
-                        </button>
-                    ) : null}
+                    {can('cancel_jobs') ? <button type="button" onClick={() => setShowCancelModal(true)} className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-500 rounded-lg bg-white hover:bg-red-50 text-[13px] font-bold"><MdBlock size={18} />Cancel Job</button> : null}
+                    {can('edit_jobs') ? <button type="button" onClick={() => navigate(`/subadmin/jobs/${id}/edit`)} className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg bg-white hover:bg-gray-50 text-[13px] font-bold"><MdEdit size={18} />Edit Job</button> : null}
                 </div>
             </div>
 
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-                <div className="lg:col-span-2">
-                    <div className="bg-white border border-gray-100 rounded-3xl p-6 shadow-sm">
-                        <h2 className="text-[18px] font-bold text-gray-900 mb-4">Job Progress Timeline (Showing dummy time line for now)</h2>
-                        <div className="space-y-0.5">
-                            {timelineItems.map((item, idx) => {
-                                const Icon = item.icon;
-                                const isSuccess = item.state === 'success';
-                                const isActive = item.state === 'active';
-                                const isMuted = item.state === 'muted';
-
-                                const markerClass = isSuccess
-                                    ? 'bg-green-100 text-green-600'
-                                    : isActive
-                                    ? 'bg-[#E7F4F8] text-[#005E84]'
-                                    : 'bg-gray-100 text-gray-400';
-
-                                const titleClass = isMuted ? 'text-gray-500' : 'text-gray-900';
-                                const bodyClass = isMuted ? 'text-gray-400' : 'text-gray-500';
-
-                                return (
-                                    <div key={item.id} className="flex items-start gap-4">
-                                        <div className="relative flex flex-col items-center">
-                                            <div className={`w-7 h-7 rounded-full flex items-center justify-center ${markerClass}`}>
-                                                <Icon size={15} />
-                                            </div>
-                                            {idx < timelineItems.length - 1 && (
-                                                <div className="w-px h-10 bg-gray-200 mt-1" />
-                                            )}
-                                        </div>
-                                        <div className="pb-4 pt-0.5">
-                                            <p className={`text-[21px] font-bold leading-none ${titleClass}`}>{item.title}</p>
-                                            <p className={`text-[12px] font-medium mt-1 ${bodyClass}`}>{item.time}</p>
-                                            {item.note ? (
-                                                <p className={`text-[13px] mt-1.5 font-medium ${bodyClass}`}>{item.note}</p>
-                                            ) : null}
-                                        </div>
-                                    </div>
-                                );
-                            })}
+                <div className="lg:col-span-2 space-y-5">
+                    <div className="bg-white border border-gray-100 rounded-2xl shadow-sm overflow-hidden">
+                        <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
+                            <div className="flex items-center gap-2"><div className={`w-2 h-2 rounded-full shrink-0 ${hasActive ? 'bg-green-500 animate-pulse' : 'bg-gray-300'}`} /><h2 className="text-[15px] font-bold text-gray-900">{sessions.source === 'yesterday' ? "Yesterday's Sessions" : "Today's Sessions"}</h2></div>
+                            <button type="button" onClick={loadSessions} disabled={sessionsLoading} className="p-1.5 text-gray-400 hover:text-[#004D6D]"><MdRefresh size={16} className={sessionsLoading ? 'animate-spin' : ''} /></button>
                         </div>
+                        <div className="p-5">{sessionsLoading ? <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><ShimmerBlock className="h-36 rounded-xl" /><ShimmerBlock className="h-36 rounded-xl" /></div> : <div className="grid grid-cols-1 md:grid-cols-2 gap-4"><SessionCard session={sessions.morning} direction="outbound" jobHasDirection={Boolean(job?.has_outbound)} sessionPassengers={morningPax} paxLoading={paxLoading} /><SessionCard session={sessions.evening} direction="inbound" jobHasDirection={Boolean(job?.has_inbound)} sessionPassengers={eveningPax} paxLoading={paxLoading} /></div>}</div>
+                    </div>
+                    <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                        <h2 className="text-[15px] font-bold text-gray-900 mb-4">Job Overview</h2>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+                            <div><InfoRow label="City" value={job?.city || '—'} /><InfoRow label="Job Type" value={job?.job_type || '—'} /></div>
+                            <div><InfoRow label="Status" value={ui.label || '—'} /><InfoRow label="Driver Approval" value={job?.driver_approval_status || 'N/A'} /></div>
+                        </div>
+                    </div>
+                    <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
+                        <div className="flex items-center justify-between mb-4"><h2 className="text-[15px] font-bold text-gray-900">Passengers</h2><span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#004D6D] bg-[#004D6D]/5 px-2.5 py-1 rounded-full"><MdPeopleAlt size={14} />{passengers.length}</span></div>
+                        {passengers.length === 0 ? <p className="text-[13px] text-gray-400 italic">No passengers scheduled on this job yet.</p> : <div className="space-y-2">{passengers.map((p) => <div key={p.id} onClick={() => navigate(`/subadmin/users/passengers/${p.id}`)} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50/50 transition-colors cursor-pointer"><img src={`https://i.pravatar.cc/150?u=${p.id}`} alt={passengerDisplayName(p)} className="w-9 h-9 rounded-full object-cover border border-gray-100 shrink-0" /><div className="flex-1 min-w-0"><div className="flex items-center gap-2 flex-wrap"><span className="text-[13px] font-bold text-gray-900">{passengerDisplayName(p)}</span>{p.wheelchair_required ? <MdAccessible size={14} className="text-blue-500" /> : null}</div><div className="mt-1 flex gap-3">{p.primary_pickup_postcode ? <div className="flex items-center gap-1 text-[11px] text-gray-400"><MdHome size={11} />{p.primary_pickup_postcode}</div> : null}{p.educational_site_postcode ? <div className="flex items-center gap-1 text-[11px] text-gray-400"><MdSchool size={11} />{p.educational_site_postcode}</div> : null}</div></div></div>)}</div>}
                     </div>
                 </div>
-
-                <div className="space-y-6">
-                    <div className="bg-white border border-gray-100 rounded-3xl shadow-sm overflow-hidden">
-                        <div className="h-48 bg-[#E5E7EB] relative overflow-hidden flex items-center justify-center">
-                            <svg className="absolute inset-0 w-full h-full opacity-60" viewBox="0 0 400 200" preserveAspectRatio="none">
-                                <path d="M -50 150 L 150 120 L 250 80 L 450 20" stroke="white" strokeWidth="8" fill="none" />
-                                <path d="M 50 -20 L 100 80 L 200 150 L 300 220" stroke="white" strokeWidth="6" fill="none" />
-                                <path d="M 150 120 L 200 150" stroke="white" strokeWidth="10" fill="none" strokeLinecap="round" />
-                                <path
-                                    d="M 120 150 C 150 150 180 130 200 110 C 230 80 280 90 310 50"
-                                    stroke="#004D6D"
-                                    strokeWidth="4"
-                                    fill="none"
-                                    strokeLinecap="round"
-                                    strokeLinejoin="round"
-                                />
-                            </svg>
-                            <div
-                                className="absolute w-3 h-3 bg-[#004D6D] border-2 border-white rounded-full shadow-md"
-                                style={{ bottom: '45px', left: '115px' }}
-                            />
-                            <MdLocationOn className="absolute text-orange-500 drop-shadow-md" style={{ bottom: '75px', left: '190px' }} size={24} />
-                            <MdLocationOn className="absolute text-orange-500 drop-shadow-md" style={{ bottom: '95px', left: '265px' }} size={24} />
-                            <MdLocationOn className="absolute text-orange-500 drop-shadow-md" style={{ top: '35px', left: '300px' }} size={24} />
-                        </div>
-
-                        <div className="p-5 space-y-5">
-                            <div className="flex items-start gap-3">
-                                <div className="w-4 h-4 rounded-full border-4 border-[#004D6D] bg-white mt-0.5 shrink-0 shadow-sm" />
-                                <div>
-                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Pickup</p>
-                                    <p className="text-[13px] font-bold text-gray-900 mt-1">{pickupLine}</p>
-                                </div>
-                            </div>
-                            <div className="flex items-start gap-3">
-                                <MdLocationOn className="text-orange-500 shrink-0 mt-0.5" size={18} />
-                                <div>
-                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Drop-off</p>
-                                    <p className="text-[13px] font-bold text-gray-900 mt-1">{dropoffLine}</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-
-                    <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-5">
-                        <h2 className="text-[14px] font-bold text-gray-900 mb-4">Assigned Driver</h2>
-                        {driverName ? (
-                            <div className="flex items-center gap-3">
-                                <img
-                                    src={defaultAvatar(bundle.driver.id)}
-                                    className="w-10 h-10 rounded-full object-cover border border-gray-100"
-                                    alt=""
-                                />
-                                <div>
-                                    <p className="text-[14px] font-bold text-gray-900">{driverName}</p>
-                                    <p className="text-[12px] text-gray-500 font-medium mt-0.5">{vehicleLabel || '—'}</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="text-[13px] text-gray-500 font-medium">No driver assigned</p>
-                        )}
-                    </div>
-
-                    <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-5">
-                        <h2 className="text-[14px] font-bold text-gray-900 mb-4">Passenger Assistant</h2>
-                        {paName ? (
-                            <div className="flex items-center gap-3">
-                                <img
-                                    src={bundle.pa.profile_picture_url || defaultAvatar(bundle.pa.id)}
-                                    className="w-10 h-10 rounded-full object-cover border border-gray-100"
-                                    alt=""
-                                />
-                                <div>
-                                    <p className="text-[14px] font-bold text-gray-900">{paName}</p>
-                                    <p className="text-[12px] text-gray-500 font-medium mt-0.5">Passenger Assistant</p>
-                                </div>
-                            </div>
-                        ) : (
-                            <p className="text-[13px] text-gray-500 font-medium">No passenger assistant assigned</p>
-                        )}
-                    </div>
-
-                    <div className="bg-white border border-gray-100 rounded-3xl shadow-sm p-5 border-t-4 border-t-green-500">
-                        <h2 className="text-[14px] font-bold text-gray-900 mb-5">Compensation</h2>
-                        <div className="space-y-3.5">
-                            <div className="flex items-center justify-between">
-                                <p className="text-[13px] text-gray-500 font-medium tracking-tight">Total Amount</p>
-                                <p className="text-[14px] font-bold text-green-600">{totalPayDisplay}</p>
-                            </div>
-                            <div className="flex items-center justify-between">
-                                <p className="text-[13px] text-gray-500 font-medium tracking-tight">Payment Status</p>
-                                <p className="text-[13px] font-bold text-orange-500">{paymentLabel}</p>
-                            </div>
-                        </div>
-                    </div>
+                <div className="space-y-5">
+                    <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 mb-4"><MdCalendarToday size={16} className="text-[#004D6D]" /><h2 className="text-[14px] font-bold text-gray-900">Semester</h2></div><div className="space-y-2.5"><div className="flex justify-between text-[13px]"><span className="text-gray-500">Start</span><span className="font-bold text-gray-800">{formatSemesterDate(job?.semester_start)}</span></div><div className="flex justify-between text-[13px]"><span className="text-gray-500">End</span><span className="font-bold text-gray-800">{formatSemesterDate(job?.semester_end)}</span></div></div></div>
+                    <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm"><h2 className="text-[14px] font-bold text-gray-900 mb-4">Assigned Driver</h2>{driverName ? <div className="flex items-center gap-3"><img src={defaultAvatar(bundle.driver.id)} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" /><div><p className="text-[14px] font-bold text-gray-900">{driverName}</p><p className="text-[12px] text-gray-500 mt-0.5">{vehicleLabel || '—'}</p></div></div> : <p className="text-[13px] text-gray-500">No driver assigned</p>}</div>
+                    <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm"><h2 className="text-[14px] font-bold text-gray-900 mb-4">Passenger Assistant</h2>{paName ? <div className="flex items-center gap-3"><img src={bundle.pa.profile_picture_url || defaultAvatar(bundle.pa.id)} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" /><div><p className="text-[14px] font-bold text-gray-900">{paName}</p><p className="text-[12px] text-gray-500 mt-0.5">Passenger Assistant</p></div></div> : <p className="text-[13px] text-gray-500">No passenger assistant assigned</p>}</div>
+                    <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm border-t-4 border-t-green-500"><h2 className="text-[14px] font-bold text-gray-900 mb-4">Compensation</h2><InfoRow label="Total" value={totalPay > 0 ? `£${totalPay.toFixed(2)}` : '—'} valueClass="text-green-600" /></div>
                 </div>
             </div>
 
-            {showCancelModal && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !cancelling && setShowCancelModal(false)} />
-                    <div className="relative w-full max-w-110 bg-white rounded-3xl shadow-2xl p-8 text-center overflow-hidden">
-                        <div className="flex items-center justify-center mb-6">
-                            <MdWarning className="text-red-500" size={28} />
-                            <h2 className="text-[20px] font-bold text-gray-900 ml-2">Cancel Job Confirmation</h2>
-                        </div>
-                        <p className="text-[14px] text-gray-500 mb-6 font-medium">
-                            Are you sure you want to cancel {job ? formatJobDisplayId(job.id) : 'this job'}? This will mark
-                            the job as cancelled.
-                        </p>
-                        <div className="text-left mb-8">
-                            <label className="block text-[13px] font-bold text-gray-900 mb-2">Reason for Cancellation*</label>
-                            <textarea
-                                value={cancelReason}
-                                onChange={(e) => setCancelReason(e.target.value)}
-                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#004D6D]/10 focus:border-[#004D6D] resize-none h-28"
-                                placeholder="e.g., Client requested cancellation, vehicle maintenance..."
-                            />
-                        </div>
-                        <div className="flex items-center gap-4">
-                            <button
-                                type="button"
-                                disabled={cancelling || !cancelReason.trim()}
-                                onClick={confirmCancel}
-                                className="flex-1 px-4 py-3 bg-red-500 text-white rounded-xl text-[14px] font-bold hover:bg-red-600 transition-colors shadow-sm disabled:opacity-50"
-                            >
-                                {cancelling ? 'Cancelling…' : 'Yes, Cancel Job'}
-                            </button>
-                            <button
-                                type="button"
-                                disabled={cancelling}
-                                onClick={() => setShowCancelModal(false)}
-                                className="flex-1 px-4 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl text-[14px] font-bold hover:bg-gray-50 transition-colors"
-                            >
-                                Keep Job
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {showCancelModal ? <div className="fixed inset-0 z-50 flex items-center justify-center px-4"><div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !cancelling && setShowCancelModal(false)} /><div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl p-8 text-center"><div className="flex items-center justify-center gap-2 mb-4"><MdWarning className="text-red-500" size={24} /><h2 className="text-[18px] font-bold text-gray-900">Cancel Job</h2></div><p className="text-[13px] text-gray-500 mb-5">Are you sure you want to cancel <span className="font-bold text-gray-800">{job ? formatJobDisplayId(job.id) : 'this job'}</span>?</p><div className="text-left mb-6"><label className="block text-[12px] font-bold text-gray-700 mb-1.5">Reason <span className="text-red-500">*</span></label><textarea value={cancelReason} onChange={(e) => setCancelReason(e.target.value)} className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-[13px] resize-none h-24" /></div><div className="flex gap-3"><button type="button" disabled={cancelling || !cancelReason.trim()} onClick={confirmCancel} className="flex-1 py-3 bg-red-500 text-white rounded-xl text-[13px] font-bold disabled:opacity-50">{cancelling ? 'Cancelling…' : 'Yes, Cancel'}</button><button type="button" disabled={cancelling} onClick={() => setShowCancelModal(false)} className="flex-1 py-3 bg-white border border-gray-200 text-gray-700 rounded-xl text-[13px] font-bold">Keep Job</button></div></div></div> : null}
         </div>
     );
 };
