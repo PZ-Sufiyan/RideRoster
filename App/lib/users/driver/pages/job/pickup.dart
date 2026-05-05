@@ -28,11 +28,14 @@ class PickupPage extends StatelessWidget {
               children: [
                 _buildAppBar(context, job?.routeNumber ?? ''),
                 _StatusBar(completed: completed, total: total),
-                // ── Tracking indicator banner ─────────────────────────────
+                // Tracking banner — shows live distance while navigating
                 if (provider.isTracking)
                   _TrackingBanner(
                     distanceMeters: provider.currentDistanceMeters,
                   ),
+                // Arrival banner — shown once driver enters threshold radius
+                if (!provider.isTracking && provider.hasArrivedAtPickup)
+                  _ArrivalBanner(locationName: active?.locationName ?? ''),
                 Expanded(
                   child: job == null || active == null
                       ? const Center(child: CircularProgressIndicator())
@@ -64,7 +67,10 @@ class PickupPage extends StatelessWidget {
                                 ],
                               ),
                               SizedBox(height: SizeConfig.r(10)),
-                              _ActiveStopCard(stop: active),
+                              _ActiveStopCard(
+                                stop: active,
+                                hasArrived: provider.hasArrivedAtPickup,
+                              ),
                               SizedBox(height: SizeConfig.r(20)),
                               if (upcoming.isNotEmpty) ...[
                                 Text(
@@ -183,7 +189,7 @@ class PickupPage extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Tracking Banner
+// Tracking Banner — live distance while navigating to stop
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _TrackingBanner extends StatelessWidget {
@@ -192,7 +198,6 @@ class _TrackingBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     final label = distanceMeters != null
         ? '${distanceMeters!.toStringAsFixed(0)} m away — tracking active'
         : 'Tracking your location…';
@@ -227,6 +232,48 @@ class _TrackingBanner extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Arrival Banner — shown when driver enters the threshold radius.
+// Tracking has already stopped at this point. Driver must still confirm.
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ArrivalBanner extends StatelessWidget {
+  final String locationName;
+  const _ArrivalBanner({required this.locationName});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: AppColors.success.withValues(alpha: 0.12),
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.hPad,
+        vertical: SizeConfig.r(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_outline,
+            size: SizeConfig.r(16),
+            color: AppColors.success,
+          ),
+          SizedBox(width: SizeConfig.r(8)),
+          Expanded(
+            child: Text(
+              'You\'ve arrived at ${locationName.isNotEmpty ? locationName : 'the stop'}. Tap "Pickup complete" to confirm.',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.success,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Status Bar
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -237,7 +284,6 @@ class _StatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return Container(
       width: double.infinity,
       color: const Color(0xFF0284C7),
@@ -284,21 +330,32 @@ class _StatusBar extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Active Stop Card — Navigate button WIRED
+// Active Stop Card
+//
+// [hasArrived] — when true, the "Pickup complete" button turns green and
+// pulses slightly to draw the driver's attention. The button was always
+// tappable; this just makes the arrived state visually clear.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ActiveStopCard extends StatelessWidget {
   final PickupStop stop;
-  const _ActiveStopCard({required this.stop});
+  final bool hasArrived;
+  const _ActiveStopCard({required this.stop, required this.hasArrived});
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return Container(
       padding: EdgeInsets.all(SizeConfig.r(16)),
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+        // Subtle green border once arrived to reinforce the state
+        border: hasArrived
+            ? Border.all(
+                color: AppColors.success.withValues(alpha: 0.5),
+                width: 1.5,
+              )
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -309,19 +366,32 @@ class _ActiveStopCard extends StatelessWidget {
               Container(
                 width: SizeConfig.r(32),
                 height: SizeConfig.r(32),
-                decoration: const BoxDecoration(
-                  color: Color(0xFF0284C7),
+                decoration: BoxDecoration(
+                  // Green circle when arrived, blue otherwise
+                  color: hasArrived
+                      ? AppColors.success
+                      : const Color(0xFF0284C7),
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
-                child: Text(
-                  '${stop.stopNumber}',
-                  style: TextStyle(
-                    color: Colors.white,
-                    fontSize: SizeConfig.sp(14),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+                // Show stop number when not arrived, checkmark when arrived
+                foregroundDecoration: hasArrived
+                    ? null
+                    : BoxDecoration(shape: BoxShape.circle),
+                child: hasArrived
+                    ? Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: SizeConfig.r(18),
+                      )
+                    : Text(
+                        '${stop.stopNumber}',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: SizeConfig.sp(14),
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
               ),
               SizedBox(width: SizeConfig.r(12)),
               Expanded(
@@ -334,6 +404,25 @@ class _ActiveStopCard extends StatelessWidget {
                   ),
                 ),
               ),
+              if (hasArrived)
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SizeConfig.r(8),
+                    vertical: SizeConfig.r(3),
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppColors.success.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                  child: Text(
+                    'Arrived',
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(11),
+                      fontWeight: FontWeight.w600,
+                      color: AppColors.success,
+                    ),
+                  ),
+                ),
             ],
           ),
           SizedBox(height: SizeConfig.r(10)),
@@ -380,22 +469,27 @@ class _ActiveStopCard extends StatelessWidget {
           SizedBox(height: SizeConfig.r(16)),
           Row(
             children: [
-              // ── Navigate button — WIRED ──────────────────────────────────
+              // Navigate button — disabled once arrived (already there)
               Expanded(
                 child: AppButton(
-                  label: stop.hasCoordinates ? 'Navigate' : 'No GPS',
+                  label: hasArrived
+                      ? 'Navigated'
+                      : stop.hasCoordinates
+                      ? 'Navigate'
+                      : 'No GPS',
                   height: SizeConfig.r(44),
                   fontSize: SizeConfig.sp(13),
                   fontWeight: FontWeight.w600,
                   borderRadius: SizeConfig.radiusLG,
-                  onPressed: stop.hasCoordinates
-                      ? () => context
+                  onPressed: (hasArrived || !stop.hasCoordinates)
+                      ? null
+                      : () => context
                             .read<JobProvider>()
-                            .navigateToCurrentPickup()
-                      : null,
+                            .navigateToCurrentPickup(),
                 ),
               ),
               SizedBox(width: SizeConfig.r(10)),
+              // Pickup complete — always tappable, highlighted green on arrival
               Expanded(
                 child: ElevatedButton(
                   onPressed: () async {
@@ -410,7 +504,10 @@ class _ActiveStopCard extends StatelessWidget {
                     }
                   },
                   style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.success,
+                    // Green when arrived (driver should tap now), blue-grey otherwise
+                    backgroundColor: hasArrived
+                        ? AppColors.success
+                        : const Color(0xFF0284C7),
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(SizeConfig.radius),
@@ -436,7 +533,7 @@ class _ActiveStopCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Upcoming Stop Card (unchanged)
+// Upcoming Stop Card
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _UpcomingStopCard extends StatelessWidget {
@@ -456,7 +553,6 @@ class _UpcomingStopCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return Container(
       padding: EdgeInsets.all(SizeConfig.r(14)),
       decoration: BoxDecoration(
@@ -548,7 +644,7 @@ class _UpcomingStopCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Bottom Bar (unchanged)
+// Bottom Bar
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomBar extends StatelessWidget {
@@ -557,7 +653,6 @@ class _BottomBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return Container(
       padding: EdgeInsets.fromLTRB(
         SizeConfig.hPad,

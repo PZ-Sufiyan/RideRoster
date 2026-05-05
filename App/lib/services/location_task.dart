@@ -5,8 +5,19 @@ import 'package:geolocator/geolocator.dart';
 /// Tracks driver location in the background and fires [onArrived] when the
 /// driver is within [thresholdMeters] of the target coordinates.
 ///
-/// Designed to work with any state management (ChangeNotifier, Riverpod, etc.)
-/// via a plain callback — no direct Provider/Riverpod dependency.
+/// IMPORTANT — arrival behaviour:
+///   [onArrived] is called once when the driver enters the threshold radius.
+///   It is the caller's responsibility to decide what happens on arrival.
+///
+///   For PICKUPS: the provider shows an arrival notification and stops
+///   tracking — the driver must still tap "Pickup complete" manually.
+///   Auto-completing a pickup without confirmation risks wrong pickups
+///   being recorded (GPS drift, driver passing nearby, etc.).
+///
+///   For DROPOFFS: same pattern — notify arrival, driver confirms.
+///
+/// [onDistanceUpdate] is called on every GPS tick so the UI can display
+/// "X m away" to help the driver know they are approaching.
 class BackgroundLocationTask {
   static StreamSubscription<Position>? _sub;
 
@@ -15,15 +26,17 @@ class BackgroundLocationTask {
 
   /// Starts tracking toward [targetLat]/[targetLng].
   ///
-  /// [onArrived]        — called once when driver arrives (≤ threshold).
-  /// [onDistanceUpdate] — called on every GPS tick with current distance in meters.
-  /// [thresholdMeters]  — arrival radius (default 50 m).
+  /// [onArrived]        — called once when driver is within [thresholdMeters].
+  ///                      Does NOT auto-complete anything — caller decides.
+  /// [onDistanceUpdate] — called on every GPS tick with distance in meters.
+  /// [thresholdMeters]  — arrival radius (default 30 m; wider than 10 m to
+  ///                      account for urban GPS accuracy variance).
   static Future<void> start({
     required double targetLat,
     required double targetLng,
     required Future<void> Function() onArrived,
     void Function(double distanceMeters)? onDistanceUpdate,
-    double thresholdMeters = 10,
+    double thresholdMeters = 30,
   }) async {
     // Guard: don't start a second stream if already running.
     if (_sub != null) await stop();
@@ -48,12 +61,14 @@ class BackgroundLocationTask {
             targetLng,
           );
 
-          // Report distance to provider for optional UI display.
+          // Report distance to provider for live "X m away" UI display.
           onDistanceUpdate?.call(distance);
 
           if (distance <= thresholdMeters) {
-            // Cancel FIRST to prevent duplicate callbacks.
+            // Cancel FIRST to prevent duplicate callbacks on subsequent ticks.
             await stop();
+            // Notify caller — caller decides what to do (show notification,
+            // update UI state, etc.) but does NOT auto-mark anything complete.
             await onArrived();
           }
         });
@@ -64,7 +79,6 @@ class BackgroundLocationTask {
     await _sub?.cancel();
     _sub = null;
 
-    // Optionally stop the background service when no longer needed.
     final service = FlutterBackgroundService();
     if (await service.isRunning()) {
       service.invoke('stopService');

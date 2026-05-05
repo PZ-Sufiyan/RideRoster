@@ -23,6 +23,17 @@ import '../services/notification_service.dart';
 ///   - Outbound: markDropoffAsCompleted() calls updateDropoffStatusForSchool()
 ///     which bulk-updates ALL passengers sharing the same school address in one
 ///     query — because the whole group arrives at the school simultaneously.
+///
+/// Arrival behaviour (pickup and dropoff tracking):
+///   When the driver enters the threshold radius, tracking stops and a
+///   notification is shown. The driver must still tap the action button
+///   ("Pickup complete" / "Arrived at Drop-off") to confirm.
+///   Auto-completing on arrival was removed because:
+///     - GPS accuracy in urban areas can drift ±20–50 m.
+///     - Drivers sometimes pass close to an address without stopping.
+///     - A wrongly auto-confirmed pickup is difficult to undo.
+///   [hasArrivedAtPickup] and [hasArrivedAtDropoff] expose arrival state
+///   so the UI can highlight the confirm button or show a banner.
 class JobProvider extends ChangeNotifier {
   final JobService _jobService = JobService();
   final RealtimeService _realtimeService = RealtimeService();
@@ -39,6 +50,14 @@ class JobProvider extends ChangeNotifier {
   int _activePickupIndex = 0;
   bool _isTracking = false;
   double? _currentDistanceMeters;
+
+  /// True after the driver has entered the pickup threshold radius.
+  /// Cleared when tracking starts for the next stop or on job reset.
+  bool _hasArrivedAtPickup = false;
+
+  /// True after the driver has entered the dropoff threshold radius.
+  /// Cleared when tracking starts for a new dropoff or on job reset.
+  bool _hasArrivedAtDropoff = false;
 
   // Realtime stream subscriptions
   StreamSubscription<Map<String, dynamic>>? _jobSub;
@@ -63,6 +82,14 @@ class JobProvider extends ChangeNotifier {
   double? get currentDistanceMeters => _currentDistanceMeters;
   bool get sessionStarted => _job != null && _job!.sessionId.isNotEmpty;
 
+  /// True once the driver has entered the arrival radius for the current pickup.
+  /// UI can use this to highlight the "Pickup complete" button.
+  bool get hasArrivedAtPickup => _hasArrivedAtPickup;
+
+  /// True once the driver has entered the arrival radius for the current dropoff.
+  /// UI can use this to highlight the "Arrived at Drop-off" button.
+  bool get hasArrivedAtDropoff => _hasArrivedAtDropoff;
+
   PickupStop? get activePickup {
     if (_job == null || _job!.pickups.isEmpty) return null;
     if (_activePickupIndex < 0 || _activePickupIndex >= _job!.pickups.length) {
@@ -86,43 +113,32 @@ class JobProvider extends ChangeNotifier {
   // ── Realtime setup ────────────────────────────────────────────────────────
 
   void _listenToRealtime() {
-    // Job changes → reload everything (approval, status, assignment)
     _jobSub = _realtimeService.onJobChange.listen((_) {
       _scheduleReload();
     });
 
-    // Session changes → reload (session status, started_at, completed_at)
     _sessionSub = _realtimeService.onSessionChange.listen((_) {
       _scheduleReload();
     });
 
-    // Passenger changes → reload only if it's for the current session
     _passengerSub = _realtimeService.onPassengerChange.listen((record) {
       final sessionId = record['session_id']?.toString() ?? '';
       final currentSessionId = _job?.sessionId ?? '';
-
-      // Only reload if this change belongs to our active session
       if (currentSessionId.isNotEmpty && sessionId == currentSessionId) {
         _scheduleReload();
       }
     });
   }
 
-  /// Debounces rapid bursts of realtime events into a single reload.
-  /// e.g. if 5 passengers are inserted at once, we reload once after 400ms.
   void _scheduleReload() {
     _reloadDebounce?.cancel();
     _reloadDebounce = Timer(const Duration(milliseconds: 400), () {
-      // Always reload on realtime — skipping while isLoading dropped events
-      // during the initial dashboard fetch.
       loadJob(silent: true);
     });
   }
 
   // ── Load ──────────────────────────────────────────────────────────────────
 
-  /// [silent] = true skips the loading spinner — used for background reloads
-  /// triggered by realtime events so the UI doesn't flash.
   Future<void> loadJob({bool silent = false}) async {
     if (!silent) {
       _isLoading = true;
@@ -133,7 +149,6 @@ class JobProvider extends ChangeNotifier {
     try {
       final updatedJob = await _jobService.fetchCurrentJob();
 
-      // Preserve active pickup index if the same job is reloaded
       final sameJob =
           updatedJob != null &&
           _job != null &&
@@ -143,10 +158,8 @@ class JobProvider extends ChangeNotifier {
 
       if (_job != null) {
         if (!sameJob) {
-          // Different job or first load — reset to first pending
           _setActiveToFirstPending();
         } else {
-          // Same job — keep the current index but clamp to valid range
           _activePickupIndex = _activePickupIndex.clamp(
             0,
             _job!.pickups.length,
@@ -210,6 +223,10 @@ class JobProvider extends ChangeNotifier {
     );
   }
 
+  /// Launches Google Maps to the current pickup stop and starts proximity
+  /// tracking. When the driver enters the arrival radius, tracking stops and
+  /// a notification fires — but the pickup is NOT auto-completed.
+  /// The driver must tap "Pickup complete" in the UI to confirm.
   Future<void> navigateToCurrentPickup() async {
     final stop = activePickup;
     if (stop == null) return;
@@ -224,10 +241,15 @@ class JobProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _hasArrivedAtPickup = false;
     await _navService.openSingleStop(lat: stop.lat!, lng: stop.lng!);
     _startPickupTracking(stop);
   }
 
+  /// Launches Google Maps to the current dropoff stop and starts proximity
+  /// tracking. When the driver enters the arrival radius, tracking stops and
+  /// a notification fires — but the dropoff is NOT auto-completed.
+  /// The driver must tap the confirm button in complete_job_page.
   Future<void> navigateToDropoff() async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
@@ -242,6 +264,7 @@ class JobProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
+    _hasArrivedAtDropoff = false;
     await _navService.openSingleStop(lat: dropoff.lat!, lng: dropoff.lng!);
     _startDropoffTracking(dropoff);
   }
@@ -262,6 +285,7 @@ class JobProvider extends ChangeNotifier {
       await _jobService.updatePickupStatus(stop.id, PickupStatus.completed);
       // Optimistic update — realtime will confirm
       _job!.pickups[_activePickupIndex].status = PickupStatus.completed;
+      _hasArrivedAtPickup = false;
       _error = null;
       notifyListeners();
     } catch (e) {
@@ -283,6 +307,7 @@ class JobProvider extends ChangeNotifier {
       }
       await _jobService.updatePickupStatus(stop.id, PickupStatus.notPicked);
       _job!.pickups[_activePickupIndex].status = PickupStatus.notPicked;
+      _hasArrivedAtPickup = false;
       _error = null;
       notifyListeners();
     } catch (e) {
@@ -295,28 +320,25 @@ class JobProvider extends ChangeNotifier {
   ///
   /// - Inbound: updates a single job_session_passengers row by ID.
   /// - Outbound: bulk-updates ALL passengers sharing the same school address
-  ///   via updateDropoffStatusForSchool() — because the entire group is
-  ///   dropped off at the same school simultaneously.
+  ///   via updateDropoffStatusForSchool().
   Future<void> markDropoffAsCompleted() async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
 
     try {
       if (_job!.isInbound) {
-        // Inbound: single passenger row update
         await _jobService.updateDropoffStatus(
           dropoff.id,
           DropoffStatus.completed,
         );
       } else {
-        // Outbound: bulk update all passengers going to this school
         await _jobService.updateDropoffStatusForSchool(
           sessionId: _job!.sessionId,
           schoolAddress: dropoff.address,
         );
       }
-      // Optimistic update — realtime will confirm
       dropoff.status = DropoffStatus.completed;
+      _hasArrivedAtDropoff = false;
       _error = null;
       notifyListeners();
     } catch (e) {
@@ -331,6 +353,7 @@ class JobProvider extends ChangeNotifier {
     BackgroundLocationTask.stop();
     _isTracking = false;
     _currentDistanceMeters = null;
+    _hasArrivedAtPickup = false;
 
     for (int i = _activePickupIndex + 1; i < _job!.pickups.length; i++) {
       if (_job!.pickups[i].status == PickupStatus.pending) {
@@ -375,14 +398,24 @@ class JobProvider extends ChangeNotifier {
     _activePickupIndex = 0;
     _isTracking = false;
     _currentDistanceMeters = null;
+    _hasArrivedAtPickup = false;
+    _hasArrivedAtDropoff = false;
     notifyListeners();
   }
 
   // ── Background tracking ───────────────────────────────────────────────────
+  //
+  // Both _startPickupTracking and _startDropoffTracking follow the same
+  // pattern:
+  //   1. Stream GPS ticks and update _currentDistanceMeters for live display.
+  //   2. When threshold is reached: stop tracking, fire a notification, set
+  //      the arrived flag so the UI can highlight the confirm button.
+  //   3. Do NOT call any mark*AsCompleted method — the driver confirms manually.
 
   void _startPickupTracking(PickupStop stop) {
     _isTracking = true;
     _currentDistanceMeters = null;
+    _hasArrivedAtPickup = false;
     notifyListeners();
 
     BackgroundLocationTask.start(
@@ -393,13 +426,16 @@ class JobProvider extends ChangeNotifier {
         notifyListeners();
       },
       onArrived: () async {
-        await markCurrentAsCompleted();
+        // Stop tracking — driver is at the stop.
+        // Show a notification so they know even if the app is in the background.
+        // Do NOT auto-complete: driver taps "Pickup complete" to confirm.
+        _isTracking = false;
+        _currentDistanceMeters = null;
+        _hasArrivedAtPickup = true;
         await NotificationService().showArrivalNotification(
           stop.locationName,
           isPickup: true,
         );
-        _isTracking = false;
-        _currentDistanceMeters = null;
         notifyListeners();
       },
     );
@@ -408,6 +444,7 @@ class JobProvider extends ChangeNotifier {
   void _startDropoffTracking(DropoffStop dropoff) {
     _isTracking = true;
     _currentDistanceMeters = null;
+    _hasArrivedAtDropoff = false;
     notifyListeners();
 
     BackgroundLocationTask.start(
@@ -418,13 +455,15 @@ class JobProvider extends ChangeNotifier {
         notifyListeners();
       },
       onArrived: () async {
-        await markDropoffAsCompleted();
+        // Stop tracking — driver is at the dropoff location.
+        // Show a notification. Driver taps the confirm button to record dropoff.
+        _isTracking = false;
+        _currentDistanceMeters = null;
+        _hasArrivedAtDropoff = true;
         await NotificationService().showArrivalNotification(
           dropoff.address,
           isPickup: false,
         );
-        _isTracking = false;
-        _currentDistanceMeters = null;
         notifyListeners();
       },
     );
