@@ -7,7 +7,10 @@ import '../users/driver/models/job_model.dart';
 ///
 /// OUTBOUND (morning — home → school):
 ///   Pickups  = passenger home addresses (different per passenger)
-///   Dropoffs = school (one shared stop, from passenger.educational_site_*)
+///   Dropoffs = one DropoffStop per unique school address.
+///              Multiple passengers may share the same school — they are
+///              grouped and the stop is completed by bulk-updating all
+///              job_session_passengers rows with that dropoff_address.
 ///
 /// INBOUND (evening — school → home):
 ///   Pickups  = school address (same for all, from passenger_schedules.pickup_address)
@@ -215,41 +218,79 @@ class JobService {
 
     // ── Build DropoffStop list ────────────────────────────────────────────
     //
-    // OUTBOUND: one shared school dropoff (from passenger profile)
-    // INBOUND:  one dropoff per passenger (home address from schedule)
+    // OUTBOUND: one DropoffStop per unique school address.
+    //           Multiple passengers may share one school — grouped here.
+    //           DropoffStop.passengerIds holds all passenger IDs for that school
+    //           so the provider can bulk-mark them dropped_off in one query.
+    //
+    // INBOUND:  one DropoffStop per passenger (home address from schedule).
 
     final dropoffs = <DropoffStop>[];
 
     if (direction == 'outbound') {
-      // One shared school dropoff
-      final firstProfile = passengerIds.isNotEmpty
-          ? profileMap[passengerIds.first]
-          : null;
-      final schoolAddress = (firstProfile?['educational_site_address'] ?? '')
-          .toString();
-      final schoolLat = _asDouble(firstProfile?['educational_site_latitude']);
-      final schoolLng = _asDouble(firstProfile?['educational_site_longitude']);
-      final dropoffTime = _formatTime(
-        firstProfile?['educational_site_dropoff_time'],
-      );
-      final dropoffStopId = passengerRows.isNotEmpty
-          ? (passengerRows.first['id'] ?? '').toString()
-          : '';
+      // Group passengers by educational_site_address
+      // Preserve insertion order (stop_order of first passenger per school)
+      final schoolOrder = <String>[];
+      // school address → list of passenger session rows
+      final schoolPassengerRows = <String, List<Map<String, dynamic>>>{};
+      // school address → meta (lat, lng, dropoff_time)
+      final schoolMeta = <String, Map<String, dynamic>>{};
 
-      if (schoolAddress.isNotEmpty) {
+      for (final row in passengerRows) {
+        final passengerId = (row['passenger_id'] ?? '').toString();
+        final profile = profileMap[passengerId];
+        if (profile == null) continue;
+
+        final schoolAddress = (profile['educational_site_address'] ?? '')
+            .toString();
+        if (schoolAddress.isEmpty) continue;
+
+        if (!schoolPassengerRows.containsKey(schoolAddress)) {
+          schoolOrder.add(schoolAddress);
+          schoolPassengerRows[schoolAddress] = [];
+          schoolMeta[schoolAddress] = {
+            'lat': _asDouble(profile['educational_site_latitude']),
+            'lng': _asDouble(profile['educational_site_longitude']),
+            'dropoff_time': profile['educational_site_dropoff_time'],
+          };
+        }
+        schoolPassengerRows[schoolAddress]!.add(row);
+      }
+
+      int order = 1;
+      for (final schoolAddress in schoolOrder) {
+        final rows = schoolPassengerRows[schoolAddress]!;
+        final meta = schoolMeta[schoolAddress]!;
+
+        // First passenger row id — used for currentDropoff identity checks
+        final firstRowId = (rows.first['id'] ?? '').toString();
+
+        // Collect all passenger IDs going to this school
+        final pIds = rows
+            .map((r) => (r['passenger_id'] ?? '').toString())
+            .where((id) => id.isNotEmpty)
+            .toList();
+
+        // Completed only when ALL passengers for this school are dropped_off
+        final allDropped =
+            sessionExists &&
+            rows.every(
+              (r) =>
+                  (r['status'] ?? '').toString().toLowerCase() == 'dropped_off',
+            );
+
         dropoffs.add(
           DropoffStop(
-            id: dropoffStopId,
-            dropoffOrder: 1,
+            id: firstRowId,
+            dropoffOrder: order++,
             address: schoolAddress,
-            scheduledTime: dropoffTime,
-            lat: schoolLat,
-            lng: schoolLng,
-            status: _toDropoffStatus(
-              sessionExists && passengerRows.isNotEmpty
-                  ? passengerRows.first['status']
-                  : null,
-            ),
+            scheduledTime: _formatTime(meta['dropoff_time']),
+            lat: meta['lat'] as double?,
+            lng: meta['lng'] as double?,
+            passengerIds: pIds,
+            status: allDropped
+                ? DropoffStatus.completed
+                : DropoffStatus.pending,
           ),
         );
       }
@@ -284,6 +325,7 @@ class JobService {
             lat: homeLat,
             lng: homeLng,
             passengerName: fullName.isEmpty ? 'Student' : fullName,
+            passengerIds: [passengerId],
             status: sessionExists
                 ? _toDropoffStatus(row['status'])
                 : DropoffStatus.pending,
@@ -308,9 +350,13 @@ class JobService {
         : (dropoffs.isNotEmpty ? dropoffs.first.scheduledTime : '--:--');
 
     // Primary dropoff label for dashboard card
-    final primaryDropoffLocation = direction == 'outbound'
-        ? (dropoffs.isNotEmpty ? dropoffs.first.address : '')
-        : (dropoffs.isNotEmpty ? '${dropoffs.length} home drop-offs' : '');
+    final primaryDropoffLocation = dropoffs.isEmpty
+        ? ''
+        : dropoffs.length == 1
+        ? dropoffs.first.address
+        : direction == 'outbound'
+        ? '${dropoffs.length} schools'
+        : '${dropoffs.length} home drop-offs';
 
     // Dropoff ETA for dashboard card
     final primaryDropoffEta = dropoffs.isNotEmpty
@@ -435,7 +481,9 @@ class JobService {
       final pickupLat = _asDouble(row['pickup_latitude']);
       final pickupLng = _asDouble(row['pickup_longitude']);
 
-      // Dropoff address: for outbound use school, for inbound use home
+      // Dropoff address: for outbound use school, for inbound use home.
+      // Storing the school address per-passenger row is what allows
+      // updateDropoffStatusForSchool() to do a bulk update by address.
       final dropoffAddress = direction == 'outbound'
           ? (profile?['educational_site_address'] ?? '').toString()
           : (row['dropoff_address'] ?? '').toString();
@@ -482,6 +530,7 @@ class JobService {
         .eq('id', pickupId);
   }
 
+  /// Single-passenger dropoff update — used for inbound home drop-offs.
   Future<void> updateDropoffStatus(
     String dropoffId,
     DropoffStatus status,
@@ -498,6 +547,27 @@ class JobService {
         .from('job_session_passengers')
         .update(update)
         .eq('id', dropoffId);
+  }
+
+  /// Bulk dropoff update for outbound school stops.
+  ///
+  /// Marks ALL job_session_passengers rows that share [schoolAddress] within
+  /// [sessionId] as dropped_off in a single query. This is correct because
+  /// every passenger going to the same school is dropped off simultaneously.
+  Future<void> updateDropoffStatusForSchool({
+    required String sessionId,
+    required String schoolAddress,
+  }) async {
+    if (sessionId.isEmpty || schoolAddress.isEmpty) return;
+    await _supabase
+        .from('job_session_passengers')
+        .update({
+          'status': 'dropped_off',
+          'dropped_off_at': DateTime.now().toIso8601String(),
+          'updated_at': DateTime.now().toIso8601String(),
+        })
+        .eq('session_id', sessionId)
+        .eq('dropoff_address', schoolAddress);
   }
 
   Future<void> completeJob({

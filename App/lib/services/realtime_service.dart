@@ -21,6 +21,7 @@ class RealtimeService {
   RealtimeChannel? _jobsChannel;
   RealtimeChannel? _sessionsChannel;
   RealtimeChannel? _passengersChannel;
+  RealtimeChannel? _schedulesChannel;
 
   String? _driverId;
 
@@ -56,6 +57,7 @@ class RealtimeService {
     _subscribeToJobs();
     _subscribeToSessions();
     _subscribeToSessionPassengers();
+    _subscribeToSchedules();
   }
 
   /// Waits up to 3 seconds for Supabase to restore an auth session.
@@ -198,6 +200,38 @@ class RealtimeService {
     _passengersChannel!.subscribe();
   }
 
+  // New method — add after _subscribeToSessionPassengers():
+  void _subscribeToSchedules() {
+    _schedulesChannel?.unsubscribe();
+
+    final driverId = _driverId!;
+    _schedulesChannel = _supabase
+        .channel('driver-schedules-$driverId')
+        .onPostgresChanges(
+          event: PostgresChangeEvent.update,
+          schema: 'public',
+          table: 'passenger_schedules',
+          callback: (payload) {
+            // No column filter available — driver_id isn't on this table.
+            // JobProvider will silently reload and return null if irrelevant.
+            if (!_jobChanges.isClosed) {
+              _jobChanges.add(Map<String, dynamic>.from(payload.newRecord));
+            }
+          },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.insert,
+          schema: 'public',
+          table: 'passenger_schedules',
+          callback: (payload) {
+            if (!_jobChanges.isClosed) {
+              _jobChanges.add(Map<String, dynamic>.from(payload.newRecord));
+            }
+          },
+        );
+
+    _schedulesChannel!.subscribe();
+  }
   // ── Unsubscribe ───────────────────────────────────────────────────────────
 
   Future<void> unsubscribe() async {
@@ -206,6 +240,8 @@ class RealtimeService {
     _jobsChannel?.unsubscribe();
     _sessionsChannel?.unsubscribe();
     _passengersChannel?.unsubscribe();
+    _schedulesChannel?.unsubscribe();
+    _schedulesChannel = null;
     _jobsChannel = null;
     _sessionsChannel = null;
     _passengersChannel = null;

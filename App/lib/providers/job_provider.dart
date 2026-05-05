@@ -17,10 +17,12 @@ import '../services/notification_service.dart';
 ///   - Passenger changes → reload only if the change belongs to the
 ///     current session (avoids unnecessary reloads from other sessions).
 ///
-/// This means the driver's UI updates automatically when:
-///   - Admin changes job status or assigns/unassigns a driver
-///   - A session is created or completed
-///   - A passenger status is updated (by PA app, admin, or this device)
+/// Dropoff mutations:
+///   - Inbound: markDropoffAsCompleted() calls updateDropoffStatus() for a
+///     single job_session_passengers row (one passenger, one home address).
+///   - Outbound: markDropoffAsCompleted() calls updateDropoffStatusForSchool()
+///     which bulk-updates ALL passengers sharing the same school address in one
+///     query — because the whole group arrives at the school simultaneously.
 class JobProvider extends ChangeNotifier {
   final JobService _jobService = JobService();
   final RealtimeService _realtimeService = RealtimeService();
@@ -30,6 +32,7 @@ class JobProvider extends ChangeNotifier {
   JobModel? _job;
   bool _isLoading = false;
   String? _error;
+
   /// Incremented every time [loadJob] finishes (success or error). Listeners
   /// (e.g. dashboard job requests) can refresh when this changes.
   int _jobDataEpoch = 0;
@@ -62,8 +65,9 @@ class JobProvider extends ChangeNotifier {
 
   PickupStop? get activePickup {
     if (_job == null || _job!.pickups.isEmpty) return null;
-    if (_activePickupIndex < 0 || _activePickupIndex >= _job!.pickups.length)
+    if (_activePickupIndex < 0 || _activePickupIndex >= _job!.pickups.length) {
       return null;
+    }
     final current = _job!.pickups[_activePickupIndex];
     if (current.status != PickupStatus.pending) return null;
     return current;
@@ -287,15 +291,31 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
+  /// Marks the current pending dropoff as completed.
+  ///
+  /// - Inbound: updates a single job_session_passengers row by ID.
+  /// - Outbound: bulk-updates ALL passengers sharing the same school address
+  ///   via updateDropoffStatusForSchool() — because the entire group is
+  ///   dropped off at the same school simultaneously.
   Future<void> markDropoffAsCompleted() async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
 
     try {
-      await _jobService.updateDropoffStatus(
-        dropoff.id,
-        DropoffStatus.completed,
-      );
+      if (_job!.isInbound) {
+        // Inbound: single passenger row update
+        await _jobService.updateDropoffStatus(
+          dropoff.id,
+          DropoffStatus.completed,
+        );
+      } else {
+        // Outbound: bulk update all passengers going to this school
+        await _jobService.updateDropoffStatusForSchool(
+          sessionId: _job!.sessionId,
+          schoolAddress: dropoff.address,
+        );
+      }
+      // Optimistic update — realtime will confirm
       dropoff.status = DropoffStatus.completed;
       _error = null;
       notifyListeners();

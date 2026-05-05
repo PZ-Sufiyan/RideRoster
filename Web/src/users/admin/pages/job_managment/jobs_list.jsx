@@ -5,34 +5,77 @@ import {
     MdEventNote,
     MdAdd,
     MdFilterList,
-    MdDirectionsCar,
-    MdPerson,
     MdRefresh,
     MdViewList,
     MdViewModule,
     MdMoreVert,
-    MdKeyboardArrowDown,
     MdPeopleAlt,
     MdChevronLeft,
     MdChevronRight,
     MdSearch,
     MdClose,
     MdCheck,
-    MdPersonAddAlt1
+    MdPersonAddAlt1,
+    MdWarning,
+    MdPersonRemove,
 } from 'react-icons/md';
 import { ToastStack } from '../../../../utils/Toast';
 import { supabase } from '../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../services/companyService';
 import {
     fetchJobsListPageData,
+    driversAvailableForAssignment,
     passengerAssistantsAvailableForAssignment,
+    validateDriverAssignment,
     updateJobAssignedDriver,
     updateJobAssignedPa,
+    removeJobAssignedDriver,
+    removeJobAssignedPa,
 } from '../../../../services/jobService';
 import { ShimmerBlock } from '../../../../utils/Shimmer';
 
+// ── Confirmation dialog ───────────────────────────────────────────────────────
+
+const ConfirmDialog = ({ open, title, message, confirmLabel = 'Remove', onConfirm, onCancel, danger = true }) => {
+    if (!open) return null;
+    return createPortal(
+        <div className="fixed inset-0 z-[400] flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+            <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
+                <div className="p-6">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center mb-4 ${danger ? 'bg-red-50' : 'bg-amber-50'}`}>
+                        <MdWarning size={22} className={danger ? 'text-red-500' : 'text-amber-500'} />
+                    </div>
+                    <h3 className="text-[16px] font-bold text-gray-900 mb-1">{title}</h3>
+                    <p className="text-[13px] text-gray-500 leading-relaxed">{message}</p>
+                </div>
+                <div className="px-6 pb-6 flex items-center gap-3 justify-end">
+                    <button
+                        onClick={onCancel}
+                        className="px-4 py-2 text-[13px] font-semibold text-gray-600 hover:text-gray-900 transition-colors"
+                    >
+                        Cancel
+                    </button>
+                    <button
+                        onClick={onConfirm}
+                        className={`px-5 py-2 rounded-xl text-[13px] font-bold text-white transition-all ${
+                            danger ? 'bg-red-500 hover:bg-red-600' : 'bg-amber-500 hover:bg-amber-600'
+                        }`}
+                    >
+                        {confirmLabel}
+                    </button>
+                </div>
+            </div>
+        </div>,
+        document.body
+    );
+};
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 const ActiveJobs = () => {
     const navigate = useNavigate();
+    const [companyId, setCompanyId] = useState(null);
     const [selectedRows, setSelectedRows] = useState([]);
     const [activeMenu, setActiveMenu] = useState(null);
     const [showAssignDriver, setShowAssignDriver] = useState(false);
@@ -41,6 +84,11 @@ const ActiveJobs = () => {
     const [toasts, setToasts] = useState([]);
     const [driverQuery, setDriverQuery] = useState('');
     const [paQuery, setPaQuery] = useState('');
+    const [assigningDriverId, setAssigningDriverId] = useState(null); // loading state per driver row
+    const [statusFilter, setStatusFilter] = useState('all');
+
+    // Confirmation dialog state
+    const [confirmDialog, setConfirmDialog] = useState({ open: false, type: null, job: null });
 
     const [loading, setLoading] = useState(true);
     const [refreshing, setRefreshing] = useState(false);
@@ -85,9 +133,10 @@ const ActiveJobs = () => {
         const uid = session?.user?.id;
         if (!uid) throw new Error('Not authenticated.');
         const admin = await getCompanyAdminById(uid);
-        const companyId = admin?.company_id;
-        if (!companyId) throw new Error('No company linked to your account.');
-        return fetchJobsListPageData(companyId);
+        const cid = admin?.company_id;
+        if (!cid) throw new Error('No company linked to your account.');
+        setCompanyId(cid);
+        return { data: await fetchJobsListPageData(cid), companyId: cid };
     }, []);
 
     useEffect(() => {
@@ -95,7 +144,7 @@ const ActiveJobs = () => {
         (async () => {
             setLoading(true);
             try {
-                const data = await loadPageData();
+                const { data } = await loadPageData();
                 if (cancelled) return;
                 setJobs(data.jobs);
                 setJobsMinimal(data.jobsMinimal);
@@ -103,45 +152,29 @@ const ActiveJobs = () => {
                 setPasCatalog(data.passengerAssistants);
             } catch (e) {
                 if (!cancelled) {
-                    setToasts((prev) => [
-                        ...prev,
-                        {
-                            id: `${Date.now()}-${Math.random()}`,
-                            type: 'error',
-                            message: e?.message || 'Could not load jobs.',
-                            autoClose: true,
-                            duration: 5000,
-                        },
-                    ]);
+                    pushToast('error', e?.message || 'Could not load jobs.');
                 }
             } finally {
                 if (!cancelled) setLoading(false);
             }
         })();
-        return () => {
-            cancelled = true;
-        };
+        return () => { cancelled = true; };
     }, [loadPageData]);
+
+    const reloadData = async () => {
+        const { data } = await loadPageData();
+        setJobs(data.jobs);
+        setJobsMinimal(data.jobsMinimal);
+        setDriversCatalog(data.drivers);
+        setPasCatalog(data.passengerAssistants);
+    };
 
     const handleRefresh = async () => {
         setRefreshing(true);
         try {
-            const data = await loadPageData();
-            setJobs(data.jobs);
-            setJobsMinimal(data.jobsMinimal);
-            setDriversCatalog(data.drivers);
-            setPasCatalog(data.passengerAssistants);
+            await reloadData();
         } catch (e) {
-            setToasts((prev) => [
-                ...prev,
-                {
-                    id: `${Date.now()}-${Math.random()}`,
-                    type: 'error',
-                    message: e?.message || 'Could not refresh.',
-                    autoClose: true,
-                    duration: 5000,
-                },
-            ]);
+            pushToast('error', e?.message || 'Could not refresh.');
         } finally {
             setRefreshing(false);
         }
@@ -150,17 +183,17 @@ const ActiveJobs = () => {
     const pushToast = (type, message) => {
         setToasts((prev) => [
             ...prev,
-            { id: `${Date.now()}-${Math.random()}`, type, message, autoClose: true, duration: 3500 },
+            { id: `${Date.now()}-${Math.random()}`, type, message, autoClose: true, duration: 5000 },
         ]);
     };
 
     const toggleRow = (id) => {
-        if (selectedRows.includes(id)) {
-            setSelectedRows(selectedRows.filter((r) => r !== id));
-        } else {
-            setSelectedRows([...selectedRows, id]);
-        }
+        setSelectedRows((prev) =>
+            prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]
+        );
     };
+
+    // ── Open modals ────────────────────────────────────────────────────────
 
     const handleAssignDriver = (job) => {
         setSelectedJob(job);
@@ -178,6 +211,39 @@ const ActiveJobs = () => {
         setActionMenuAnchor(null);
     };
 
+    // ── Remove (with confirmation) ─────────────────────────────────────────
+
+    const handleRemoveDriver = (job) => {
+        setActiveMenu(null);
+        setActionMenuAnchor(null);
+        setConfirmDialog({ open: true, type: 'driver', job });
+    };
+
+    const handleRemovePA = (job) => {
+        setActiveMenu(null);
+        setActionMenuAnchor(null);
+        setConfirmDialog({ open: true, type: 'pa', job });
+    };
+
+    const executeRemove = async () => {
+        const { type, job } = confirmDialog;
+        setConfirmDialog({ open: false, type: null, job: null });
+        try {
+            if (type === 'driver') {
+                await removeJobAssignedDriver(job.id);
+                pushToast('success', `Driver removed from ${formatShortJobLabel(job.id)}.`);
+            } else {
+                await removeJobAssignedPa(job.id);
+                pushToast('success', `Passenger assistant removed from ${formatShortJobLabel(job.id)}.`);
+            }
+            await reloadData();
+        } catch (e) {
+            pushToast('error', e?.message || 'Could not remove assignment.');
+        }
+    };
+
+    // ── Action menu ────────────────────────────────────────────────────────
+
     const toggleJobActionMenu = (e, idx) => {
         if (activeMenu === idx) {
             setActiveMenu(null);
@@ -192,31 +258,32 @@ const ActiveJobs = () => {
         setActiveMenu(idx);
     };
 
+    // ── Assign driver (with validation) ───────────────────────────────────
+
     const assignDriverToJob = async (jobId, driverRow) => {
+        setAssigningDriverId(driverRow.id);
         try {
+            // Run server-side validation before writing
+            await validateDriverAssignment(jobId, driverRow.id, companyId);
             await updateJobAssignedDriver(jobId, driverRow.id);
             pushToast('success', `Driver assigned to ${formatShortJobLabel(jobId)}.`);
             setShowAssignDriver(false);
-            const data = await loadPageData();
-            setJobs(data.jobs);
-            setJobsMinimal(data.jobsMinimal);
-            setDriversCatalog(data.drivers);
-            setPasCatalog(data.passengerAssistants);
+            await reloadData();
         } catch (e) {
             pushToast('error', e?.message || 'Could not assign driver.');
+        } finally {
+            setAssigningDriverId(null);
         }
     };
+
+    // ── Assign PA ─────────────────────────────────────────────────────────
 
     const assignPaToJob = async (jobId, paRow) => {
         try {
             await updateJobAssignedPa(jobId, paRow.id);
             pushToast('success', `Passenger assistant assigned to ${formatShortJobLabel(jobId)}.`);
             setShowAssignPA(false);
-            const data = await loadPageData();
-            setJobs(data.jobs);
-            setJobsMinimal(data.jobsMinimal);
-            setDriversCatalog(data.drivers);
-            setPasCatalog(data.passengerAssistants);
+            await reloadData();
         } catch (e) {
             pushToast('error', e?.message || 'Could not assign PA.');
         }
@@ -226,11 +293,15 @@ const ActiveJobs = () => {
         return `#J-${String(jobId).replace(/-/g, '').slice(0, 8).toUpperCase()}`;
     }
 
+    // ── Driver list for modal ─────────────────────────────────────────────
+    // Uses driversAvailableForAssignment to filter out drivers already on other jobs.
+    // The current job's driver (if any) is still shown so admins can see who's assigned.
+
     const filteredDriverRows = useMemo(() => {
         if (!selectedJob || !showAssignDriver) return [];
-        const list = driversCatalog;
+        const available = driversAvailableForAssignment(driversCatalog, jobsMinimal, selectedJob.id);
         const q = driverQuery.trim().toLowerCase();
-        return list
+        return available
             .filter((d) => {
                 if (!q) return true;
                 const name = `${d.first_name || ''} ${d.last_name || ''}`.toLowerCase();
@@ -242,11 +313,9 @@ const ActiveJobs = () => {
                 name: `${d.first_name || ''} ${d.last_name || ''}`.trim(),
                 vehicleLabel: d.license_no ? `License ${d.license_no}` : 'Registered driver',
                 vehicleCode: d.license_no || '—',
-                tag: 'Available',
-                tagColor: 'text-gray-500 bg-gray-100',
                 avatar: `https://i.pravatar.cc/150?u=${encodeURIComponent(d.id)}`,
             }));
-    }, [selectedJob, showAssignDriver, driversCatalog, driverQuery]);
+    }, [selectedJob, showAssignDriver, driversCatalog, jobsMinimal, driverQuery]);
 
     const filteredPaRows = useMemo(() => {
         if (!selectedJob || !showAssignPA) return [];
@@ -261,19 +330,46 @@ const ActiveJobs = () => {
             .map((p) => ({
                 id: p.id,
                 name: `${p.first_name || ''} ${p.surname || ''}`.trim(),
-                tag: 'Available',
-                tagColor: 'text-gray-500 bg-gray-100',
                 avatar: p.profile_picture_url || `https://i.pravatar.cc/150?u=${encodeURIComponent(p.id)}`,
             }));
     }, [selectedJob, showAssignPA, pasCatalog, jobsMinimal, paQuery]);
 
-    const totalJobs = jobs.length;
-    const footerLabel =
-        totalJobs === 0 ? '0' : `1–${totalJobs}`;
+    const filteredJobs = useMemo(() => {
+        if (statusFilter === 'all') return jobs;
+        return jobs.filter((job) => {
+            const normalized = String(job.status || '').trim().toLowerCase();
+            if (statusFilter === 'active') return normalized === 'active';
+            if (statusFilter === 'complete') return normalized === 'completed' || normalized === 'complete';
+            if (statusFilter === 'in-progress') return normalized === 'in progress' || normalized === 'in-progress';
+            if (statusFilter === 'cancelled') return normalized === 'cancelled' || normalized === 'canceled';
+            return true;
+        });
+    }, [jobs, statusFilter]);
+
+    const totalJobs = filteredJobs.length;
+    const footerLabel = totalJobs === 0 ? '0' : `1–${totalJobs}`;
+
+    // ── Render ─────────────────────────────────────────────────────────────
 
     return (
         <div className="space-y-6">
             <ToastStack toasts={toasts} onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))} />
+
+            {/* Remove confirmation */}
+            <ConfirmDialog
+                open={confirmDialog.open}
+                title={confirmDialog.type === 'driver' ? 'Remove Driver?' : 'Remove Passenger Assistant?'}
+                message={
+                    confirmDialog.type === 'driver'
+                        ? `This will unassign the driver from ${confirmDialog.job ? formatShortJobLabel(confirmDialog.job.id) : 'this job'}. The job will return to "Unassigned" status.`
+                        : `This will unassign the passenger assistant from ${confirmDialog.job ? formatShortJobLabel(confirmDialog.job.id) : 'this job'}.`
+                }
+                confirmLabel="Remove"
+                onConfirm={executeRemove}
+                onCancel={() => setConfirmDialog({ open: false, type: null, job: null })}
+            />
+
+            {/* Header */}
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
                 <div>
                     <h1 className="text-[24px] font-bold text-gray-900">Active Jobs</h1>
@@ -297,33 +393,24 @@ const ActiveJobs = () => {
                 </div>
             </div>
 
+            {/* Filters */}
             <div className="flex flex-col lg:flex-row items-start lg:items-center justify-between gap-4">
                 <div className="flex flex-wrap items-center gap-3">
-                    <div className="relative">
-                        <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl bg-white text-[13px] font-medium text-gray-700 hover:bg-gray-50 transition-all">
-                            <MdFilterList size={18} className="text-gray-400" />
-                            All Statuses
-                            <MdKeyboardArrowDown size={18} className="text-gray-400 ml-1" />
-                        </button>
-                    </div>
-
-                    <div className="relative">
-                        <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl bg-white text-[13px] font-medium text-gray-700 hover:bg-gray-50 transition-all">
-                            <MdDirectionsCar size={18} className="text-gray-400" />
-                            All Vehicles
-                            <MdKeyboardArrowDown size={18} className="text-gray-400 ml-1" />
-                        </button>
-                    </div>
-
-                    <div className="relative">
-                        <button className="flex items-center gap-2 px-4 py-2.5 border border-gray-200 rounded-xl bg-white text-[13px] font-medium text-gray-700 hover:bg-gray-50 transition-all">
-                            <MdPerson size={18} className="text-gray-400" />
-                            All Drivers
-                            <MdKeyboardArrowDown size={18} className="text-gray-400 ml-1" />
-                        </button>
+                    <div className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-xl bg-white">
+                        <MdFilterList size={18} className="text-gray-400" />
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            className="bg-white text-[13px] font-medium text-gray-700 outline-none border-none pr-2 cursor-pointer"
+                        >
+                            <option value="all">All Status</option>
+                            <option value="active">Active</option>
+                            <option value="complete">Complete</option>
+                            <option value="in-progress">In Progress</option>
+                            <option value="cancelled">Cancelled</option>
+                        </select>
                     </div>
                 </div>
-
                 <div className="flex items-center gap-2">
                     <button
                         type="button"
@@ -334,18 +421,11 @@ const ActiveJobs = () => {
                     >
                         <MdRefresh size={20} className={refreshing ? 'animate-spin' : ''} />
                     </button>
-                    <div className="flex items-center border border-gray-200 rounded-xl overflow-hidden shadow-sm">
-                        <button className="p-2.5 bg-[#F4F9FF] text-[#004D6D] hover:bg-blue-50 transition-all border-r border-gray-200">
-                            <MdViewList size={20} />
-                        </button>
-                        <button className="p-2.5 bg-white text-gray-400 hover:bg-gray-50 transition-all">
-                            <MdViewModule size={20} />
-                        </button>
-                    </div>
                 </div>
             </div>
 
-            <div className={`bg-white rounded-[24px] border border-gray-100 shadow-sm overflow-hidden ${loading ? 'opacity-70 pointer-events-none' : ''}`}>
+            {/* Table */}
+            <div className={`bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden ${loading ? 'opacity-70 pointer-events-none' : ''}`}>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left whitespace-nowrap">
                         <thead className="bg-[#F9FAFB] border-b border-gray-100">
@@ -362,13 +442,11 @@ const ActiveJobs = () => {
                                 <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-right pr-8">Actions</th>
                             </tr>
                         </thead>
-                        <tbody className="divide-y divide-gray-50" aria-busy={loading} aria-label={loading ? 'Loading jobs' : undefined}>
+                        <tbody className="divide-y divide-gray-50" aria-busy={loading}>
                             {loading &&
                                 Array.from({ length: 6 }).map((_, i) => (
                                     <tr key={`jobs-skeleton-${i}`}>
-                                        <td className="px-6 py-5">
-                                            <ShimmerBlock className="w-4 h-4 rounded" rounded="rounded" />
-                                        </td>
+                                        <td className="px-6 py-5"><ShimmerBlock className="w-4 h-4 rounded" rounded="rounded" /></td>
                                         <td className="px-6 py-5">
                                             <div className="space-y-2">
                                                 <ShimmerBlock className="h-3.5 w-32 rounded-md" />
@@ -390,112 +468,93 @@ const ActiveJobs = () => {
                                                 </div>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-5">
-                                            <ShimmerBlock className="mx-auto h-3.5 w-16 rounded-md" />
-                                        </td>
-                                        <td className="px-6 py-5">
-                                            <ShimmerBlock className="mx-auto h-3.5 w-10 rounded-md" />
-                                        </td>
-                                        <td className="px-6 py-5">
-                                            <ShimmerBlock className="mx-auto h-6 w-20 rounded-full" rounded="rounded-full" />
-                                        </td>
-                                        <td className="px-6 py-5">
-                                            <ShimmerBlock className="ml-auto h-8 w-8 rounded-full" rounded="rounded-full" />
-                                        </td>
+                                        <td className="px-6 py-5"><ShimmerBlock className="mx-auto h-3.5 w-16 rounded-md" /></td>
+                                        <td className="px-6 py-5"><ShimmerBlock className="mx-auto h-3.5 w-10 rounded-md" /></td>
+                                        <td className="px-6 py-5"><ShimmerBlock className="mx-auto h-6 w-20 rounded-full" rounded="rounded-full" /></td>
+                                        <td className="px-6 py-5"><ShimmerBlock className="ml-auto h-8 w-8 rounded-full" rounded="rounded-full" /></td>
                                     </tr>
                                 ))}
-                            {!loading &&
-                                jobs.map((job, idx) => (
-                                    <tr key={job.id} className="hover:bg-gray-50/50 transition-all">
-                                        <td className="px-6 py-5">
-                                            <input
-                                                type="checkbox"
-                                                checked={selectedRows.includes(job.id)}
-                                                onChange={() => toggleRow(job.id)}
-                                                className="w-4 h-4 rounded border-gray-300 text-[#004D6D] focus:ring-[#004D6D] cursor-pointer"
-                                            />
-                                        </td>
-                                        <td className="px-6 py-5">
-                                            <Link
-                                                to={`/admin/jobs/${job.id}`}
-                                                className="block max-w-md rounded-lg -m-1 p-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004D6D]/30"
-                                            >
-                                                <p className="text-[14px] font-bold text-gray-900 hover:text-[#004D6D] transition-colors">
-                                                    {job.displayId}
-                                                </p>
-                                                <p className="text-[12px] text-gray-400 mt-0.5 font-medium hover:text-gray-600 transition-colors line-clamp-2">
-                                                    {job.route}
-                                                </p>
-                                            </Link>
-                                        </td>
-                                        <td className="px-6 py-5 text-center">
-                                            <div>
-                                                <p className="text-[13px] font-bold text-gray-800">
-                                                    {job.startTime} - {job.endTime}
-                                                </p>
-                                                <p className="text-[11px] text-gray-400 mt-0.5 font-medium">{job.duration}</p>
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-5 text-center">
-                                            {job.driver ? (
-                                                <div className="flex items-center justify-center gap-3">
-                                                    <img
-                                                        src={job.driver.avatar}
-                                                        className="w-9 h-9 rounded-full object-cover border border-gray-100"
-                                                        alt=""
-                                                    />
-                                                    <div className="text-left">
-                                                        <p className="text-[13px] font-bold text-gray-800">{job.driver.name}</p>
-                                                        <p className="text-[11px] text-gray-400 mt-0.5 font-medium uppercase tracking-wider">
-                                                            {job.vehicle || '—'}
-                                                        </p>
-                                                    </div>
+                            {!loading && filteredJobs.map((job, idx) => (
+                                <tr key={job.id} className="hover:bg-gray-50/50 transition-all">
+                                    <td className="px-6 py-5">
+                                        <input
+                                            type="checkbox"
+                                            checked={selectedRows.includes(job.id)}
+                                            onChange={() => toggleRow(job.id)}
+                                            className="w-4 h-4 rounded border-gray-300 text-[#004D6D] focus:ring-[#004D6D] cursor-pointer"
+                                        />
+                                    </td>
+                                    <td className="px-6 py-5">
+                                        <Link
+                                            to={`/admin/jobs/${job.id}`}
+                                            className="block max-w-md rounded-lg -m-1 p-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004D6D]/30"
+                                        >
+                                            <p className="text-[14px] font-bold text-gray-900 hover:text-[#004D6D] transition-colors">
+                                                {job.displayId}
+                                            </p>
+                                            <p className="text-[12px] text-gray-400 mt-0.5 font-medium hover:text-gray-600 transition-colors line-clamp-2">
+                                                {job.route}
+                                            </p>
+                                        </Link>
+                                    </td>
+                                    <td className="px-6 py-5 text-center">
+                                        <p className="text-[13px] font-bold text-gray-800">{job.startTime} - {job.endTime}</p>
+                                        <p className="text-[11px] text-gray-400 mt-0.5 font-medium">{job.duration}</p>
+                                    </td>
+                                    <td className="px-6 py-5 text-center">
+                                        {job.driver ? (
+                                            <div className="flex items-center justify-center gap-3">
+                                                <img src={job.driver.avatar} className="w-9 h-9 rounded-full object-cover border border-gray-100" alt="" />
+                                                <div className="text-left">
+                                                    <p className="text-[13px] font-bold text-gray-800">{job.driver.name}</p>
+                                                    <p className="text-[11px] text-gray-400 mt-0.5 font-medium uppercase tracking-wider">
+                                                        {job.vehicle || '—'}
+                                                    </p>
                                                 </div>
-                                            ) : (
-                                                <button
-                                                    onClick={() => handleAssignDriver(job)}
-                                                    className="mx-auto px-4 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-[11px] font-bold border border-orange-100 hover:bg-orange-100 transition-all"
-                                                >
-                                                    Assign Driver
-                                                </button>
-                                            )}
-                                        </td>
-                                        <td className="px-6 py-5 text-center">
-                                            <span className="text-[12px] font-semibold text-gray-700 uppercase tracking-wide">
-                                                {job.driverApprovalStatus}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-5 text-center">
-                                            <div className="flex items-center justify-center gap-1.5 text-gray-600">
-                                                <MdPeopleAlt size={16} />
-                                                <span className="text-[13px] font-bold">{job.passengers}</span>
                                             </div>
-                                        </td>
-                                        <td className="px-6 py-5 text-center">
-                                            <span
-                                                className={`inline-flex px-3 py-1 rounded-full text-[11px] font-bold border ${job.statusColor}`}
-                                            >
-                                                {job.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-5 text-right pr-6 align-middle">
+                                        ) : (
                                             <button
-                                                type="button"
-                                                data-job-actions-trigger
-                                                onClick={(e) => toggleJobActionMenu(e, idx)}
-                                                className="p-1.5 text-gray-400 hover:text-gray-600 transition-all rounded-full hover:bg-gray-100"
-                                                aria-expanded={activeMenu === idx}
-                                                aria-haspopup="menu"
+                                                onClick={() => handleAssignDriver(job)}
+                                                className="mx-auto px-4 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-[11px] font-bold border border-orange-100 hover:bg-orange-100 transition-all"
                                             >
-                                                <MdMoreVert size={20} />
+                                                Assign Driver
                                             </button>
-                                        </td>
-                                    </tr>
-                                ))}
-                            {!loading && jobs.length === 0 && (
+                                        )}
+                                    </td>
+                                    <td className="px-6 py-5 text-center">
+                                        <span className="text-[12px] font-semibold text-gray-700 uppercase tracking-wide">
+                                            {job.driverApprovalStatus}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-5 text-center">
+                                        <div className="flex items-center justify-center gap-1.5 text-gray-600">
+                                            <MdPeopleAlt size={16} />
+                                            <span className="text-[13px] font-bold">{job.passengers}</span>
+                                        </div>
+                                    </td>
+                                    <td className="px-6 py-5 text-center">
+                                        <span className={`inline-flex px-3 py-1 rounded-full text-[11px] font-bold border ${job.statusColor}`}>
+                                            {job.status}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-5 text-right pr-6 align-middle">
+                                        <button
+                                            type="button"
+                                            data-job-actions-trigger
+                                            onClick={(e) => toggleJobActionMenu(e, idx)}
+                                            className="p-1.5 text-gray-400 hover:text-gray-600 transition-all rounded-full hover:bg-gray-100"
+                                            aria-expanded={activeMenu === idx}
+                                            aria-haspopup="menu"
+                                        >
+                                            <MdMoreVert size={20} />
+                                        </button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {!loading && filteredJobs.length === 0 && (
                                 <tr>
                                     <td colSpan={8} className="px-6 py-16 text-center text-[14px] text-gray-500 font-medium">
-                                        No jobs yet. Create one to get started.
+                                        No jobs match the selected status filter.
                                     </td>
                                 </tr>
                             )}
@@ -503,6 +562,7 @@ const ActiveJobs = () => {
                     </table>
                 </div>
 
+                {/* Footer */}
                 <div className="px-6 py-4 bg-[#F9FAFB] border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-4">
                     <p className="text-[13px] text-gray-500 font-medium tracking-tight">
                         Showing <span className="text-gray-900 font-bold">{footerLabel}</span> of{' '}
@@ -522,26 +582,23 @@ const ActiveJobs = () => {
                 </div>
             </div>
 
+            {/* ── Assign Driver Modal ── */}
             {showAssignDriver && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAssignDriver(false)}></div>
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAssignDriver(false)} />
                     <div className="relative w-full max-w-[620px] bg-white rounded-[24px] shadow-2xl overflow-hidden">
                         <div className="px-8 py-6 flex items-center justify-between border-b border-gray-100">
                             <h2 className="text-[20px] font-bold text-gray-900">Assign Driver to Job</h2>
-                            <button
-                                onClick={() => setShowAssignDriver(false)}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
-                            >
+                            <button onClick={() => setShowAssignDriver(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all">
                                 <MdClose size={24} />
                             </button>
                         </div>
 
                         <div className="p-8 space-y-6">
+                            {/* Job info */}
                             <div className="bg-[#F9FAFB] border border-gray-100 rounded-2xl p-6 flex justify-between items-start">
                                 <div>
-                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-                                        Job ID: {selectedJob?.displayId}
-                                    </p>
+                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Job ID: {selectedJob?.displayId}</p>
                                     <p className="text-[16px] font-bold text-gray-900 mt-1">{selectedJob?.route}</p>
                                 </div>
                                 <div className="text-right">
@@ -550,6 +607,15 @@ const ActiveJobs = () => {
                                 </div>
                             </div>
 
+                            {/* Validation info note */}
+                            <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-[12px] text-blue-700">
+                                <MdWarning size={16} className="shrink-0 mt-0.5 text-blue-400" />
+                                <span>
+                                    Drivers already assigned to other jobs are hidden. Assignment will be blocked if the vehicle has insufficient seats or lacks wheelchair access for passengers who need it.
+                                </span>
+                            </div>
+
+                            {/* Search */}
                             <div className="relative w-full">
                                 <input
                                     type="text"
@@ -561,29 +627,25 @@ const ActiveJobs = () => {
                                 <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                             </div>
 
-                            <div className="space-y-3">
+                            {/* Driver list */}
+                            <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                                 {filteredDriverRows.length === 0 && (
                                     <div className="px-4 py-6 text-center text-[13px] text-gray-500 font-medium border border-dashed border-gray-200 rounded-2xl">
-                                        No drivers found for the current search.
+                                        No available drivers found.{driverQuery ? ' Try clearing your search.' : ' All drivers may be assigned to other jobs.'}
                                     </div>
                                 )}
                                 {filteredDriverRows.map((driver) => {
                                     const isCurrent = selectedJob?.assigned_driver_id === driver.id;
+                                    const isLoading = assigningDriverId === driver.id;
                                     return (
                                         <div
                                             key={driver.id}
                                             className={`p-4 border rounded-2xl flex items-center justify-between transition-all ${
-                                                isCurrent
-                                                    ? 'bg-[#F4F9FF] border-[#004D6D]/20'
-                                                    : 'bg-white border-gray-100 hover:border-gray-200'
+                                                isCurrent ? 'bg-[#F4F9FF] border-[#004D6D]/20' : 'bg-white border-gray-100 hover:border-gray-200'
                                             }`}
                                         >
                                             <div className="flex items-center gap-4">
-                                                <img
-                                                    src={driver.avatar}
-                                                    className="w-10 h-10 rounded-full object-cover border border-gray-100"
-                                                    alt=""
-                                                />
+                                                <img src={driver.avatar} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" />
                                                 <div>
                                                     <p className="text-[14px] font-bold text-gray-900">{driver.name}</p>
                                                     <p className="text-[12px] text-gray-400 font-medium mt-0.5">
@@ -591,34 +653,37 @@ const ActiveJobs = () => {
                                                     </p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-4">
-                                                <span
-                                                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${driver.tagColor}`}
-                                                >
-                                                    {driver.tag}
-                                                </span>
-                                                <button
-                                                    onClick={() => {
-                                                        if (!selectedJob) return;
-                                                        if (isCurrent) return;
-                                                        assignDriverToJob(selectedJob.id, driver);
-                                                    }}
-                                                    className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all ${
-                                                        isCurrent
-                                                            ? 'border border-[#004D6D]/30 text-[#004D6D] bg-white cursor-default'
-                                                            : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
-                                                    }`}
-                                                >
-                                                    {isCurrent ? (
-                                                        <span className="inline-flex items-center gap-1.5 text-[#004D6D]">
-                                                            <MdCheck size={16} />
-                                                            Current
-                                                        </span>
-                                                    ) : (
-                                                        'Assign'
-                                                    )}
-                                                </button>
-                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    if (!selectedJob || isCurrent || isLoading) return;
+                                                    assignDriverToJob(selectedJob.id, driver);
+                                                }}
+                                                disabled={isLoading}
+                                                className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all min-w-[72px] text-center ${
+                                                    isCurrent
+                                                        ? 'border border-[#004D6D]/30 text-[#004D6D] bg-white cursor-default'
+                                                        : isLoading
+                                                        ? 'border border-gray-200 text-gray-400 bg-gray-50 cursor-wait'
+                                                        : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                {isCurrent ? (
+                                                    <span className="inline-flex items-center gap-1.5 text-[#004D6D]">
+                                                        <MdCheck size={16} />
+                                                        Current
+                                                    </span>
+                                                ) : isLoading ? (
+                                                    <span className="inline-flex items-center gap-1.5">
+                                                        <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                        </svg>
+                                                        Checking
+                                                    </span>
+                                                ) : (
+                                                    'Assign'
+                                                )}
+                                            </button>
                                         </div>
                                     );
                                 })}
@@ -626,16 +691,10 @@ const ActiveJobs = () => {
                         </div>
 
                         <div className="px-8 py-6 bg-gray-50/50 flex items-center justify-between border-t border-gray-100">
-                            <button
-                                onClick={() => setShowAssignDriver(false)}
-                                className="px-6 py-2.5 text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors"
-                            >
+                            <button onClick={() => setShowAssignDriver(false)} className="px-6 py-2.5 text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors">
                                 Cancel
                             </button>
-                            <button
-                                type="button"
-                                className="flex items-center gap-2 px-6 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/10"
-                            >
+                            <button type="button" className="flex items-center gap-2 px-6 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/10">
                                 <MdPersonAddAlt1 size={20} />
                                 Invite Driver
                             </button>
@@ -644,16 +703,14 @@ const ActiveJobs = () => {
                 </div>
             )}
 
+            {/* ── Assign PA Modal ── */}
             {showAssignPA && (
                 <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
-                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAssignPA(false)}></div>
+                    <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setShowAssignPA(false)} />
                     <div className="relative w-full max-w-[620px] bg-white rounded-[24px] shadow-2xl overflow-hidden">
                         <div className="px-8 py-6 flex items-center justify-between border-b border-gray-100">
                             <h2 className="text-[20px] font-bold text-gray-900">Assign PA to Job</h2>
-                            <button
-                                onClick={() => setShowAssignPA(false)}
-                                className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all"
-                            >
+                            <button onClick={() => setShowAssignPA(false)} className="p-2 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all">
                                 <MdClose size={24} />
                             </button>
                         </div>
@@ -661,9 +718,7 @@ const ActiveJobs = () => {
                         <div className="p-8 space-y-6">
                             <div className="bg-[#F9FAFB] border border-gray-100 rounded-2xl p-6 flex justify-between items-start">
                                 <div>
-                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">
-                                        Job ID: {selectedJob?.displayId}
-                                    </p>
+                                    <p className="text-[11px] font-bold text-gray-400 uppercase tracking-widest">Job ID: {selectedJob?.displayId}</p>
                                     <p className="text-[16px] font-bold text-gray-900 mt-1">{selectedJob?.route}</p>
                                 </div>
                                 <div className="text-right">
@@ -683,10 +738,10 @@ const ActiveJobs = () => {
                                 <MdSearch className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400" size={20} />
                             </div>
 
-                            <div className="space-y-3">
+                            <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                                 {filteredPaRows.length === 0 && (
                                     <div className="px-4 py-6 text-center text-[13px] text-gray-500 font-medium border border-dashed border-gray-200 rounded-2xl">
-                                        No passenger assistants available (all assigned to other jobs) or no match search.
+                                        No passenger assistants available (all assigned to other jobs) or no search match.
                                     </div>
                                 )}
                                 {filteredPaRows.map((pa) => {
@@ -699,44 +754,32 @@ const ActiveJobs = () => {
                                             }`}
                                         >
                                             <div className="flex items-center gap-4">
-                                                <img
-                                                    src={pa.avatar}
-                                                    className="w-10 h-10 rounded-full object-cover border border-gray-100"
-                                                    alt=""
-                                                />
+                                                <img src={pa.avatar} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" />
                                                 <div>
                                                     <p className="text-[14px] font-bold text-gray-900">{pa.name}</p>
                                                     <p className="text-[12px] text-gray-400 font-medium mt-0.5">Passenger Assistant</p>
                                                 </div>
                                             </div>
-                                            <div className="flex items-center gap-4">
-                                                <span
-                                                    className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-wider ${pa.tagColor}`}
-                                                >
-                                                    {pa.tag}
-                                                </span>
-                                                <button
-                                                    onClick={() => {
-                                                        if (!selectedJob) return;
-                                                        if (isCurrent) return;
-                                                        assignPaToJob(selectedJob.id, pa);
-                                                    }}
-                                                    className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all ${
-                                                        isCurrent
-                                                            ? 'border border-[#004D6D]/30 text-[#004D6D] bg-white cursor-default'
-                                                            : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
-                                                    }`}
-                                                >
-                                                    {isCurrent ? (
-                                                        <span className="inline-flex items-center gap-1.5 text-[#004D6D]">
-                                                            <MdCheck size={16} />
-                                                            Current
-                                                        </span>
-                                                    ) : (
-                                                        'Assign'
-                                                    )}
-                                                </button>
-                                            </div>
+                                            <button
+                                                onClick={() => {
+                                                    if (!selectedJob || isCurrent) return;
+                                                    assignPaToJob(selectedJob.id, pa);
+                                                }}
+                                                className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all ${
+                                                    isCurrent
+                                                        ? 'border border-[#004D6D]/30 text-[#004D6D] bg-white cursor-default'
+                                                        : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
+                                                }`}
+                                            >
+                                                {isCurrent ? (
+                                                    <span className="inline-flex items-center gap-1.5 text-[#004D6D]">
+                                                        <MdCheck size={16} />
+                                                        Current
+                                                    </span>
+                                                ) : (
+                                                    'Assign'
+                                                )}
+                                            </button>
                                         </div>
                                     );
                                 })}
@@ -744,16 +787,10 @@ const ActiveJobs = () => {
                         </div>
 
                         <div className="px-8 py-6 bg-gray-50/50 flex items-center justify-between border-t border-gray-100">
-                            <button
-                                onClick={() => setShowAssignPA(false)}
-                                className="px-6 py-2.5 text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors"
-                            >
+                            <button onClick={() => setShowAssignPA(false)} className="px-6 py-2.5 text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors">
                                 Cancel
                             </button>
-                            <button
-                                type="button"
-                                className="flex items-center gap-2 px-6 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/10"
-                            >
+                            <button type="button" className="flex items-center gap-2 px-6 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/10">
                                 <MdPersonAddAlt1 size={20} />
                                 Invite PA
                             </button>
@@ -762,22 +799,24 @@ const ActiveJobs = () => {
                 </div>
             )}
 
+            {/* ── Action context menu ── */}
             {activeMenu !== null &&
                 actionMenuAnchor &&
-                jobs[activeMenu] &&
+                filteredJobs[activeMenu] &&
                 createPortal(
                     <div
                         ref={menuRef}
                         role="menu"
-                        className="fixed z-[300] w-48 min-w-[12rem] bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden"
+                        className="fixed z-[300] w-52 min-w-[13rem] bg-white border border-gray-100 rounded-xl shadow-xl overflow-hidden"
                         style={{ top: actionMenuAnchor.top, right: actionMenuAnchor.right }}
                     >
                         <div className="py-1">
+                            {/* View details */}
                             <button
                                 type="button"
                                 role="menuitem"
                                 onClick={() => {
-                                    const job = jobs[activeMenu];
+                                    const job = filteredJobs[activeMenu];
                                     setActiveMenu(null);
                                     setActionMenuAnchor(null);
                                     navigate(`/admin/jobs/${job.id}`);
@@ -786,28 +825,72 @@ const ActiveJobs = () => {
                             >
                                 View Details
                             </button>
-                            <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                    const job = jobs[activeMenu];
-                                    handleAssignDriver(job);
-                                }}
-                                className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
-                            >
-                                {jobs[activeMenu].driver ? 'Reassign Driver' : 'Add Driver'}
-                            </button>
-                            <button
-                                type="button"
-                                role="menuitem"
-                                onClick={() => {
-                                    const job = jobs[activeMenu];
-                                    handleAssignPA(job);
-                                }}
-                                className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium border-t border-gray-50"
-                            >
-                                {jobs[activeMenu].pa ? 'Reassign PA' : 'Add PA'}
-                            </button>
+
+                            {/* Driver: Add or Remove */}
+                            {filteredJobs[activeMenu].driver ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => handleAssignDriver(filteredJobs[activeMenu])}
+                                        className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
+                                    >
+                                        Reassign Driver
+                                    </button>
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => handleRemoveDriver(filteredJobs[activeMenu])}
+                                        className="w-full flex items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 text-left font-medium"
+                                    >
+                                        <MdPersonRemove size={15} />
+                                        Remove Driver
+                                    </button>
+                                </>
+                            ) : (
+                                <button
+                                    type="button"
+                                    role="menuitem"
+                                    onClick={() => handleAssignDriver(filteredJobs[activeMenu])}
+                                    className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
+                                >
+                                    Add Driver
+                                </button>
+                            )}
+
+                            {/* PA: Add or Remove */}
+                            <div className="border-t border-gray-50">
+                                {filteredJobs[activeMenu].pa ? (
+                                    <>
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            onClick={() => handleAssignPA(filteredJobs[activeMenu])}
+                                            className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
+                                        >
+                                            Reassign PA
+                                        </button>
+                                        <button
+                                            type="button"
+                                            role="menuitem"
+                                            onClick={() => handleRemovePA(filteredJobs[activeMenu])}
+                                            className="w-full flex items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 text-left font-medium"
+                                        >
+                                            <MdPersonRemove size={15} />
+                                            Remove PA
+                                        </button>
+                                    </>
+                                ) : (
+                                    <button
+                                        type="button"
+                                        role="menuitem"
+                                        onClick={() => handleAssignPA(filteredJobs[activeMenu])}
+                                        className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
+                                    >
+                                        Add PA
+                                    </button>
+                                )}
+                            </div>
                         </div>
                     </div>,
                     document.body

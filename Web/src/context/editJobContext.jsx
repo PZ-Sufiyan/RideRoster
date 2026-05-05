@@ -117,6 +117,74 @@ function buildScheduleRows(jobId, selectedPassengers, hasOutbound, hasInbound, e
     return rows;
 }
 
+/**
+ * Validate driver assignment constraints directly against the DB.
+ * Extracted here so saveAllChanges can run the same checks as the modal pick,
+ * guarding against race conditions or context state drift.
+ *
+ * Checks:
+ *  1. No other non-cancelled job has this driver assigned (one job at a time).
+ *  2. Driver has a registered vehicle.
+ *  3. Passenger count ≤ vehicle seat capacity.
+ *  4. If any passenger needs a wheelchair, vehicle must be wheelchair_accessible.
+ *
+ * @param {string} jobId
+ * @param {string} driverId
+ * @param {string} companyId
+ * @param {Array}  passengers  - the selectedPassengers array from context
+ */
+async function validateDriverConstraints(jobId, driverId, companyId, passengers) {
+    if (!driverId) return; // no driver assigned — nothing to validate
+
+    // ── 1. One-job-at-a-time ─────────────────────────────────────────────
+    const { data: conflicts, error: conflictErr } = await supabase
+        .from('jobs')
+        .select('id, job_name')
+        .eq('assigned_driver_id', driverId)
+        .neq('id', jobId)
+        .neq('status', 'cancelled');
+
+    if (conflictErr) throw conflictErr;
+    if (conflicts && conflicts.length > 0) {
+        const name = conflicts[0].job_name || 'another job';
+        throw new Error(
+            `This driver is already assigned to "${name}". Remove them from that job first.`
+        );
+    }
+
+    // ── 2 & 3 & 4. Vehicle checks ────────────────────────────────────────
+    const { data: vehicle, error: vehErr } = await supabase
+        .from('vehicles')
+        .select('seating_capacity, wheelchair_accessible')
+        .eq('driver_id', driverId)
+        .eq('company_id', companyId)
+        .limit(1)
+        .maybeSingle();
+
+    if (vehErr) throw vehErr;
+
+    if (!vehicle) {
+        throw new Error(
+            'This driver has no vehicle registered. Please add a vehicle for this driver before assigning.'
+        );
+    }
+
+    const passengerCount  = passengers.length;
+    const needsWheelchair = passengers.some((p) => p.wheelchair_required === true);
+
+    if (vehicle.seating_capacity != null && passengerCount > vehicle.seating_capacity) {
+        throw new Error(
+            `This job has ${passengerCount} passenger${passengerCount !== 1 ? 's' : ''} but the driver's vehicle only has ${vehicle.seating_capacity} seat${vehicle.seating_capacity !== 1 ? 's' : ''}. Please choose a driver with a larger vehicle.`
+        );
+    }
+
+    if (needsWheelchair && !vehicle.wheelchair_accessible) {
+        throw new Error(
+            'One or more passengers on this job require a wheelchair-accessible vehicle. Please choose a driver whose vehicle is wheelchair accessible.'
+        );
+    }
+}
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function EditJobProvider({ children }) {
@@ -257,7 +325,7 @@ export function EditJobProvider({ children }) {
     const saveAllChanges = useCallback(async () => {
         if (!jobId || !companyId) throw new Error('Missing job or company data.');
 
-        // Validation — throw so the step component can catch and toast
+        // ── Field validation ──────────────────────────────────────────────────
         if (!step1Draft.clientName?.trim()) throw new Error('Client / School Name is required.');
         if (!step1Draft.jobType?.trim())    throw new Error('Job Type is required.');
         if (!step3Draft.semesterStart)      throw new Error('Semester start date is required.');
@@ -274,6 +342,11 @@ export function EditJobProvider({ children }) {
             throw new Error('Evening start time is required.');
         if (selectedPassengers.length === 0)
             throw new Error('Add at least one passenger.');
+
+        // ── Driver assignment validation ──────────────────────────────────────
+        // Run even if draftDriverId is the same as the DB value — the passenger
+        // list or vehicle may have changed since the modal was opened.
+        await validateDriverConstraints(jobId, draftDriverId, companyId, selectedPassengers);
 
         setSaveInProgress(true);
         try {

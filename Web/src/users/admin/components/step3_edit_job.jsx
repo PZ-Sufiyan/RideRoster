@@ -4,13 +4,45 @@ import {
     MdOutlineToggleOff, MdOutlineToggleOn,
     MdWbSunny, MdNightlight, MdDateRange,
     MdSearch, MdClose, MdCheck, MdPersonAddAlt1,
+    MdPersonRemove, MdWarning,
 } from 'react-icons/md';
 import { useEditJob } from '../../../context/editJobContext';
 import {
     formatJobDisplayId,
     driversAvailableForAssignment,
     passengerAssistantsAvailableForAssignment,
+    validateDriverAssignment,
 } from '../../../services/jobService';
+
+// ── Confirm removal dialog ────────────────────────────────────────────────────
+
+const RemoveConfirm = ({ open, label, onConfirm, onCancel }) => {
+    if (!open) return null;
+    return (
+        <div className="fixed inset-0 z-[200] flex items-center justify-center px-4">
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={onCancel} />
+            <div className="relative w-full max-w-sm bg-white rounded-2xl shadow-2xl overflow-hidden">
+                <div className="p-6">
+                    <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center mb-4">
+                        <MdWarning size={22} className="text-red-500" />
+                    </div>
+                    <h3 className="text-[16px] font-bold text-gray-900 mb-1">Remove {label}?</h3>
+                    <p className="text-[13px] text-gray-500 leading-relaxed">
+                        This will clear the {label.toLowerCase()} from this job draft. You can reassign before saving.
+                    </p>
+                </div>
+                <div className="px-6 pb-6 flex items-center gap-3 justify-end">
+                    <button onClick={onCancel} className="px-4 py-2 text-[13px] font-semibold text-gray-600 hover:text-gray-900 transition-colors">
+                        Cancel
+                    </button>
+                    <button onClick={onConfirm} className="px-5 py-2 rounded-xl text-[13px] font-bold text-white bg-red-500 hover:bg-red-600 transition-all">
+                        Remove
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
 
 // ── Step3EditJob ──────────────────────────────────────────────────────────────
 
@@ -21,16 +53,19 @@ const Step3EditJob = ({ setToasts }) => {
     const {
         bundle, step3Draft, setStep3Draft,
         driversCatalog, pasCatalog, jobsMinimal,
+        companyId,
         draftDriverId, setDraftDriverId,
         draftPaId,     setDraftPaId,
         saveAllChanges, saveInProgress,
     } = useEditJob();
 
-    const [submitAttempted, setSubmitAttempted] = useState(false);
-    const [showDriverModal, setShowDriverModal] = useState(false);
-    const [showPaModal,     setShowPaModal]     = useState(false);
-    const [driverQuery,     setDriverQuery]     = useState('');
-    const [paQuery,         setPaQuery]         = useState('');
+    const [submitAttempted, setSubmitAttempted]   = useState(false);
+    const [showDriverModal, setShowDriverModal]   = useState(false);
+    const [showPaModal,     setShowPaModal]       = useState(false);
+    const [driverQuery,     setDriverQuery]       = useState('');
+    const [paQuery,         setPaQuery]           = useState('');
+    const [pickingDriverId, setPickingDriverId]   = useState(null); // per-row loading in driver modal
+    const [confirmRemove,   setConfirmRemove]     = useState(null); // 'driver' | 'pa' | null
 
     const pushToast = (type, message) =>
         setToasts((prev) => [
@@ -105,6 +140,32 @@ const Step3EditJob = ({ setToasts }) => {
         }));
     }, [showPaModal, pasCatalog, jobsMinimal, id, paQuery]);
 
+    // ── Pick driver (with seat + wheelchair validation) ────────────────────────
+    // Validates against DB state (other-job conflict, vehicle capacity, wheelchair).
+    // This gives immediate feedback in the modal before the full save.
+
+    const handlePickDriver = async (row) => {
+        if (!companyId) return;
+        setPickingDriverId(row.id);
+        try {
+            await validateDriverAssignment(id, row.id, companyId);
+            setDraftDriverId(row.id);
+            setShowDriverModal(false);
+        } catch (e) {
+            pushToast('error', e?.message || 'Cannot assign this driver.');
+        } finally {
+            setPickingDriverId(null);
+        }
+    };
+
+    // ── Remove helpers ─────────────────────────────────────────────────────────
+
+    const handleConfirmRemove = () => {
+        if (confirmRemove === 'driver') setDraftDriverId(null);
+        if (confirmRemove === 'pa')     setDraftPaId(null);
+        setConfirmRemove(null);
+    };
+
     // ── Save ──────────────────────────────────────────────────────────────────
 
     const handleSave = async () => {
@@ -133,6 +194,20 @@ const Step3EditJob = ({ setToasts }) => {
 
     return (
         <>
+            {/* Remove confirmation dialogs */}
+            <RemoveConfirm
+                open={confirmRemove === 'driver'}
+                label="Driver"
+                onConfirm={handleConfirmRemove}
+                onCancel={() => setConfirmRemove(null)}
+            />
+            <RemoveConfirm
+                open={confirmRemove === 'pa'}
+                label="Passenger Assistant"
+                onConfirm={handleConfirmRemove}
+                onCancel={() => setConfirmRemove(null)}
+            />
+
             <div className="flex items-center gap-4 mb-8">
                 <div>
                     <h1 className="text-[22px] font-bold text-gray-900 leading-tight">Step 3 of 3: Schedule & Pay</h1>
@@ -333,7 +408,8 @@ const Step3EditJob = ({ setToasts }) => {
                     </div>
                     <div className="p-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            {/* Driver */}
+
+                            {/* ── Driver card ── */}
                             <div>
                                 <label className="block text-[13px] font-bold text-gray-900 mb-3">Assigned Driver</label>
                                 <div className="flex items-center justify-between p-3 border border-gray-200 rounded-xl gap-2">
@@ -351,14 +427,29 @@ const Step3EditJob = ({ setToasts }) => {
                                             )}
                                         </div>
                                     </div>
-                                    <button type="button" onClick={() => { setDriverQuery(''); setShowDriverModal(true); }}
-                                        className="text-[12px] font-bold text-[#004D6D] hover:underline px-2 shrink-0">
-                                        {driverDisplay.name ? 'Change' : 'Assign'}
-                                    </button>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        {draftDriverId && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setConfirmRemove('driver')}
+                                                title="Remove driver"
+                                                className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                            >
+                                                <MdPersonRemove size={17} />
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => { setDriverQuery(''); setShowDriverModal(true); }}
+                                            className="text-[12px] font-bold text-[#004D6D] hover:underline px-2"
+                                        >
+                                            {driverDisplay.name ? 'Change' : 'Assign'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
 
-                            {/* PA */}
+                            {/* ── PA card ── */}
                             <div>
                                 <label className="block text-[13px] font-bold text-gray-900 mb-3">Passenger Assistant</label>
                                 <div className="flex items-center justify-between p-3 border border-gray-200 rounded-xl gap-2">
@@ -373,12 +464,28 @@ const Step3EditJob = ({ setToasts }) => {
                                             </p>
                                         </div>
                                     </div>
-                                    <button type="button" onClick={() => { setPaQuery(''); setShowPaModal(true); }}
-                                        className="text-[12px] font-bold text-[#004D6D] hover:underline px-2 shrink-0">
-                                        {paDisplay.name ? 'Change' : 'Assign'}
-                                    </button>
+                                    <div className="flex items-center gap-1 shrink-0">
+                                        {draftPaId && (
+                                            <button
+                                                type="button"
+                                                onClick={() => setConfirmRemove('pa')}
+                                                title="Remove PA"
+                                                className="p-1.5 text-red-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+                                            >
+                                                <MdPersonRemove size={17} />
+                                            </button>
+                                        )}
+                                        <button
+                                            type="button"
+                                            onClick={() => { setPaQuery(''); setShowPaModal(true); }}
+                                            className="text-[12px] font-bold text-[#004D6D] hover:underline px-2"
+                                        >
+                                            {paDisplay.name ? 'Change' : 'Assign'}
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
+
                         </div>
                     </div>
                 </div>
@@ -405,9 +512,11 @@ const Step3EditJob = ({ setToasts }) => {
                     query={driverQuery}
                     onQueryChange={setDriverQuery}
                     searchPlaceholder="Search driver by name or license..."
+                    infoNote="Drivers already assigned to other jobs are hidden. Seat capacity and wheelchair access are validated when you select."
                     rows={filteredDriverRows}
                     currentId={draftDriverId}
-                    onPick={(row) => { setDraftDriverId(row.id); setShowDriverModal(false); }}
+                    loadingId={pickingDriverId}
+                    onPick={handlePickDriver}
                     onClose={() => setShowDriverModal(false)}
                     disabled={saveInProgress}
                     emptyText="No drivers available (all assigned to other jobs)."
@@ -425,8 +534,10 @@ const Step3EditJob = ({ setToasts }) => {
                     query={paQuery}
                     onQueryChange={setPaQuery}
                     searchPlaceholder="Search PA by name..."
+                    infoNote={null}
                     rows={filteredPaRows}
                     currentId={draftPaId}
+                    loadingId={null}
                     onPick={(row) => { setDraftPaId(row.id); setShowPaModal(false); }}
                     onClose={() => setShowPaModal(false)}
                     disabled={saveInProgress}
@@ -444,7 +555,8 @@ const Step3EditJob = ({ setToasts }) => {
 const AssignmentModal = ({
     title, jobDisplayId, jobName,
     query, onQueryChange, searchPlaceholder,
-    rows, currentId, onPick, onClose,
+    infoNote,
+    rows, currentId, loadingId, onPick, onClose,
     disabled, emptyText, renderSub, inviteLabel,
 }) => (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
@@ -459,7 +571,7 @@ const AssignmentModal = ({
                 </button>
             </div>
 
-            <div className="p-8 space-y-6 overflow-y-auto">
+            <div className="p-8 space-y-5 overflow-y-auto">
                 {/* Job info strip */}
                 <div className="bg-[#F9FAFB] border border-gray-100 rounded-2xl p-5 flex items-center justify-between gap-4">
                     <div className="min-w-0">
@@ -467,6 +579,14 @@ const AssignmentModal = ({
                         <p className="text-[15px] font-bold text-gray-900 mt-1 truncate">{jobName}</p>
                     </div>
                 </div>
+
+                {/* Optional info note (driver modal only) */}
+                {infoNote && (
+                    <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-[12px] text-blue-700">
+                        <MdWarning size={16} className="shrink-0 mt-0.5 text-blue-400" />
+                        <span>{infoNote}</span>
+                    </div>
+                )}
 
                 {/* Search */}
                 <div className="relative">
@@ -477,7 +597,7 @@ const AssignmentModal = ({
                 </div>
 
                 {/* Rows */}
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-64 overflow-y-auto pr-1">
                     {rows.length === 0 && (
                         <div className="px-4 py-6 text-center text-[13px] text-gray-500 border border-dashed border-gray-200 rounded-2xl">
                             {emptyText}
@@ -485,6 +605,7 @@ const AssignmentModal = ({
                     )}
                     {rows.map((row) => {
                         const isCurrent = currentId === row.id;
+                        const isLoading = loadingId === row.id;
                         return (
                             <div key={row.id}
                                 className={`p-4 border rounded-2xl flex items-center justify-between gap-3 transition-all ${
@@ -499,15 +620,33 @@ const AssignmentModal = ({
                                         )}
                                     </div>
                                 </div>
-                                <button type="button" disabled={disabled || isCurrent} onClick={() => onPick(row)}
-                                    className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all shrink-0 ${
+                                <button
+                                    type="button"
+                                    disabled={disabled || isCurrent || !!loadingId}
+                                    onClick={() => !isCurrent && !loadingId && onPick(row)}
+                                    className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all shrink-0 min-w-[80px] text-center ${
                                         isCurrent
                                             ? 'border border-[#004D6D]/30 text-[#004D6D] bg-white cursor-default'
+                                            : isLoading
+                                            ? 'border border-gray-200 text-gray-400 bg-gray-50 cursor-wait'
                                             : 'border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50'
-                                    }`}>
-                                    {isCurrent
-                                        ? <span className="inline-flex items-center gap-1.5 text-[#004D6D]"><MdCheck size={16} />Current</span>
-                                        : 'Assign'}
+                                    }`}
+                                >
+                                    {isCurrent ? (
+                                        <span className="inline-flex items-center gap-1.5 text-[#004D6D]">
+                                            <MdCheck size={16} />Current
+                                        </span>
+                                    ) : isLoading ? (
+                                        <span className="inline-flex items-center gap-1.5">
+                                            <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                                                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                            </svg>
+                                            Checking
+                                        </span>
+                                    ) : (
+                                        'Assign'
+                                    )}
                                 </button>
                             </div>
                         );

@@ -67,13 +67,18 @@ class PickupStop {
 
 /// A single dropoff stop.
 ///
-/// Outbound (morning): one shared stop — the school.
-///   passengerName = '' (not shown individually)
+/// Outbound (morning): one stop per unique school.
+///   passengerName = '' (label shown as school address / "School N")
+///   passengerIds  = all passenger IDs going to this school (used for bulk
+///                   status update via updateDropoffStatusForSchool)
 ///
 /// Inbound (evening): one stop per passenger — their home address.
 ///   passengerName = passenger's name (shown in complete_job timeline)
 ///
-/// [id] → job_session_passengers.id used to mark dropped_off status.
+/// [id] → job_session_passengers.id of the first passenger for this stop.
+///   - Inbound: used directly for single-row status mutation.
+///   - Outbound: not used for mutation (schoolAddress is used instead);
+///               kept for currentDropoff identity checks.
 class DropoffStop {
   final String id;
   final int dropoffOrder;
@@ -82,6 +87,9 @@ class DropoffStop {
   final double? lat;
   final double? lng;
   final String passengerName; // used in inbound timeline
+  /// All passenger IDs sharing this dropoff school (outbound only).
+  /// Empty for inbound stops.
+  final List<String> passengerIds;
   DropoffStatus status;
 
   DropoffStop({
@@ -92,6 +100,7 @@ class DropoffStop {
     this.lat,
     this.lng,
     this.passengerName = '',
+    this.passengerIds = const [],
     this.status = DropoffStatus.pending,
   });
 

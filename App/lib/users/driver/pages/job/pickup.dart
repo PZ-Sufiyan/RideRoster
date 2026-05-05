@@ -384,6 +384,9 @@ class _ActiveStopCard extends StatelessWidget {
               Expanded(
                 child: AppButton(
                   label: stop.hasCoordinates ? 'Navigate' : 'No GPS',
+                  height: SizeConfig.r(44),
+                  fontSize: SizeConfig.sp(13),
+                  fontWeight: FontWeight.w600,
                   borderRadius: SizeConfig.radiusLG,
                   onPressed: stop.hasCoordinates
                       ? () => context

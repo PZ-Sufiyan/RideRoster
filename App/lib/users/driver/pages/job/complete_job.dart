@@ -32,9 +32,7 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
         child: Consumer<JobProvider>(
           builder: (context, provider, _) {
             final job = provider.job;
-            final isInbound = job?.isInbound ?? false;
 
-            // For inbound: are there still pending dropoffs?
             final pendingDropoffs =
                 job?.dropoffs
                     .where((d) => d.status == DropoffStatus.pending)
@@ -55,6 +53,8 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
                 if (provider.isTracking)
                   _TrackingBanner(
                     distanceMeters: provider.currentDistanceMeters,
+                    isInbound: job?.isInbound ?? true,
+                    currentDropoff: currentDropoff,
                   ),
                 Expanded(
                   child: SingleChildScrollView(
@@ -74,7 +74,7 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
                 ),
                 _BottomBar(
                   commentsController: _commentsController,
-                  isInbound: isInbound,
+                  isInbound: job?.isInbound ?? false,
                   allDropoffsDone: allDropoffsDone,
                   currentDropoff: currentDropoff,
                   job: job,
@@ -171,12 +171,18 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
     );
   }
 
+  // ── Timeline ──────────────────────────────────────────────────────────────
+  //
+  // Outbound: passenger pickup rows → then one _TimelineItem per school stop
+  // Inbound:  passenger pickup rows → then one _TimelineItem per home dropoff
+
   Widget _buildTimeline(JobModel? job) {
     if (job == null) return const SizedBox.shrink();
     final isInbound = job.isInbound;
 
     return Column(
       children: [
+        // Pickup items (same for both directions)
         ...job.pickups.map((stop) {
           final isCompleted = stop.status == PickupStatus.completed;
           return _TimelineItem(
@@ -188,7 +194,16 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
             icon: Icons.person,
           );
         }),
-        if (isInbound) ...[
+
+        // Dropoff items
+        if (job.dropoffs.isEmpty) ...[
+          // Fallback: no dropoff data at all
+          _DrivingToDropoffItem(
+            dropoffEta: job.dropoffEta,
+            dropoffLocation: job.dropoffLocation,
+          ),
+        ] else if (isInbound) ...[
+          // Inbound: one entry per passenger home
           ...job.dropoffs.map((dropoff) {
             final isDropped = dropoff.status == DropoffStatus.completed;
             final label = dropoff.passengerName.isNotEmpty
@@ -206,14 +221,33 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
             );
           }),
         ] else ...[
-          _DrivingToDropoffItem(
-            dropoffEta: job.dropoffEta,
-            dropoffLocation: job.dropoffLocation,
-          ),
+          // Outbound: one entry per school (may be multiple)
+          ...job.dropoffs.map((dropoff) {
+            final isDropped = dropoff.status == DropoffStatus.completed;
+            final label = job.dropoffs.length == 1
+                ? 'School Drop-off'
+                : 'School ${dropoff.dropoffOrder}';
+            return _TimelineItem(
+              name: label,
+              time: dropoff.scheduledTime,
+              detail: dropoff.address,
+              lineColor: isDropped
+                  ? AppColors.success
+                  : const Color(0xFF0284C7),
+              isCompleted: isDropped,
+              icon: Icons.school_outlined,
+            );
+          }),
         ],
       ],
     );
   }
+
+  // ── Dropoff section ───────────────────────────────────────────────────────
+  //
+  // Unified for both outbound (schools) and inbound (homes).
+  // Shows one _DropoffDestinationCard per stop. Navigate button is enabled
+  // only for the current pending stop.
 
   Widget _buildDropoffSection(
     JobModel? job,
@@ -221,26 +255,16 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
     DropoffStop? currentDropoff,
   ) {
     if (job == null) return const SizedBox.shrink();
-
-    if (!job.isInbound) {
-      return _DropoffDestinationCard(
-        title: 'Drop-off Destination',
-        address: job.dropoffLocation,
-        eta: job.dropoffEta,
-        isCompleted: job.currentDropoff?.status == DropoffStatus.completed,
-        onNavigate: job.currentDropoff?.hasCoordinates == true
-            ? () => provider.navigateToDropoff()
-            : null,
-      );
-    }
-
     if (job.dropoffs.isEmpty) return const SizedBox.shrink();
+
+    final isInbound = job.isInbound;
+    final sectionLabel = isInbound ? 'Drop-off Stops' : 'School Drop-off Stops';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Drop-off Stops',
+          sectionLabel,
           style: TextStyle(
             fontSize: SizeConfig.sp(16),
             fontWeight: FontWeight.w700,
@@ -250,16 +274,26 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
         SizedBox(height: SizeConfig.r(10)),
         ...job.dropoffs.map((dropoff) {
           final isCurrent = currentDropoff?.id == dropoff.id;
+
+          final String cardTitle;
+          if (isInbound) {
+            cardTitle = dropoff.passengerName.isNotEmpty
+                ? '${dropoff.passengerName}\'s Home'
+                : 'Drop-off ${dropoff.dropoffOrder}';
+          } else {
+            cardTitle = job.dropoffs.length == 1
+                ? 'School Drop-off'
+                : 'School ${dropoff.dropoffOrder}';
+          }
+
           return Padding(
             padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
             child: _DropoffDestinationCard(
-              title: dropoff.passengerName.isNotEmpty
-                  ? '${dropoff.passengerName}\'s Home'
-                  : 'Drop-off ${dropoff.dropoffOrder}',
+              title: cardTitle,
               address: dropoff.address,
               eta: dropoff.scheduledTime,
               isCompleted: dropoff.status == DropoffStatus.completed,
-              // Enable navigate only for the current pending dropoff
+              // Navigate only for the current pending stop
               onNavigate: (isCurrent && dropoff.hasCoordinates)
                   ? () => provider.navigateToDropoff()
                   : null,
@@ -277,13 +311,27 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
 
 class _TrackingBanner extends StatelessWidget {
   final double? distanceMeters;
-  const _TrackingBanner({this.distanceMeters});
+  final bool isInbound;
+  final DropoffStop? currentDropoff;
+
+  const _TrackingBanner({
+    this.distanceMeters,
+    required this.isInbound,
+    required this.currentDropoff,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final destination = isInbound
+        ? (currentDropoff?.passengerName.isNotEmpty == true
+              ? '${currentDropoff!.passengerName}\'s home'
+              : 'drop-off')
+        : 'school drop-off';
+
     final label = distanceMeters != null
-        ? '${distanceMeters!.toStringAsFixed(0)} m to drop-off — tracking active'
-        : 'Tracking location to drop-off…';
+        ? '${distanceMeters!.toStringAsFixed(0)} m to $destination — tracking active'
+        : 'Tracking location to $destination…';
+
     return Container(
       width: double.infinity,
       color: AppColors.success.withValues(alpha: 0.1),
@@ -299,12 +347,14 @@ class _TrackingBanner extends StatelessWidget {
             color: AppColors.success,
           ),
           SizedBox(width: SizeConfig.r(6)),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: SizeConfig.sp(12),
-              color: AppColors.success,
-              fontWeight: FontWeight.w500,
+          Expanded(
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.success,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
@@ -751,14 +801,19 @@ class _JobCommentsCard extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Bottom Bar
 //
-// Outbound (one school dropoff):
-//   "Arrived at Drop-off" → completeCurrentJob() → dashboard
+// Unified for both outbound and inbound. Logic:
 //
-// Inbound (multiple home dropoffs):
-//   While pending dropoffs remain:
-//     "Arrived at [Name]'s Home" → markDropoffAsCompleted() → stays on page
-//   When all dropoffs done:
-//     "Complete Job" → completeCurrentJob() → dashboard
+//   allDropoffsDone == true (both directions):
+//     → "Complete Job" button → completeCurrentJob() → dashboard
+//
+//   allDropoffsDone == false, inbound:
+//     → "Arrived at [Name]'s Home" → markDropoffAsCompleted() → stay on page
+//
+//   allDropoffsDone == false, outbound, single school:
+//     → "Arrived at Drop-off" → markDropoffAsCompleted() → stay on page
+//
+//   allDropoffsDone == false, outbound, multiple schools:
+//     → "Arrived at School N" → markDropoffAsCompleted() → stay on page
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _BottomBar extends StatelessWidget {
@@ -776,20 +831,26 @@ class _BottomBar extends StatelessWidget {
     required this.job,
   });
 
-  @override
-  Widget build(BuildContext context) {
-    // Determine button label
-    String label;
-    if (!isInbound) {
-      label = 'Arrived at Drop-off';
-    } else if (allDropoffsDone) {
-      label = 'Complete Job';
-    } else {
+  String _resolveLabel() {
+    if (allDropoffsDone) return 'Complete Job';
+
+    if (isInbound) {
       final name = currentDropoff?.passengerName;
-      label = (name != null && name.isNotEmpty)
+      return (name != null && name.isNotEmpty)
           ? 'Arrived at ${name}\'s Home'
           : 'Arrived at Drop-off';
     }
+
+    // Outbound
+    final total = job?.dropoffs.length ?? 1;
+    final order = currentDropoff?.dropoffOrder ?? 1;
+    return total > 1 ? 'Arrived at School $order' : 'Arrived at Drop-off';
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _resolveLabel();
+    final isFinish = allDropoffsDone;
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -808,9 +869,7 @@ class _BottomBar extends StatelessWidget {
         child: ElevatedButton(
           onPressed: () => _handleTap(context),
           style: ElevatedButton.styleFrom(
-            backgroundColor: allDropoffsDone && isInbound
-                ? AppColors.success
-                : AppColors.textDark,
+            backgroundColor: isFinish ? AppColors.success : AppColors.textDark,
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
@@ -829,9 +888,7 @@ class _BottomBar extends StatelessWidget {
               ),
               SizedBox(width: SizeConfig.r(8)),
               Icon(
-                allDropoffsDone && isInbound
-                    ? Icons.check
-                    : Icons.arrow_forward,
+                isFinish ? Icons.check : Icons.arrow_forward,
                 color: Colors.white,
                 size: SizeConfig.r(18),
               ),
@@ -845,15 +902,16 @@ class _BottomBar extends StatelessWidget {
   Future<void> _handleTap(BuildContext context) async {
     final provider = context.read<JobProvider>();
 
-    if (isInbound && !allDropoffsDone) {
+    if (!allDropoffsDone) {
       // Mark the current dropoff as completed and stay on this page.
+      // For outbound: bulk-marks all passengers at the same school.
+      // For inbound: marks a single passenger's home dropoff.
       // The provider will reload via realtime, updating dropoff statuses.
-      // UI rebuilds showing next pending dropoff.
       await provider.markDropoffAsCompleted();
       return;
     }
 
-    // Outbound OR all inbound dropoffs done → complete the job
+    // All dropoffs done — complete the job and return to dashboard.
     try {
       await provider.completeCurrentJob(
         comments: commentsController.text.trim(),
