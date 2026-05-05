@@ -19,6 +19,13 @@ import '../users/driver/models/job_model.dart';
 ///
 /// passenger_schedules.dropoff_address is the correct source for inbound
 /// dropoffs — NOT passenger.educational_site_address.
+///
+/// Direction priority (see _pickDirection):
+///   1. Any currently active session wins unconditionally.
+///   2. Outbound always takes priority over inbound when both are pending —
+///      morning run must be completed before evening run is shown.
+///   3. Time-of-day is NOT used as a tiebreaker — it caused inbound to appear
+///      before outbound when testing/running after 1 PM.
 class JobService {
   SupabaseClient get _supabase => Supabase.instance.client;
 
@@ -67,11 +74,7 @@ class JobService {
       sessionMap[dir] = Map<String, dynamic>.from(s as Map);
     }
 
-    final direction = _pickDirection(
-      jobRow: jobRow,
-      sessionMap: sessionMap,
-      now: today,
-    );
+    final direction = _pickDirection(jobRow: jobRow, sessionMap: sessionMap);
     if (direction == null) return null;
 
     final hasDirection = direction == 'outbound'
@@ -85,15 +88,9 @@ class JobService {
 
     // ── Build passenger rows ──────────────────────────────────────────────
 
-    // scheduleRows holds the full passenger_schedules rows (with dropoff coords)
-    // needed for both preview and time injection into session passengers.
     List<Map<String, dynamic>> scheduleRows = [];
     List<Map<String, dynamic>> passengerRows = [];
 
-    // Always fetch schedules — needed for:
-    //   - preview (no session yet)
-    //   - time injection (session exists)
-    //   - inbound dropoff addresses (session exists, inbound direction)
     scheduleRows = await _resolvedScheduleForDay(
       jobDbId: jobDbId,
       weekday: weekday,
@@ -129,8 +126,6 @@ class JobService {
         final schedule = scheduleByPassenger[pid];
         if (schedule != null) {
           row['scheduled_time'] = schedule['pickup_time'] ?? '';
-          // Inject inbound dropoff address+coords from schedule
-          // (job_session_passengers only stores pickup coords)
           if (direction == 'inbound') {
             row['inbound_dropoff_address'] = schedule['dropoff_address'] ?? '';
             row['inbound_dropoff_lat'] = schedule['dropoff_latitude'];
@@ -152,7 +147,6 @@ class JobService {
           'dropoff_address': r['dropoff_address'] ?? '',
           'scheduled_time': r['pickup_time'],
           'notes': r['notes'],
-          // inbound dropoff from schedule
           if (direction == 'inbound') ...{
             'inbound_dropoff_address': r['dropoff_address'] ?? '',
             'inbound_dropoff_lat': r['dropoff_latitude'],
@@ -228,12 +222,10 @@ class JobService {
     final dropoffs = <DropoffStop>[];
 
     if (direction == 'outbound') {
-      // Group passengers by educational_site_address
-      // Preserve insertion order (stop_order of first passenger per school)
+      // Group passengers by educational_site_address.
+      // Preserve insertion order (stop_order of first passenger per school).
       final schoolOrder = <String>[];
-      // school address → list of passenger session rows
       final schoolPassengerRows = <String, List<Map<String, dynamic>>>{};
-      // school address → meta (lat, lng, dropoff_time)
       final schoolMeta = <String, Map<String, dynamic>>{};
 
       for (final row in passengerRows) {
@@ -262,10 +254,8 @@ class JobService {
         final rows = schoolPassengerRows[schoolAddress]!;
         final meta = schoolMeta[schoolAddress]!;
 
-        // First passenger row id — used for currentDropoff identity checks
         final firstRowId = (rows.first['id'] ?? '').toString();
 
-        // Collect all passenger IDs going to this school
         final pIds = rows
             .map((r) => (r['passenger_id'] ?? '').toString())
             .where((id) => id.isNotEmpty)
@@ -311,8 +301,6 @@ class JobService {
         final homeLat = _asDouble(row['inbound_dropoff_lat']);
         final homeLng = _asDouble(row['inbound_dropoff_lng']);
 
-        // Dropoff time for inbound comes from schedule dropoff_time,
-        // which may be null — fall back to evening_start_time if needed
         final schedule = scheduleByPassenger[passengerId];
         final dropoffTime = _formatTime(schedule?['dropoff_time']);
 
@@ -344,12 +332,10 @@ class JobService {
         .where((p) => p.status == PickupStatus.pending)
         .toList();
 
-    // For the dashboard "Next pickup" label
     final nextPickupTime = nextPending.isNotEmpty
         ? nextPending.first.scheduledTime
         : (dropoffs.isNotEmpty ? dropoffs.first.scheduledTime : '--:--');
 
-    // Primary dropoff label for dashboard card
     final primaryDropoffLocation = dropoffs.isEmpty
         ? ''
         : dropoffs.length == 1
@@ -358,7 +344,6 @@ class JobService {
         ? '${dropoffs.length} schools'
         : '${dropoffs.length} home drop-offs';
 
-    // Dropoff ETA for dashboard card
     final primaryDropoffEta = dropoffs.isNotEmpty
         ? dropoffs.first.scheduledTime
         : '--:--';
@@ -384,16 +369,29 @@ class JobService {
   }
 
   // ── Direction picker ──────────────────────────────────────────────────────
+  //
+  // Priority rules (strictly in order):
+  //
+  //   1. An active session wins unconditionally — resume whatever is in flight.
+  //
+  //   2. Outbound always comes before inbound when both are pending.
+  //      The morning run must be completed before the evening run is shown,
+  //      regardless of what time of day it is. The previous time-based
+  //      tiebreaker (now.hour < 13) caused inbound to appear before outbound
+  //      when the app was used or tested after 1 PM — now removed.
+  //
+  //   3. If outbound is done (or the job has no outbound), show inbound.
+  //
+  //   4. If both are done (or neither applies), return null → no current job.
 
   String? _pickDirection({
     required Map<String, dynamic> jobRow,
     required Map<String, Map<String, dynamic>> sessionMap,
-    required DateTime now,
   }) {
     final hasOutbound = jobRow['has_outbound'] == true;
     final hasInbound = jobRow['has_inbound'] == true;
 
-    // Priority 1: active session
+    // Priority 1: resume whichever session is currently active
     for (final entry in sessionMap.entries) {
       if (entry.value['status'] == 'active') return entry.key;
     }
@@ -401,19 +399,16 @@ class JobService {
     final outboundDone = sessionMap['outbound']?['status'] == 'completed';
     final inboundDone = sessionMap['inbound']?['status'] == 'completed';
 
+    // Both done (or neither available) → nothing to show
     if ((!hasOutbound || outboundDone) && (!hasInbound || inboundDone)) {
       return null;
     }
 
-    final preferOutbound = now.hour < 13;
+    // Priority 2: outbound before inbound — always
+    if (hasOutbound && !outboundDone) return 'outbound';
 
-    if (preferOutbound) {
-      if (hasOutbound && !outboundDone) return 'outbound';
-      if (hasInbound && !inboundDone) return 'inbound';
-    } else {
-      if (hasInbound && !inboundDone) return 'inbound';
-      if (hasOutbound && !outboundDone) return 'outbound';
-    }
+    // Priority 3: outbound done or absent → show inbound
+    if (hasInbound && !inboundDone) return 'inbound';
 
     return null;
   }
@@ -483,7 +478,7 @@ class JobService {
 
       // Dropoff address: for outbound use school, for inbound use home.
       // Storing the school address per-passenger row is what allows
-      // updateDropoffStatusForSchool() to do a bulk update by address.
+      // updateDropoffStatusForSchool() to bulk-update by address.
       final dropoffAddress = direction == 'outbound'
           ? (profile?['educational_site_address'] ?? '').toString()
           : (row['dropoff_address'] ?? '').toString();
@@ -604,8 +599,6 @@ class JobService {
     required String direction,
     required String todayDate,
   }) async {
-    // Include dropoff_address + dropoff_latitude + dropoff_longitude
-    // needed for inbound per-passenger home dropoffs
     final baseRows = await _supabase
         .from('passenger_schedules')
         .select(
