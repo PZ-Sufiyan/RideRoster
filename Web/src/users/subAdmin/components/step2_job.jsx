@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+﻿import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdDeleteOutline,
@@ -311,7 +311,7 @@ const Step2Job = ({ setToasts }) => {
         if (noSchedule.length > 0) {
             pushToast('warning', `${noSchedule.map((p) => passengerDisplayName(p)).join(', ')} ${noSchedule.length === 1 ? 'has' : 'have'} no weekly schedule — no schedule rows will be generated for them.`);
         }
-        navigate('/subadmin/jobs/add-job?step=3');
+        navigate('/team/jobs/add-job?step=3');
     };
 
     const availableToAdd = catalog.filter((p) => !selectedPassengers.some((s) => s.id === p.id));
@@ -466,7 +466,7 @@ const Step2Job = ({ setToasts }) => {
             <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-between z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
                 <button
                     type="button"
-                    onClick={() => navigate('/subadmin/jobs/add-job?step=1')}
+                    onClick={() => navigate('/team/jobs/add-job?step=1')}
                     className="text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors"
                 >
                     Back

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import 'leaflet/dist/leaflet.css'
 import { useLocation, useNavigate, useParams } from 'react-router-dom'
 import {
@@ -227,7 +227,7 @@ const SOSDetail = () => {
             if (!companyId) throw new Error('No company linked to your account.')
 
             await resolveSosForCompany(detail.sos.id, companyId)
-            navigate('/admin/sos')
+            navigate('/portal/sos')
         } catch (e) {
             setError(e?.message || 'Could not resolve alert.')
         } finally {
@@ -299,7 +299,7 @@ const SOSDetail = () => {
                     </div>
                     <button
                         type="button"
-                        onClick={() => navigate('/admin/sos')}
+                        onClick={() => navigate('/portal/sos')}
                         className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors shrink-0"
                     >
                         <MdClose size={24} />
@@ -494,7 +494,7 @@ const SOSDetail = () => {
                     <button
                         type="button"
                         disabled={!detail?.job?.id}
-                        onClick={() => detail?.job?.id && navigate(`/admin/jobs/${detail.job.id}`)}
+                        onClick={() => detail?.job?.id && navigate(`/portal/jobs/${detail.job.id}`)}
                         className="flex-1 py-3 px-4 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-40 disabled:pointer-events-none"
                     >
                         View Job Details

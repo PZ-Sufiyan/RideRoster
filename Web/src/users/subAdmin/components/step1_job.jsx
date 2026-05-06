@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MdKeyboardArrowDown, MdAdd, MdRemove, MdGpsFixed, MdTrendingFlat } from 'react-icons/md';
 import { loadJobDraft, saveJobDraft } from '../../../services/jobService';
@@ -59,7 +59,7 @@ const Step1Job = ({ setToasts }) => {
                 internal_job_id: formData.internalId.trim(),
             },
         });
-        navigate('/subadmin/jobs/add-job?step=2');
+        navigate('/team/jobs/add-job?step=2');
     };
 
     const fieldClass = (invalid) =>
@@ -211,7 +211,7 @@ const Step1Job = ({ setToasts }) => {
 
             {/* Bottom Bar */}
             <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-between z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
-                <button onClick={() => navigate('/subadmin/jobs')} className="text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors">
+                <button onClick={() => navigate('/team/jobs')} className="text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors">
                     Cancel
                 </button>
                 <button onClick={handleNext} className="flex items-center gap-2 px-8 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/20 active:scale-95">

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     HiOutlineMail,
@@ -50,7 +50,7 @@ const SubAdminLogin = () => {
 
             localStorage.setItem('isAuthenticated', 'true');
             localStorage.setItem('userRole', 'subadmin');
-            navigate('/subadmin/dashboard');
+            navigate('/team/dashboard');
         } catch (err) {
             const message = err?.message || 'Login failed. Please try again.';
             setLoginError(

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import {
     MdSearch,
     MdFilterList,
@@ -136,7 +136,7 @@ const PendingCompanies = () => {
                     <h1 className="text-2xl font-bold text-gray-900">Pending Company Approvals</h1>
                     <p className="text-sm text-gray-500 mt-1">Review and verify new company registrations.</p>
                 </div>
-                <Link to="/superadmin/companies" className="text-sm font-medium text-blue-600 hover:text-blue-700 bg-transparent flex items-center gap-1">
+                <Link to="/platform/companies" className="text-sm font-medium text-blue-600 hover:text-blue-700 bg-transparent flex items-center gap-1">
                     View All Companies
                 </Link>
             </div>
@@ -325,7 +325,7 @@ const PendingCompanies = () => {
                                                 {activeActionMenuId === company.id && (
                                                     <div className="absolute right-0 mt-2 w-36 bg-white rounded-lg shadow-lg border border-gray-100 z-20 overflow-hidden">
                                                         <Link
-                                                            to={`/superadmin/companies/review/${company.id}`}
+                                                            to={`/platform/companies/review/${company.id}`}
                                                             onClick={() => setActiveActionMenuId(null)}
                                                             className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
                                                         >

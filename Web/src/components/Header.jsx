@@ -6,8 +6,8 @@ import { supabase } from '../lib/supabaseClient';
 const Header = ({ onMenuClick }) => {
     const location = useLocation();
 
-    const isAdmin = location.pathname.startsWith('/admin');
-    const isSubAdmin = location.pathname.startsWith('/subadmin');
+    const isAdmin = location.pathname.startsWith('/portal');
+    const isSubAdmin = location.pathname.startsWith('/team');
     const isSuperAdmin = !isAdmin && !isSubAdmin;
 
     const roleLabel = isAdmin ? 'Admin' : isSubAdmin ? 'Sub Admin' : 'Super Admin';

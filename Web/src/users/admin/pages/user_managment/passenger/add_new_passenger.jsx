@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdPerson,
@@ -438,7 +438,7 @@ const AddNewPassenger = () => {
             });
 
             pushToast('success', 'Passenger registered successfully.');
-            if (navigateAfterSave) { navigate('/admin/users/passengers'); return; }
+            if (navigateAfterSave) { navigate('/portal/users/passengers'); return; }
             clearForm();
         } catch (err) {
             pushToast('error', err?.message || 'Could not register passenger.');
@@ -893,7 +893,7 @@ const AddNewPassenger = () => {
                     </span>
                 </div>
                 <div className="flex items-center gap-3">
-                    <button onClick={() => navigate('/admin/users/passengers')}
+                    <button onClick={() => navigate('/portal/users/passengers')}
                         className="px-5 py-2 text-[13px] font-semibold text-gray-700 hover:bg-gray-50 transition-all rounded-lg">
                         Cancel
                     </button>

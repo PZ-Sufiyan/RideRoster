@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     MdTrendingFlat, MdOutlinePinDrop, MdPerson, MdDeleteOutline,
@@ -285,7 +285,7 @@ const Step2EditJob = ({ setToasts }) => {
 
     const handleNext = () => {
         if (selectedPassengers.length === 0) { pushToast('warning', 'Add at least one passenger.'); return; }
-        navigate(`/admin/jobs/${id}/edit?step=3`);
+        navigate(`/portal/jobs/${id}/edit?step=3`);
     };
 
     // Show shimmer while context is still loading the initial passenger list
@@ -430,7 +430,7 @@ const Step2EditJob = ({ setToasts }) => {
 
             {/* Bottom Bar */}
             <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-between z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
-                <button type="button" onClick={() => navigate(`/admin/jobs/${id}/edit?step=1`)}
+                <button type="button" onClick={() => navigate(`/portal/jobs/${id}/edit?step=1`)}
                     className="text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors">
                     Back
                 </button>

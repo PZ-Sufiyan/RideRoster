@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdChevronLeft,
@@ -122,7 +122,7 @@ const RouteReview = () => {
                             Back to Edit
                         </button>
                         <button 
-                            onClick={() => navigate('/subadmin/users/passengers/assign/success')}
+                            onClick={() => navigate('/team/users/passengers/assign/success')}
                             disabled={!isConfirmed}
                             className={`px-7 py-2.5 rounded-lg text-[14px] font-semibold transition-all shadow-sm
                                 ${isConfirmed 

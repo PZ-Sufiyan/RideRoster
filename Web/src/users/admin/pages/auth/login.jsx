@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     HiOutlineMail,
@@ -67,9 +67,9 @@ const AdminLogin = () => {
             }
 
             if (companyAdminRow?.company_id) {
-                navigate('/admin/dashboard', { replace: true });
+                navigate('/portal/dashboard', { replace: true });
             } else {
-                navigate('/admin/register', { replace: true });
+                navigate('/portal/register', { replace: true });
             }
         } catch (err) {
             const message = err?.message || 'Login failed. Please try again.';

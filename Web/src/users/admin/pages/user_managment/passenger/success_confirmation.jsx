@@ -1,4 +1,4 @@
-import React from 'react';
+﻿import React from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdCheckCircle,
@@ -107,14 +107,14 @@ const SuccessConfirmation = () => {
                     {/* Action Buttons */}
                     <div className="flex flex-col md:flex-row items-center justify-center gap-3">
                         <button 
-                            onClick={() => navigate('/admin/users/passengers/1')}
+                            onClick={() => navigate('/portal/users/passengers/1')}
                             className="flex items-center justify-center gap-2 w-full md:w-auto h-11 px-6 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm active:scale-95"
                         >
                             <MdPerson size={17} />
                             View Passenger Profile
                         </button>
                         <button 
-                            onClick={() => navigate('/admin/users/passengers')}
+                            onClick={() => navigate('/portal/users/passengers')}
                             className="flex items-center justify-center gap-2 w-full md:w-auto h-11 px-6 bg-white border border-gray-200 text-gray-700 rounded-lg text-[13px] font-semibold hover:bg-gray-50 transition-all shadow-sm active:scale-95"
                         >
                             <MdList size={17} />

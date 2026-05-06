@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo } from 'react';
+﻿import React, { useEffect, useState, useMemo } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     MdHome,
@@ -657,7 +657,7 @@ const PassengerDetail = () => {
                     </button>
                     <button
                         type="button"
-                        onClick={() => navigate(`/admin/users/passengers/${id}/edit`)}
+                        onClick={() => navigate(`/portal/users/passengers/${id}/edit`)}
                         className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm"
                     >
                         <MdEdit size={15} />

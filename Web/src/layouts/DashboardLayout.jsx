@@ -8,7 +8,7 @@ import { SubAdminPermissionsProvider } from '../context/subAdminPermissionsConte
 const DashboardLayout = () => {
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const location = useLocation();
-    const isSubAdmin = location.pathname.startsWith('/subadmin');
+    const isSubAdmin = location.pathname.startsWith('/team');
 
     // Close sidebar on route change (mobile)
     useEffect(() => {

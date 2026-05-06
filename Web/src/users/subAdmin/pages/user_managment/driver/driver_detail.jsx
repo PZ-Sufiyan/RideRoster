@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
 import {
@@ -324,7 +324,7 @@ const DriverDetail = () => {
                     </button>
                     <button
                         type="button"
-                        onClick={() => navigate('/subadmin/users/drivers')}
+                        onClick={() => navigate('/team/users/drivers')}
                         className="flex items-center gap-2 px-4 py-2 bg-[#005580] text-white rounded-lg text-xs font-semibold hover:bg-[#004663]"
                     >
                         <MdEdit size={14} />
@@ -513,7 +513,7 @@ const DriverDetail = () => {
                     <h2 className="text-[22px] font-bold text-gray-900">Job History</h2>
                     <button
                         type="button"
-                        onClick={() => navigate('/admin/jobs')}
+                        onClick={() => navigate('/portal/jobs')}
                         className="text-[12px] text-[#005580] font-semibold hover:underline"
                     >
                         View All Jobs

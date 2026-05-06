@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ToastStack } from '../../../../../utils/Toast';
 import { supabase } from '../../../../../lib/supabaseClient';
@@ -114,7 +114,7 @@ const AddSubAdmin = () => {
                 permissionKeys: permissions,
             });
             pushToast('success', 'Sub-admin created successfully.');
-            navigate('/admin/users/subadmins');
+            navigate('/portal/users/subadmins');
         } catch (e) {
             const msg = e?.message || 'Could not create sub-admin.';
             pushToast('error', msg);
@@ -142,7 +142,7 @@ const AddSubAdmin = () => {
                     <button
                         type="button"
                         disabled={isSubmitting}
-                        onClick={() => navigate('/admin/users/subadmins')}
+                        onClick={() => navigate('/portal/users/subadmins')}
                         className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                     >
                         Cancel

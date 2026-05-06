@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     MdOutlineToggleOff, MdOutlineToggleOn,
@@ -182,7 +182,7 @@ const Step3EditJob = ({ setToasts }) => {
         try {
             await saveAllChanges();
             pushToast('success', 'Job updated. Passenger schedules regenerated.');
-            navigate(`/subadmin/jobs/${id}`);
+            navigate(`/team/jobs/${id}`);
         } catch (e) {
             pushToast('error', e?.message || 'Could not save changes.');
         }
@@ -493,7 +493,7 @@ const Step3EditJob = ({ setToasts }) => {
 
             {/* Bottom Bar */}
             <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-between z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
-                <button type="button" onClick={() => navigate(`/subadmin/jobs/${id}/edit?step=2`)} disabled={saveInProgress}
+                <button type="button" onClick={() => navigate(`/team/jobs/${id}/edit?step=2`)} disabled={saveInProgress}
                     className="text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50">
                     Back
                 </button>

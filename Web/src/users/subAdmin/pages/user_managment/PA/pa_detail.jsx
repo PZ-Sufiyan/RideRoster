@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useCallback, createElement } from 'react';
+﻿import React, { useState, useEffect, useMemo, useCallback, createElement } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     MdArrowBack,
@@ -296,7 +296,7 @@ const PADetail = () => {
             <div className="space-y-4">
                 <button
                     type="button"
-                    onClick={() => navigate('/subadmin/users/pa')}
+                    onClick={() => navigate('/team/users/pa')}
                     className="flex items-center gap-2 text-sm font-medium text-[#005580] hover:underline"
                 >
                     <MdArrowBack size={20} />
@@ -328,7 +328,7 @@ const PADetail = () => {
                 <div className="flex items-center gap-3 shrink-0">
                     <button
                         type="button"
-                        onClick={() => navigate('/subadmin/users/pa')}
+                        onClick={() => navigate('/team/users/pa')}
                         className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
                     >
                         <MdEdit size={16} />
@@ -336,7 +336,7 @@ const PADetail = () => {
                     </button>
                     <button
                         type="button"
-                        onClick={() => navigate('/subadmin/jobs')}
+                        onClick={() => navigate('/team/jobs')}
                         className="flex items-center gap-2 px-4 py-2 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm"
                     >
                         <MdAdd size={16} />
@@ -521,7 +521,7 @@ const PADetail = () => {
                                                 <td className="px-5 py-3.5 text-right">
                                                     <button
                                                         type="button"
-                                                        onClick={() => navigate(`/subadmin/jobs/${job.id}`)}
+                                                        onClick={() => navigate(`/team/jobs/${job.id}`)}
                                                         className="text-xs font-semibold text-[#005580] hover:text-sky-900 hover:underline transition-colors"
                                                     >
                                                         Details

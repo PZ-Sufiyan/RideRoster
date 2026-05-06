@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+﻿import React, { useState, useEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     MdBlock, MdEdit, MdWarning, MdWbSunny, MdNightlight,
@@ -275,7 +275,7 @@ const JobDetail = () => {
             const admin = await getCompanyAdminById(uid);
             await cancelJobById(id, admin?.company_id);
             setShowCancelModal(false);
-            navigate('/admin/jobs');
+            navigate('/portal/jobs');
         } catch (e) {
             setError(e?.message || 'Could not cancel job.');
         } finally {
@@ -306,7 +306,7 @@ const JobDetail = () => {
         return (
             <div className="space-y-4">
                 <p className="text-[14px] text-red-600 font-medium">{error}</p>
-                <button type="button" onClick={() => navigate('/admin/jobs')} className="text-[14px] font-bold text-[#004D6D]">Back to jobs</button>
+                <button type="button" onClick={() => navigate('/portal/jobs')} className="text-[14px] font-bold text-[#004D6D]">Back to jobs</button>
             </div>
         );
     }
@@ -339,7 +339,7 @@ const JobDetail = () => {
                         className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-500 rounded-lg bg-white hover:bg-red-50 text-[13px] font-bold transition-all disabled:opacity-40 disabled:cursor-not-allowed">
                         <MdBlock size={18} />Cancel Job
                     </button>
-                    <button type="button" onClick={() => navigate(`/admin/jobs/${id}/edit`)}
+                    <button type="button" onClick={() => navigate(`/portal/jobs/${id}/edit`)}
                         className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg bg-white hover:bg-gray-50 text-[13px] font-bold transition-all">
                         <MdEdit size={18} />Edit Job
                     </button>
@@ -469,7 +469,7 @@ const JobDetail = () => {
                         ) : (
                             <div className="space-y-2">
                                 {passengers.map((p) => (
-                                    <div key={p.id} onClick={() => navigate(`/admin/users/passengers/${p.id}`)}
+                                    <div key={p.id} onClick={() => navigate(`/portal/users/passengers/${p.id}`)}
                                         className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50/50 transition-colors cursor-pointer">
                                         <img src={`https://i.pravatar.cc/150?u=${p.id}`} alt={passengerDisplayName(p)} className="w-9 h-9 rounded-full object-cover border border-gray-100 shrink-0" />
                                         <div className="flex-1 min-w-0">

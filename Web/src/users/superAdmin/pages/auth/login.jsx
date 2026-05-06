@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
 import illustration from '../../../../assets/image.png';
@@ -53,7 +53,7 @@ const Login = () => {
 
             localStorage.setItem('isAuthenticated', 'true');
             localStorage.setItem('userRole', 'superadmin');
-            navigate('/superadmin/dashboard');
+            navigate('/platform/dashboard');
         } catch (err) {
             const message = err?.message || 'Login failed. Please try again.';
             setLoginError(

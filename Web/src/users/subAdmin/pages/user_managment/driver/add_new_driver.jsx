@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MdArrowBack, MdCloudUpload, MdVisibility, MdDeleteOutline, MdFileUpload } from 'react-icons/md';
 import { supabase } from '../../../../../lib/supabaseClient';
@@ -443,7 +443,7 @@ const AddNewDriver = () => {
                     wheelchairAccessible: form.wheelchairAccessible,
                 },
             });
-            navigate('/subadmin/users/drivers');
+            navigate('/team/users/drivers');
         } catch (e) {
             const msg = e?.message || 'Could not register driver.';
             setSubmitError(msg);
@@ -823,7 +823,7 @@ const AddNewDriver = () => {
                 <div className="flex items-center justify-between">
                     <button
                         type="button"
-                        onClick={() => navigate('/subadmin/users/drivers')}
+                        onClick={() => navigate('/team/users/drivers')}
                         className="flex items-center gap-1.5 text-sm text-gray-400 hover:text-gray-600 transition-colors disabled:opacity-0"
                         disabled={currentStep === 1}
                     >

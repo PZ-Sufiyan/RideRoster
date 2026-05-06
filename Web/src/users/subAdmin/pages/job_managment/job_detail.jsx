@@ -136,14 +136,14 @@ const JobDetail = () => {
             const admin = await getCompanyAdminById(uid);
             await cancelJobById(id, admin?.company_id);
             setShowCancelModal(false);
-            navigate('/subadmin/jobs');
+            navigate('/team/jobs');
         } catch (e) {
             setError(e?.message || 'Could not cancel job.');
         } finally { setCancelling(false); }
     };
 
     if (loading) return <LoadingStatus label="Loading job details" className="space-y-6"><ShimmerBlock className="h-8 w-64 rounded-md" /><ShimmerBlock className="h-40 rounded-xl" /></LoadingStatus>;
-    if (error && !bundle) return <div className="space-y-4"><p className="text-[14px] text-red-600 font-medium">{error}</p><button type="button" onClick={() => navigate('/subadmin/jobs')} className="text-[14px] font-bold text-[#004D6D]">Back to jobs</button></div>;
+    if (error && !bundle) return <div className="space-y-4"><p className="text-[14px] text-red-600 font-medium">{error}</p><button type="button" onClick={() => navigate('/team/jobs')} className="text-[14px] font-bold text-[#004D6D]">Back to jobs</button></div>;
 
     return (
         <div className="space-y-6">
@@ -158,7 +158,7 @@ const JobDetail = () => {
                 </div>
                 <div className="flex items-center gap-3">
                     {can('cancel_jobs') ? <button type="button" onClick={() => setShowCancelModal(true)} className="flex items-center gap-2 px-4 py-2 border border-red-200 text-red-500 rounded-lg bg-white hover:bg-red-50 text-[13px] font-bold"><MdBlock size={18} />Cancel Job</button> : null}
-                    {can('edit_jobs') ? <button type="button" onClick={() => navigate(`/subadmin/jobs/${id}/edit`)} className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg bg-white hover:bg-gray-50 text-[13px] font-bold"><MdEdit size={18} />Edit Job</button> : null}
+                    {can('edit_jobs') ? <button type="button" onClick={() => navigate(`/team/jobs/${id}/edit`)} className="flex items-center gap-2 px-4 py-2 border border-gray-200 text-gray-700 rounded-lg bg-white hover:bg-gray-50 text-[13px] font-bold"><MdEdit size={18} />Edit Job</button> : null}
                 </div>
             </div>
 
@@ -180,7 +180,7 @@ const JobDetail = () => {
                     </div>
                     <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm">
                         <div className="flex items-center justify-between mb-4"><h2 className="text-[15px] font-bold text-gray-900">Passengers</h2><span className="flex items-center gap-1.5 text-[12px] font-semibold text-[#004D6D] bg-[#004D6D]/5 px-2.5 py-1 rounded-full"><MdPeopleAlt size={14} />{passengers.length}</span></div>
-                        {passengers.length === 0 ? <p className="text-[13px] text-gray-400 italic">No passengers scheduled on this job yet.</p> : <div className="space-y-2">{passengers.map((p) => <div key={p.id} onClick={() => navigate(`/subadmin/users/passengers/${p.id}`)} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50/50 transition-colors cursor-pointer"><img src={`https://i.pravatar.cc/150?u=${p.id}`} alt={passengerDisplayName(p)} className="w-9 h-9 rounded-full object-cover border border-gray-100 shrink-0" /><div className="flex-1 min-w-0"><div className="flex items-center gap-2 flex-wrap"><span className="text-[13px] font-bold text-gray-900">{passengerDisplayName(p)}</span>{p.wheelchair_required ? <MdAccessible size={14} className="text-blue-500" /> : null}</div><div className="mt-1 flex gap-3">{p.primary_pickup_postcode ? <div className="flex items-center gap-1 text-[11px] text-gray-400"><MdHome size={11} />{p.primary_pickup_postcode}</div> : null}{p.educational_site_postcode ? <div className="flex items-center gap-1 text-[11px] text-gray-400"><MdSchool size={11} />{p.educational_site_postcode}</div> : null}</div></div></div>)}</div>}
+                        {passengers.length === 0 ? <p className="text-[13px] text-gray-400 italic">No passengers scheduled on this job yet.</p> : <div className="space-y-2">{passengers.map((p) => <div key={p.id} onClick={() => navigate(`/team/users/passengers/${p.id}`)} className="flex items-start gap-3 p-3 rounded-xl border border-gray-100 hover:bg-gray-50/50 transition-colors cursor-pointer"><img src={`https://i.pravatar.cc/150?u=${p.id}`} alt={passengerDisplayName(p)} className="w-9 h-9 rounded-full object-cover border border-gray-100 shrink-0" /><div className="flex-1 min-w-0"><div className="flex items-center gap-2 flex-wrap"><span className="text-[13px] font-bold text-gray-900">{passengerDisplayName(p)}</span>{p.wheelchair_required ? <MdAccessible size={14} className="text-blue-500" /> : null}</div><div className="mt-1 flex gap-3">{p.primary_pickup_postcode ? <div className="flex items-center gap-1 text-[11px] text-gray-400"><MdHome size={11} />{p.primary_pickup_postcode}</div> : null}{p.educational_site_postcode ? <div className="flex items-center gap-1 text-[11px] text-gray-400"><MdSchool size={11} />{p.educational_site_postcode}</div> : null}</div></div></div>)}</div>}
                     </div>
                 </div>
                 <div className="space-y-5">

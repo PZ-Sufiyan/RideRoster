@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
+﻿import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdCloudUpload,
@@ -335,7 +335,7 @@ const AddNewPA = () => {
                 },
             });
             pushToast('success', 'Passenger assistant registered successfully.');
-            navigate('/admin/users/pa');
+            navigate('/portal/users/pa');
         } catch (e) {
             const msg = e?.message || 'Could not register passenger assistant.';
             setSubmitError(msg);
@@ -677,7 +677,7 @@ const AddNewPA = () => {
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
-                        onClick={() => navigate('/admin/users/pa')}
+                        onClick={() => navigate('/portal/users/pa')}
                         disabled={submitting}
                         className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50"
                     >

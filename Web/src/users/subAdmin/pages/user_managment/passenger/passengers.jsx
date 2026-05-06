@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -297,7 +297,7 @@ const PassengersPage = () => {
                 </div>
                 {canAddUsers ? (
                     <button
-                        onClick={() => navigate('/subadmin/users/passengers/add')}
+                        onClick={() => navigate('/team/users/passengers/add')}
                         className="flex items-center gap-2 px-4 py-2 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm"
                     >
                         <MdAdd size={18} />
@@ -345,7 +345,7 @@ const PassengersPage = () => {
                     </div>
                     <div className="flex items-center gap-2">
                         <button
-                            onClick={() => navigate('/subadmin/users/passengers/assign')}
+                            onClick={() => navigate('/team/users/passengers/assign')}
                             className="px-4 py-1.5 border border-[#004D6D] text-[#004D6D] rounded-lg text-[12px] font-semibold hover:bg-[#004D6D] hover:text-white transition-all"
                         >
                             Bulk Assign Route
@@ -431,7 +431,7 @@ const PassengersPage = () => {
                                     <td className="px-4 py-4">
                                         <div
                                             className="flex items-center gap-3 cursor-pointer group"
-                                            onClick={() => navigate(`/subadmin/users/passengers/${p.id}`)}
+                                            onClick={() => navigate(`/team/users/passengers/${p.id}`)}
                                         >
                                             <img src={p.avatar} alt={p.name}
                                                 className="w-8 h-8 rounded-full object-cover border border-gray-100 shrink-0" />

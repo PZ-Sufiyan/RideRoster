@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+﻿import React, { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import {
     MdBusiness,
@@ -430,7 +430,7 @@ const Dashboard = () => {
             <div className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 overflow-hidden">
                 <div className="flex items-center justify-between p-6 pb-4 border-b border-gray-50">
                     <h3 className="font-bold text-gray-800">Pending Company Approvals</h3>
-                    <Link to="/superadmin/companies/pending" className="text-sm font-medium text-blue-600 hover:text-blue-800">
+                    <Link to="/platform/companies/pending" className="text-sm font-medium text-blue-600 hover:text-blue-800">
                         View All
                     </Link>
                 </div>
@@ -468,7 +468,7 @@ const Dashboard = () => {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <Link to={`/superadmin/companies/review/${row.id}`} className="text-blue-600 hover:text-blue-800 font-medium text-xs">
+                                        <Link to={`/platform/companies/review/${row.id}`} className="text-blue-600 hover:text-blue-800 font-medium text-xs">
                                             Review
                                         </Link>
                                     </td>

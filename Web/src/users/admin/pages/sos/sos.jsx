@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Circle, MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -245,7 +245,7 @@ const Admin_SOSPage = () => {
                                             onClick={(e) => {
                                                 e.stopPropagation()
                                                 navigate(
-                                                    `/admin/sos/${alert.id}?radius=${encodeURIComponent(
+                                                    `/portal/sos/${alert.id}?radius=${encodeURIComponent(
                                                         radiusKm.toFixed(1)
                                                     )}`
                                                 )

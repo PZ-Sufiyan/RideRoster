@@ -1,35 +1,35 @@
-import React from 'react';
+﻿import React from 'react';
 import { NavLink, useLocation } from 'react-router-dom';
 import { MdChevronRight } from 'react-icons/md';
 
 const SIDEBAR_PATHS = new Set([
-    '/superadmin/dashboard',
-    '/superadmin/companies/pending',
-    '/superadmin/companies',
-    '/superadmin/sos',
-    '/superadmin/logs',
-    '/superadmin/settings',
-    '/admin/dashboard',
-    '/admin/users/drivers',
-    '/admin/users/pa',
-    '/admin/users/subadmins',
-    '/admin/users/passengers',
-    '/admin/jobs',
-    '/admin/notifications',
-    '/admin/reports',
-    '/admin/reports/driver-performance',
-    '/admin/reports/pa-attendance',
-    '/admin/sos',
-    '/admin/settings',
-    '/subadmin/dashboard',
-    '/subadmin/approvals',
-    '/subadmin/users/drivers',
-    '/subadmin/users/pa',
-    '/subadmin/users/passengers',
-    '/subadmin/jobs',
-    '/subadmin/notifications',
-    '/subadmin/sos',
-    '/subadmin/settings',
+    '/platform/dashboard',
+    '/platform/companies/pending',
+    '/platform/companies',
+    '/platform/sos',
+    '/platform/logs',
+    '/platform/settings',
+    '/portal/dashboard',
+    '/portal/users/drivers',
+    '/portal/users/pa',
+    '/portal/users/subadmins',
+    '/portal/users/passengers',
+    '/portal/jobs',
+    '/portal/notifications',
+    '/portal/reports',
+    '/portal/reports/driver-performance',
+    '/portal/reports/pa-attendance',
+    '/portal/sos',
+    '/portal/settings',
+    '/team/dashboard',
+    '/team/approvals',
+    '/team/users/drivers',
+    '/team/users/pa',
+    '/team/users/passengers',
+    '/team/jobs',
+    '/team/notifications',
+    '/team/sos',
+    '/team/settings',
 ]);
 
 const STEP_LABELS = {
@@ -41,35 +41,35 @@ const STEP_LABELS = {
 const ROUTE_CRUMB_MAP = [
     // ─── SUPERADMIN ───────────────────────────────────────────────
     {
-        match: /^\/superadmin\/companies\/review\/([^/]+)$/,
+        match: /^\/platform\/companies\/review\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'Pending Companies', to: '/superadmin/companies/pending' },
+            { label: 'Pending Companies', to: '/platform/companies/pending' },
             { label: decodeURIComponent(id) },
         ],
     },
     {
-        match: /^\/superadmin\/companies\/([^/]+)$/,
+        match: /^\/platform\/companies\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'Companies', to: '/superadmin/companies' },
+            { label: 'Companies', to: '/platform/companies' },
             { label: decodeURIComponent(id) },
         ],
     },
     {
-        match: /^\/superadmin\/logs\/([^/]+)$/,
+        match: /^\/platform\/logs\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'System Logs', to: '/superadmin/logs' },
+            { label: 'System Logs', to: '/platform/logs' },
             { label: decodeURIComponent(id) },
         ],
     },
     {
-        match: /^\/superadmin\/sos\/([^/]+)$/,
+        match: /^\/platform\/sos\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'SOS Monitoring', to: '/superadmin/sos' },
+            { label: 'SOS Monitoring', to: '/platform/sos' },
             { label: decodeURIComponent(id) },
         ],
     },
     {
-        match: /^\/superadmin\/add-admin$/,
+        match: /^\/platform\/add-admin$/,
         crumbs: () => [
             { label: 'Add Admin' },
         ],
@@ -77,61 +77,61 @@ const ROUTE_CRUMB_MAP = [
 
     // ─── ADMIN ────────────────────────────────────────────────────
     {
-        match: /^\/admin\/users\/drivers\/([^/]+)$/,
+        match: /^\/portal\/users\/drivers\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },
-            { label: 'Drivers', to: '/admin/users/drivers' },
+            { label: 'Drivers', to: '/portal/users/drivers' },
             { label: decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) },
         ],
     },
     {
-        match: /^\/admin\/users\/pa\/([^/]+)$/,
+        match: /^\/portal\/users\/pa\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },
-            { label: 'PA', to: '/admin/users/pa' },
+            { label: 'PA', to: '/portal/users/pa' },
             { label: decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) },
         ],
     },
     {
-        match: /^\/admin\/users\/subadmins\/([^/]+)$/,
+        match: /^\/portal\/users\/subadmins\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },
-            { label: 'Subadmins', to: '/admin/users/subadmins' },
+            { label: 'Subadmins', to: '/portal/users/subadmins' },
             { label: action === 'add' ? 'Add Sub-Admin' : 'Sub-Admin Profile' },
         ],
     },
     {
-        match: /^\/admin\/users\/passengers\/assign\/review$/,
+        match: /^\/portal\/users\/passengers\/assign\/review$/,
         crumbs: () => [
             { label: 'User Management' },
-            { label: 'Passengers', to: '/admin/users/passengers' },
-            { label: 'Job Assignment', to: '/admin/users/passengers/assign' },
+            { label: 'Passengers', to: '/portal/users/passengers' },
+            { label: 'Job Assignment', to: '/portal/users/passengers/assign' },
             { label: 'Assignment Review' },
         ],
     },
     {
-        match: /^\/admin\/users\/passengers\/assign\/success$/,
+        match: /^\/portal\/users\/passengers\/assign\/success$/,
         crumbs: () => [
             { label: 'User Management' },
-            { label: 'Passengers', to: '/admin/users/passengers' },
-            { label: 'Job Assignment', to: '/admin/users/passengers/assign' },
+            { label: 'Passengers', to: '/portal/users/passengers' },
+            { label: 'Job Assignment', to: '/portal/users/passengers/assign' },
             { label: 'Assignment Confirmed' },
         ],
     },
     {
-        match: /^\/admin\/users\/passengers\/([^/]+)\/edit$/,
+        match: /^\/portal\/users\/passengers\/([^/]+)\/edit$/,
         crumbs: (_, [id]) => [
             { label: 'User Management' },
-            { label: 'Passengers', to: '/admin/users/passengers' },
-            { label: decodeURIComponent(id), to: `/admin/users/passengers/${id}` },
+            { label: 'Passengers', to: '/portal/users/passengers' },
+            { label: decodeURIComponent(id), to: `/portal/users/passengers/${id}` },
             { label: 'Edit Passenger' },
         ],
     },
     {
-        match: /^\/admin\/users\/passengers\/([^/]+)$/,
+        match: /^\/portal\/users\/passengers\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },
-            { label: 'Passengers', to: '/admin/users/passengers' },
+            { label: 'Passengers', to: '/portal/users/passengers' },
             { label: action === 'assign' ? 'Job Assignment' :
                      action === 'review' ? 'Assignment Review' :
                      action === 'success' ? 'Assignment Confirmed' :
@@ -140,103 +140,103 @@ const ROUTE_CRUMB_MAP = [
     },
     // New consolidated add-job route — step label comes from ?step query param
     {
-        match: /^\/admin\/jobs\/add-job$/,
+        match: /^\/portal\/jobs\/add-job$/,
         crumbs: (_, __, searchParams) => {
             const step = searchParams?.get('step') || '1';
             const stepLabel = STEP_LABELS[step] || 'Create New Job';
             return [
-                { label: 'Job Management', to: '/admin/jobs' },
-                { label: 'Create New Job', to: '/admin/jobs/add-job?step=1' },
+                { label: 'Job Management', to: '/portal/jobs' },
+                { label: 'Create New Job', to: '/portal/jobs/add-job?step=1' },
                 ...(step !== '1' ? [{ label: stepLabel }] : []),
             ];
         },
     },
     {
-        match: /^\/admin\/jobs\/([^/]+)\/edit$/,
+        match: /^\/portal\/jobs\/([^/]+)\/edit$/,
         crumbs: (_, [id]) => [
-            { label: 'Job Management', to: '/admin/jobs' },
-            { label: decodeURIComponent(id), to: `/admin/jobs/${id}` },
+            { label: 'Job Management', to: '/portal/jobs' },
+            { label: decodeURIComponent(id), to: `/portal/jobs/${id}` },
             { label: 'Edit Job' },
         ],
     },
     {
-        match: /^\/admin\/jobs\/([^/]+)$/,
+        match: /^\/portal\/jobs\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'Job Management', to: '/admin/jobs' },
+            { label: 'Job Management', to: '/portal/jobs' },
             { label: id === 'calendar' ? 'Job Calendar' : decodeURIComponent(id) },
         ],
     },
     {
-        match: /^\/admin\/reports\/([^/]+)$/,
+        match: /^\/portal\/reports\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'Reports', to: '/admin/reports' },
+            { label: 'Reports', to: '/portal/reports' },
             { label: decodeURIComponent(id) },
         ],
     },
     {
-        match: /^\/admin\/notifications\/([^/]+)$/,
+        match: /^\/portal\/notifications\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'Notifications', to: '/admin/notifications' },
+            { label: 'Notifications', to: '/portal/notifications' },
             { label: decodeURIComponent(id) },
         ],
     },
     {
-        match: /^\/admin\/sos\/([^/]+)$/,
+        match: /^\/portal\/sos\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'SOS Monitoring', to: '/admin/sos' },
+            { label: 'SOS Monitoring', to: '/portal/sos' },
             { label: decodeURIComponent(id) },
         ],
     },
 
     // ─── SUBADMIN (mirrors admin paths under /subadmin) ───────────
     {
-        match: /^\/subadmin\/users\/drivers\/([^/]+)$/,
+        match: /^\/team\/users\/drivers\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },
-            { label: 'Drivers', to: '/subadmin/users/drivers' },
+            { label: 'Drivers', to: '/team/users/drivers' },
             { label: decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) },
         ],
     },
     {
-        match: /^\/subadmin\/users\/pa\/([^/]+)$/,
+        match: /^\/team\/users\/pa\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },
-            { label: 'PA', to: '/subadmin/users/pa' },
+            { label: 'PA', to: '/team/users/pa' },
             { label: decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) },
         ],
     },
     {
-        match: /^\/subadmin\/users\/passengers\/assign\/review$/,
+        match: /^\/team\/users\/passengers\/assign\/review$/,
         crumbs: () => [
             { label: 'User Management' },
-            { label: 'Passengers', to: '/subadmin/users/passengers' },
-            { label: 'Job Assignment', to: '/subadmin/users/passengers/assign' },
+            { label: 'Passengers', to: '/team/users/passengers' },
+            { label: 'Job Assignment', to: '/team/users/passengers/assign' },
             { label: 'Assignment Review' },
         ],
     },
     {
-        match: /^\/subadmin\/users\/passengers\/assign\/success$/,
+        match: /^\/team\/users\/passengers\/assign\/success$/,
         crumbs: () => [
             { label: 'User Management' },
-            { label: 'Passengers', to: '/subadmin/users/passengers' },
-            { label: 'Job Assignment', to: '/subadmin/users/passengers/assign' },
+            { label: 'Passengers', to: '/team/users/passengers' },
+            { label: 'Job Assignment', to: '/team/users/passengers/assign' },
             { label: 'Assignment Confirmed' },
         ],
     },
     {
-        match: /^\/subadmin\/users\/passengers\/([^/]+)\/edit$/,
+        match: /^\/team\/users\/passengers\/([^/]+)\/edit$/,
         crumbs: (_, [id]) => [
             { label: 'User Management' },
-            { label: 'Passengers', to: '/subadmin/users/passengers' },
-            { label: decodeURIComponent(id), to: `/subadmin/users/passengers/${id}` },
+            { label: 'Passengers', to: '/team/users/passengers' },
+            { label: decodeURIComponent(id), to: `/team/users/passengers/${id}` },
             { label: 'Edit Passenger' },
         ],
     },
     {
-        match: /^\/subadmin\/users\/passengers\/([^/]+)$/,
+        match: /^\/team\/users\/passengers\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },
-            { label: 'Passengers', to: '/subadmin/users/passengers' },
+            { label: 'Passengers', to: '/team/users/passengers' },
             {
                 label:
                     action === 'assign'
@@ -252,50 +252,50 @@ const ROUTE_CRUMB_MAP = [
         ],
     },
     {
-        match: /^\/subadmin\/jobs\/add-job$/,
+        match: /^\/team\/jobs\/add-job$/,
         crumbs: (_, __, searchParams) => {
             const step = searchParams?.get('step') || '1';
             const stepLabel = STEP_LABELS[step] || 'Create New Job';
             return [
-                { label: 'Job Management', to: '/subadmin/jobs' },
-                { label: 'Create New Job', to: '/subadmin/jobs/add-job?step=1' },
+                { label: 'Job Management', to: '/team/jobs' },
+                { label: 'Create New Job', to: '/team/jobs/add-job?step=1' },
                 ...(step !== '1' ? [{ label: stepLabel }] : []),
             ];
         },
     },
     {
-        match: /^\/subadmin\/jobs\/([^/]+)\/edit$/,
+        match: /^\/team\/jobs\/([^/]+)\/edit$/,
         crumbs: (_, [id]) => [
-            { label: 'Job Management', to: '/subadmin/jobs' },
-            { label: decodeURIComponent(id), to: `/subadmin/jobs/${id}` },
+            { label: 'Job Management', to: '/team/jobs' },
+            { label: decodeURIComponent(id), to: `/team/jobs/${id}` },
             { label: 'Edit Job' },
         ],
     },
     {
-        match: /^\/subadmin\/jobs\/([^/]+)$/,
+        match: /^\/team\/jobs\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'Job Management', to: '/subadmin/jobs' },
+            { label: 'Job Management', to: '/team/jobs' },
             { label: id === 'calendar' ? 'Job Calendar' : decodeURIComponent(id) },
         ],
     },
     {
-        match: /^\/subadmin\/notifications\/([^/]+)$/,
+        match: /^\/team\/notifications\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'Notifications', to: '/subadmin/notifications' },
+            { label: 'Notifications', to: '/team/notifications' },
             { label: decodeURIComponent(id) },
         ],
     },
     {
-        match: /^\/subadmin\/sos\/([^/]+)$/,
+        match: /^\/team\/sos\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'SOS Monitoring', to: '/subadmin/sos' },
+            { label: 'SOS Monitoring', to: '/team/sos' },
             { label: decodeURIComponent(id) },
         ],
     },
     {
-        match: /^\/subadmin\/approvals\/([^/]+)$/,
+        match: /^\/team\/approvals\/([^/]+)$/,
         crumbs: (_, [id]) => [
-            { label: 'Approvals', to: '/subadmin/approvals' },
+            { label: 'Approvals', to: '/team/approvals' },
             { label: decodeURIComponent(id) },
         ],
     },

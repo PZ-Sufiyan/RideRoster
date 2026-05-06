@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { MapContainer, Marker, Popup, TileLayer } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -239,7 +239,7 @@ const SubAdmin_SOSPage = () => {
                                             type="button"
                                             onClick={(e) => {
                                                 e.stopPropagation()
-                                                navigate(`/subadmin/sos/${alert.id}`)
+                                                navigate(`/team/sos/${alert.id}`)
                                             }}
                                             className="mt-3 text-sm font-medium text-[#005580] hover:text-[#003d5c] hover:underline transition-colors"
                                         >

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdArrowForward,
@@ -120,7 +120,7 @@ const AssignRoute = () => {
 
                 {/* Confirm Button */}
                 <button
-                    onClick={() => navigate('/admin/users/passengers/assign/review')}
+                    onClick={() => navigate('/portal/users/passengers/assign/review')}
                     className="group relative flex items-center justify-center gap-2 w-full md:w-auto h-10 px-6 bg-[#004D6D] text-white rounded-lg text-[13px] font-semibold hover:bg-[#003c55] transition-all shadow-sm active:scale-[0.98]"
                 >
                     Proceed to Confirm

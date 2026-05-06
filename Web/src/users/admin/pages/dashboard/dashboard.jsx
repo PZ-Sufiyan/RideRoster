@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { HiOutlineClipboardList } from 'react-icons/hi';
 import {
     MdDirectionsCar,
@@ -494,7 +494,7 @@ const Admin_Dashboard = () => {
                     <div className="space-y-3">
                         <button
                             type="button"
-                            onClick={() => navigate('/admin/users/drivers/add')}
+                            onClick={() => navigate('/portal/users/drivers/add')}
                             className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#004D6D] hover:bg-[#003c55] text-white rounded-xl font-bold transition-all transform active:scale-[0.98]"
                         >
                             <MdAdd size={22} />
@@ -502,7 +502,7 @@ const Admin_Dashboard = () => {
                         </button>
                         <button
                             type="button"
-                            onClick={() => navigate('/admin/jobs/add-job')}
+                            onClick={() => navigate('/portal/jobs/add-job')}
                             className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#f0f3f5] hover:bg-[#e4e9ed] text-gray-700 rounded-xl font-bold transition-all transform active:scale-[0.98]"
                         >
                             <MdFolder size={20} className="text-gray-500" />

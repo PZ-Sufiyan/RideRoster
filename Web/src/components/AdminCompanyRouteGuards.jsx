@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+﻿import React, { useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 
@@ -91,7 +91,7 @@ export function RequireCompanyLinkedAdmin() {
     }
 
     if (status === 'no-company') {
-        return <Navigate to="/admin/register" replace />;
+        return <Navigate to="/portal/register" replace />;
     }
 
     return <Outlet />;
@@ -112,7 +112,7 @@ export function RedirectIfCompanyLinked() {
     }
 
     if (status === 'linked') {
-        return <Navigate to="/admin/dashboard" replace />;
+        return <Navigate to="/portal/dashboard" replace />;
     }
 
     return <Outlet />;

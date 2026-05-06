@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import {
     HiOutlineDownload,
     HiOutlinePrinter,
@@ -28,8 +28,8 @@ const Report = () => {
 
     const getReportPath = (role) =>
         role === 'Driver'
-            ? '/admin/reports/driver-performance'
-            : '/admin/reports/pa-attendance';
+            ? '/portal/reports/driver-performance'
+            : '/portal/reports/pa-attendance';
 
     const stats = [
         {

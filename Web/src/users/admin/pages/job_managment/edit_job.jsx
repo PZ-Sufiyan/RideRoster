@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+﻿import React, { useState } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { MdCheck } from 'react-icons/md';
 import { ToastStack } from '../../../../utils/Toast';
@@ -92,7 +92,7 @@ function EditJobInner() {
         return (
             <div className="max-w-[1280px] mx-auto pb-20 space-y-4">
                 <p className="text-[14px] text-red-600">{error}</p>
-                <a href="/admin/jobs" className="text-[14px] font-bold text-[#004D6D] hover:underline">
+                <a href="/portal/jobs" className="text-[14px] font-bold text-[#004D6D] hover:underline">
                     Back to jobs
                 </a>
             </div>

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -261,7 +261,7 @@ const PAListPage = () => {
                     <p className="text-sm text-gray-500 mt-1">Manage all passenger assistants in your company.</p>
                 </div>
                 <button
-                    onClick={() => navigate('/admin/users/pa/add')}
+                    onClick={() => navigate('/portal/users/pa/add')}
                     className="flex items-center gap-2 px-4 py-2.5 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm shrink-0"
                 >
                     <MdAdd size={18} />
@@ -434,7 +434,7 @@ const PAListPage = () => {
                                     <td className="px-4 py-3.5">
                                         <div
                                             className="flex items-center gap-3 cursor-pointer group"
-                                            onClick={() => navigate(`/admin/users/pa/${pa.id}`)}
+                                            onClick={() => navigate(`/portal/users/pa/${pa.id}`)}
                                         >
                                             <img
                                                 src={pa.avatar}

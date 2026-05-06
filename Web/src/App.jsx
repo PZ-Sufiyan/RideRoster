@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
+﻿import { BrowserRouter, Routes, Route, Navigate, Outlet } from 'react-router-dom';
 import DashboardLayout from './layouts/DashboardLayout';
 
 import SuperAdmin_Dashboard from './users/superAdmin/pages/dashboard/dashboard';
@@ -74,6 +74,8 @@ import Home from './home';
 import SubAdminProtectedPage from './components/SubAdminProtectedPage';
 import './App.css';
 
+const ROLE_URL_PREFIX = { superadmin: 'platform', admin: 'portal', subadmin: 'team' };
+
 // Component for route protection
 const ProtectedRoute = ({ allowedRoles }) => {
   const isAuthenticated = localStorage.getItem('isAuthenticated') === 'true';
@@ -84,8 +86,8 @@ const ProtectedRoute = ({ allowedRoles }) => {
   }
 
   if (allowedRoles && !allowedRoles.includes(role)) {
-    // If logged in but role doesn't match, send back to their respective dashboard
-    return <Navigate to={`/${role}/dashboard`} replace />;
+    const prefix = ROLE_URL_PREFIX[role] || role;
+    return <Navigate to={`/${prefix}/dashboard`} replace />;
   }
 
   return <Outlet />;
@@ -99,15 +101,15 @@ function App() {
         <Route path="/home" element={<Home />} />
 
         {/* Auth Pages */}
-        <Route path="/superadmin/login" element={<SuperAdmin_Login />} />
-        <Route path="/admin/login" element={<Admin_Login />} />
-        <Route path="/subadmin/login" element={<SubAdmin_Login />} />
+        <Route path="/platform/login" element={<SuperAdmin_Login />} />
+        <Route path="/portal/login" element={<Admin_Login />} />
+        <Route path="/team/login" element={<SubAdmin_Login />} />
 
         {/* Dashboard Pages - Protected */}
         <Route element={<ProtectedRoute />}>
           {/* Admin: company registration (auth + admin role only; no dashboard chrome) */}
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
-            <Route path="/admin/register" element={<RedirectIfCompanyLinked />}>
+            <Route path="/portal/register" element={<RedirectIfCompanyLinked />}>
               <Route index element={<RegistrationFlow />} />
             </Route>
           </Route>
@@ -116,56 +118,56 @@ function App() {
 
             {/* Superadmin Group */}
             <Route element={<ProtectedRoute allowedRoles={['superadmin']} />}>
-              <Route path="/superadmin/dashboard" element={<SuperAdmin_Dashboard />} />
-              <Route path="/superadmin/companies/pending" element={<SuperAdmin_PendingCompanies />} />
-              <Route path="/superadmin/companies" element={<SuperAdmin_Companies />} />
-              <Route path="/superadmin/companies/review/:id" element={<SuperAdmin_CompanyReview />} />
-              <Route path="/superadmin/add-admin" element={<SuperAdmin_AddAdmin />} />
-              <Route path="/superadmin/sos" element={<SuperAdmin_SOSPage />} />
-              <Route path="/superadmin/logs" element={<SuperAdmin_SystemLogs />} />
-              <Route path="/superadmin/settings" element={<SuperAdmin_Settings />} />
+              <Route path="/platform/dashboard" element={<SuperAdmin_Dashboard />} />
+              <Route path="/platform/companies/pending" element={<SuperAdmin_PendingCompanies />} />
+              <Route path="/platform/companies" element={<SuperAdmin_Companies />} />
+              <Route path="/platform/companies/review/:id" element={<SuperAdmin_CompanyReview />} />
+              <Route path="/platform/add-admin" element={<SuperAdmin_AddAdmin />} />
+              <Route path="/platform/sos" element={<SuperAdmin_SOSPage />} />
+              <Route path="/platform/logs" element={<SuperAdmin_SystemLogs />} />
+              <Route path="/platform/settings" element={<SuperAdmin_Settings />} />
             </Route>
 
             {/* Admin Group — requires linked company (company_admins.company_id) */}
             <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
               <Route element={<RequireCompanyLinkedAdmin />}>
-                <Route path="/admin/dashboard" element={<Admin_Dashboard />} />
-                <Route path="/admin/users/drivers" element={<Admin_Drivers />} />
-                <Route path="/admin/users/drivers/add" element={<Admin_AddDriver />} />
-                <Route path="/admin/users/drivers/:id" element={<Admin_DriverDetail />} />
-                <Route path="/admin/users/pa" element={<Admin_PAList />} />
-                <Route path="/admin/users/pa/add" element={<Admin_AddPA />} />
-                <Route path="/admin/users/pa/:id" element={<Admin_PADetail />} />
-                <Route path="/admin/users/subadmins" element={<SubAdminList />} />
-                <Route path="/admin/users/subadmins/add" element={<Admin_AddSubAdmin />} />
-                <Route path="/admin/users/subadmins/:id" element={<Admin_SubAdminDetail />} />
-                <Route path="/admin/users/passengers" element={<Admin_Passengers />} />
-                <Route path="/admin/users/passengers/add" element={<Admin_AddPassenger />} />
-                <Route path="/admin/users/passengers/:id/edit" element={<Admin_EditPassenger />} />
-                <Route path="/admin/users/passengers/assign" element={<Admin_AssignRoute />} />
-                <Route path="/admin/users/passengers/assign/review" element={<Admin_RouteReview />} />
-                <Route path="/admin/users/passengers/assign/success" element={<Admin_SuccessConfirmation />} />
-                <Route path="/admin/users/passengers/:id" element={<Admin_PassengerDetail />} />
-                <Route path="/admin/jobs" element={<Admin_JobsList />} />
-                <Route path="/admin/jobs/calendar" element={<Admin_JobCalendar />} />
-                <Route path="/admin/jobs/add-job" element={<Admin_AddJob />} />
-                <Route path="/admin/jobs/:id/edit" element={<Admin_EditJob />} />
-                <Route path="/admin/jobs/:id" element={<Admin_JobDetail />} />
-                <Route path="/admin/notifications" element={<Admin_Notifications />} />
-                <Route path="/admin/reports" element={<Admin_Report />} />
-                <Route path="/admin/reports/driver-performance" element={<Admin_DriverReport />} />
-                <Route path="/admin/reports/pa-attendance" element={<Admin_PAReport />} />
-                <Route path="/admin/sos" element={<Admin_SOSPage />} />
-                <Route path="/admin/sos/:id" element={<Admin_SOSDetail />} />
-                <Route path="/admin/settings" element={<Admin_Settings />} />
+                <Route path="/portal/dashboard" element={<Admin_Dashboard />} />
+                <Route path="/portal/users/drivers" element={<Admin_Drivers />} />
+                <Route path="/portal/users/drivers/add" element={<Admin_AddDriver />} />
+                <Route path="/portal/users/drivers/:id" element={<Admin_DriverDetail />} />
+                <Route path="/portal/users/pa" element={<Admin_PAList />} />
+                <Route path="/portal/users/pa/add" element={<Admin_AddPA />} />
+                <Route path="/portal/users/pa/:id" element={<Admin_PADetail />} />
+                <Route path="/portal/users/subadmins" element={<SubAdminList />} />
+                <Route path="/portal/users/subadmins/add" element={<Admin_AddSubAdmin />} />
+                <Route path="/portal/users/subadmins/:id" element={<Admin_SubAdminDetail />} />
+                <Route path="/portal/users/passengers" element={<Admin_Passengers />} />
+                <Route path="/portal/users/passengers/add" element={<Admin_AddPassenger />} />
+                <Route path="/portal/users/passengers/:id/edit" element={<Admin_EditPassenger />} />
+                <Route path="/portal/users/passengers/assign" element={<Admin_AssignRoute />} />
+                <Route path="/portal/users/passengers/assign/review" element={<Admin_RouteReview />} />
+                <Route path="/portal/users/passengers/assign/success" element={<Admin_SuccessConfirmation />} />
+                <Route path="/portal/users/passengers/:id" element={<Admin_PassengerDetail />} />
+                <Route path="/portal/jobs" element={<Admin_JobsList />} />
+                <Route path="/portal/jobs/calendar" element={<Admin_JobCalendar />} />
+                <Route path="/portal/jobs/add-job" element={<Admin_AddJob />} />
+                <Route path="/portal/jobs/:id/edit" element={<Admin_EditJob />} />
+                <Route path="/portal/jobs/:id" element={<Admin_JobDetail />} />
+                <Route path="/portal/notifications" element={<Admin_Notifications />} />
+                <Route path="/portal/reports" element={<Admin_Report />} />
+                <Route path="/portal/reports/driver-performance" element={<Admin_DriverReport />} />
+                <Route path="/portal/reports/pa-attendance" element={<Admin_PAReport />} />
+                <Route path="/portal/sos" element={<Admin_SOSPage />} />
+                <Route path="/portal/sos/:id" element={<Admin_SOSDetail />} />
+                <Route path="/portal/settings" element={<Admin_Settings />} />
               </Route>
             </Route>
 
             {/* Subadmin Group — mirrors admin routes; pages gated by sub_admins permissions */}
             <Route element={<ProtectedRoute allowedRoles={['subadmin']} />}>
-              <Route path="/subadmin/dashboard" element={<SubAdmin_Dashboard />} />
+              <Route path="/team/dashboard" element={<SubAdmin_Dashboard />} />
               <Route
-                path="/subadmin/approvals"
+                path="/team/approvals"
                 element={
                   <SubAdminProtectedPage anyOf={['view_users', 'view_jobs']}>
                     <SubAdmin_Approvals />
@@ -173,7 +175,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/drivers"
+                path="/team/users/drivers"
                 element={
                   <SubAdminProtectedPage permission="view_users">
                     <SubAdmin_Drivers />
@@ -181,7 +183,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/drivers/add"
+                path="/team/users/drivers/add"
                 element={
                   <SubAdminProtectedPage permission="add_users">
                     <SubAdmin_AddDriver />
@@ -189,7 +191,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/drivers/:id"
+                path="/team/users/drivers/:id"
                 element={
                   <SubAdminProtectedPage permission="view_users">
                     <SubAdmin_DriverDetail />
@@ -197,7 +199,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/pa"
+                path="/team/users/pa"
                 element={
                   <SubAdminProtectedPage permission="view_users">
                     <SubAdmin_PAList />
@@ -205,7 +207,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/pa/add"
+                path="/team/users/pa/add"
                 element={
                   <SubAdminProtectedPage permission="add_users">
                     <SubAdmin_AddPA />
@@ -213,7 +215,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/pa/:id"
+                path="/team/users/pa/:id"
                 element={
                   <SubAdminProtectedPage permission="view_users">
                     <SubAdmin_PADetail />
@@ -221,7 +223,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/passengers"
+                path="/team/users/passengers"
                 element={
                   <SubAdminProtectedPage permission="view_users">
                     <SubAdmin_Passengers />
@@ -229,7 +231,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/passengers/add"
+                path="/team/users/passengers/add"
                 element={
                   <SubAdminProtectedPage permission="add_users">
                     <SubAdmin_AddPassenger />
@@ -237,7 +239,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/passengers/:id/edit"
+                path="/team/users/passengers/:id/edit"
                 element={
                   <SubAdminProtectedPage permission="edit_profiles">
                     <SubAdmin_EditPassenger />
@@ -245,7 +247,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/passengers/assign"
+                path="/team/users/passengers/assign"
                 element={
                   <SubAdminProtectedPage permission="view_users">
                     <SubAdmin_AssignRoute />
@@ -253,7 +255,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/passengers/assign/review"
+                path="/team/users/passengers/assign/review"
                 element={
                   <SubAdminProtectedPage permission="view_users">
                     <SubAdmin_RouteReview />
@@ -261,7 +263,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/passengers/assign/success"
+                path="/team/users/passengers/assign/success"
                 element={
                   <SubAdminProtectedPage permission="view_users">
                     <SubAdmin_SuccessConfirmation />
@@ -269,7 +271,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/users/passengers/:id"
+                path="/team/users/passengers/:id"
                 element={
                   <SubAdminProtectedPage permission="view_users">
                     <SubAdmin_PassengerDetail />
@@ -277,7 +279,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/jobs"
+                path="/team/jobs"
                 element={
                   <SubAdminProtectedPage permission="view_jobs">
                     <SubAdmin_JobsList />
@@ -285,7 +287,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/jobs/calendar"
+                path="/team/jobs/calendar"
                 element={
                   <SubAdminProtectedPage permission="view_jobs">
                     <SubAdmin_JobCalendar />
@@ -293,7 +295,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/jobs/add-job"
+                path="/team/jobs/add-job"
                 element={
                   <SubAdminProtectedPage permission="create_jobs">
                     <SubAdmin_AddJob />
@@ -301,7 +303,7 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/jobs/:id/edit"
+                path="/team/jobs/:id/edit"
                 element={
                   <SubAdminProtectedPage permission="edit_jobs">
                     <SubAdmin_EditJob />
@@ -309,16 +311,16 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/jobs/:id"
+                path="/team/jobs/:id"
                 element={
                   <SubAdminProtectedPage permission="view_jobs">
                     <SubAdmin_JobDetail />
                   </SubAdminProtectedPage>
                 }
               />
-              <Route path="/subadmin/notifications" element={<SubAdmin_Notifications />} />
+              <Route path="/team/notifications" element={<SubAdmin_Notifications />} />
               <Route
-                path="/subadmin/sos"
+                path="/team/sos"
                 element={
                   <SubAdminProtectedPage anyOf={['view_jobs', 'view_users']}>
                     <SubAdmin_SOSPage />
@@ -326,14 +328,14 @@ function App() {
                 }
               />
               <Route
-                path="/subadmin/sos/:id"
+                path="/team/sos/:id"
                 element={
                   <SubAdminProtectedPage anyOf={['view_jobs', 'view_users']}>
                     <SubAdmin_SOSDetail />
                   </SubAdminProtectedPage>
                 }
               />
-              <Route path="/subadmin/settings" element={<SubAdmin_Settings />} />
+              <Route path="/team/settings" element={<SubAdmin_Settings />} />
             </Route>
 
           </Route>

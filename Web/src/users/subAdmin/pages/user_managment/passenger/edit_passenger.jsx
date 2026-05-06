@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     MdPerson,
@@ -936,7 +936,7 @@ const EditPassenger = () => {
                 </div>
                 <div className="flex items-center gap-3">
                     <button
-                        onClick={() => navigate(`/subadmin/users/passengers/${id}`)}
+                        onClick={() => navigate(`/team/users/passengers/${id}`)}
                         className="px-5 py-2 text-[13px] font-semibold text-gray-700 hover:bg-gray-50 transition-all rounded-lg"
                     >
                         Cancel

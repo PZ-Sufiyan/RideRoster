@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react'
+﻿import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { MapContainer, Marker, TileLayer } from 'react-leaflet'
 import L from 'leaflet'
 import 'leaflet/dist/leaflet.css'
@@ -214,7 +214,7 @@ const SubAdmin_SOSDetail = () => {
             if (!companyId) throw new Error('No company linked to your account.')
 
             await resolveSosForCompany(detail.sos.id, companyId)
-            navigate('/subadmin/sos')
+            navigate('/team/sos')
         } catch (e) {
             setError(e?.message || 'Could not resolve alert.')
         } finally {
@@ -277,7 +277,7 @@ const SubAdmin_SOSDetail = () => {
                     </div>
                     <button
                         type="button"
-                        onClick={() => navigate('/subadmin/sos')}
+                        onClick={() => navigate('/team/sos')}
                         className="p-1 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded transition-colors shrink-0"
                     >
                         <MdClose size={24} />
@@ -414,7 +414,7 @@ const SubAdmin_SOSDetail = () => {
                     <button
                         type="button"
                         disabled={!detail?.job?.id}
-                        onClick={() => detail?.job?.id && navigate(`/subadmin/jobs/${detail.job.id}`)}
+                        onClick={() => detail?.job?.id && navigate(`/team/jobs/${detail.job.id}`)}
                         className="flex-1 py-3 px-4 border border-gray-200 rounded-xl text-sm font-bold text-gray-700 hover:bg-gray-50 transition-colors shadow-sm disabled:opacity-40 disabled:pointer-events-none"
                     >
                         View Job Details

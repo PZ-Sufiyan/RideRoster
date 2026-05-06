@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -308,7 +308,7 @@ const DriversPage = () => {
                 </div>
                 {canAddUsers ? (
                     <button
-                        onClick={() => navigate('/subadmin/users/drivers/add')}
+                        onClick={() => navigate('/team/users/drivers/add')}
                         className="flex items-center gap-2 px-4 py-2.5 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm shrink-0"
                     >
                         <MdAdd size={18} />
@@ -476,7 +476,7 @@ const DriversPage = () => {
                                     <td className="px-4 py-3.5">
                                         <div
                                             className="flex items-center gap-3 cursor-pointer group"
-                                            onClick={() => navigate(`/subadmin/users/drivers/${driver.id}`)}
+                                            onClick={() => navigate(`/team/users/drivers/${driver.id}`)}
                                         >
                                             <img
                                                 src={avatarUrlForDriver(driver)}

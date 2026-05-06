@@ -31,9 +31,9 @@ const Sidebar = ({ isOpen, onClose }) => {
         setOpenMenus((prev) => ({ ...prev, [name]: !prev[name] }));
     };
 
-    const userType = location.pathname.startsWith('/admin')
+    const userType = location.pathname.startsWith('/portal')
         ? 'admin'
-        : location.pathname.startsWith('/subadmin')
+        : location.pathname.startsWith('/team')
           ? 'subadmin'
           : 'superadmin';
 

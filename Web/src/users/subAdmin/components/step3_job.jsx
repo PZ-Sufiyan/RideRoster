@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+﻿import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdOutlineToggleOff,
@@ -125,7 +125,7 @@ const Step3Job = ({ setToasts }) => {
             await createJobFromDraft(companyId, merged);
             clearJobDraft();
             pushToast('success', 'Job created. Passenger schedules have been generated automatically.');
-            navigate('/subadmin/jobs');
+            navigate('/team/jobs');
         } catch (e) {
             pushToast('error', e?.message || 'Could not create job.');
         } finally {
@@ -366,7 +366,7 @@ const Step3Job = ({ setToasts }) => {
             <div className="fixed bottom-0 left-0 right-0 lg:left-64 bg-white border-t border-gray-100 px-6 py-4 flex items-center justify-between z-20 shadow-[0_-4px_12px_rgba(0,0,0,0.03)]">
                 <button
                     type="button"
-                    onClick={() => navigate('/subadmin/jobs/add-job?step=2')}
+                    onClick={() => navigate('/team/jobs/add-job?step=2')}
                     disabled={submitting}
                     className="text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
                 >
