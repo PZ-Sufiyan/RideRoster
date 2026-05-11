@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import '../users/driver/pages/auth/choose_account_type.dart';
 import '../users/driver/pages/auth/login.dart';
 import '../users/driver/pages/auth/register.dart';
+import '../users/passenger_assistant/pages/auth/register_passenger_assistant.dart';
 import '../users/driver/pages/dashboard/dashboard.dart';
 import '../users/driver/pages/dashboard/vehicle_check_list.dart';
 import '../users/driver/pages/job/complete_job.dart';
@@ -14,7 +16,10 @@ import '../users/driver/pages/sos/sos.dart';
 class AppRoutes {
   // Route name constants
   static const String driverLogin = '/driver/login';
+  static const String chooseAccountType = '/auth/choose-account-type';
   static const String driverRegister = '/driver/register';
+  static const String passengerAssistantRegister =
+      '/passenger-assistant/register';
   static const String driverDashboard = '/driver/dashboard';
   static const String vehicleChecklist = '/driver/vehicle-checklist';
   static const String sos = '/driver/sos';
@@ -30,8 +35,18 @@ class AppRoutes {
       case driverLogin:
         return MaterialPageRoute(builder: (_) => const DriverLoginPage());
 
+      case chooseAccountType:
+        return MaterialPageRoute(
+          builder: (_) => const ChooseAccountTypePage(),
+        );
+
       case driverRegister:
         return MaterialPageRoute(builder: (_) => const DriverRegisterPage());
+
+      case passengerAssistantRegister:
+        return MaterialPageRoute(
+          builder: (_) => const RegisterPassengerAssistantPage(),
+        );
 
       case driverDashboard:
         return MaterialPageRoute(builder: (_) => const DriverDashboardPage());

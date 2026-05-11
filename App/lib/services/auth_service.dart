@@ -1,7 +1,11 @@
 import 'dart:io';
 
 import 'api_service.dart';
+import 'auth_result.dart';
+import 'passenger_assistant_registration_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+export 'auth_result.dart';
 
 class AuthService extends ApiService {
   SupabaseClient get _supabase => Supabase.instance.client;
@@ -572,6 +576,62 @@ class AuthService extends ApiService {
     }
   }
 
+  /// Self-service passenger assistant registration (delegates to
+  /// [PassengerAssistantRegistrationService]).
+  Future<AuthResult> passengerAssistantRegister({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String password,
+    required String companyId,
+    required String companyName,
+    required String countryCode,
+    required String mobileNumber,
+    String? residentialAddress,
+    required String nationality,
+    required bool isBritishPassportHolder,
+    String? rightToWorkCode,
+    required String emergencyContactName,
+    required String emergencyContactPhone,
+    String? profilePhotoPath,
+    String? passportNumber,
+    String? passportFilePath,
+    DateTime? passportExpiry,
+    String? safeguardingFilePath,
+    DateTime? safeguardingExpiry,
+    String? backgroundCheckFilePath,
+    String? firstAidFilePath,
+    List<String> otherCertificateLabels = const [],
+    List<String> otherCertificatePaths = const [],
+  }) {
+    return PassengerAssistantRegistrationService().registerPassengerAssistant(
+      firstName: firstName,
+      lastName: lastName,
+      email: email,
+      password: password,
+      companyId: companyId,
+      companyName: companyName,
+      countryCode: countryCode,
+      mobileNumber: mobileNumber,
+      residentialAddress: residentialAddress,
+      nationality: nationality,
+      isBritishPassportHolder: isBritishPassportHolder,
+      rightToWorkCode: rightToWorkCode,
+      emergencyContactName: emergencyContactName,
+      emergencyContactPhone: emergencyContactPhone,
+      profilePhotoPath: profilePhotoPath,
+      passportNumber: passportNumber,
+      passportFilePath: passportFilePath,
+      passportExpiry: passportExpiry,
+      safeguardingFilePath: safeguardingFilePath,
+      safeguardingExpiry: safeguardingExpiry,
+      backgroundCheckFilePath: backgroundCheckFilePath,
+      firstAidFilePath: firstAidFilePath,
+      otherCertificateLabels: otherCertificateLabels,
+      otherCertificatePaths: otherCertificatePaths,
+    );
+  }
+
   /// Logout — clear token from storage.
   Future<void> driverLogout() async {
     await _supabase.auth.signOut();
@@ -605,50 +665,5 @@ class AuthService extends ApiService {
     } catch (_) {
       return AuthResult.failure('Could not restore session.');
     }
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Result model
-// ---------------------------------------------------------------------------
-
-class AuthResult {
-  final bool success;
-  final String? token;
-  final String? userId;
-  final String? name;
-  final String? email;
-  final String? message;
-  final String? error;
-
-  AuthResult._({
-    required this.success,
-    this.token,
-    this.userId,
-    this.name,
-    this.email,
-    this.message,
-    this.error,
-  });
-
-  factory AuthResult.success({
-    String? token,
-    String? userId,
-    String? name,
-    String? email,
-    String? message,
-  }) {
-    return AuthResult._(
-      success: true,
-      token: token,
-      userId: userId,
-      name: name,
-      email: email,
-      message: message,
-    );
-  }
-
-  factory AuthResult.failure(String error) {
-    return AuthResult._(success: false, error: error);
   }
 }

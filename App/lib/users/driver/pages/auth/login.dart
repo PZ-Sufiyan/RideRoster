@@ -46,7 +46,7 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
   }
 
   void _onSignUp() {
-    Navigator.pushNamed(context, AppRoutes.driverRegister);
+    Navigator.pushNamed(context, AppRoutes.chooseAccountType);
   }
 
   @override
