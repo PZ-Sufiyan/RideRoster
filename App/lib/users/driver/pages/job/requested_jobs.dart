@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
+import '../../../../providers/job_provider.dart';
 import '../../../../services/driver_job_request_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
@@ -47,19 +50,27 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
     } catch (_) {}
   }
 
+  // Replace the existing _updateStatus method
   Future<void> _updateStatus({
     required String status,
     required DriverJobRequest request,
+    double? counterOfferPay,
   }) async {
     if (_isSubmitting) return;
     setState(() => _isSubmitting = true);
     try {
-      await _service.updateApprovalStatus(jobId: request.id, status: status);
+      await _service.updateApprovalStatus(
+        jobId: request.id,
+        status: status,
+        counterOfferPay: counterOfferPay,
+      );
+      if (!mounted) return;
+      await context.read<JobProvider>().refreshJobDataSilently();
       if (!mounted) return;
       final label = switch (status) {
         'accepted' => 'accepted',
         'rejected' => 'rejected',
-        'counter request' => 'counter requested',
+        DriverJobRequestService.statusCounterRequest => 'counter offer sent',
         _ => status,
       };
       ScaffoldMessenger.of(
@@ -73,6 +84,185 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
       );
     } finally {
       if (mounted) setState(() => _isSubmitting = false);
+    }
+  }
+
+  // Add this new method
+  Future<void> _showCounterOfferSheet(DriverJobRequest request) async {
+    final controller = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+
+    final result = await showModalBottomSheet<double>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (ctx) {
+        return Padding(
+          padding: EdgeInsets.only(
+            bottom: MediaQuery.of(ctx).viewInsets.bottom,
+          ),
+          child: Container(
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.vertical(
+                top: Radius.circular(SizeConfig.r(20)),
+              ),
+            ),
+            padding: EdgeInsets.fromLTRB(
+              SizeConfig.hPad,
+              SizeConfig.r(20),
+              SizeConfig.hPad,
+              SizeConfig.r(32),
+            ),
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // Handle
+                  Center(
+                    child: Container(
+                      width: SizeConfig.r(40),
+                      height: SizeConfig.r(4),
+                      decoration: BoxDecoration(
+                        color: AppColors.inputBorder,
+                        borderRadius: BorderRadius.circular(SizeConfig.r(2)),
+                      ),
+                    ),
+                  ),
+                  SizedBox(height: SizeConfig.r(20)),
+                  Text(
+                    'Counter Offer',
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(20),
+                      fontWeight: FontWeight.w800,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  SizedBox(height: SizeConfig.r(4)),
+                  Text(
+                    'Proposed pay for this job (current: ${request.earnings})',
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(13),
+                      color: AppColors.textLight,
+                    ),
+                  ),
+                  SizedBox(height: SizeConfig.r(20)),
+                  TextFormField(
+                    controller: controller,
+                    autofocus: true,
+                    keyboardType: const TextInputType.numberWithOptions(
+                      decimal: true,
+                    ),
+                    inputFormatters: [
+                      FilteringTextInputFormatter.allow(RegExp(r'[0-9.,]')),
+                    ],
+                    decoration: InputDecoration(
+                      prefixText: '\$ ',
+                      hintText: '0.00',
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(SizeConfig.r(12)),
+                        borderSide: BorderSide(color: AppColors.inputBorder),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(SizeConfig.r(12)),
+                        borderSide: BorderSide(color: AppColors.inputBorder),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(SizeConfig.r(12)),
+                        borderSide: BorderSide(
+                          color: AppColors.primary,
+                          width: 1.5,
+                        ),
+                      ),
+                    ),
+                    validator: (v) {
+                      final normalized = (v ?? '').trim().replaceAll(',', '');
+                      final parsed = double.tryParse(normalized);
+                      if (parsed == null || parsed <= 0) {
+                        return 'Enter a valid amount greater than 0';
+                      }
+                      return null;
+                    },
+                  ),
+                  SizedBox(height: SizeConfig.r(20)),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () => Navigator.pop(ctx),
+                          style: OutlinedButton.styleFrom(
+                            padding: EdgeInsets.symmetric(
+                              vertical: SizeConfig.r(14),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                SizeConfig.radiusLG,
+                              ),
+                            ),
+                            side: BorderSide(color: AppColors.inputBorder),
+                          ),
+                          child: Text(
+                            'Cancel',
+                            style: TextStyle(
+                              fontSize: SizeConfig.sp(14),
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: SizeConfig.r(12)),
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            if (formKey.currentState!.validate()) {
+                              final normalized = controller.text
+                                  .trim()
+                                  .replaceAll(',', '');
+                              Navigator.pop(
+                                ctx,
+                                double.parse(normalized),
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            padding: EdgeInsets.symmetric(
+                              vertical: SizeConfig.r(14),
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(
+                                SizeConfig.radiusLG,
+                              ),
+                            ),
+                          ),
+                          child: Text(
+                            'Send Offer',
+                            style: TextStyle(
+                              fontSize: SizeConfig.sp(14),
+                              fontWeight: FontWeight.w700,
+                              color: Colors.white,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    if (result != null && mounted) {
+      await _updateStatus(
+        status: DriverJobRequestService.statusCounterRequest,
+        request: request,
+        counterOfferPay: result,
+      );
     }
   }
 
@@ -146,10 +336,9 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
                       isSubmitting: _isSubmitting,
                       onReject: () =>
                           _updateStatus(status: 'rejected', request: request),
-                      onCounterOffer: () => _updateStatus(
-                        status: 'counter request',
-                        request: request,
-                      ),
+                      onCounterOffer: () => _showCounterOfferSheet(
+                        request,
+                      ), // ← was inline _updateStatus
                       onAccept: () =>
                           _updateStatus(status: 'accepted', request: request),
                     ),

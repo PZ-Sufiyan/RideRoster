@@ -9,6 +9,7 @@ import '../users/driver/models/job_request_model.dart';
 ///   3. Return from School     (inbound pickup — school only, no home dropoffs)
 class DriverJobRequestService {
   SupabaseClient get _supabase => Supabase.instance.client;
+  static const String statusCounterRequest = 'counter request';
 
   Future<List<DriverJobRequest>> fetchPendingRequests({
     required String driverId,
@@ -196,14 +197,29 @@ class DriverJobRequestService {
   Future<void> updateApprovalStatus({
     required String jobId,
     required String status,
+    double? counterOfferPay,
   }) async {
-    await _supabase
-        .from('jobs')
-        .update({
-          'driver_approval_status': status,
-          'updated_at': DateTime.now().toIso8601String(),
-        })
-        .eq('id', jobId);
+    final normalizedStatus = status.trim().toLowerCase();
+    final Map<String, dynamic> payload = {
+      'driver_approval_status': normalizedStatus,
+      'updated_at': DateTime.now().toIso8601String(),
+    };
+
+    // Only write the counter amount when sending a counter request.
+    // Clear it for accept/reject so stale values do not linger.
+    if (normalizedStatus == statusCounterRequest) {
+      final offer = _asDouble(counterOfferPay);
+      if (offer == null || offer <= 0) {
+        throw Exception('A valid counter offer amount is required.');
+      }
+      payload['driver_counter_offer_pay'] = double.parse(
+        offer.toStringAsFixed(2),
+      );
+    } else {
+      payload['driver_counter_offer_pay'] = null;
+    }
+
+    await _supabase.from('jobs').update(payload).eq('id', jobId);
   }
 
   // ── Private helpers ───────────────────────────────────────────────────────

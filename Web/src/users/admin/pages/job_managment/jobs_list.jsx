@@ -522,9 +522,18 @@ const ActiveJobs = () => {
                                         )}
                                     </td>
                                     <td className="px-6 py-5 text-center">
-                                        <span className="text-[12px] font-semibold text-gray-700 uppercase tracking-wide">
-                                            {job.driverApprovalStatus}
-                                        </span>
+                                        <div className="flex flex-col items-center">
+                                            <span className="text-[12px] font-semibold text-gray-700 uppercase tracking-wide">
+                                                {job.driverApprovalStatus}
+                                            </span>
+                                            {['counter request', 'counter requested'].includes(
+                                                String(job.driverApprovalStatus || '').trim().toLowerCase()
+                                            ) && job.driverCounterOfferLabel ? (
+                                                <span className="mt-1 text-[11px] font-medium text-amber-600">
+                                                    {job.driverCounterOfferLabel}
+                                                </span>
+                                            ) : null}
+                                        </div>
                                     </td>
                                     <td className="px-6 py-5 text-center">
                                         <div className="flex items-center justify-center gap-1.5 text-gray-600">

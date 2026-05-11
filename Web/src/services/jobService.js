@@ -921,6 +921,7 @@ export async function updateJobAssignedDriver(jobId, driverId) {
     .from('jobs').update({
       assigned_driver_id:     driverId,
       driver_approval_status: 'pending',
+      driver_counter_offer_pay: null,
       updated_at:             new Date().toISOString(),
     })
     .eq('id', jobId).select().single()
@@ -934,6 +935,7 @@ export async function removeJobAssignedDriver(jobId) {
     .from('jobs').update({
       assigned_driver_id:     null,
       driver_approval_status: null,
+      driver_counter_offer_pay: null,
       updated_at:             new Date().toISOString(),
     })
     .eq('id', jobId).select().single()
@@ -1043,6 +1045,8 @@ export function buildSeatCapacityByDriverId(vehicleRows) {
 export function mapJobToListRow(job, passengerCount, driver, pa, seatCapacityTotal) {
   const approval = String(job.driver_approval_status || '').trim()
   const ui       = deriveJobUiStatus(job)
+  const counterOfferPay = job.driver_counter_offer_pay == null ? null : Number(job.driver_counter_offer_pay)
+  const driverCounterOfferLabel = Number.isFinite(counterOfferPay) ? `$${counterOfferPay.toFixed(2)}` : null
 
   return {
     id:          job.id,
@@ -1067,6 +1071,8 @@ export function mapJobToListRow(job, passengerCount, driver, pa, seatCapacityTot
     status:               ui.label,
     statusColor:          ui.statusColor,
     driverApprovalStatus: approval || 'N/A',
+    driverCounterOfferPay: counterOfferPay,
+    driverCounterOfferLabel,
     dateTimeStr: job.semester_start
       ? new Date(job.semester_start + 'T00:00:00').toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
       : '—',

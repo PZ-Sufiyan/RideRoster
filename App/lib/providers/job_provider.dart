@@ -181,6 +181,12 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
+  /// Lightweight refresh hook for pages that mutate job approval/request
+  /// state outside this provider (e.g. requested jobs review flow).
+  Future<void> refreshJobDataSilently() async {
+    await loadJob(silent: true);
+  }
+
   // ── Session start ─────────────────────────────────────────────────────────
 
   Future<void> ensureSessionStarted() async {
