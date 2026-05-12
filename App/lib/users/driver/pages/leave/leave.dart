@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../providers/driver_leave_provider.dart';
 import '../../../../users/driver/models/driver_leave_model.dart';
@@ -49,9 +50,7 @@ class _DriverLeavePageState extends State<DriverLeavePage> {
                       child: Consumer<DriverLeaveProvider>(
                         builder: (context, provider, _) {
                           if (provider.isLoading) {
-                            return const Center(
-                              child: CircularProgressIndicator(),
-                            );
+                            return const _LeavePageShimmer();
                           }
 
                           return SingleChildScrollView(
@@ -221,7 +220,7 @@ class LeaveHistoryPage extends StatelessWidget {
               child: Consumer<DriverLeaveProvider>(
                 builder: (context, provider, _) {
                   if (provider.isLoading) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const _LeaveHistoryPageShimmer();
                   }
                   if (provider.history.isEmpty) {
                     return _EmptyHistory();
@@ -548,6 +547,179 @@ class _LeaveHistoryCard extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+class _LeavePageShimmer extends StatelessWidget {
+  const _LeavePageShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      child: Shimmer(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            ShimmerBox(
+              height: SizeConfig.r(14),
+              borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+            ),
+            SizedBox(height: SizeConfig.r(32)),
+            _LeaveSummaryShimmerCard(),
+            SizedBox(height: SizeConfig.r(31)),
+            ShimmerBox(
+              width: SizeConfig.r(140),
+              height: SizeConfig.r(18),
+              borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+            ),
+            SizedBox(height: SizeConfig.r(20)),
+            _LeaveHistoryShimmerList(count: 3),
+            SizedBox(height: SizeConfig.r(16)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _LeaveHistoryPageShimmer extends StatelessWidget {
+  const _LeaveHistoryPageShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.fromLTRB(
+        SizeConfig.r(30),
+        SizeConfig.r(30),
+        SizeConfig.r(30),
+        SizeConfig.r(30),
+      ),
+      child: Shimmer(
+        child: const _LeaveHistoryShimmerList(count: 4),
+      ),
+    );
+  }
+}
+
+class _LeaveSummaryShimmerCard extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.r(26),
+        vertical: SizeConfig.r(23),
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(SizeConfig.r(12)),
+        border: Border.all(color: const Color(0xFFE9EAEE), width: SizeConfig.r(1)),
+      ),
+      child: Row(
+        children: [
+          Expanded(child: _LeaveSummaryShimmerItem()),
+          _SummaryDivider(),
+          Expanded(child: _LeaveSummaryShimmerItem()),
+          _SummaryDivider(),
+          Expanded(child: _LeaveSummaryShimmerItem()),
+        ],
+      ),
+    );
+  }
+}
+
+class _LeaveSummaryShimmerItem extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        ShimmerBox(
+          width: SizeConfig.r(24),
+          height: SizeConfig.r(22),
+          borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+        ),
+        SizedBox(height: SizeConfig.r(11)),
+        ShimmerBox(
+          width: SizeConfig.r(58),
+          height: SizeConfig.r(12),
+          borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+        ),
+      ],
+    );
+  }
+}
+
+class _LeaveHistoryShimmerList extends StatelessWidget {
+  final int count;
+  const _LeaveHistoryShimmerList({required this.count});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: List.generate(count, (_) => const _LeaveHistoryShimmerCard()),
+    );
+  }
+}
+
+class _LeaveHistoryShimmerCard extends StatelessWidget {
+  const _LeaveHistoryShimmerCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      margin: EdgeInsets.only(bottom: SizeConfig.r(20)),
+      padding: EdgeInsets.fromLTRB(
+        SizeConfig.r(20),
+        SizeConfig.r(21),
+        SizeConfig.r(20),
+        SizeConfig.r(20),
+      ),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(SizeConfig.r(12)),
+        border: Border.all(color: const Color(0xFFE9EAEE), width: SizeConfig.r(1)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ShimmerBox(
+                      width: SizeConfig.r(160),
+                      height: SizeConfig.r(16),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                    SizedBox(height: SizeConfig.r(8)),
+                    ShimmerBox(
+                      width: SizeConfig.r(120),
+                      height: SizeConfig.r(14),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                  ],
+                ),
+              ),
+              ShimmerBox(
+                width: SizeConfig.r(78),
+                height: SizeConfig.r(30),
+                borderRadius: BorderRadius.circular(SizeConfig.r(16)),
+              ),
+            ],
+          ),
+          SizedBox(height: SizeConfig.r(16)),
+          ShimmerBox(
+            height: SizeConfig.r(46),
+            borderRadius: BorderRadius.circular(SizeConfig.r(8)),
+          ),
         ],
       ),
     );

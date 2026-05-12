@@ -306,6 +306,9 @@ class _CurrentJobCard extends StatelessWidget {
             ? AppRoutes.completeJob
             : AppRoutes.routeDetail;
         final sessionActive = provider.sessionStarted;
+        final checklistDone = provider.checklistCompletedToday;
+        final isStartAction = !isDropoffPhase;
+        final buttonBlocked = isStartAction && !checklistDone && !sessionActive;
 
         return _CurrentJobCardShell(
           child: Column(
@@ -429,17 +432,66 @@ class _CurrentJobCard extends StatelessWidget {
                   ),
                 ),
               ],
+              if (buttonBlocked) ...[
+                SizedBox(height: SizeConfig.r(10)),
+                Container(
+                  padding: EdgeInsets.all(SizeConfig.r(10)),
+                  margin: EdgeInsets.only(bottom: SizeConfig.r(10)),
+                  decoration: BoxDecoration(
+                    color: AppColors.warning.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(8)),
+                    border: Border.all(
+                      color: AppColors.warning.withValues(alpha: 0.4),
+                    ),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.warning_amber_rounded,
+                        color: AppColors.warning,
+                        size: SizeConfig.r(16),
+                      ),
+                      SizedBox(width: SizeConfig.r(8)),
+                      Expanded(
+                        child: Text(
+                          'Complete today\'s safety checklist before starting your run.',
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(12),
+                            color: AppColors.textDark,
+                            height: 1.3,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
               SizedBox(height: SizeConfig.r(18)),
               AppButton(
-                label: actionLabel,
+                label: buttonBlocked ? 'Checklist Required' : actionLabel,
                 height: SizeConfig.r(46),
                 borderRadius: SizeConfig.radius,
-                trailingIcon: Icon(
-                  Icons.arrow_forward,
-                  color: Colors.white,
-                  size: SizeConfig.r(18),
-                ),
-                onPressed: () => Navigator.pushNamed(context, actionRoute),
+                backgroundColor: buttonBlocked ? AppColors.textLight : null,
+                trailingIcon: buttonBlocked
+                    ? null
+                    : Icon(
+                        Icons.arrow_forward,
+                        color: Colors.white,
+                        size: SizeConfig.r(18),
+                      ),
+                onPressed: () {
+                  if (buttonBlocked) {
+                    Navigator.pushNamed(
+                      context,
+                      AppRoutes.vehicleChecklist,
+                    ).then((_) {
+                      if (!context.mounted) return;
+                      context.read<JobProvider>().loadJob(silent: true);
+                    });
+                  } else {
+                    Navigator.pushNamed(context, actionRoute);
+                  }
+                },
               ),
             ],
           ),
@@ -519,10 +571,12 @@ class _StatsGrid extends StatefulWidget {
 }
 
 class _StatsGridState extends State<_StatsGrid> {
+  static DashboardStats? _cachedStats;
+  static bool _cachedStatsLoaded = false;
+
   final DashboardStatsService _statsService = DashboardStatsService();
-  DashboardStats? _stats;
-  bool _statsFirstLoadDone = false;
-  bool _statsRefreshing = false;
+  DashboardStats? _stats = _cachedStats;
+  bool _statsFirstLoadDone = _cachedStatsLoaded;
   late final JobProvider _jobProvider;
   late final VoidCallback _onJobDataEpochChanged;
   int _lastSyncedJobDataEpoch = -1;
@@ -550,17 +604,14 @@ class _StatsGridState extends State<_StatsGrid> {
   }
 
   Future<void> _fetchStats({bool isBackground = false}) async {
-    if (isBackground && mounted) {
-      setState(() => _statsRefreshing = true);
-    }
-
     try {
       final stats = await _statsService.fetchStats();
       if (!mounted) return;
       setState(() {
         _stats = stats;
         _statsFirstLoadDone = true;
-        _statsRefreshing = false;
+        _cachedStats = stats;
+        _cachedStatsLoaded = true;
       });
     } catch (_) {
       if (!mounted) return;
@@ -568,8 +619,9 @@ class _StatsGridState extends State<_StatsGrid> {
         if (!_statsFirstLoadDone) {
           _stats = DashboardStats.empty;
           _statsFirstLoadDone = true;
+          _cachedStats = _stats;
+          _cachedStatsLoaded = true;
         }
-        _statsRefreshing = false;
       });
     }
   }
@@ -581,6 +633,7 @@ class _StatsGridState extends State<_StatsGrid> {
     }
 
     final stats = _stats!;
+    final checklistDone = context.watch<JobProvider>().checklistCompletedToday;
 
     final cards = [
       _StatData(
@@ -597,8 +650,8 @@ class _StatsGridState extends State<_StatsGrid> {
       ),
       _StatData(
         icon: Icons.format_list_bulleted,
-        iconColor: AppColors.primaryDark,
-        count: '0',
+        iconColor: checklistDone ? AppColors.success : AppColors.warning,
+        count: checklistDone ? '✓' : '1',
         label: 'Checklist Pending',
         onTap: () =>
             Navigator.pushNamed(context, AppRoutes.vehicleChecklist),
@@ -611,32 +664,17 @@ class _StatsGridState extends State<_StatsGrid> {
       ),
     ];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (_statsRefreshing)
-          Padding(
-            padding: EdgeInsets.only(bottom: SizeConfig.r(6)),
-            child: LinearProgressIndicator(
-              minHeight: SizeConfig.r(2),
-              borderRadius: BorderRadius.circular(2),
-              color: AppColors.primary,
-              backgroundColor: AppColors.primaryLight,
-            ),
-          ),
-        GridView.builder(
-          shrinkWrap: true,
-          physics: const NeverScrollableScrollPhysics(),
-          itemCount: cards.length,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: 2,
-            mainAxisSpacing: SizeConfig.r(10),
-            crossAxisSpacing: SizeConfig.r(10),
-            childAspectRatio: 1.35,
-          ),
-          itemBuilder: (_, i) => _StatCard(data: cards[i]),
-        ),
-      ],
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: cards.length,
+      gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        mainAxisSpacing: SizeConfig.r(10),
+        crossAxisSpacing: SizeConfig.r(10),
+        childAspectRatio: 1.35,
+      ),
+      itemBuilder: (_, i) => _StatCard(data: cards[i]),
     );
   }
 }
@@ -731,10 +769,12 @@ class _JobRequestsSection extends StatefulWidget {
 }
 
 class _JobRequestsSectionState extends State<_JobRequestsSection> {
+  static List<DriverJobRequest>? _cachedRequests;
+  static bool _cachedRequestsLoaded = false;
+
   final DriverJobRequestService _service = DriverJobRequestService();
-  List<DriverJobRequest>? _requests;
-  bool _requestsFirstLoadDone = false;
-  bool _requestsRefreshing = false;
+  List<DriverJobRequest>? _requests = _cachedRequests;
+  bool _requestsFirstLoadDone = _cachedRequestsLoaded;
   bool _requestsLoadFailed = false;
   late final JobProvider _jobProvider;
   late final VoidCallback _onJobDataEpochChanged;
@@ -763,10 +803,6 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
   }
 
   Future<void> _fetchRequests({bool isBackground = false}) async {
-    if (isBackground && mounted) {
-      setState(() => _requestsRefreshing = true);
-    }
-
     final driverId = context.read<AuthProvider>().userId;
     if (driverId == null || driverId.trim().isEmpty) {
       if (!mounted) return;
@@ -774,7 +810,8 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
         _requests = [];
         _requestsFirstLoadDone = true;
         _requestsLoadFailed = false;
-        _requestsRefreshing = false;
+        _cachedRequests = _requests;
+        _cachedRequestsLoaded = true;
       });
       return;
     }
@@ -786,7 +823,8 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
         _requests = list;
         _requestsFirstLoadDone = true;
         _requestsLoadFailed = false;
-        _requestsRefreshing = false;
+        _cachedRequests = list;
+        _cachedRequestsLoaded = true;
       });
     } catch (_) {
       if (!mounted) return;
@@ -795,7 +833,6 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
           _requestsLoadFailed = true;
           _requestsFirstLoadDone = true;
         }
-        _requestsRefreshing = false;
       });
     }
   }
@@ -824,16 +861,6 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
         else if (_requestsLoadFailed && _requests == null)
           _RequestsErrorCard(onRetry: _refreshRequests)
         else ...[
-          if (_requestsRefreshing)
-            Padding(
-              padding: EdgeInsets.only(bottom: SizeConfig.r(8)),
-              child: LinearProgressIndicator(
-                minHeight: SizeConfig.r(2),
-                borderRadius: BorderRadius.circular(2),
-                color: AppColors.primary,
-                backgroundColor: AppColors.primaryLight,
-              ),
-            ),
           if ((_requests ?? []).isEmpty)
             Container(
               width: double.infinity,

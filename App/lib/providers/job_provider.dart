@@ -7,6 +7,7 @@ import '../services/navigation_service.dart';
 import '../services/location_service.dart';
 import '../services/location_task.dart';
 import '../services/notification_service.dart';
+import '../services/vehicle_safety_check_service.dart';
 
 /// Manages active job + session state for the driver flow.
 ///
@@ -43,6 +44,9 @@ class JobProvider extends ChangeNotifier {
   JobModel? _job;
   bool _isLoading = false;
   String? _error;
+  bool _hasLoadedOnce = false;
+  String? _lastLoadedDayKey;
+  bool _checklistCompletedToday = false;
 
   /// Incremented every time [loadJob] finishes (success or error). Listeners
   /// (e.g. dashboard job requests) can refresh when this changes.
@@ -76,6 +80,8 @@ class JobProvider extends ChangeNotifier {
   JobModel? get job => _job;
   bool get isLoading => _isLoading;
   String? get error => _error;
+  bool get hasLoadedOnce => _hasLoadedOnce;
+  bool get checklistCompletedToday => _checklistCompletedToday;
   int get jobDataEpoch => _jobDataEpoch;
   int get activePickupIndex => _activePickupIndex;
   bool get isTracking => _isTracking;
@@ -140,10 +146,25 @@ class JobProvider extends ChangeNotifier {
   // ── Load ──────────────────────────────────────────────────────────────────
 
   Future<void> loadJob({bool silent = false}) async {
+    // Hard day boundary: never keep yesterday's in-memory job/session visible.
+    // If the date changed while app was backgrounded, clear cached job first.
+    final todayKey = _todayKey(DateTime.now());
+    if (_lastLoadedDayKey != null && _lastLoadedDayKey != todayKey) {
+      _job = null;
+      _activePickupIndex = 0;
+      _hasArrivedAtPickup = false;
+      _hasArrivedAtDropoff = false;
+      _isTracking = false;
+      _currentDistanceMeters = null;
+      _checklistCompletedToday = false;
+      _error = null;
+      notifyListeners();
+    }
+
     // Block UI with loading only when there is nothing to show yet (first load
     // or error retry). If we already have a job, refresh in the background so
     // resume / epoch updates do not flash the skeleton.
-    final blockUiWithLoading = !silent && _job == null;
+    final blockUiWithLoading = !silent && _job == null && !_hasLoadedOnce;
 
     if (blockUiWithLoading) {
       _isLoading = true;
@@ -152,7 +173,12 @@ class JobProvider extends ChangeNotifier {
     }
 
     try {
-      final updatedJob = await _jobService.fetchCurrentJob();
+      final results = await Future.wait<dynamic>([
+        _jobService.fetchCurrentJob(),
+        VehicleSafetyCheckService().isChecklistCompletedToday(),
+      ]);
+      final updatedJob = results[0] as JobModel?;
+      _checklistCompletedToday = results[1] as bool;
 
       final sameJob =
           updatedJob != null &&
@@ -184,6 +210,8 @@ class JobProvider extends ChangeNotifier {
       if (blockUiWithLoading) {
         _isLoading = false;
       }
+      _lastLoadedDayKey = todayKey;
+      _hasLoadedOnce = true;
       _jobDataEpoch++;
       notifyListeners();
     }
@@ -409,6 +437,9 @@ class JobProvider extends ChangeNotifier {
   void reset() {
     BackgroundLocationTask.stop();
     _job = null;
+    _hasLoadedOnce = false;
+    _lastLoadedDayKey = null;
+    _checklistCompletedToday = false;
     _activePickupIndex = 0;
     _isTracking = false;
     _currentDistanceMeters = null;
@@ -493,6 +524,11 @@ class JobProvider extends ChangeNotifier {
     );
     _activePickupIndex = idx == -1 ? _job!.pickups.length : idx;
   }
+
+  String _todayKey(DateTime dt) =>
+      '${dt.year.toString().padLeft(4, '0')}-'
+      '${dt.month.toString().padLeft(2, '0')}-'
+      '${dt.day.toString().padLeft(2, '0')}';
 
   @override
   void dispose() {

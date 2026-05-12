@@ -32,8 +32,7 @@ class DriverVehicleSafetyInfo {
     final parts = <String>[
       if ((make ?? '').trim().isNotEmpty) make!.trim(),
       if ((model ?? '').trim().isNotEmpty) model!.trim(),
-      if (yearOfFirstRegistration != null)
-        '${yearOfFirstRegistration!.year}',
+      if (yearOfFirstRegistration != null) '${yearOfFirstRegistration!.year}',
     ];
     final s = parts.join(' ');
     return s.isEmpty ? '—' : s;
@@ -58,8 +57,7 @@ class VehicleSafetyCheckToday {
   /// Read-only when the checklist is fully passed and saved as [completed].
   /// [pending] = no submit yet (default); [incomplete] = saved with at least
   /// one fail — user may edit and resubmit.
-  bool get isReadOnlyLocked =>
-      status.trim().toLowerCase() == 'completed';
+  bool get isReadOnlyLocked => status.trim().toLowerCase() == 'completed';
 }
 
 class VehicleSafetyCheckService {
@@ -133,8 +131,7 @@ class VehicleSafetyCheckService {
       name: m['name']?.toString(),
       make: m['make']?.toString(),
       model: m['model']?.toString(),
-      taxiLicensePlateNumber: (m['taxi_license_plate_number'] ?? '')
-          .toString(),
+      taxiLicensePlateNumber: (m['taxi_license_plate_number'] ?? '').toString(),
       yearOfFirstRegistration: year,
     );
   }
@@ -181,7 +178,9 @@ class VehicleSafetyCheckService {
       id: (m['id'] ?? '').toString(),
       status: (m['status'] ?? 'pending').toString(),
       checksByColumn: checks,
-      updatedAt: DateTime.tryParse(updatedRaw ?? '')?.toUtc() ?? DateTime.now().toUtc(),
+      updatedAt:
+          DateTime.tryParse(updatedRaw ?? '')?.toUtc() ??
+          DateTime.now().toUtc(),
     );
   }
 
@@ -260,5 +259,23 @@ class VehicleSafetyCheckService {
         .select('id')
         .single();
     return (inserted['id'] ?? '').toString();
+  }
+
+  /// Returns true if the driver has a completed safety check for today's
+  /// local calendar day on their currently assigned vehicle.
+  Future<bool> isChecklistCompletedToday() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) return false;
+
+    final vehicle = await fetchDriverVehicle();
+    if (vehicle == null) return false;
+
+    final row = await fetchCheckForLocalDay(
+      driverId: userId,
+      vehicleId: vehicle.id,
+      localDay: DateTime.now(),
+    );
+
+    return row?.isReadOnlyLocked ?? false;
   }
 }

@@ -7,6 +7,7 @@ import '../../../../providers/job_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../users/driver/models/driver_profile_model.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
 
 class DriverProfilePage extends StatefulWidget {
@@ -34,7 +35,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
         child: Consumer<DriverProfileProvider>(
           builder: (context, provider, _) {
             if (provider.isLoading && !provider.hasProfile) {
-              return const Center(child: CircularProgressIndicator());
+              return const _ProfilePageShimmer();
             }
 
             if (provider.error != null && !provider.hasProfile) {
@@ -583,6 +584,238 @@ class _ProfileErrorState extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _ProfilePageShimmer extends StatelessWidget {
+  const _ProfilePageShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        Padding(
+          padding: EdgeInsets.symmetric(
+            horizontal: SizeConfig.r(4),
+            vertical: SizeConfig.r(8),
+          ),
+          child: Row(
+            children: [
+              IconButton(
+                onPressed: null,
+                icon: Icon(
+                  Icons.arrow_back,
+                  color: AppColors.textLight,
+                  size: SizeConfig.r(22),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  'Driver Profile',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(17),
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDark,
+                  ),
+                ),
+              ),
+              SizedBox(width: SizeConfig.r(48)),
+            ],
+          ),
+        ),
+        Expanded(
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            child: Shimmer(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: EdgeInsets.symmetric(vertical: SizeConfig.r(20)),
+                    child: Center(
+                      child: Column(
+                        children: [
+                          ShimmerBox(
+                            width: SizeConfig.r(88),
+                            height: SizeConfig.r(88),
+                            borderRadius: BorderRadius.circular(SizeConfig.r(44)),
+                          ),
+                          SizedBox(height: SizeConfig.r(12)),
+                          ShimmerBox(
+                            width: SizeConfig.r(180),
+                            height: SizeConfig.r(18),
+                            borderRadius: BorderRadius.circular(SizeConfig.r(6)),
+                          ),
+                          SizedBox(height: SizeConfig.r(8)),
+                          ShimmerBox(
+                            width: SizeConfig.r(86),
+                            height: SizeConfig.r(22),
+                            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                  _shimmerDivider(),
+                  _buildShimmerSection(rowCount: 6),
+                  _shimmerDivider(),
+                  _buildShimmerSection(rowCount: 4),
+                  _shimmerDivider(),
+                  _buildShimmerSection(rowCount: 4),
+                  _shimmerDivider(),
+                  _buildShimmerSection(rowCount: 2, includeButton: true),
+                  _shimmerDivider(),
+                  _buildShimmerQuickActions(),
+                  _shimmerDivider(),
+                  _buildShimmerSettings(),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildShimmerSection({
+    required int rowCount,
+    bool includeButton = false,
+  }) {
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.hPad,
+        vertical: SizeConfig.r(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShimmerBox(
+            width: SizeConfig.r(160),
+            height: SizeConfig.r(16),
+            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+          ),
+          SizedBox(height: SizeConfig.r(12)),
+          ...List.generate(
+            rowCount,
+            (index) => Padding(
+              padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: ShimmerBox(
+                      height: SizeConfig.r(13),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                  ),
+                  SizedBox(width: SizeConfig.r(16)),
+                  Expanded(
+                    child: ShimmerBox(
+                      height: SizeConfig.r(13),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          if (includeButton) ...[
+            SizedBox(height: SizeConfig.r(8)),
+            ShimmerBox(
+              height: SizeConfig.r(46),
+              borderRadius: BorderRadius.circular(SizeConfig.radius),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShimmerQuickActions() {
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.hPad,
+        vertical: SizeConfig.r(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShimmerBox(
+            width: SizeConfig.r(140),
+            height: SizeConfig.r(16),
+            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+          ),
+          SizedBox(height: SizeConfig.r(12)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: List.generate(
+              3,
+              (_) => Column(
+                children: [
+                  ShimmerBox(
+                    width: SizeConfig.r(44),
+                    height: SizeConfig.r(44),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(22)),
+                  ),
+                  SizedBox(height: SizeConfig.r(6)),
+                  ShimmerBox(
+                    width: SizeConfig.r(52),
+                    height: SizeConfig.r(11),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShimmerSettings() {
+    return Padding(
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.hPad,
+        vertical: SizeConfig.r(4),
+      ),
+      child: Column(
+        children: [
+          ...List.generate(
+            4,
+            (index) => Padding(
+              padding: EdgeInsets.symmetric(vertical: SizeConfig.r(14)),
+              child: Row(
+                children: [
+                  ShimmerBox(
+                    width: SizeConfig.r(20),
+                    height: SizeConfig.r(20),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                  SizedBox(width: SizeConfig.r(14)),
+                  Expanded(
+                    child: ShimmerBox(
+                      height: SizeConfig.r(14),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                  ),
+                  SizedBox(width: SizeConfig.r(12)),
+                  ShimmerBox(
+                    width: SizeConfig.r(18),
+                    height: SizeConfig.r(18),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          SizedBox(height: SizeConfig.r(24)),
+        ],
+      ),
+    );
+  }
+
+  Widget _shimmerDivider() {
+    return Divider(height: 1, thickness: 1, color: AppColors.surfaceGray);
   }
 }
 

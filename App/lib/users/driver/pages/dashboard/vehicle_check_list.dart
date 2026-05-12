@@ -7,6 +7,7 @@ import '../../../../components/app_button.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../services/vehicle_safety_check_service.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -485,7 +486,7 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
             if (_hasJobToday) _buildJobBanner(),
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator())
+                  ? const _VehicleChecklistPageShimmer()
                   : SingleChildScrollView(
                       padding:
                           EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
@@ -694,6 +695,162 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
                 ? const Color(0xFF0284C7)
                 : AppColors.textLight),
         onPressed: canSubmit && !_saving ? _onCompletePressed : null,
+      ),
+    );
+  }
+}
+
+class _VehicleChecklistPageShimmer extends StatelessWidget {
+  const _VehicleChecklistPageShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return SingleChildScrollView(
+      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
+      child: Shimmer(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            SizedBox(height: SizeConfig.r(12)),
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: SizeConfig.r(14),
+                vertical: SizeConfig.r(12),
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.surfaceGray,
+                borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+                border: Border.all(color: AppColors.inputBorder, width: 1),
+              ),
+              child: Row(
+                children: [
+                  ShimmerBox(
+                    width: SizeConfig.r(44),
+                    height: SizeConfig.r(44),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(10)),
+                  ),
+                  SizedBox(width: SizeConfig.r(12)),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        ShimmerBox(
+                          height: SizeConfig.r(14),
+                          borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                        ),
+                        SizedBox(height: SizeConfig.r(6)),
+                        ShimmerBox(
+                          width: SizeConfig.r(180),
+                          height: SizeConfig.r(12),
+                          borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(height: SizeConfig.r(16)),
+            ShimmerBox(
+              width: SizeConfig.r(72),
+              height: SizeConfig.r(13),
+              borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+            ),
+            SizedBox(height: SizeConfig.r(8)),
+            ShimmerBox(
+              width: double.infinity,
+              height: SizeConfig.r(6),
+              borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+            ),
+            SizedBox(height: SizeConfig.r(20)),
+            ShimmerBox(
+              width: SizeConfig.r(130),
+              height: SizeConfig.r(16),
+              borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+            ),
+            SizedBox(height: SizeConfig.r(12)),
+            ...List.generate(3, (_) => const _ChecklistSectionShimmerCard()),
+            SizedBox(height: SizeConfig.r(16)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ChecklistSectionShimmerCard extends StatelessWidget {
+  const _ChecklistSectionShimmerCard();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.only(bottom: SizeConfig.r(12)),
+      decoration: BoxDecoration(
+        color: AppColors.background,
+        borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+        border: Border.all(color: AppColors.inputBorder, width: 1),
+      ),
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(
+          SizeConfig.r(14),
+          SizeConfig.r(12),
+          SizeConfig.r(14),
+          SizeConfig.r(12),
+        ),
+        child: Column(
+          children: [
+            Row(
+              children: [
+                ShimmerBox(
+                  width: SizeConfig.r(18),
+                  height: SizeConfig.r(18),
+                  borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                ),
+                SizedBox(width: SizeConfig.r(8)),
+                ShimmerBox(
+                  width: SizeConfig.r(140),
+                  height: SizeConfig.r(14),
+                  borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                ),
+              ],
+            ),
+            SizedBox(height: SizeConfig.r(12)),
+            ...List.generate(
+              3,
+              (_) => Padding(
+                padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+                child: Row(
+                  children: [
+                    ShimmerBox(
+                      width: SizeConfig.r(18),
+                      height: SizeConfig.r(18),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                    SizedBox(width: SizeConfig.r(10)),
+                    Expanded(
+                      child: ShimmerBox(
+                        height: SizeConfig.r(13),
+                        borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                      ),
+                    ),
+                    SizedBox(width: SizeConfig.r(10)),
+                    ShimmerBox(
+                      width: SizeConfig.r(28),
+                      height: SizeConfig.r(28),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(14)),
+                    ),
+                    SizedBox(width: SizeConfig.r(8)),
+                    ShimmerBox(
+                      width: SizeConfig.r(28),
+                      height: SizeConfig.r(28),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(14)),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

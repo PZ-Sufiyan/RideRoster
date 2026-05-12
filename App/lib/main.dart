@@ -103,7 +103,7 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _enforceLocationRequirement();
+      _enforceLocationRequirement(showLoader: false);
       _resumeSosTrackingIfAuthenticated();
       return;
     }
@@ -115,14 +115,18 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
     }
   }
 
-  Future<void> _enforceLocationRequirement() async {
+  Future<void> _enforceLocationRequirement({bool showLoader = true}) async {
     if (!mounted) return;
-    setState(() => _isCheckingLocation = true);
+    if (showLoader) {
+      setState(() => _isCheckingLocation = true);
+    }
     final hasPermission = await _locationService.ensurePermission();
     if (!mounted) return;
     setState(() {
       _locationReady = hasPermission;
-      _isCheckingLocation = false;
+      if (showLoader) {
+        _isCheckingLocation = false;
+      }
     });
   }
 

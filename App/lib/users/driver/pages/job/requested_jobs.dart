@@ -8,6 +8,7 @@ import '../../../../components/app_button.dart';
 import '../../../../providers/job_provider.dart';
 import '../../../../services/driver_job_request_service.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
 import '../../models/job_request_model.dart';
 
@@ -21,6 +22,7 @@ class RequestedJobsPage extends StatefulWidget {
 class _RequestedJobsPageState extends State<RequestedJobsPage> {
   final DriverJobRequestService _service = DriverJobRequestService();
   bool _isSubmitting = false;
+  bool _isPageLoading = true;
   LatLng? _currentLocation;
 
   @override
@@ -38,8 +40,9 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
         permission = await Geolocator.requestPermission();
       }
       if (permission != LocationPermission.always &&
-          permission != LocationPermission.whileInUse)
+          permission != LocationPermission.whileInUse) {
         return;
+      }
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,
@@ -47,7 +50,13 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
       );
       if (!mounted) return;
       setState(() => _currentLocation = LatLng(pos.latitude, pos.longitude));
-    } catch (_) {}
+    } catch (_) {
+      // No-op: page still works with map fallback.
+    } finally {
+      if (mounted) {
+        setState(() => _isPageLoading = false);
+      }
+    }
   }
 
   // Replace the existing _updateStatus method
@@ -283,6 +292,10 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
       );
     }
 
+    if (_isPageLoading) {
+      return const _RequestedJobsPageShimmer();
+    }
+
     return Scaffold(
       backgroundColor: const Color(0xFF1B2B4B),
       body: SafeArea(
@@ -349,6 +362,245 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _RequestedJobsPageShimmer extends StatelessWidget {
+  const _RequestedJobsPageShimmer();
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFF1B2B4B),
+      body: SafeArea(
+        child: Column(
+          children: [
+            _RequestedJobsMapShimmer(),
+            Expanded(
+              child: Container(
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.only(
+                    topLeft: Radius.circular(SizeConfig.r(20)),
+                    topRight: Radius.circular(SizeConfig.r(20)),
+                  ),
+                ),
+                child: Shimmer(
+                  child: Column(
+                    children: [
+                      SizedBox(height: SizeConfig.r(10)),
+                      ShimmerBox(
+                        width: SizeConfig.r(40),
+                        height: SizeConfig.r(4),
+                        borderRadius: BorderRadius.circular(SizeConfig.r(2)),
+                      ),
+                      SizedBox(height: SizeConfig.r(16)),
+                      Expanded(
+                        child: SingleChildScrollView(
+                          padding: EdgeInsets.symmetric(
+                            horizontal: SizeConfig.hPad,
+                            vertical: SizeConfig.r(12),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        ShimmerBox(
+                                          width: SizeConfig.r(90),
+                                          height: SizeConfig.r(22),
+                                          borderRadius: BorderRadius.circular(
+                                            SizeConfig.r(4),
+                                          ),
+                                        ),
+                                        SizedBox(height: SizeConfig.r(6)),
+                                        ShimmerBox(
+                                          width: SizeConfig.r(120),
+                                          height: SizeConfig.r(12),
+                                          borderRadius: BorderRadius.circular(
+                                            SizeConfig.r(4),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                  SizedBox(width: SizeConfig.r(12)),
+                                  Column(
+                                    crossAxisAlignment: CrossAxisAlignment.end,
+                                    children: [
+                                      ShimmerBox(
+                                        width: SizeConfig.r(72),
+                                        height: SizeConfig.r(20),
+                                        borderRadius: BorderRadius.circular(
+                                          SizeConfig.r(4),
+                                        ),
+                                      ),
+                                      SizedBox(height: SizeConfig.r(5)),
+                                      ShimmerBox(
+                                        width: SizeConfig.r(62),
+                                        height: SizeConfig.r(11),
+                                        borderRadius: BorderRadius.circular(
+                                          SizeConfig.r(4),
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: SizeConfig.r(16)),
+                              ShimmerBox(
+                                width: SizeConfig.r(180),
+                                height: SizeConfig.r(20),
+                                borderRadius: BorderRadius.circular(
+                                  SizeConfig.r(4),
+                                ),
+                              ),
+                              SizedBox(height: SizeConfig.r(8)),
+                              ShimmerBox(
+                                width: SizeConfig.r(240),
+                                height: SizeConfig.r(13),
+                                borderRadius: BorderRadius.circular(
+                                  SizeConfig.r(4),
+                                ),
+                              ),
+                              SizedBox(height: SizeConfig.r(20)),
+                              ...List.generate(
+                                4,
+                                (_) => Padding(
+                                  padding: EdgeInsets.only(
+                                    bottom: SizeConfig.r(18),
+                                  ),
+                                  child: Row(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      ShimmerBox(
+                                        width: SizeConfig.r(12),
+                                        height: SizeConfig.r(12),
+                                        borderRadius: BorderRadius.circular(
+                                          SizeConfig.r(6),
+                                        ),
+                                      ),
+                                      SizedBox(width: SizeConfig.r(10)),
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment:
+                                              CrossAxisAlignment.start,
+                                          children: [
+                                            ShimmerBox(
+                                              width: SizeConfig.r(80),
+                                              height: SizeConfig.r(11),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    SizeConfig.r(4),
+                                                  ),
+                                            ),
+                                            SizedBox(height: SizeConfig.r(6)),
+                                            ShimmerBox(
+                                              height: SizeConfig.r(13),
+                                              borderRadius:
+                                                  BorderRadius.circular(
+                                                    SizeConfig.r(4),
+                                                  ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: EdgeInsets.fromLTRB(
+                          SizeConfig.hPad,
+                          SizeConfig.r(10),
+                          SizeConfig.hPad,
+                          SizeConfig.r(16),
+                        ),
+                        child: Column(
+                          children: [
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: ShimmerBox(
+                                    height: SizeConfig.r(46),
+                                    borderRadius: BorderRadius.circular(
+                                      SizeConfig.radiusLG,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: SizeConfig.r(12)),
+                                Expanded(
+                                  child: ShimmerBox(
+                                    height: SizeConfig.r(46),
+                                    borderRadius: BorderRadius.circular(
+                                      SizeConfig.radiusLG,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: SizeConfig.r(10)),
+                            ShimmerBox(
+                              height: SizeConfig.r(50),
+                              borderRadius: BorderRadius.circular(
+                                SizeConfig.radiusLG,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _RequestedJobsMapShimmer extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Stack(
+      children: [
+        Container(
+          height: SizeConfig.sh(32),
+          width: double.infinity,
+          color: const Color(0xFF223759),
+        ),
+        Positioned(
+          top: SizeConfig.r(8),
+          left: SizeConfig.r(8),
+          child: Container(
+            width: SizeConfig.r(36),
+            height: SizeConfig.r(36),
+            decoration: BoxDecoration(
+              color: Colors.white.withValues(alpha: 0.20),
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              Icons.arrow_back,
+              color: Colors.white,
+              size: SizeConfig.r(18),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
