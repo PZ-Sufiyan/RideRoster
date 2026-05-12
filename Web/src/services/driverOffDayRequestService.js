@@ -33,7 +33,7 @@ function parseYmd(isoOrYmd) {
   return new Date(y, m - 1, d)
 }
 
-function semesterOverlapsJobRange(job, leaveStartStr, leaveEndStr) {
+function semesterOverlapsLeaveRange(job, leaveStartStr, leaveEndStr) {
   const ss = job.semester_start
   const se = job.semester_end
   if (!ss || !se) return true
@@ -74,14 +74,13 @@ function normalizeDriverLeaveRow(row) {
     admin_notes: row.admin_notes ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    total_leave_days: row.total_leave_days ?? null,
     driver_first_name: driver?.first_name ?? '',
     driver_last_name: driver?.last_name ?? '',
   }
 }
 
 /**
- * Approve or reject a driver leave / off-day request (same table the mobile app uses).
+ * Approve or reject a driver leave / off-day request.
  * @param {string} requestId
  * @param {{ status: 'approved'|'rejected', adminNotes?: string|null }} payload
  */
@@ -93,7 +92,10 @@ export async function updateOffDayRequestStatus(requestId, { status, adminNotes 
     .from('driver_leave_requests')
     .update({
       status,
-      admin_notes: adminNotes != null && String(adminNotes).trim() !== '' ? String(adminNotes).trim() : null,
+      admin_notes:
+        adminNotes != null && String(adminNotes).trim() !== ''
+          ? String(adminNotes).trim()
+          : null,
       updated_at: new Date().toISOString(),
     })
     .eq('id', requestId)
@@ -104,13 +106,18 @@ export async function updateOffDayRequestStatus(requestId, { status, adminNotes 
 }
 
 /**
- * All driver leave requests for the admin's company, each enriched with assigned-job
- * passenger schedule context for weekdays that fall within the request range
- * (outbound / inbound rows with passenger wheelchair / harness flags).
+ * All driver leave requests for the admin's company, enriched with assigned-job
+ * passenger schedule context for weekdays that fall within the request range.
+ *
+ * Each request gets a `jobContexts` array:
+ *   [{ job, outbound: ScheduleRow[], inbound: ScheduleRow[] }, …]
+ *
+ * jobContexts is empty when the driver has no accepted job that runs on those weekdays.
  */
 export async function getOffDayRequestsEnrichedForCurrentAdmin() {
   const companyId = await getCompanyIdForCurrentAdmin()
 
+  // ── 1. Fetch all leave requests for this company's drivers ─────────────────
   const { data: rawRows, error: reqErr } = await supabase
     .from('driver_leave_requests')
     .select(
@@ -141,6 +148,7 @@ export async function getOffDayRequestsEnrichedForCurrentAdmin() {
 
   const requests = rawRows.map(normalizeDriverLeaveRow)
 
+  // ── 2. Fetch accepted, non-cancelled jobs for those drivers ────────────────
   const driverIds = [...new Set(requests.map((r) => r.driver_id).filter(Boolean))]
   if (!driverIds.length) return requests.map((r) => ({ ...r, jobContexts: [] }))
 
@@ -170,18 +178,20 @@ export async function getOffDayRequestsEnrichedForCurrentAdmin() {
 
   if (jobErr) throw jobErr
   const jobs = jobRows || []
+  if (!jobs.length) return requests.map((r) => ({ ...r, jobContexts: [] }))
 
+  // ── 3. Collect all weekdays across all requests (union) ───────────────────
+  // We fetch schedules in one query, then filter per-request in JS.
   const allWeekdays = new Set()
   for (const r of requests) {
     const s = parseYmd(r.start_date)
     const e = parseYmd(r.end_date)
-    if (!s || !e) continue
-    weekdayKeysBetween(s, e).forEach((w) => allWeekdays.add(w))
+    if (s && e) weekdayKeysBetween(s, e).forEach((w) => allWeekdays.add(w))
   }
   const weekdayList = [...allWeekdays]
   const jobIds = [...new Set(jobs.map((j) => j.id))]
 
-  /** @type {Record<string, any[]>} */
+  // ── 4. Fetch relevant schedule rows (one query) ───────────────────────────
   const schedulesByJobId = {}
   if (jobIds.length && weekdayList.length) {
     const { data: schedRows, error: schErr } = await supabase
@@ -213,39 +223,39 @@ export async function getOffDayRequestsEnrichedForCurrentAdmin() {
 
     if (schErr) throw schErr
     for (const row of schedRows || []) {
-      const jid = row.job_id
-      if (!schedulesByJobId[jid]) schedulesByJobId[jid] = []
-      schedulesByJobId[jid].push(row)
+      if (!schedulesByJobId[row.job_id]) schedulesByJobId[row.job_id] = []
+      schedulesByJobId[row.job_id].push(row)
     }
   }
 
+  // ── 5. Enrich each request with its job contexts ─────────────────────────
   return requests.map((req) => {
-    const leaveStart = req.start_date
-    const leaveEnd = req.end_date
-    const s = parseYmd(leaveStart)
-    const e = parseYmd(leaveEnd)
+    const s = parseYmd(req.start_date)
+    const e = parseYmd(req.end_date)
     const leaveWeekdays = s && e ? weekdayKeysBetween(s, e) : []
 
-    const jobContexts = []
-    for (const job of jobs) {
-      if (job.assigned_driver_id !== req.driver_id) continue
-      if (!semesterOverlapsJobRange(job, leaveStart, leaveEnd)) continue
-
-      const list = schedulesByJobId[job.id] || []
-      const relevant = list.filter(
-        (row) => row.weekday && leaveWeekdays.includes(String(row.weekday).toLowerCase()),
+    const jobContexts = jobs
+      .filter(
+        (job) =>
+          job.assigned_driver_id === req.driver_id &&
+          semesterOverlapsLeaveRange(job, req.start_date, req.end_date),
       )
-      if (!relevant.length) continue
+      .reduce((acc, job) => {
+        const relevant = (schedulesByJobId[job.id] || []).filter((row) =>
+          leaveWeekdays.includes(String(row.weekday).toLowerCase()),
+        )
+        if (!relevant.length) return acc
 
-      const outbound = relevant
-        .filter((row) => String(row.direction).toLowerCase() === 'outbound')
-        .sort((a, b) => (a.stop_order ?? 0) - (b.stop_order ?? 0))
-      const inbound = relevant
-        .filter((row) => String(row.direction).toLowerCase() === 'inbound')
-        .sort((a, b) => (a.stop_order ?? 0) - (b.stop_order ?? 0))
+        const outbound = relevant
+          .filter((r) => String(r.direction).toLowerCase() === 'outbound')
+          .sort((a, b) => (a.stop_order ?? 0) - (b.stop_order ?? 0))
+        const inbound = relevant
+          .filter((r) => String(r.direction).toLowerCase() === 'inbound')
+          .sort((a, b) => (a.stop_order ?? 0) - (b.stop_order ?? 0))
 
-      jobContexts.push({ job, outbound, inbound })
-    }
+        acc.push({ job, outbound, inbound })
+        return acc
+      }, [])
 
     return { ...req, jobContexts }
   })

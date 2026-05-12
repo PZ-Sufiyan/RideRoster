@@ -88,7 +88,7 @@ class ChooseAccountTypePage extends StatelessWidget {
                 textAlign: TextAlign.center,
                 text: TextSpan(
                   style: TextStyle(
-                    fontSize: SizeConfig.sp(13),
+                    fontSize: SizeConfig.sp(15),
                     color: AppColors.textMedium,
                   ),
                   children: [
@@ -101,7 +101,7 @@ class ChooseAccountTypePage extends StatelessWidget {
                         child: Text(
                           'Login',
                           style: TextStyle(
-                            fontSize: SizeConfig.sp(13),
+                            fontSize: SizeConfig.sp(15),
                             color: const Color(0xFF007BFF),
                             fontWeight: FontWeight.w600,
                           ),
@@ -112,7 +112,7 @@ class ChooseAccountTypePage extends StatelessWidget {
                 ),
               ),
 
-              SizedBox(height: SizeConfig.r(6)),
+              SizedBox(height: SizeConfig.r(12)),
               RichText(
                 textAlign: TextAlign.center,
                 text: TextSpan(

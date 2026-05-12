@@ -1,12 +1,12 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import React, { useCallback, useEffect, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import {
-  MdSearch,
-  MdKeyboardArrowDown,
   MdChevronLeft,
   MdChevronRight,
-  MdWorkOutline,
   MdOutlineEventBusy,
+  MdOutlineAttachment,
+  MdOpenInNew,
+  MdRoute,
 } from 'react-icons/md'
 import {
   getOffDayRequestsEnrichedForCurrentAdmin,
@@ -14,27 +14,16 @@ import {
 } from '../../../../../services/driverOffDayRequestService'
 import { ShimmerBlock } from '../../../../../utils/Shimmer'
 
-const ITEMS_PER_PAGE = 6
+const ITEMS_PER_PAGE = 10
 
-const STATUS_STYLES = {
-  pending: 'bg-blue-50 text-blue-700 border border-blue-200',
-  approved: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
-  rejected: 'bg-red-50 text-red-600 border border-red-200',
-}
-
-const WEEKDAY_LABEL = {
-  mon: 'Mon',
-  tue: 'Tue',
-  wed: 'Wed',
-  thu: 'Thu',
-  fri: 'Fri',
-  sat: 'Sat',
-  sun: 'Sun',
+const STATUS_LABEL = {
+  pending: 'Pending',
+  approved: 'Approved',
+  rejected: 'Rejected',
 }
 
 function driverName(r) {
-  const n = [r.driver_first_name, r.driver_last_name].filter(Boolean).join(' ').trim()
-  return n || '—'
+  return [r.driver_first_name, r.driver_last_name].filter(Boolean).join(' ').trim() || '—'
 }
 
 function formatYmd(ymdStr) {
@@ -44,83 +33,234 @@ function formatYmd(ymdStr) {
   return d.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })
 }
 
-function formatTime(t) {
-  if (t == null || t === '') return '—'
-  const s = String(t)
-  return s.length >= 5 ? s.slice(0, 5) : s
+function dayCount(startStr, endStr) {
+  const s = new Date(`${startStr}T12:00:00`)
+  const e = new Date(`${endStr}T12:00:00`)
+  if (Number.isNaN(s.getTime()) || Number.isNaN(e.getTime())) return null
+  return Math.round((e - s) / 86400000) + 1
+}
+
+function statusClass(status) {
+  const s = (status || 'pending').toLowerCase()
+  if (s === 'approved') return 'bg-emerald-50 text-emerald-800'
+  if (s === 'rejected') return 'bg-red-50 text-red-700'
+  return 'bg-amber-50 text-amber-800'
 }
 
 function passengerFromRow(row) {
   const p = row.passenger
-  if (Array.isArray(p)) return p[0] || {}
-  return p || {}
+  return (Array.isArray(p) ? p[0] : p) || {}
 }
 
-function passengerLabel(row) {
-  const p = passengerFromRow(row)
-  const n = [p.first_name, p.surname].filter(Boolean).join(' ').trim()
-  return n || 'Passenger'
+function summarizeJobContext(ctx) {
+  const rows = [...(ctx.outbound || []), ...(ctx.inbound || [])]
+  const passengerIds = new Set()
+  let anyWheelchair = false
+  let anyHarness = false
+  for (const row of rows) {
+    const pid = row.passenger_id
+    if (pid != null && String(pid).trim() !== '') passengerIds.add(String(pid))
+    const p = passengerFromRow(row)
+    if (p.wheelchair_required) anyWheelchair = true
+    if (p.harness_required) anyHarness = true
+  }
+  const passengerCount = passengerIds.size > 0 ? passengerIds.size : rows.length
+  return {
+    jobName: ctx.job?.job_name?.trim() || 'Job',
+    passengerCount: passengerCount || 0,
+    anyWheelchair,
+    anyHarness,
+  }
 }
 
-function statusPillClass(status) {
-  const s = (status || '').toLowerCase()
-  return STATUS_STYLES[s] || 'bg-gray-100 text-gray-600 border border-gray-200'
-}
-
-function ScheduleDirectionBlock({ title, rows, job }) {
-  if (!rows?.length) return null
-  const showRoute = job?.has_outbound !== false || job?.has_inbound !== false
-
+function FieldLabel({ children }) {
   return (
-    <div className="rounded-lg border border-gray-100 bg-gray-50/80 p-3">
-      <p className="text-xs font-semibold uppercase tracking-wide text-gray-500 mb-2">{title}</p>
-      <ul className="space-y-2">
-        {rows.map((row) => {
-          const p = passengerFromRow(row)
-          const wd = WEEKDAY_LABEL[String(row.weekday || '').toLowerCase()] || row.weekday
+    <p className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">{children}</p>
+  )
+}
+
+function AffectedRoutesSummary({ contexts }) {
+  if (!contexts?.length) return null
+  return (
+    <div className="rounded-md border border-amber-100 bg-amber-50/40 px-3 py-2.5">
+      <p className="mb-1.5 flex items-center gap-1 text-[10px] font-semibold uppercase tracking-wide text-amber-900/80">
+        <MdRoute size={13} aria-hidden="true" />
+        Routes affected
+      </p>
+      <ul className="space-y-1.5">
+        {contexts.map((ctx) => {
+          const { jobName, passengerCount, anyWheelchair, anyHarness } = summarizeJobContext(ctx)
           return (
-            <li
-              key={row.id}
-              className="rounded-md border border-white bg-white px-3 py-2 text-sm text-gray-800 shadow-sm"
-            >
-              <div className="flex flex-wrap items-center gap-2 justify-between">
-                <span className="font-medium text-gray-900">{passengerLabel(row)}</span>
-                <span className="text-xs text-gray-500 shrink-0">{wd}</span>
-              </div>
-              <p className="text-xs text-gray-600 mt-1">
-                Pickup {formatTime(row.pickup_time)} · {row.pickup_address || '—'}
-              </p>
-              <p className="text-xs text-gray-600">
-                Drop-off {row.dropoff_address || '—'}
-                {row.dropoff_time ? ` · ${formatTime(row.dropoff_time)}` : ''}
-              </p>
-              <div className="flex flex-wrap gap-1.5 mt-2">
-                {p.wheelchair_required ? (
-                  <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-amber-50 text-amber-800 border border-amber-100">
-                    Wheelchair
-                  </span>
-                ) : (
-                  <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-gray-100 text-gray-600 border border-gray-100">
-                    No wheelchair
-                  </span>
-                )}
-                {p.harness_required ? (
-                  <span className="text-[10px] font-medium uppercase tracking-wide px-2 py-0.5 rounded-full bg-violet-50 text-violet-800 border border-violet-100">
-                    Harness
-                  </span>
-                ) : null}
-                {showRoute && title === 'Outbound' && job?.has_outbound === false ? (
-                  <span className="text-[10px] text-gray-400">Job: outbound off</span>
-                ) : null}
-                {showRoute && title === 'Inbound' && job?.has_inbound === false ? (
-                  <span className="text-[10px] text-gray-400">Job: inbound off</span>
-                ) : null}
-              </div>
-              {row.notes ? <p className="text-xs text-gray-500 mt-1 italic">Note: {row.notes}</p> : null}
+            <li key={ctx.job?.id ?? jobName} className="flex flex-wrap items-baseline gap-1 text-sm">
+              {ctx.job?.id ? (
+                <Link
+                  to={`/portal/jobs/${ctx.job.id}`}
+                  className="font-medium text-sky-700 hover:underline"
+                >
+                  {jobName}
+                </Link>
+              ) : (
+                <span className="font-medium">{jobName}</span>
+              )}
+              <span className="text-xs text-gray-500">
+                · {passengerCount} passenger{passengerCount !== 1 ? 's' : ''}
+              </span>
+              {(anyWheelchair || anyHarness) && (
+                <span className="text-xs text-gray-500">
+                  ·{' '}
+                  {anyWheelchair ? <span className="font-medium text-amber-900">Wheelchair</span> : null}
+                  {anyWheelchair && anyHarness ? ', ' : null}
+                  {anyHarness ? <span className="font-medium text-amber-900">Harness</span> : null}
+                </span>
+              )}
             </li>
           )
         })}
       </ul>
+    </div>
+  )
+}
+
+function RequestRow({ r, notesDraft, setNoteFor, busyId, onDecision }) {
+  const pending = r.status === 'pending'
+  const days = dayCount(r.start_date, r.end_date)
+  const notesVal = notesDraft[r.id] ?? ''
+  const MAX_NOTES = 300
+  const st = (r.status || 'pending').toLowerCase()
+  const singleDay = r.end_date === r.start_date
+
+  return (
+    <div className="border-b border-gray-100 px-5 py-5 last:border-b-0">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
+
+        {/* ── Left: request info ── */}
+        <div className="min-w-0 flex-1 space-y-3">
+
+          {/* Header: name + badge + leave type */}
+          <div className="flex flex-wrap items-center gap-x-12 gap-y-1">
+            <span className="text-2xl font-semibold text-gray-900">{driverName(r)}</span>
+            <span className={`rounded-full px-2.5 py-0.5 font-medium ${statusClass(st)}`}>
+              {STATUS_LABEL[st] ?? st}
+            </span>
+            {r.leave_type ? (
+              <span className="text-gray-500">{r.leave_type}</span>
+            ) : null}
+          </div>
+
+          {/* Period + Duration */}
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-2">
+            <div className="space-y-0.5">
+              <FieldLabel>Period</FieldLabel>
+              <p className="text-sm text-gray-800">
+                {formatYmd(r.start_date)}
+                {!singleDay ? ` → ${formatYmd(r.end_date)}` : null}
+              </p>
+            </div>
+            <div className="space-y-0.5">
+              <FieldLabel>Duration</FieldLabel>
+              <p className="text-sm text-gray-800">
+                {days != null ? `${days} day${days !== 1 ? 's' : ''}` : '—'}
+              </p>
+            </div>
+          </div>
+
+          {/* Reason */}
+          <div className="space-y-0.5">
+            <FieldLabel>Reason</FieldLabel>
+            {r.reason ? (
+              <p className="whitespace-pre-wrap text-sm text-gray-700">{r.reason}</p>
+            ) : (
+              <p className="text-sm text-gray-400">No reason given</p>
+            )}
+          </div>
+
+          {/* Attachment */}
+          {r.attachment_url ? (
+            <a
+              href={r.attachment_url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex items-center gap-1 text-sm font-medium text-sky-600 hover:underline"
+            >
+              <MdOutlineAttachment className="shrink-0" size={15} />
+              Attachment
+              <MdOpenInNew className="shrink-0 opacity-60" size={13} />
+            </a>
+          ) : null}
+
+          {/* Affected routes */}
+          <AffectedRoutesSummary contexts={r.jobContexts} />
+
+          {/* Admin note (resolved only) */}
+          {!pending && r.admin_notes ? (
+            <div className="rounded-md bg-gray-50 px-3 py-2">
+              <span className="text-[10px] font-semibold uppercase tracking-wide text-gray-400">
+                Admin note ·{' '}
+              </span>
+              <span className="text-sm text-gray-700">{r.admin_notes}</span>
+            </div>
+          ) : null}
+        </div>
+
+        {/* ── Right: action panel (pending only) ── */}
+        {pending ? (
+          <div className="w-full shrink-0 space-y-2.5 border-gray-100 sm:w-56 sm:border-l sm:pl-5">
+            <div className="space-y-1">
+              <FieldLabel>Note to driver</FieldLabel>
+              <p className="text-[11px] text-gray-400">Optional — visible on decision</p>
+              <textarea
+                rows={3}
+                maxLength={MAX_NOTES}
+                value={notesVal}
+                onChange={(e) => setNoteFor(r.id, e.target.value)}
+                placeholder="Add a note…"
+                className="w-full resize-none rounded-md border border-gray-200 bg-gray-50 px-2.5 py-2 text-sm text-gray-800 placeholder-gray-400 focus:border-blue-500 focus:bg-white focus:outline-none focus:ring-1 focus:ring-blue-500"
+              />
+              <p className="text-right text-[10px] tabular-nums text-gray-400">
+                {notesVal.length}/{MAX_NOTES}
+              </p>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                disabled={busyId === r.id}
+                onClick={() => onDecision(r.id, 'approved')}
+                className="flex-1 rounded-md bg-emerald-700 px-3 py-2 text-sm font-medium text-white hover:bg-emerald-800 disabled:opacity-50"
+              >
+                {busyId === r.id ? '…' : 'Approve'}
+              </button>
+              <button
+                type="button"
+                disabled={busyId === r.id}
+                onClick={() => onDecision(r.id, 'rejected')}
+                className="flex-1 rounded-md border border-red-200 bg-white px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+              >
+                Reject
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  )
+}
+
+function ListShimmer() {
+  return (
+    <div className="divide-y divide-gray-100">
+      {[0, 1, 2, 3, 4].map((i) => (
+        <div key={i} className="space-y-3 px-5 py-5">
+          <div className="flex gap-2">
+            <ShimmerBlock className="h-4 w-32 rounded" />
+            <ShimmerBlock className="h-5 w-16 rounded-full" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <ShimmerBlock className="h-8 w-full rounded" />
+            <ShimmerBlock className="h-8 w-full rounded" />
+          </div>
+          <ShimmerBlock className="h-10 w-full max-w-md rounded" />
+        </div>
+      ))}
     </div>
   )
 }
@@ -130,14 +270,10 @@ export default function OffDayRequestsPage() {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
-  const [statusFilter, setStatusFilter] = useState('All')
-  const [statusOpen, setStatusOpen] = useState(false)
+  const [statusFilter, setStatusFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [notesDraft, setNotesDraft] = useState({})
   const [busyId, setBusyId] = useState(null)
-  const statusRef = useRef(null)
-
-  const statuses = ['All', 'Pending', 'Approved', 'Rejected']
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -157,28 +293,16 @@ export default function OffDayRequestsPage() {
     load()
   }, [load])
 
-  useEffect(() => {
-    const handler = (e) => {
-      if (statusRef.current && !statusRef.current.contains(e.target)) {
-        setStatusOpen(false)
-      }
-    }
-    document.addEventListener('mousedown', handler)
-    return () => document.removeEventListener('mousedown', handler)
-  }, [])
-
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
     return rows.filter((r) => {
-      const name = driverName(r).toLowerCase()
       const matchQ =
         !q ||
-        name.includes(q) ||
+        driverName(r).toLowerCase().includes(q) ||
         (r.leave_type || '').toLowerCase().includes(q) ||
         (r.reason || '').toLowerCase().includes(q)
-      const st = (r.status || '').toLowerCase()
-      const matchSt =
-        statusFilter === 'All' || st === statusFilter.toLowerCase()
+      const st = (r.status || 'pending').toLowerCase()
+      const matchSt = statusFilter === 'all' || st === statusFilter
       return matchQ && matchSt
     })
   }, [rows, search, statusFilter])
@@ -193,9 +317,7 @@ export default function OffDayRequestsPage() {
     if (currentPage > totalPages) setCurrentPage(totalPages)
   }, [currentPage, totalPages])
 
-  const setNoteFor = (id, val) => {
-    setNotesDraft((prev) => ({ ...prev, [id]: val }))
-  }
+  const setNoteFor = (id, val) => setNotesDraft((prev) => ({ ...prev, [id]: val }))
 
   const handleDecision = async (requestId, status) => {
     const notes = notesDraft[requestId] ?? ''
@@ -216,12 +338,10 @@ export default function OffDayRequestsPage() {
     }
   }
 
-  const shimmerCards = Array.from({ length: 3 })
-
   return (
-    <div className="space-y-5">
-      {error && (
-        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center justify-between gap-3">
+    <div className="space-y-4">
+      {error ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800">
           <span>{error}</span>
           <button
             type="button"
@@ -229,281 +349,101 @@ export default function OffDayRequestsPage() {
               setError(null)
               load()
             }}
-            className="shrink-0 text-red-700 font-medium hover:underline"
+            className="shrink-0 font-medium text-red-700 hover:underline"
           >
             Retry
           </button>
         </div>
-      )}
+      ) : null}
 
-      <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900">Off day requests</h1>
-          <p className="text-sm text-gray-500 mt-1">
-            Review driver leave requests. When a driver has accepted jobs that run on those weekdays,
-            passenger route details appear for context before you approve or reject.
-          </p>
+      <h1 className="text-xl font-bold text-gray-900">Off-day requests</h1>
+
+      <div className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+        <div className="flex flex-1 flex-col gap-2 p-3 sm:flex-row sm:items-center">
+          <input
+            type="search"
+            placeholder="Search driver, type, reason"
+            value={search}
+            onChange={(e) => {
+              setSearch(e.target.value)
+              setCurrentPage(1)
+            }}
+            className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm sm:max-w-xs"
+          />
+          <select
+            value={statusFilter}
+            onChange={(e) => {
+              setStatusFilter(e.target.value)
+              setCurrentPage(1)
+            }}
+            className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm sm:w-40"
+          >
+            <option value="all">All statuses</option>
+            <option value="pending">Pending</option>
+            <option value="approved">Approved</option>
+            <option value="rejected">Rejected</option>
+          </select>
         </div>
-      </div>
-
-      <div className="bg-white rounded-xl border border-gray-100 shadow-[0_2px_10px_-4px_rgba(6,81,237,0.07)] overflow-visible">
-        <div className="border-b border-gray-100 px-4 py-3 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="relative">
-              <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <MdSearch className="h-4 w-4 text-gray-400" />
-              </div>
-              <input
-                type="text"
-                placeholder="Search driver, type, or reason"
-                value={search}
-                onChange={(e) => {
-                  setSearch(e.target.value)
-                  setCurrentPage(1)
-                }}
-                className="pl-9 pr-3 py-2 border border-gray-200 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-white w-64 max-w-full"
-              />
-            </div>
-            <div className="relative" ref={statusRef}>
-              <button
-                type="button"
-                onClick={() => setStatusOpen((o) => !o)}
-                className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 bg-white hover:bg-gray-50 transition-colors whitespace-nowrap"
-              >
-                {statusFilter}
-                <MdKeyboardArrowDown className="text-gray-400" size={16} />
-              </button>
-              {statusOpen && (
-                <div className="absolute left-0 top-full mt-1 w-44 bg-white border border-gray-100 rounded-lg shadow-lg z-20">
-                  {statuses.map((s) => (
-                    <button
-                      key={s}
-                      type="button"
-                      onClick={() => {
-                        setStatusFilter(s)
-                        setStatusOpen(false)
-                        setCurrentPage(1)
-                      }}
-                      className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg ${
-                        statusFilter === s ? 'font-semibold text-blue-600' : 'text-gray-700'
-                      }`}
-                    >
-                      {s}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-          </div>
-          <p className="text-xs text-gray-500">
+        {!loading ? (
+          <p className="px-3 pb-3 text-xs text-gray-500 sm:pb-0 sm:pr-3">
             {filtered.length} request{filtered.length === 1 ? '' : 's'}
           </p>
-        </div>
+        ) : null}
+      </div>
 
-        <div className="p-4 space-y-4">
-          {loading ? (
-            shimmerCards.map((_, i) => (
-              <div
-                key={`sk-${i}`}
-                className="rounded-xl border border-gray-100 p-4 space-y-3"
-              >
-                <ShimmerBlock className="h-4 w-48 rounded-md" />
-                <ShimmerBlock className="h-3 w-full max-w-md rounded-md" />
-                <ShimmerBlock className="h-24 w-full rounded-lg" />
-              </div>
-            ))
-          ) : paginated.length === 0 ? (
-            <div className="text-center py-16 text-gray-500 text-sm">
-              <MdOutlineEventBusy className="mx-auto mb-2 text-gray-300" size={40} />
-              No off day requests match your filters.
-            </div>
-          ) : (
-            paginated.map((r) => {
-              const pending = (r.status || '').toLowerCase() === 'pending'
-              const contexts = r.jobContexts || []
-              return (
-                <article
-                  key={r.id}
-                  className="rounded-xl border border-gray-100 bg-white shadow-sm overflow-hidden"
-                >
-                  <div className="px-4 py-4 border-b border-gray-50 flex flex-col lg:flex-row lg:items-start lg:justify-between gap-3">
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2">
-                        <h2 className="text-base font-semibold text-gray-900 truncate">
-                          {driverName(r)}
-                        </h2>
-                        <span
-                          className={`text-xs font-medium px-2.5 py-0.5 rounded-full capitalize ${statusPillClass(r.status)}`}
-                        >
-                          {r.status || 'pending'}
-                        </span>
-                      </div>
-                      <p className="text-sm text-gray-600 mt-1">
-                        <span className="font-medium text-gray-700">{r.leave_type || 'Leave'}</span>
-                        {' · '}
-                        {formatYmd(r.start_date)}
-                        {r.end_date !== r.start_date ? ` – ${formatYmd(r.end_date)}` : ''}
-                      </p>
-                      <p className="text-xs text-gray-400 mt-1">
-                        Submitted{' '}
-                        {r.created_at
-                          ? new Date(r.created_at).toLocaleString(undefined, {
-                              dateStyle: 'medium',
-                              timeStyle: 'short',
-                            })
-                          : '—'}
-                      </p>
-                    </div>
-                  </div>
+      <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
+        {loading ? (
+          <ListShimmer />
+        ) : paginated.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center">
+            <MdOutlineEventBusy className="mb-2 text-gray-300" size={40} />
+            <p className="text-sm font-medium text-gray-600">No requests</p>
+            <p className="mt-1 text-xs text-gray-400">
+              {search || statusFilter !== 'all'
+                ? 'Change search or filter.'
+                : 'Nothing submitted yet.'}
+            </p>
+          </div>
+        ) : (
+          paginated.map((r) => (
+            <RequestRow
+              key={r.id}
+              r={r}
+              notesDraft={notesDraft}
+              setNoteFor={setNoteFor}
+              busyId={busyId}
+              onDecision={handleDecision}
+            />
+          ))
+        )}
 
-                  <div className="px-4 py-3 space-y-3">
-                    <div>
-                      <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1">
-                        Reason
-                      </p>
-                      <p className="text-sm text-gray-800 whitespace-pre-wrap">{r.reason || '—'}</p>
-                    </div>
-
-                    {contexts.length > 0 ? (
-                      <div>
-                        <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2 flex items-center gap-1">
-                          <MdWorkOutline size={14} className="text-gray-400" />
-                          Work on these dates (accepted jobs)
-                        </p>
-                        <div className="space-y-3">
-                          {contexts.map((ctx) => (
-                            <div
-                              key={ctx.job.id}
-                              className="rounded-lg border border-sky-100 bg-sky-50/40 p-3"
-                            >
-                              <div className="flex flex-wrap items-start justify-between gap-2">
-                                <div>
-                                  <p className="text-sm font-semibold text-gray-900">
-                                    {ctx.job.job_name || 'Job'}
-                                  </p>
-                                  <p className="text-xs text-gray-600 mt-0.5">
-                                    {ctx.job.client_school_name || '—'}
-                                    {ctx.job.internal_job_id
-                                      ? ` · #${ctx.job.internal_job_id}`
-                                      : ''}
-                                  </p>
-                                  {(ctx.job.semester_start || ctx.job.semester_end) && (
-                                    <p className="text-xs text-gray-500 mt-1">
-                                      Semester{' '}
-                                      {ctx.job.semester_start
-                                        ? formatYmd(String(ctx.job.semester_start).slice(0, 10))
-                                        : '—'}{' '}
-                                      –{' '}
-                                      {ctx.job.semester_end
-                                        ? formatYmd(String(ctx.job.semester_end).slice(0, 10))
-                                        : '—'}
-                                    </p>
-                                  )}
-                                </div>
-                                <Link
-                                  to={`/portal/jobs/${ctx.job.id}`}
-                                  className="inline-flex items-center gap-0.5 text-xs font-medium text-[#005580] hover:underline shrink-0"
-                                >
-                                  View job
-                                  <MdChevronRight size={14} className="opacity-70" />
-                                </Link>
-                              </div>
-                              <div className="grid md:grid-cols-2 gap-3 mt-3">
-                                <ScheduleDirectionBlock title="Outbound" rows={ctx.outbound} job={ctx.job} />
-                                <ScheduleDirectionBlock title="Inbound" rows={ctx.inbound} job={ctx.job} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    ) : (
-                      <div className="rounded-lg border border-dashed border-gray-200 bg-gray-50 px-3 py-3 text-sm text-gray-600">
-                        No passenger schedules on these weekdays for this driver’s accepted jobs
-                        (or no overlapping active job). You can still process the request on its own merits.
-                      </div>
-                    )}
-
-                    {r.admin_notes && (
-                      <div className="rounded-lg bg-amber-50/60 border border-amber-100 px-3 py-2">
-                        <p className="text-xs font-semibold text-amber-900 uppercase tracking-wide">
-                          Admin notes
-                        </p>
-                        <p className="text-sm text-amber-950 mt-0.5 whitespace-pre-wrap">{r.admin_notes}</p>
-                      </div>
-                    )}
-
-                    {pending && (
-                      <div className="pt-2 border-t border-gray-100 space-y-3">
-                        <div>
-                          <label
-                            htmlFor={`notes-${r.id}`}
-                            className="block text-xs font-semibold text-gray-500 uppercase tracking-wide mb-1"
-                          >
-                            Notes to driver (optional)
-                          </label>
-                          <textarea
-                            id={`notes-${r.id}`}
-                            rows={2}
-                            value={notesDraft[r.id] ?? ''}
-                            onChange={(e) => setNoteFor(r.id, e.target.value)}
-                            placeholder="e.g. Approved — please confirm cover with dispatch."
-                            className="w-full text-sm border border-gray-200 rounded-lg px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500"
-                          />
-                        </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            disabled={busyId === r.id}
-                            onClick={() => handleDecision(r.id, 'approved')}
-                            className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors"
-                          >
-                            {busyId === r.id ? 'Saving…' : 'Approve'}
-                          </button>
-                          <button
-                            type="button"
-                            disabled={busyId === r.id}
-                            onClick={() => handleDecision(r.id, 'rejected')}
-                            className="px-4 py-2 rounded-lg text-sm font-medium bg-white border border-red-200 text-red-700 hover:bg-red-50 disabled:opacity-50 transition-colors"
-                          >
-                            Reject
-                          </button>
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </article>
-              )
-            })
-          )}
-        </div>
-
-        {!loading && filtered.length > ITEMS_PER_PAGE && (
-          <div className="border-t border-gray-100 px-4 py-3 flex items-center justify-between">
+        {!loading && filtered.length > ITEMS_PER_PAGE ? (
+          <div className="flex items-center justify-between border-t border-gray-100 px-3 py-2">
             <p className="text-xs text-gray-500">
               Page {currentPage} of {totalPages}
             </p>
-            <div className="flex items-center gap-1">
+            <div className="flex gap-1">
               <button
                 type="button"
                 disabled={currentPage <= 1}
                 onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
-                className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                className="rounded border border-gray-200 p-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
                 aria-label="Previous page"
               >
-                <MdChevronLeft size={20} />
+                <MdChevronLeft size={18} />
               </button>
               <button
                 type="button"
                 disabled={currentPage >= totalPages}
                 onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
-                className="p-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                className="rounded border border-gray-200 p-1.5 text-gray-600 hover:bg-gray-50 disabled:opacity-40"
                 aria-label="Next page"
               >
-                <MdChevronRight size={20} />
+                <MdChevronRight size={18} />
               </button>
             </div>
           </div>
-        )}
+        ) : null}
       </div>
     </div>
   )

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
@@ -58,12 +59,13 @@ class RideRosterApp extends StatelessWidget {
         title: 'RideRoster',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(
-          fontFamily: 'Roboto',
           colorScheme: ColorScheme.fromSeed(
             seedColor: const Color(0xFF4A90D9),
             brightness: Brightness.light,
           ),
           scaffoldBackgroundColor: Colors.white,
+          textTheme: GoogleFonts.manropeTextTheme(),
+          primaryTextTheme: GoogleFonts.manropeTextTheme(),
         ),
         home: const _AppRuntimeGuard(),
         onGenerateRoute: AppRoutes.generateRoute,
