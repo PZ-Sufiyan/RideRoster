@@ -1,7 +1,7 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import '../models/passenger_assistant_register_data.dart';
-import '../../driver/components/register_widgets.dart';
+import '../model/passenger_assistant_register_data.dart';
+import 'register_widgets.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../services/passenger_assistant_registration_service.dart';
@@ -222,8 +222,7 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
       safeguardingExpiry: d.safeguardingExpiry,
       backgroundCheckFilePath: d.backgroundCheckCertificate?.path,
       firstAidFilePath: d.firstAidCertificate?.path,
-      otherCertificateLabels:
-          d.otherCertificates.map((c) => c.label).toList(),
+      otherCertificateLabels: d.otherCertificates.map((c) => c.label).toList(),
       otherCertificatePaths: d.otherCertificates
           .map((c) => c.file.path ?? '')
           .toList(),

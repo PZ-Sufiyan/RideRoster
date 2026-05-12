@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../models/driver_register_data.dart';
+import '../model/driver_register_data.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 import 'register_widgets.dart';

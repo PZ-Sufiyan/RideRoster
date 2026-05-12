@@ -1,5 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import 'job_service.dart';
+
 class DashboardStats {
   final int jobsToday;
   final int pendingRequests;
@@ -20,24 +22,15 @@ class DashboardStats {
 
 class DashboardStatsService {
   SupabaseClient get _supabase => Supabase.instance.client;
+  final JobService _jobService = JobService();
 
   Future<DashboardStats> fetchStats() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return DashboardStats.empty;
 
-    final today = DateTime.now();
-    final todayDate =
-        '${today.year.toString().padLeft(4, '0')}-'
-        '${today.month.toString().padLeft(2, '0')}-'
-        '${today.day.toString().padLeft(2, '0')}';
-
-    final results = await Future.wait([
-      // Jobs today — any session (outbound or inbound) for today
-      _supabase
-          .from('job_sessions')
-          .select('id')
-          .eq('driver_id', userId)
-          .eq('session_date', todayDate),
+    final results = await Future.wait<dynamic>([
+      // Jobs today — scheduled directions from passenger_schedules (not job_sessions)
+      _jobService.countScheduledDirectionsToday(),
 
       // Pending approval requests
       _supabase
@@ -55,7 +48,7 @@ class DashboardStatsService {
     ]);
 
     return DashboardStats(
-      jobsToday: (results[0] as List).length,
+      jobsToday: results[0] as int,
       pendingRequests: (results[1] as List).length,
       completedJobs: (results[2] as List).length,
     );

@@ -1,27 +1,24 @@
 import 'package:flutter/material.dart';
-import '../../models/passenger_assistant_register_data.dart';
-import '../../components/pa_step1_personal.dart';
-import '../../components/pa_step2_profile_photo.dart';
-import '../../components/pa_step3_documents.dart';
-import '../../components/pa_step4_other_emergency.dart';
-import '../../../../utils/app_colors.dart';
-import '../../../../utils/size_confg.dart';
-import '../../../../routes/app_routes.dart';
+import '../model/driver_register_data.dart';
+import '../componenet/step1_register.dart';
+import '../componenet/step2_register.dart';
+import '../componenet/step3_register.dart';
+import '../../../utils/app_colors.dart';
+import '../../../utils/size_confg.dart';
+import '../../../routes/app_routes.dart';
 
-class RegisterPassengerAssistantPage extends StatefulWidget {
-  const RegisterPassengerAssistantPage({super.key});
+class DriverRegisterPage extends StatefulWidget {
+  const DriverRegisterPage({super.key});
 
   @override
-  State<RegisterPassengerAssistantPage> createState() =>
-      _RegisterPassengerAssistantPageState();
+  State<DriverRegisterPage> createState() => _DriverRegisterPageState();
 }
 
-class _RegisterPassengerAssistantPageState
-    extends State<RegisterPassengerAssistantPage> {
-  int _step = 0;
-  final _data = PassengerAssistantRegisterData();
+class _DriverRegisterPageState extends State<DriverRegisterPage> {
+  int _step = 0; // 0 = Personal, 1 = Vehicle, 2 = Documents
+  final _data = DriverRegisterData();
 
-  static const int _totalSteps = 4;
+  static const int _totalSteps = 3;
 
   void _goNext() => setState(() => _step++);
 
@@ -34,7 +31,8 @@ class _RegisterPassengerAssistantPageState
   }
 
   void _onRegistered() {
-    Navigator.pushReplacementNamed(context, AppRoutes.driverLogin);
+    // Registration complete — navigate to login (or dashboard when backend ready)
+    Navigator.pushReplacementNamed(context, AppRoutes.login);
   }
 
   @override
@@ -55,7 +53,7 @@ class _RegisterPassengerAssistantPageState
           onPressed: _goBack,
         ),
         title: Text(
-          'Passenger assistant',
+          'Create Account',
           style: TextStyle(
             fontSize: SizeConfig.sp(17),
             fontWeight: FontWeight.w600,
@@ -68,8 +66,7 @@ class _RegisterPassengerAssistantPageState
           child: LinearProgressIndicator(
             value: (_step + 1) / _totalSteps,
             backgroundColor: const Color(0xFFE5EBF5),
-            valueColor:
-                const AlwaysStoppedAnimation<Color>(AppColors.primary),
+            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
             minHeight: SizeConfig.r(3),
           ),
         ),
@@ -81,15 +78,13 @@ class _RegisterPassengerAssistantPageState
   Widget _buildStep() {
     switch (_step) {
       case 0:
-        return PaStep1Personal(data: _data, onNext: _goNext);
+        return Step1Register(data: _data, onNext: _goNext);
       case 1:
-        return PaStep2ProfilePhoto(data: _data, onNext: _goNext);
+        return Step2Register(data: _data, onNext: _goNext);
       case 2:
-        return PaStep3Documents(data: _data, onNext: _goNext);
-      case 3:
-        return PaStep4OtherEmergency(data: _data, onRegistered: _onRegistered);
+        return Step3Register(data: _data, onRegister: _onRegistered);
       default:
-        return PaStep1Personal(data: _data, onNext: _goNext);
+        return Step1Register(data: _data, onNext: _goNext);
     }
   }
 }

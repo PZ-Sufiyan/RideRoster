@@ -1,17 +1,13 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import '../models/passenger_assistant_register_data.dart';
-import '../../driver/components/register_widgets.dart';
-import '../../driver/components/step3_register.dart';
+import '../model/passenger_assistant_register_data.dart';
+import 'register_widgets.dart';
+import 'step3_register.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 
 class PaStep3Documents extends StatefulWidget {
-  const PaStep3Documents({
-    super.key,
-    required this.data,
-    required this.onNext,
-  });
+  const PaStep3Documents({super.key, required this.data, required this.onNext});
 
   final PassengerAssistantRegisterData data;
   final VoidCallback onNext;
@@ -83,7 +79,10 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
     d.passportNumber = _passportNumberCtrl.text.trim();
 
     if (d.passportCopy != null && d.passportExpiry == null) {
-      setState(() => _formError = 'Passport expiry is required when a passport file is uploaded.');
+      setState(
+        () => _formError =
+            'Passport expiry is required when a passport file is uploaded.',
+      );
       return;
     }
     if (d.safeguardingCertificate != null && d.safeguardingExpiry == null) {
@@ -147,10 +146,8 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.passportExpiry,
-            onTap: () => _pickDate(
-              d.passportExpiry,
-              (dt) => d.passportExpiry = dt,
-            ),
+            onTap: () =>
+                _pickDate(d.passportExpiry, (dt) => d.passportExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(6)),

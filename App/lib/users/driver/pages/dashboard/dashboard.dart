@@ -7,6 +7,7 @@ import '../../../../routes/app_routes.dart';
 import '../../../../services/dashboard_stats_service.dart';
 import '../../../../services/driver_job_request_service.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
 import '../../models/job_request_model.dart';
 
@@ -17,13 +18,27 @@ class DriverDashboardPage extends StatefulWidget {
   State<DriverDashboardPage> createState() => _DriverDashboardPageState();
 }
 
-class _DriverDashboardPageState extends State<DriverDashboardPage> {
+class _DriverDashboardPageState extends State<DriverDashboardPage>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _reload();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    context.read<JobProvider>().loadJob(silent: true);
   }
 
   /// Reload job card after actions that don't yet bump [JobProvider.jobDataEpoch]
@@ -146,7 +161,7 @@ class _DashboardAppBar extends StatelessWidget {
               if (!context.mounted) return;
               Navigator.pushNamedAndRemoveUntil(
                 context,
-                AppRoutes.driverLogin,
+                AppRoutes.login,
                 (route) => false,
               );
             },
@@ -224,10 +239,7 @@ class _CurrentJobCard extends StatelessWidget {
       builder: (context, provider, _) {
         if (provider.isLoading) {
           return _CurrentJobCardShell(
-            child: SizedBox(
-              height: SizeConfig.r(80),
-              child: const Center(child: CircularProgressIndicator()),
-            ),
+            child: const DashboardCurrentJobCardShimmer(),
           );
         }
 
@@ -508,7 +520,9 @@ class _StatsGrid extends StatefulWidget {
 
 class _StatsGridState extends State<_StatsGrid> {
   final DashboardStatsService _statsService = DashboardStatsService();
-  late Future<DashboardStats> _statsFuture;
+  DashboardStats? _stats;
+  bool _statsFirstLoadDone = false;
+  bool _statsRefreshing = false;
   late final JobProvider _jobProvider;
   late final VoidCallback _onJobDataEpochChanged;
   int _lastSyncedJobDataEpoch = -1;
@@ -518,16 +532,13 @@ class _StatsGridState extends State<_StatsGrid> {
     super.initState();
     _jobProvider = context.read<JobProvider>();
     _lastSyncedJobDataEpoch = _jobProvider.jobDataEpoch;
-    _statsFuture = _statsService.fetchStats();
+    _fetchStats();
     _onJobDataEpochChanged = () {
       final epoch = _jobProvider.jobDataEpoch;
       if (epoch == _lastSyncedJobDataEpoch) return;
       _lastSyncedJobDataEpoch = epoch;
       if (!mounted) return;
-      final newFuture = _statsService.fetchStats();
-      setState(() {
-        _statsFuture = newFuture;
-      });
+      _fetchStats(isBackground: true);
     };
     _jobProvider.addListener(_onJobDataEpochChanged);
   }
@@ -538,43 +549,82 @@ class _StatsGridState extends State<_StatsGrid> {
     super.dispose();
   }
 
+  Future<void> _fetchStats({bool isBackground = false}) async {
+    if (isBackground && mounted) {
+      setState(() => _statsRefreshing = true);
+    }
+
+    try {
+      final stats = await _statsService.fetchStats();
+      if (!mounted) return;
+      setState(() {
+        _stats = stats;
+        _statsFirstLoadDone = true;
+        _statsRefreshing = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (!_statsFirstLoadDone) {
+          _stats = DashboardStats.empty;
+          _statsFirstLoadDone = true;
+        }
+        _statsRefreshing = false;
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<DashboardStats>(
-      future: _statsFuture,
-      builder: (context, snapshot) {
-        final stats = snapshot.data ?? DashboardStats.empty;
+    if (!_statsFirstLoadDone || _stats == null) {
+      return const DashboardStatsGridShimmer();
+    }
 
-        final cards = [
-          _StatData(
-            icon: Icons.directions_car,
-            iconColor: AppColors.primary,
-            count: '${stats.jobsToday}',
-            label: 'Jobs Today',
-          ),
-          _StatData(
-            icon: Icons.assignment_outlined,
-            iconColor: AppColors.warning,
-            count: '${stats.pendingRequests}',
-            label: 'Pending Requests',
-          ),
-          _StatData(
-            icon: Icons.format_list_bulleted,
-            iconColor: AppColors.primaryDark,
-            count: '0',
-            label: 'Checklist Pending',
-            onTap: () =>
-                Navigator.pushNamed(context, AppRoutes.vehicleChecklist),
-          ),
-          _StatData(
-            icon: Icons.check_circle,
-            iconColor: AppColors.success,
-            count: '${stats.completedJobs}',
-            label: 'Completed Jobs',
-          ),
-        ];
+    final stats = _stats!;
 
-        return GridView.builder(
+    final cards = [
+      _StatData(
+        icon: Icons.directions_car,
+        iconColor: AppColors.primary,
+        count: '${stats.jobsToday}',
+        label: 'Jobs Today',
+      ),
+      _StatData(
+        icon: Icons.assignment_outlined,
+        iconColor: AppColors.warning,
+        count: '${stats.pendingRequests}',
+        label: 'Pending Requests',
+      ),
+      _StatData(
+        icon: Icons.format_list_bulleted,
+        iconColor: AppColors.primaryDark,
+        count: '0',
+        label: 'Checklist Pending',
+        onTap: () =>
+            Navigator.pushNamed(context, AppRoutes.vehicleChecklist),
+      ),
+      _StatData(
+        icon: Icons.check_circle,
+        iconColor: AppColors.success,
+        count: '${stats.completedJobs}',
+        label: 'Completed Jobs',
+      ),
+    ];
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (_statsRefreshing)
+          Padding(
+            padding: EdgeInsets.only(bottom: SizeConfig.r(6)),
+            child: LinearProgressIndicator(
+              minHeight: SizeConfig.r(2),
+              borderRadius: BorderRadius.circular(2),
+              color: AppColors.primary,
+              backgroundColor: AppColors.primaryLight,
+            ),
+          ),
+        GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
           itemCount: cards.length,
@@ -585,8 +635,8 @@ class _StatsGridState extends State<_StatsGrid> {
             childAspectRatio: 1.35,
           ),
           itemBuilder: (_, i) => _StatCard(data: cards[i]),
-        );
-      },
+        ),
+      ],
     );
   }
 }
@@ -682,7 +732,10 @@ class _JobRequestsSection extends StatefulWidget {
 
 class _JobRequestsSectionState extends State<_JobRequestsSection> {
   final DriverJobRequestService _service = DriverJobRequestService();
-  late Future<List<DriverJobRequest>> _requestsFuture;
+  List<DriverJobRequest>? _requests;
+  bool _requestsFirstLoadDone = false;
+  bool _requestsRefreshing = false;
+  bool _requestsLoadFailed = false;
   late final JobProvider _jobProvider;
   late final VoidCallback _onJobDataEpochChanged;
   int _lastSyncedJobDataEpoch = -1;
@@ -692,16 +745,13 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
     super.initState();
     _jobProvider = context.read<JobProvider>();
     _lastSyncedJobDataEpoch = _jobProvider.jobDataEpoch;
-    _requestsFuture = _loadRequests();
+    _fetchRequests();
     _onJobDataEpochChanged = () {
       final epoch = _jobProvider.jobDataEpoch;
       if (epoch == _lastSyncedJobDataEpoch) return;
       _lastSyncedJobDataEpoch = epoch;
       if (!mounted) return;
-      final newFuture = _loadRequests();
-      setState(() {
-        _requestsFuture = newFuture;
-      });
+      _fetchRequests(isBackground: true);
     };
     _jobProvider.addListener(_onJobDataEpochChanged);
   }
@@ -712,19 +762,46 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
     super.dispose();
   }
 
-  Future<List<DriverJobRequest>> _loadRequests() async {
+  Future<void> _fetchRequests({bool isBackground = false}) async {
+    if (isBackground && mounted) {
+      setState(() => _requestsRefreshing = true);
+    }
+
     final driverId = context.read<AuthProvider>().userId;
-    if (driverId == null || driverId.trim().isEmpty) return [];
-    return _service.fetchPendingRequests(driverId: driverId);
+    if (driverId == null || driverId.trim().isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _requests = [];
+        _requestsFirstLoadDone = true;
+        _requestsLoadFailed = false;
+        _requestsRefreshing = false;
+      });
+      return;
+    }
+
+    try {
+      final list = await _service.fetchPendingRequests(driverId: driverId);
+      if (!mounted) return;
+      setState(() {
+        _requests = list;
+        _requestsFirstLoadDone = true;
+        _requestsLoadFailed = false;
+        _requestsRefreshing = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        if (!isBackground) {
+          _requestsLoadFailed = true;
+          _requestsFirstLoadDone = true;
+        }
+        _requestsRefreshing = false;
+      });
+    }
   }
 
   Future<void> _refreshRequests() async {
-    final newFuture = _loadRequests();
-    if (mounted) {
-      setState(() {
-        _requestsFuture = newFuture;
-      });
-    }
+    await _fetchRequests(isBackground: _requestsFirstLoadDone);
     widget.onJobAccepted();
   }
 
@@ -742,39 +819,40 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
           ),
         ),
         SizedBox(height: SizeConfig.r(10)),
-        FutureBuilder<List<DriverJobRequest>>(
-          future: _requestsFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return const Center(child: CircularProgressIndicator());
-            }
-
-            if (snapshot.hasError) {
-              return _RequestsErrorCard(onRetry: _refreshRequests);
-            }
-
-            final requests = snapshot.data ?? [];
-
-            if (requests.isEmpty) {
-              return Container(
-                width: double.infinity,
-                padding: EdgeInsets.all(SizeConfig.r(14)),
-                decoration: BoxDecoration(
-                  color: AppColors.background,
-                  borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+        if (!_requestsFirstLoadDone)
+          const DashboardJobRequestsShimmer()
+        else if (_requestsLoadFailed && _requests == null)
+          _RequestsErrorCard(onRetry: _refreshRequests)
+        else ...[
+          if (_requestsRefreshing)
+            Padding(
+              padding: EdgeInsets.only(bottom: SizeConfig.r(8)),
+              child: LinearProgressIndicator(
+                minHeight: SizeConfig.r(2),
+                borderRadius: BorderRadius.circular(2),
+                color: AppColors.primary,
+                backgroundColor: AppColors.primaryLight,
+              ),
+            ),
+          if ((_requests ?? []).isEmpty)
+            Container(
+              width: double.infinity,
+              padding: EdgeInsets.all(SizeConfig.r(14)),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+              ),
+              child: Text(
+                'No pending job requests.',
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(13),
+                  color: AppColors.textMedium,
                 ),
-                child: Text(
-                  'No pending job requests.',
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(13),
-                    color: AppColors.textMedium,
-                  ),
-                ),
-              );
-            }
-
-            return Column(
-              children: requests
+              ),
+            )
+          else
+            Column(
+              children: _requests!
                   .map(
                     (request) => Padding(
                       padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
@@ -785,9 +863,8 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
                     ),
                   )
                   .toList(),
-            );
-          },
-        ),
+            ),
+        ],
       ],
     );
   }

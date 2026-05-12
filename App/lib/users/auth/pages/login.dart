@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../../../components/app_button.dart';
-import '../../../../providers/auth_provider.dart';
-import '../../../../routes/app_routes.dart';
-import '../../../../utils/app_colors.dart';
-import '../../../../utils/size_confg.dart';
+import '../../../components/app_button.dart';
+import '../../../providers/auth_provider.dart';
+import '../../../routes/app_routes.dart';
+import '../../../utils/app_colors.dart';
+import '../../../utils/size_confg.dart';
 
-class DriverLoginPage extends StatefulWidget {
-  const DriverLoginPage({super.key});
+class LoginPage extends StatefulWidget {
+  const LoginPage({super.key});
 
   @override
-  State<DriverLoginPage> createState() => _DriverLoginPageState();
+  State<LoginPage> createState() => _LoginPageState();
 }
 
-class _DriverLoginPageState extends State<DriverLoginPage> {
+class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   bool _obscurePassword = true;
@@ -41,9 +41,7 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
     }
   }
 
-  void _onForgotPassword() {
-    // TODO: navigate to forgot password page
-  }
+  void _onForgotPassword() {}
 
   void _onSignUp() {
     Navigator.pushNamed(context, AppRoutes.chooseAccountType);
@@ -82,7 +80,7 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
 
               // Title
               Text(
-                'Welcome Back',
+                'Welcome to NST',
                 style: TextStyle(
                   fontSize: SizeConfig.sp(28),
                   fontWeight: FontWeight.bold,
@@ -95,7 +93,7 @@ class _DriverLoginPageState extends State<DriverLoginPage> {
 
               // Subtitle
               Text(
-                'Log in to your driver account to start\naccepting rides.',
+                'Log in to your account to start\nmanaging your fleet.',
                 style: TextStyle(
                   fontSize: SizeConfig.sp(14),
                   color: AppColors.textMedium,
@@ -267,10 +265,7 @@ class _InputField extends StatelessWidget {
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
-      style: TextStyle(
-        fontSize: SizeConfig.sp(15),
-        color: AppColors.textDark,
-      ),
+      style: TextStyle(fontSize: SizeConfig.sp(15), color: AppColors.textDark),
       decoration: InputDecoration(
         hintText: hintText,
         hintStyle: TextStyle(
@@ -290,13 +285,11 @@ class _InputField extends StatelessWidget {
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(SizeConfig.radius),
-          borderSide:
-              const BorderSide(color: AppColors.inputBorder, width: 1),
+          borderSide: const BorderSide(color: AppColors.inputBorder, width: 1),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(SizeConfig.radius),
-          borderSide:
-              const BorderSide(color: AppColors.primary, width: 1.5),
+          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
         ),
       ),
     );

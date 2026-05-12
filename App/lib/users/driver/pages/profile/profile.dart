@@ -524,7 +524,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
               if (!context.mounted) return;
               Navigator.pushNamedAndRemoveUntil(
                 context,
-                AppRoutes.driverLogin,
+                AppRoutes.login,
                 (route) => false,
               );
             },

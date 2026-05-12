@@ -140,7 +140,12 @@ class JobProvider extends ChangeNotifier {
   // ── Load ──────────────────────────────────────────────────────────────────
 
   Future<void> loadJob({bool silent = false}) async {
-    if (!silent) {
+    // Block UI with loading only when there is nothing to show yet (first load
+    // or error retry). If we already have a job, refresh in the background so
+    // resume / epoch updates do not flash the skeleton.
+    final blockUiWithLoading = !silent && _job == null;
+
+    if (blockUiWithLoading) {
       _isLoading = true;
       _error = null;
       notifyListeners();
@@ -169,11 +174,14 @@ class JobProvider extends ChangeNotifier {
         _activePickupIndex = 0;
       }
 
-      if (!silent) _error = null;
+      _error = null;
     } catch (e) {
-      if (!silent) _error = e.toString();
+      if (blockUiWithLoading) {
+        _error = e.toString();
+      }
+      // Silent / background refresh: keep existing [_job] and error state.
     } finally {
-      if (!silent) {
+      if (blockUiWithLoading) {
         _isLoading = false;
       }
       _jobDataEpoch++;

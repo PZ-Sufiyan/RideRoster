@@ -368,6 +368,55 @@ class JobService {
     );
   }
 
+  /// Dashboard "jobs today": one per direction (outbound / inbound) per assigned
+  /// job when that direction is enabled and today's resolved
+  /// [passenger_schedules] (weekday + exceptions, same as [fetchCurrentJob]) has
+  /// at least one passenger. Does not depend on [job_sessions] existing yet.
+  Future<int> countScheduledDirectionsToday() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) return 0;
+
+    final today = DateTime.now();
+    final todayDate = _dateString(today);
+    final weekday = _weekdayKey(today);
+
+    final jobRows = await _supabase
+        .from('jobs')
+        .select('id, has_outbound, has_inbound')
+        .eq('assigned_driver_id', userId)
+        .eq('driver_approval_status', 'accepted')
+        .neq('status', 'cancelled')
+        .lte('semester_start', todayDate)
+        .gte('semester_end', todayDate);
+
+    var total = 0;
+    for (final raw in jobRows) {
+      final job = Map<String, dynamic>.from(raw as Map);
+      final jobDbId = (job['id'] ?? '').toString();
+      if (jobDbId.isEmpty) continue;
+
+      if (job['has_outbound'] == true) {
+        final outbound = await _resolvedScheduleForDay(
+          jobDbId: jobDbId,
+          weekday: weekday,
+          direction: 'outbound',
+          todayDate: todayDate,
+        );
+        if (outbound.isNotEmpty) total++;
+      }
+      if (job['has_inbound'] == true) {
+        final inbound = await _resolvedScheduleForDay(
+          jobDbId: jobDbId,
+          weekday: weekday,
+          direction: 'inbound',
+          todayDate: todayDate,
+        );
+        if (inbound.isNotEmpty) total++;
+      }
+    }
+    return total;
+  }
+
   // ── Direction picker ──────────────────────────────────────────────────────
   //
   // Priority rules (strictly in order):

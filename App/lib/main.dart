@@ -11,7 +11,7 @@ import 'routes/app_routes.dart';
 import 'services/location_service.dart';
 import 'services/notification_service.dart';
 import 'services/sos_location_service.dart';
-import 'users/driver/pages/auth/login.dart';
+import 'users/auth/pages/login.dart';
 import 'users/driver/pages/dashboard/dashboard.dart';
 
 Future<void> main() async {
@@ -192,7 +192,7 @@ class _AuthEntryPage extends StatelessWidget {
         if (auth.isAuthenticated) {
           return const DriverDashboardPage();
         }
-        return const DriverLoginPage();
+        return const LoginPage();
       },
     );
   }
@@ -291,10 +291,7 @@ class LocationRequiredPage extends StatelessWidget {
                   ],
                 ),
                 const SizedBox(height: 16),
-                OutlinedButton(
-                  onPressed: onRetry,
-                  child: const Text('Retry'),
-                ),
+                OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
               ],
             ),
           ),

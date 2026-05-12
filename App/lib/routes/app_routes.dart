@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../users/driver/pages/auth/choose_account_type.dart';
-import '../users/driver/pages/auth/login.dart';
-import '../users/driver/pages/auth/register.dart';
-import '../users/passenger_assistant/pages/auth/register_passenger_assistant.dart';
+import '../users/auth/pages/choose_account_type.dart';
+import '../users/auth/pages/login.dart';
+import '../users/auth/pages/register.dart';
+import '../users/auth/pages/register_passenger_assistant.dart';
 import '../users/driver/pages/dashboard/dashboard.dart';
 import '../users/driver/pages/dashboard/vehicle_check_list.dart';
 import '../users/driver/pages/job/complete_job.dart';
@@ -17,8 +17,8 @@ import '../users/driver/pages/sos/sos.dart';
 
 class AppRoutes {
   // Route name constants
-  static const String driverLogin = '/driver/login';
-  static const String chooseAccountType = '/auth/choose-account-type';
+  static const String login = '/login';
+  static const String chooseAccountType = '/choose-account-type';
   static const String driverRegister = '/driver/register';
   static const String passengerAssistantRegister =
       '/passenger-assistant/register';
@@ -36,8 +36,8 @@ class AppRoutes {
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
-      case driverLogin:
-        return MaterialPageRoute(builder: (_) => const DriverLoginPage());
+      case login:
+        return MaterialPageRoute(builder: (_) => const LoginPage());
 
       case chooseAccountType:
         return MaterialPageRoute(builder: (_) => const ChooseAccountTypePage());
@@ -87,7 +87,7 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const LeaveRequestFormPage());
 
       default:
-        return MaterialPageRoute(builder: (_) => const DriverLoginPage());
+        return MaterialPageRoute(builder: (_) => const LoginPage());
     }
   }
 }
