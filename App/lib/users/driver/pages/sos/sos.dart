@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../../services/sos_location_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
@@ -13,6 +14,9 @@ class SOSPage extends StatefulWidget {
 
 class _SOSPageState extends State<SOSPage>
     with SingleTickerProviderStateMixin {
+  static const String _safetyLineDisplay = '+92 321 5352420';
+  static final Uri _safetyLineTel = Uri.parse('tel:+923215352420');
+
   late final AnimationController _controller;
   final SosLocationService _sosLocationService = SosLocationService();
   bool _isSubmittingSos = false;
@@ -70,6 +74,31 @@ class _SOSPageState extends State<SOSPage>
     if (_isSubmittingSos) return;
     if (_controller.status != AnimationStatus.completed) {
       _controller.reverse();
+    }
+  }
+
+  Future<void> _callSafetyLine() async {
+    try {
+      final ok = await launchUrl(
+        _safetyLineTel,
+        mode: LaunchMode.externalApplication,
+      );
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Could not open the phone app.'),
+            backgroundColor: Color(0xFFDC2626),
+          ),
+        );
+      }
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Could not start the call.'),
+          backgroundColor: Color(0xFFDC2626),
+        ),
+      );
     }
   }
 
@@ -329,56 +358,71 @@ class _SOSPageState extends State<SOSPage>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Padding(
-            padding: EdgeInsets.symmetric(
-              horizontal: SizeConfig.hPad,
-              vertical: SizeConfig.r(16),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: SizeConfig.r(44),
-                  height: SizeConfig.r(44),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFDCEEFD),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.phone,
-                    color: const Color(0xFF0284C7),
-                    size: SizeConfig.r(22),
-                  ),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: _callSafetyLine,
+              child: Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.hPad,
+                  vertical: SizeConfig.r(16),
                 ),
-                SizedBox(width: SizeConfig.r(12)),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'Call Safety Line',
-                        style: TextStyle(
-                          fontSize: SizeConfig.sp(15),
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textDark,
-                        ),
+                child: Row(
+                  children: [
+                    Container(
+                      width: SizeConfig.r(44),
+                      height: SizeConfig.r(44),
+                      decoration: const BoxDecoration(
+                        color: Color(0xFFDCEEFD),
+                        shape: BoxShape.circle,
                       ),
-                      SizedBox(height: SizeConfig.r(2)),
-                      Text(
-                        '24/7 Support Team',
-                        style: TextStyle(
-                          fontSize: SizeConfig.sp(12),
-                          color: AppColors.textLight,
-                        ),
+                      child: Icon(
+                        Icons.phone,
+                        color: const Color(0xFF0284C7),
+                        size: SizeConfig.r(22),
                       ),
-                    ],
-                  ),
+                    ),
+                    SizedBox(width: SizeConfig.r(12)),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Call Safety Line',
+                            style: TextStyle(
+                              fontSize: SizeConfig.sp(15),
+                              fontWeight: FontWeight.w700,
+                              color: AppColors.textDark,
+                            ),
+                          ),
+                          SizedBox(height: SizeConfig.r(2)),
+                          Text(
+                            _safetyLineDisplay,
+                            style: TextStyle(
+                              fontSize: SizeConfig.sp(13),
+                              fontWeight: FontWeight.w600,
+                              color: const Color(0xFF0284C7),
+                            ),
+                          ),
+                          SizedBox(height: SizeConfig.r(2)),
+                          Text(
+                            '24/7 Support Team',
+                            style: TextStyle(
+                              fontSize: SizeConfig.sp(12),
+                              color: AppColors.textLight,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(
+                      Icons.chevron_right,
+                      color: AppColors.textLight,
+                      size: SizeConfig.r(22),
+                    ),
+                  ],
                 ),
-                Icon(
-                  Icons.chevron_right,
-                  color: AppColors.textLight,
-                  size: SizeConfig.r(22),
-                ),
-              ],
+              ),
             ),
           ),
           // Home indicator pill

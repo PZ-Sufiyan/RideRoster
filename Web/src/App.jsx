@@ -31,6 +31,7 @@ import Admin_Passengers from './users/admin/pages/user_managment/passenger/passe
 import Admin_AddPassenger from './users/admin/pages/user_managment/passenger/add_new_passenger';
 import Admin_EditPassenger from './users/admin/pages/user_managment/passenger/edit_passenger';
 import Admin_PassengerDetail from './users/admin/pages/user_managment/passenger/passenger_detail';
+import Admin_OffDayRequests from './users/admin/pages/user_managment/off_day_requests/off_day_requests';
 import Admin_AssignRoute from './users/admin/pages/user_managment/passenger/assign_route';
 import Admin_RouteReview from './users/admin/pages/user_managment/passenger/route_review';
 import Admin_SuccessConfirmation from './users/admin/pages/user_managment/passenger/success_confirmation';
@@ -148,6 +149,7 @@ function App() {
                 <Route path="/portal/users/passengers/assign/review" element={<Admin_RouteReview />} />
                 <Route path="/portal/users/passengers/assign/success" element={<Admin_SuccessConfirmation />} />
                 <Route path="/portal/users/passengers/:id" element={<Admin_PassengerDetail />} />
+                <Route path="/portal/users/off-day-requests" element={<Admin_OffDayRequests />} />
                 <Route path="/portal/jobs" element={<Admin_JobsList />} />
                 <Route path="/portal/jobs/calendar" element={<Admin_JobCalendar />} />
                 <Route path="/portal/jobs/add-job" element={<Admin_AddJob />} />

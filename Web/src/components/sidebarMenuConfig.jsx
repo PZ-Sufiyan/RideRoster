@@ -36,6 +36,7 @@ export const SIDEBAR_MENU_CONFIGS = {
                     { name: 'PA', path: '/portal/users/pa' },
                     { name: 'Subadmins', path: '/portal/users/subadmins' },
                     { name: 'Passengers', path: '/portal/users/passengers' },
+                    { name: 'Off day requests', path: '/portal/users/off-day-requests' },
                 ],
             },
             { name: 'Job Management', path: '/portal/jobs', icon: <MdWork size={20} /> },

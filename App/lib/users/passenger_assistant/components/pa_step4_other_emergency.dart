@@ -4,7 +4,7 @@ import '../models/passenger_assistant_register_data.dart';
 import '../../driver/components/register_widgets.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
-import '../../../../services/auth_service.dart';
+import '../../../../services/passenger_assistant_registration_service.dart';
 
 class PaStep4OtherEmergency extends StatefulWidget {
   const PaStep4OtherEmergency({
@@ -23,7 +23,7 @@ class PaStep4OtherEmergency extends StatefulWidget {
 class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
   late final TextEditingController _emergencyNameCtrl;
   late final TextEditingController _emergencyPhoneCtrl;
-  final _auth = AuthService();
+  final _registration = PassengerAssistantRegistrationService();
   bool _loading = false;
   String? _error;
 
@@ -199,7 +199,7 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
       _error = null;
     });
 
-    final result = await _auth.passengerAssistantRegister(
+    final result = await _registration.registerPassengerAssistant(
       firstName: d.firstName,
       lastName: d.lastName,
       email: d.email,

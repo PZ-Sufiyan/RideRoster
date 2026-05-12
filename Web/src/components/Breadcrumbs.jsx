@@ -14,6 +14,7 @@ const SIDEBAR_PATHS = new Set([
     '/portal/users/pa',
     '/portal/users/subadmins',
     '/portal/users/passengers',
+    '/portal/users/off-day-requests',
     '/portal/jobs',
     '/portal/notifications',
     '/portal/reports',

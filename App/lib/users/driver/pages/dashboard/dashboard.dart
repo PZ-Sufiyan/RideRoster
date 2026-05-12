@@ -1022,6 +1022,12 @@ class _QuickActionsSection extends StatelessWidget {
         iconBgColor: AppColors.error,
         onTap: () => Navigator.pushNamed(context, AppRoutes.sos),
       ),
+      _QuickActionData(
+        icon: Icons.event_available_outlined,
+        label: 'Apply\nLeave',
+        iconBgColor: AppColors.primaryDark,
+        onTap: () => Navigator.pushNamed(context, AppRoutes.driverLeave),
+      ),
     ];
 
     return Column(
@@ -1052,7 +1058,8 @@ class _QuickActionsSection extends StatelessWidget {
             Expanded(child: _QuickActionCard(data: actions[3])),
             SizedBox(width: SizeConfig.r(10)),
             Expanded(child: _QuickActionCard(data: actions[4])),
-            const Expanded(child: SizedBox()),
+            SizedBox(width: SizeConfig.r(10)),
+            Expanded(child: _QuickActionCard(data: actions[5])),
           ],
         ),
       ],

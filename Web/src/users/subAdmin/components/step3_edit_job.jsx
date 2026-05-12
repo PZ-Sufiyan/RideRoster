@@ -521,7 +521,6 @@ const Step3EditJob = ({ setToasts }) => {
                     disabled={saveInProgress}
                     emptyText="No drivers available (all assigned to other jobs)."
                     renderSub={(row) => row.sub}
-                    inviteLabel="Invite Driver"
                 />
             )}
 
@@ -543,7 +542,6 @@ const Step3EditJob = ({ setToasts }) => {
                     disabled={saveInProgress}
                     emptyText="No passenger assistants available."
                     renderSub={() => 'Passenger Assistant'}
-                    inviteLabel="Invite PA"
                 />
             )}
         </>
@@ -557,7 +555,7 @@ const AssignmentModal = ({
     query, onQueryChange, searchPlaceholder,
     infoNote,
     rows, currentId, loadingId, onPick, onClose,
-    disabled, emptyText, renderSub, inviteLabel,
+    disabled, emptyText, renderSub,
 }) => (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4">
         <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => !disabled && onClose()} />
@@ -659,11 +657,6 @@ const AssignmentModal = ({
                 <button type="button" onClick={onClose}
                     className="px-6 py-2.5 text-[14px] font-bold text-gray-500 hover:text-gray-900">
                     Cancel
-                </button>
-                <button type="button"
-                    className="flex items-center gap-2 px-6 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] shadow-lg shadow-[#004D6D]/10">
-                    <MdPersonAddAlt1 size={20} />
-                    {inviteLabel}
                 </button>
             </div>
         </div>

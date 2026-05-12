@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
 import 'providers/auth_provider.dart';
+import 'providers/driver_leave_provider.dart';
 import 'providers/driver_profile_provider.dart';
 import 'providers/job_provider.dart';
 import 'routes/app_routes.dart';
@@ -51,6 +52,7 @@ class RideRosterApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => JobProvider()),
         ChangeNotifierProvider(create: (_) => DriverProfileProvider()),
+        ChangeNotifierProvider(create: (_) => DriverLeaveProvider()),
       ],
       child: MaterialApp(
         title: 'RideRoster',

@@ -703,10 +703,6 @@ const ActiveJobs = () => {
                             <button onClick={() => setShowAssignDriver(false)} className="px-6 py-2.5 text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors">
                                 Cancel
                             </button>
-                            <button type="button" className="flex items-center gap-2 px-6 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/10">
-                                <MdPersonAddAlt1 size={20} />
-                                Invite Driver
-                            </button>
                         </div>
                     </div>
                 </div>
@@ -798,10 +794,6 @@ const ActiveJobs = () => {
                         <div className="px-8 py-6 bg-gray-50/50 flex items-center justify-between border-t border-gray-100">
                             <button onClick={() => setShowAssignPA(false)} className="px-6 py-2.5 text-[14px] font-bold text-gray-500 hover:text-gray-900 transition-colors">
                                 Cancel
-                            </button>
-                            <button type="button" className="flex items-center gap-2 px-6 py-2.5 bg-[#004D6D] text-white rounded-xl text-[14px] font-bold hover:bg-[#003c55] transition-all shadow-lg shadow-[#004D6D]/10">
-                                <MdPersonAddAlt1 size={20} />
-                                Invite PA
                             </button>
                         </div>
                     </div>
