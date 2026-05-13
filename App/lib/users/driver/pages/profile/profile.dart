@@ -3,7 +3,6 @@ import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../providers/driver_profile_provider.dart';
-import '../../../../providers/job_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../users/driver/models/driver_profile_model.dart';
 import '../../../../utils/app_colors.dart';
@@ -77,8 +76,6 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                           _buildProfessionalDetails(profile),
                           _buildDivider(),
                           _buildRequiredDocuments(profile),
-                          _buildDivider(),
-                          _buildCurrentRoute(context),
                           _buildDivider(),
                           _buildQuickActions(context),
                           _buildDivider(),
@@ -304,111 +301,6 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
     return _Section(
       title: 'Required Documents',
       child: Column(children: docs.map((d) => _DocRow(data: d)).toList()),
-    );
-  }
-
-  Widget _buildCurrentRoute(BuildContext context) {
-    return _Section(
-      title: 'Current Route',
-      child: Consumer<JobProvider>(
-        builder: (context, jobProvider, _) {
-          final job = jobProvider.job;
-          if (job == null) {
-            return Text(
-              'No active route assigned.',
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textMedium,
-              ),
-            );
-          }
-
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.location_on,
-                    color: const Color(0xFF0284C7),
-                    size: SizeConfig.r(20),
-                  ),
-                  SizedBox(width: SizeConfig.r(10)),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          job.routeNumber.isEmpty
-                              ? 'Current Job'
-                              : job.routeNumber,
-                          style: TextStyle(
-                            fontSize: SizeConfig.sp(14),
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textDark,
-                          ),
-                        ),
-                        Text(
-                          job.dropoffLocation.isEmpty
-                              ? 'Drop-off pending'
-                              : job.dropoffLocation,
-                          style: TextStyle(
-                            fontSize: SizeConfig.sp(12),
-                            color: AppColors.textLight,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: SizeConfig.r(10)),
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Icon(
-                    Icons.access_time,
-                    color: const Color(0xFF0284C7),
-                    size: SizeConfig.r(20),
-                  ),
-                  SizedBox(width: SizeConfig.r(10)),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'Next: ${job.nextPickupTime}',
-                          style: TextStyle(
-                            fontSize: SizeConfig.sp(14),
-                            fontWeight: FontWeight.w700,
-                            color: AppColors.textDark,
-                          ),
-                        ),
-                        Text(
-                          'PA: ${job.paName}',
-                          style: TextStyle(
-                            fontSize: SizeConfig.sp(12),
-                            color: AppColors.textLight,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-              SizedBox(height: SizeConfig.r(14)),
-              AppButton(
-                label: 'View Full Job Details',
-                height: SizeConfig.r(46),
-                borderRadius: SizeConfig.radius,
-                onPressed: () =>
-                    Navigator.pushNamed(context, AppRoutes.routeDetail),
-              ),
-            ],
-          );
-        },
-      ),
     );
   }
 
@@ -663,8 +555,6 @@ class _ProfilePageShimmer extends StatelessWidget {
                   _buildShimmerSection(rowCount: 4),
                   _shimmerDivider(),
                   _buildShimmerSection(rowCount: 4),
-                  _shimmerDivider(),
-                  _buildShimmerSection(rowCount: 2, includeButton: true),
                   _shimmerDivider(),
                   _buildShimmerQuickActions(),
                   _shimmerDivider(),

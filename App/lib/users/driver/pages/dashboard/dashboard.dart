@@ -1097,12 +1097,30 @@ class _JobRequestCard extends StatelessWidget {
 class _QuickActionsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
+    final jobProvider = context.watch<JobProvider>();
+    final checklistDone = jobProvider.checklistCompletedToday;
+    final sessionActive = jobProvider.sessionStarted;
+    // Mirrors the gate used on the Current Job card's "Start Run" button:
+    // pre-ride actions are blocked until today's checklist is complete,
+    // unless a session is already in progress.
+    final preRideBlocked = !checklistDone && !sessionActive;
+
+    void openChecklist() {
+      Navigator.pushNamed(context, AppRoutes.vehicleChecklist).then((_) {
+        if (!context.mounted) return;
+        context.read<JobProvider>().loadJob(silent: true);
+      });
+    }
+
     final actions = [
       _QuickActionData(
         icon: Icons.play_arrow_rounded,
         label: 'Start Ride',
         iconBgColor: AppColors.success,
-        onTap: () => Navigator.pushNamed(context, AppRoutes.routeDetail),
+        blocked: preRideBlocked,
+        onTap: preRideBlocked
+            ? openChecklist
+            : () => Navigator.pushNamed(context, AppRoutes.routeDetail),
       ),
       _QuickActionData(
         icon: Icons.assignment_outlined,
@@ -1114,6 +1132,8 @@ class _QuickActionsSection extends StatelessWidget {
         icon: Icons.alt_route,
         label: 'View Routes',
         iconBgColor: const Color(0xFF7C3AED),
+        blocked: preRideBlocked,
+        onTap: preRideBlocked ? openChecklist : null,
       ),
       _QuickActionData(
         icon: Icons.warning_amber_rounded,
@@ -1176,12 +1196,14 @@ class _QuickActionData {
   final String label;
   final Color iconBgColor;
   final VoidCallback? onTap;
+  final bool blocked;
 
   const _QuickActionData({
     required this.icon,
     required this.label,
     required this.iconBgColor,
     this.onTap,
+    this.blocked = false,
   });
 }
 
@@ -1191,6 +1213,12 @@ class _QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final blocked = data.blocked;
+    final circleColor = blocked
+        ? AppColors.textLight.withValues(alpha: 0.18)
+        : data.iconBgColor.withValues(alpha: 0.12);
+    final iconColor = blocked ? AppColors.textLight : data.iconBgColor;
+
     return GestureDetector(
       onTap: data.onTap,
       child: Container(
@@ -1212,17 +1240,48 @@ class _QuickActionCard extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(
+            SizedBox(
               width: SizeConfig.r(44),
               height: SizeConfig.r(44),
-              decoration: BoxDecoration(
-                color: data.iconBgColor.withValues(alpha: 0.12),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(
-                data.icon,
-                color: data.iconBgColor,
-                size: SizeConfig.r(22),
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    width: SizeConfig.r(44),
+                    height: SizeConfig.r(44),
+                    decoration: BoxDecoration(
+                      color: circleColor,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      data.icon,
+                      color: iconColor,
+                      size: SizeConfig.r(22),
+                    ),
+                  ),
+                  if (blocked)
+                    Positioned(
+                      right: -SizeConfig.r(2),
+                      top: -SizeConfig.r(2),
+                      child: Container(
+                        width: SizeConfig.r(18),
+                        height: SizeConfig.r(18),
+                        decoration: BoxDecoration(
+                          color: AppColors.warning,
+                          shape: BoxShape.circle,
+                          border: Border.all(
+                            color: AppColors.background,
+                            width: SizeConfig.r(1.5),
+                          ),
+                        ),
+                        child: Icon(
+                          Icons.lock,
+                          size: SizeConfig.r(10),
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
             SizedBox(height: SizeConfig.r(8)),
@@ -1232,7 +1291,7 @@ class _QuickActionCard extends StatelessWidget {
               style: TextStyle(
                 fontSize: SizeConfig.sp(11),
                 fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
+                color: blocked ? AppColors.textMedium : AppColors.textDark,
                 height: 1.3,
               ),
             ),
