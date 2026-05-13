@@ -189,6 +189,10 @@ const SOSDetail = () => {
         : null
     const sosPoint = detail?.sos || activeSOS || null
 
+    const sosDriverId = detail?.sos?.driver_id || detail?.driver?.id || null
+    const isSosActive = detail?.sos?.status === 'active'
+    const excludedSosDriverId = isSosActive ? sosDriverId : null
+
     const nearbyDrivers = useMemo(() => {
         if (!sosPoint) return []
         const sosLat = Number(sosPoint.latitude)
@@ -197,6 +201,8 @@ const SOSDetail = () => {
 
         return drivers
             .map((driver) => {
+                if (excludedSosDriverId && driver.driver_id === excludedSosDriverId) return null
+
                 const lat = Number(driver.latitude)
                 const lng = Number(driver.longitude)
                 if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null
@@ -211,7 +217,7 @@ const SOSDetail = () => {
             })
             .filter(Boolean)
             .sort((a, b) => a.distanceKm - b.distanceKm)
-    }, [drivers, radiusKm, sosPoint])
+    }, [drivers, radiusKm, sosPoint, excludedSosDriverId])
 
     const handleResolve = async () => {
         if (!detail?.sos?.id || resolving) return
