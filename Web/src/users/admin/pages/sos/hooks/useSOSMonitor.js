@@ -20,13 +20,18 @@ const enrichDriverLocations = async (rows) => {
             is_online: Boolean(row.is_online),
             updated_at: row.updated_at,
             driver_name: 'Driver',
+            driver_email: null,
+            driver_phone: null,
             vehicle_plate: null,
             vehicle_name: null,
         }))
     }
 
     const [driversRes, vehiclesRes] = await Promise.all([
-        supabase.from('drivers').select('id, first_name, last_name').in('id', driverIds),
+        supabase
+            .from('drivers')
+            .select('id, first_name, last_name, email, phone')
+            .in('id', driverIds),
         supabase
             .from('vehicles')
             .select('id, driver_id, name, taxi_license_plate_number')
@@ -53,6 +58,8 @@ const enrichDriverLocations = async (rows) => {
             is_online: Boolean(row.is_online),
             updated_at: row.updated_at,
             driver_name: formatDriverName(driver),
+            driver_email: driver?.email?.trim() || null,
+            driver_phone: driver?.phone?.trim() || null,
             vehicle_plate: vehicle?.taxi_license_plate_number || null,
             vehicle_name: vehicle?.name || null,
         }
@@ -177,6 +184,8 @@ export const useSOSMonitor = (companyId) => {
                         is_online: Boolean(incoming.is_online),
                         updated_at: incoming.updated_at,
                         driver_name: 'Driver',
+                        driver_email: null,
+                        driver_phone: null,
                         vehicle_plate: null,
                         vehicle_name: null,
                     }

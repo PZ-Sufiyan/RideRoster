@@ -6,6 +6,7 @@ import {
     MdWarning,
     MdLocalPhone,
     MdPerson,
+    MdEmail,
 } from 'react-icons/md'
 
 import { supabase } from '../../../../lib/supabaseClient'
@@ -214,6 +215,17 @@ const SOSDetail = () => {
 
     const handleResolve = async () => {
         if (!detail?.sos?.id || resolving) return
+        const notes = (detail?.sos?.notes || '').trim()
+        if (notes.length < 10) {
+            setError('Please save notes with at least 10 characters before resolving this alert.')
+            return
+        }
+        if (notes.toLowerCase() === 'SOS triggered from driver app.'.toLowerCase()) {
+            setError(
+                'Please replace the default note ("SOS triggered from driver app.") with a real resolution note before resolving.'
+            )
+            return
+        }
         setResolving(true)
         setError(null)
         try {
@@ -261,6 +273,13 @@ const SOSDetail = () => {
 
     const status = detail?.sos?.status
     const isResolved = status === 'resolved' || status === 'cancelled'
+
+    const MIN_NOTES_LENGTH = 10
+    const DEFAULT_SOS_NOTE = 'SOS triggered from driver app.'
+    const savedNotes = (detail?.sos?.notes || '').trim()
+    const isDefaultNote = savedNotes.toLowerCase() === DEFAULT_SOS_NOTE.toLowerCase()
+    const hasValidNotes = savedNotes.length >= MIN_NOTES_LENGTH && !isDefaultNote
+    const canResolve = !resolving && !isResolved && !!detail && hasValidNotes
 
     return (
         <div className="relative -m-6 mt-1 h-[calc(100vh-64px)] overflow-hidden bg-gray-100 font-sans">
@@ -452,6 +471,32 @@ const SOSDetail = () => {
                                                         {driver.distanceKm.toFixed(2)} km
                                                     </p>
                                                 </div>
+                                                <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium min-w-0">
+                                                    <MdLocalPhone size={13} className="text-gray-400 shrink-0" />
+                                                    {driver.driver_phone ? (
+                                                        <a
+                                                            href={`tel:${driver.driver_phone}`}
+                                                            className="truncate hover:text-[#005580] hover:underline"
+                                                        >
+                                                            {driver.driver_phone}
+                                                        </a>
+                                                    ) : (
+                                                        <span className="truncate text-gray-400">—</span>
+                                                    )}
+                                                </div>
+                                                <div className="flex items-center gap-1.5 text-xs text-gray-600 font-medium min-w-0">
+                                                    <MdEmail size={13} className="text-gray-400 shrink-0" />
+                                                    {driver.driver_email ? (
+                                                        <a
+                                                            href={`mailto:${driver.driver_email}`}
+                                                            className="truncate hover:text-[#005580] hover:underline"
+                                                        >
+                                                            {driver.driver_email}
+                                                        </a>
+                                                    ) : (
+                                                        <span className="truncate text-gray-400">—</span>
+                                                    )}
+                                                </div>
                                                 <p className="text-xs text-gray-500 truncate">
                                                     Vehicle: {driver.vehicle_plate || '—'}
                                                 </p>
@@ -484,6 +529,13 @@ const SOSDetail = () => {
                                     >
                                         {savingNotes ? 'Saving...' : 'Save Notes'}
                                     </button>
+                                    {!isResolved && !hasValidNotes && (
+                                        <p className="text-xs text-gray-500">
+                                            {isDefaultNote
+                                                ? `Replace the default note ("${DEFAULT_SOS_NOTE}") with a real resolution note (at least ${MIN_NOTES_LENGTH} characters) to enable resolving this alert.`
+                                                : `Save notes with at least ${MIN_NOTES_LENGTH} characters to enable resolving this alert.`}
+                                        </p>
+                                    )}
                                 </div>
                             </section>
                         </>
@@ -501,8 +553,17 @@ const SOSDetail = () => {
                     </button>
                     <button
                         type="button"
-                        disabled={resolving || isResolved || !detail}
+                        disabled={!canResolve}
                         onClick={handleResolve}
+                        title={
+                            isResolved
+                                ? 'This SOS alert is already resolved.'
+                                : isDefaultNote
+                                  ? `Replace the default note ("${DEFAULT_SOS_NOTE}") with a real resolution note before resolving.`
+                                  : !hasValidNotes
+                                    ? `Save notes with at least ${MIN_NOTES_LENGTH} characters before resolving.`
+                                    : undefined
+                        }
                         className="flex-1 py-3 px-4 bg-red-500 text-white rounded-xl text-sm font-bold hover:bg-red-600 transition-shadow shadow-md shadow-red-200 active:scale-[0.98] disabled:opacity-50 disabled:pointer-events-none"
                     >
                         {isResolved ? 'Already resolved' : resolving ? 'Resolving…' : 'Resolve Alert'}
