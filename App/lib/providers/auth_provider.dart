@@ -4,6 +4,12 @@ import '../services/realtime_service.dart';
 
 enum AuthStatus { idle, loading, authenticated, unauthenticated, error }
 
+/// Supported user roles returned from Supabase auth metadata.
+class UserRoles {
+  static const String driver = 'driver';
+  static const String passengerAssistant = 'passenger_assistant';
+}
+
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
 
@@ -12,6 +18,7 @@ class AuthProvider extends ChangeNotifier {
   String? _userId;
   String? _userName;
   String? _userEmail;
+  String? _userRole;
   String? _errorMessage;
 
   AuthProvider() {
@@ -26,6 +33,9 @@ class AuthProvider extends ChangeNotifier {
   String? get userId => _userId;
   String? get userName => _userName;
   String? get userEmail => _userEmail;
+  String? get userRole => _userRole;
+  bool get isDriver => _userRole == UserRoles.driver;
+  bool get isPassengerAssistant => _userRole == UserRoles.passengerAssistant;
   String? get errorMessage => _errorMessage;
   bool get isLoading => _status == AuthStatus.loading;
   bool get isAuthenticated => _status == AuthStatus.authenticated;
@@ -41,6 +51,7 @@ class AuthProvider extends ChangeNotifier {
       _userId = result.userId;
       _userName = result.name;
       _userEmail = result.email;
+      _userRole = result.role;
       _errorMessage = null;
       _setStatus(AuthStatus.authenticated);
       // Subscribe AFTER status is set and userId is populated.
@@ -53,6 +64,7 @@ class AuthProvider extends ChangeNotifier {
       _userId = null;
       _userName = null;
       _userEmail = null;
+      _userRole = null;
       _errorMessage = null;
       _setStatus(AuthStatus.unauthenticated);
     }
@@ -77,6 +89,7 @@ class AuthProvider extends ChangeNotifier {
       _userId = result.userId;
       _userName = result.name;
       _userEmail = result.email;
+      _userRole = result.role;
       _errorMessage = null;
       _setStatus(AuthStatus.authenticated);
       // Subscribe after successful login — userId is now set
@@ -111,6 +124,7 @@ class AuthProvider extends ChangeNotifier {
     _userId = null;
     _userName = null;
     _userEmail = null;
+    _userRole = null;
     _errorMessage = null;
     _setStatus(AuthStatus.unauthenticated);
   }

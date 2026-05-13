@@ -6,6 +6,7 @@ class AuthResult {
   final String? userId;
   final String? name;
   final String? email;
+  final String? role;
   final String? message;
   final String? error;
 
@@ -15,6 +16,7 @@ class AuthResult {
     this.userId,
     this.name,
     this.email,
+    this.role,
     this.message,
     this.error,
   });
@@ -24,6 +26,7 @@ class AuthResult {
     String? userId,
     String? name,
     String? email,
+    String? role,
     String? message,
   }) {
     return AuthResult._(
@@ -32,6 +35,7 @@ class AuthResult {
       userId: userId,
       name: name,
       email: email,
+      role: role,
       message: message,
     );
   }

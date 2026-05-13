@@ -163,6 +163,7 @@ const AddNewPA = () => {
         nationality: '',
         rightToWork: '',
         isBritish: false,
+        passportNumber: '',
     });
 
     const [passportExpiry, setPassportExpiry] = useState('');
@@ -320,6 +321,7 @@ const AddNewPA = () => {
                     nationality: form.nationality,
                     rightToWork: form.isBritish ? '' : form.rightToWork,
                     isBritish: form.isBritish,
+                    passportNumber: form.passportNumber,
                 },
                 expiry: {
                     passport: passportExpiry,
@@ -489,9 +491,19 @@ const AddNewPA = () => {
                         Upload documents as needed. Accepted: PDF, JPG, PNG, WebP — preview opens in a new tab. Passport and safeguarding require an expiry date when a file is uploaded. Files are stored in your company storage when you submit.
                     </p>
 
-                    {/* Passport number — document + manual expiry */}
+                    {/* Passport number — manual number + document + expiry */}
                     <div className="rounded-xl border border-gray-200 p-4 space-y-3 bg-white">
                         <p className="text-sm font-semibold text-gray-800">Passport number</p>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-gray-600">Passport number</label>
+                            <input
+                                type="text"
+                                value={form.passportNumber}
+                                onChange={set('passportNumber')}
+                                placeholder="e.g. AB1234567"
+                                className={dateInputClass}
+                            />
+                        </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-start">
                             <div className="space-y-1.5">
                                 <label className="text-xs font-medium text-gray-600">Document</label>

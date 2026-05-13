@@ -35,10 +35,12 @@ class _LoginPageState extends State<LoginPage> {
     );
 
     if (!mounted) return;
+    if (!success) return;
 
-    if (success) {
-      Navigator.pushReplacementNamed(context, AppRoutes.driverDashboard);
-    }
+    final route = auth.isPassengerAssistant
+        ? AppRoutes.paDashboard
+        : AppRoutes.driverDashboard;
+    Navigator.pushReplacementNamed(context, route);
   }
 
   void _onForgotPassword() {}

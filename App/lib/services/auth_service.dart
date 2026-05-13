@@ -167,6 +167,7 @@ class AuthService extends ApiService {
         userId: user.id,
         name: resolvedName,
         email: user.email,
+        role: role,
       );
     } on AuthException catch (e) {
       return AuthResult.failure(e.message);
@@ -661,6 +662,7 @@ class AuthService extends ApiService {
         userId: user.id,
         name: resolvedName,
         email: user.email,
+        role: role,
       );
     } catch (_) {
       return AuthResult.failure('Could not restore session.');

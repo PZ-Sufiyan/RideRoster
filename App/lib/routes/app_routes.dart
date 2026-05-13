@@ -10,6 +10,7 @@ import '../users/driver/pages/job/pickup.dart';
 import '../users/driver/pages/job/pickup_que.dart';
 import '../users/driver/pages/job/requested_jobs.dart';
 import '../users/driver/pages/job/route_detail.dart';
+import '../users/PA/pages/dashboard/dashboard.dart';
 import '../users/driver/pages/leave/leave.dart';
 import '../users/driver/pages/leave/leave_request_form.dart';
 import '../users/driver/pages/profile/profile.dart';
@@ -33,6 +34,7 @@ class AppRoutes {
   static const String completeJob = '/driver/complete-job';
   static const String driverLeave = '/driver/leave';
   static const String driverLeaveRequest = '/driver/leave-request';
+  static const String paDashboard = '/pa/dashboard';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -85,6 +87,9 @@ class AppRoutes {
 
       case driverLeaveRequest:
         return MaterialPageRoute(builder: (_) => const LeaveRequestFormPage());
+
+      case paDashboard:
+        return MaterialPageRoute(builder: (_) => const PaDashboardPage());
 
       default:
         return MaterialPageRoute(builder: (_) => const LoginPage());

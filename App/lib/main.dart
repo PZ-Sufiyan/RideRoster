@@ -14,6 +14,7 @@ import 'services/notification_service.dart';
 import 'services/sos_location_service.dart';
 import 'users/auth/pages/login.dart';
 import 'users/driver/pages/dashboard/dashboard.dart';
+import 'users/PA/pages/dashboard/dashboard.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -113,7 +114,12 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      _sosLocationService.setDriverOffline();
+      // Only drivers stream location; skip for non-driver users.
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      if (auth.isAuthenticated && auth.isDriver) {
+        _sosLocationService.setDriverOffline();
+      }
     }
   }
 
@@ -135,6 +141,8 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
   Future<void> _startSosTrackingIfAuthenticated() async {
     final auth = context.read<AuthProvider>();
     if (!auth.isAuthenticated) return;
+    // SOS / driver_locations is a driver-only feature. Skip for PA users.
+    if (!auth.isDriver) return;
 
     final currentUserId = auth.userId;
     if (currentUserId == null || currentUserId.isEmpty) return;
@@ -147,6 +155,7 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
   Future<void> _resumeSosTrackingIfAuthenticated() async {
     final auth = context.read<AuthProvider>();
     if (!auth.isAuthenticated) return;
+    if (!auth.isDriver) return;
     await _sosLocationService.refresh();
   }
 
@@ -196,6 +205,9 @@ class _AuthEntryPage extends StatelessWidget {
           );
         }
         if (auth.isAuthenticated) {
+          if (auth.isPassengerAssistant) {
+            return const PaDashboardPage();
+          }
           return const DriverDashboardPage();
         }
         return const LoginPage();

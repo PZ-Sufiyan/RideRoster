@@ -11,11 +11,12 @@ import 'auth_result.dart';
 /// Uses the auth user id as `passenger_assistant.id` so the profile row matches
 /// the authenticated user (same pattern as drivers).
 ///
-/// [assistant_document_type] in your database allows one row per type per PA
-/// (`uq_passenger_doc_per_type`). Only these types are inserted:
-/// `passport`, `safeguarding_certificate`, `background_check`, `first_aid_certificate`.
-/// Additional “other” certificates from the UI are uploaded to company storage
-/// for audit only until the enum supports extra types.
+/// [assistant_document_type] in your database supports:
+/// `passport`, `safeguarding_certificate`, `background_check`,
+/// `first_aid_certificate`, `other_certificate`. The unique index
+/// `uq_passenger_doc_per_type` is expected to be partial so that multiple
+/// `other_certificate` rows are allowed per assistant (the human-readable
+/// label is stored in `file_name`).
 class PassengerAssistantRegistrationService extends ApiService {
   SupabaseClient get _supabase => Supabase.instance.client;
   static const String _companyDocsBucket = 'company-documents';
@@ -218,6 +219,10 @@ class PassengerAssistantRegistrationService extends ApiService {
             : (rightToWorkCode?.trim().isEmpty ?? true
                 ? null
                 : rightToWorkCode!.trim()),
+        'passport_number':
+            passportNumber == null || passportNumber.trim().isEmpty
+                ? null
+                : passportNumber.trim(),
         'status': 'pending',
       });
 
@@ -267,24 +272,35 @@ class PassengerAssistantRegistrationService extends ApiService {
         localPath: firstAidFilePath,
       );
 
-      if (docRows.isNotEmpty) {
-        await _supabase.from('passenger_assistant_documents').insert(docRows);
-      }
-
-      // 5) Optional extra certificates — storage only (see class dartdoc)
+      // 5) Optional extra certificates → stored under `other_certificate`,
+      //    one row per uploaded file. The user-supplied label is persisted
+      //    in `file_name` so it can be shown back in the UI.
       for (var i = 0; i < otherCertificateLabels.length; i++) {
         final path = otherCertificatePaths[i];
         if (path.trim().isEmpty) continue;
         final label = otherCertificateLabels[i].trim();
-        final docType = label.isEmpty
-            ? 'optional_certificate_$i'
-            : 'optional_${_safePathSegment(label)}_$i';
-        await _uploadFile(
+        final safeLabel = label.isEmpty
+            ? 'other_certificate_$i'
+            : _safePathSegment(label);
+        final storageDocType = 'other_${safeLabel}_$i';
+        final url = await _uploadFile(
           companyId: companyId,
           scopeId: assistantId,
-          docType: docType,
+          docType: storageDocType,
           localPath: path,
         );
+        if (url == null) continue;
+        docRows.add({
+          'passenger_assistant_id': assistantId,
+          'document_type': 'other_certificate',
+          'file_name': label.isEmpty ? _basename(path) : label,
+          'file_url': url,
+          'verified': false,
+        });
+      }
+
+      if (docRows.isNotEmpty) {
+        await _supabase.from('passenger_assistant_documents').insert(docRows);
       }
 
       return AuthResult.success(

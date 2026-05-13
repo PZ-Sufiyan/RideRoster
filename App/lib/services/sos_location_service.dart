@@ -327,10 +327,14 @@ class SosLocationService {
         await _upsertLocation(position: latest, isOnline: false);
       } else {
         final driverId = _driverId;
-        if (driverId != null) {
+        final companyId = _companyId;
+        // Skip the upsert entirely if we don't have a company context yet
+        // (e.g. a non-driver user, or dispose() called before init completed).
+        // driver_locations.company_id is NOT NULL.
+        if (driverId != null && companyId != null && companyId.isNotEmpty) {
           await _supabase.from('driver_locations').upsert({
             'driver_id': driverId,
-            'company_id': _companyId,
+            'company_id': companyId,
             'latitude': 0,
             'longitude': 0,
             'is_online': false,

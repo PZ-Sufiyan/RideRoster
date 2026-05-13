@@ -124,6 +124,7 @@ export async function registerPassengerAssistantWithAuthAndRecords({
       emergency_contact_phone: cleanString(personal?.contactPhone),
       nationality: cleanString(personal?.nationality),
       right_to_work_code: personal?.isBritish ? null : toNullableString(personal?.rightToWork),
+      passport_number: toNullableString(personal?.passportNumber),
     }
 
     const { error: paErr } = await supabaseAdmin.from('passenger_assistant').insert(assistantPayload)
