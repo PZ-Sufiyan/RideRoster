@@ -274,6 +274,8 @@ class _Step3RegisterState extends State<Step3Register> {
       emergencyContactName: d.emergencyContactName,
       emergencyContactPhone: d.emergencyContactPhone,
       passportNumber: d.passportNumber,
+      passportFilePath: d.passportFile?.path,
+      passportExpiry: d.passportExpiry,
       nationality: d.nationality,
       rightToWorkCode: d.rightToWorkCode,
       registrationNumber: d.registrationNumber,
@@ -733,119 +735,3 @@ class _Step3RegisterState extends State<Step3Register> {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Upload box
-// ─────────────────────────────────────────────────────────────────────────────
-
-class UploadBox extends StatelessWidget {
-  const UploadBox({
-    super.key,
-    required this.file,
-    required this.onTap,
-    this.subLabel,
-  });
-
-  final PlatformFile? file;
-  final VoidCallback onTap;
-  final String? subLabel;
-
-  @override
-  Widget build(BuildContext context) {
-    SizeConfig.init(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: double.infinity,
-        padding: EdgeInsets.symmetric(
-          vertical: SizeConfig.r(22),
-          horizontal: SizeConfig.r(16),
-        ),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF8FAFD),
-          borderRadius: BorderRadius.circular(SizeConfig.radius),
-          border: Border.all(color: const Color(0xFFD4DEF0), width: 1),
-        ),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              file != null
-                  ? Icons.check_circle_outline
-                  : Icons.cloud_upload_outlined,
-              color: file != null ? AppColors.success : const Color(0xFFB0BEC5),
-              size: SizeConfig.r(30),
-            ),
-            SizedBox(height: SizeConfig.r(8)),
-            Text(
-              file != null
-                  ? file!.name
-                  : (subLabel ?? 'Click to upload or drag and drop'),
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: file != null
-                    ? AppColors.textMedium
-                    : const Color(0xFFB0BEC5),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Expiry date chip
-// ─────────────────────────────────────────────────────────────────────────────
-
-class ExpiryButton extends StatelessWidget {
-  const ExpiryButton({
-    super.key,
-    required this.date,
-    required this.onTap,
-    required this.formatDate,
-  });
-
-  final DateTime? date;
-  final VoidCallback onTap;
-  final String Function(DateTime) formatDate;
-
-  @override
-  Widget build(BuildContext context) {
-    SizeConfig.init(context);
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        padding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.r(14),
-          vertical: SizeConfig.r(10),
-        ),
-        decoration: BoxDecoration(
-          color: const Color(0xFFF3F7FC),
-          borderRadius: BorderRadius.circular(SizeConfig.r(8)),
-          border: Border.all(color: const Color(0xFFD4DEF0), width: 1),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.calendar_today_outlined,
-              size: SizeConfig.r(16),
-              color: AppColors.textMedium,
-            ),
-            SizedBox(width: SizeConfig.r(8)),
-            Text(
-              date != null ? formatDate(date!) : 'Expiry Date',
-              style: TextStyle(
-                fontSize: SizeConfig.sp(14),
-                color: date != null ? AppColors.textDark : AppColors.textMedium,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}

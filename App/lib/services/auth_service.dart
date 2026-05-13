@@ -221,6 +221,9 @@ class AuthService extends ApiService {
     String? emergencyContactName,
     String? emergencyContactPhone,
     String? passportNumber,
+    // Passport copy upload + expiry (stored as driver_documents row of type 'passport')
+    String? passportFilePath,
+    DateTime? passportExpiry,
     // Nationality — 'British' or free-text (e.g. 'Pakistani')
     String? nationality,
     // Right-to-work code — null/empty for British nationals
@@ -420,6 +423,11 @@ class AuthService extends ApiService {
       await addDriverDoc(
         docType: 'safeguarding_certificate',
         localPath: safeguardingCertPath,
+      );
+      await addDriverDoc(
+        docType: 'passport',
+        localPath: passportFilePath,
+        expiryDate: passportExpiry,
       );
 
       // Other certificates — upload each with its user-defined label stored

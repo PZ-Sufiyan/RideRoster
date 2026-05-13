@@ -1,3 +1,4 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/driver_register_data.dart';
@@ -194,6 +195,59 @@ class _Step1RegisterState extends State<Step1Register> {
     });
   }
 
+  // ── Passport file / expiry helpers ─────────────────────────────────────────
+
+  Future<void> _pickPassportFile() async {
+    final result = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['jpg', 'jpeg', 'png', 'pdf'],
+      withData: false,
+      withReadStream: false,
+    );
+    if (result != null && result.files.isNotEmpty) {
+      setState(() => widget.data.passportFile = result.files.first);
+    }
+  }
+
+  Future<void> _pickPassportExpiry() async {
+    final now = DateTime.now();
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: widget.data.passportExpiry ?? now,
+      firstDate: now,
+      lastDate: DateTime(now.year + 20),
+      helpText: 'Select Passport Expiry Date',
+      builder: (context, child) => Theme(
+        data: Theme.of(context).copyWith(
+          colorScheme: const ColorScheme.light(primary: AppColors.primary),
+        ),
+        child: child!,
+      ),
+    );
+    if (picked != null) {
+      setState(() => widget.data.passportExpiry = picked);
+    }
+  }
+
+  String _formatDate(DateTime d) {
+    const m = [
+      '',
+      'Jan',
+      'Feb',
+      'Mar',
+      'Apr',
+      'May',
+      'Jun',
+      'Jul',
+      'Aug',
+      'Sep',
+      'Oct',
+      'Nov',
+      'Dec',
+    ];
+    return '${d.day} ${m[d.month]} ${d.year}';
+  }
+
   // ── Save & next ────────────────────────────────────────────────────────────
 
   void _saveAndNext() {
@@ -210,6 +264,14 @@ class _Step1RegisterState extends State<Step1Register> {
 
     if (nationality.isEmpty) {
       setState(() => _formError = 'Please enter your nationality.');
+      return;
+    }
+
+    if (widget.data.passportFile != null && widget.data.passportExpiry == null) {
+      setState(
+        () => _formError =
+            'Passport expiry date is required when a passport file is uploaded.',
+      );
       return;
     }
 
@@ -577,6 +639,35 @@ class _Step1RegisterState extends State<Step1Register> {
           ],
           SizedBox(height: SizeConfig.r(18)),
 
+          // ── Residential Address ───────────────────────────────────────────
+          const RegFieldLabel('Residential Address *'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _residentialAddressCtrl,
+            hintText: 'Enter residential address',
+            keyboardType: TextInputType.streetAddress,
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          // ── Emergency Contact ─────────────────────────────────────────────
+          const RegFieldLabel('Emergency Contact Name *'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _emergencyContactNameCtrl,
+            hintText: 'Enter emergency contact name',
+            keyboardType: TextInputType.name,
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
+          const RegFieldLabel('Emergency Contact Phone *'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _emergencyContactPhoneCtrl,
+            hintText: 'Enter emergency contact phone',
+            keyboardType: TextInputType.phone,
+          ),
+          SizedBox(height: SizeConfig.r(18)),
+
           // ── Nationality ───────────────────────────────────────────────────
           const RegFieldLabel('Nationality *'),
           SizedBox(height: SizeConfig.r(8)),
@@ -662,44 +753,6 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(18)),
 
-          // ── Residential Address ───────────────────────────────────────────
-          const RegFieldLabel('Residential Address *'),
-          SizedBox(height: SizeConfig.r(6)),
-          RegField(
-            controller: _residentialAddressCtrl,
-            hintText: 'Enter residential address',
-            keyboardType: TextInputType.streetAddress,
-          ),
-          SizedBox(height: SizeConfig.r(18)),
-
-          // ── Emergency Contact ─────────────────────────────────────────────
-          const RegFieldLabel('Emergency Contact Name *'),
-          SizedBox(height: SizeConfig.r(6)),
-          RegField(
-            controller: _emergencyContactNameCtrl,
-            hintText: 'Enter emergency contact name',
-            keyboardType: TextInputType.name,
-          ),
-          SizedBox(height: SizeConfig.r(18)),
-
-          const RegFieldLabel('Emergency Contact Phone *'),
-          SizedBox(height: SizeConfig.r(6)),
-          RegField(
-            controller: _emergencyContactPhoneCtrl,
-            hintText: 'Enter emergency contact phone',
-            keyboardType: TextInputType.phone,
-          ),
-          SizedBox(height: SizeConfig.r(18)),
-
-          // ── Passport ──────────────────────────────────────────────────────
-          const RegFieldLabel('Passport Number'),
-          SizedBox(height: SizeConfig.r(6)),
-          RegField(
-            controller: _passportNumberCtrl,
-            hintText: 'Enter passport number',
-          ),
-          SizedBox(height: SizeConfig.r(18)),
-
           // ── Right to Work — only shown for non-British ─────────────────────
           AnimatedSize(
             duration: const Duration(milliseconds: 200),
@@ -719,6 +772,33 @@ class _Step1RegisterState extends State<Step1Register> {
                     ],
                   ),
           ),
+
+          // ── Passport Number ───────────────────────────────────────────────
+          const RegFieldLabel('Passport number'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _passportNumberCtrl,
+            hintText: 'Enter passport number',
+          ),
+          SizedBox(height: SizeConfig.r(14)),
+
+          // ── Passport copy upload ──────────────────────────────────────────
+          const RegFieldLabel('Passport copy (PDF or image)'),
+          SizedBox(height: SizeConfig.r(6)),
+          UploadBox(
+            file: widget.data.passportFile,
+            onTap: _pickPassportFile,
+            subLabel: 'Passport copy (PDF or image)',
+          ),
+          SizedBox(height: SizeConfig.r(10)),
+          ExpiryButton(
+            date: widget.data.passportExpiry,
+            onTap: _pickPassportExpiry,
+            formatDate: _formatDate,
+          ),
+          SizedBox(height: SizeConfig.r(6)),
+          const ManualEntryHint(),
+          SizedBox(height: SizeConfig.r(18)),
 
           // ── Form error ────────────────────────────────────────────────────
           if (_formError != null) ...[

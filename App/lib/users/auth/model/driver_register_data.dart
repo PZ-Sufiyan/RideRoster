@@ -28,6 +28,11 @@ class DriverRegisterData {
   String passportNumber = '';
   String rightToWorkCode = '';
 
+  /// Optional passport copy upload + its expiry date.
+  /// Saved to `driver_documents` with document_type = 'passport'.
+  PlatformFile? passportFile;
+  DateTime? passportExpiry;
+
   /// 'British' or any custom nationality text the driver types.
   String nationality = '';
 
