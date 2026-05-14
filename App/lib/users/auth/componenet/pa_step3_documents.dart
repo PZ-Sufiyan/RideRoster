@@ -17,22 +17,6 @@ class PaStep3Documents extends StatefulWidget {
 }
 
 class _PaStep3DocumentsState extends State<PaStep3Documents> {
-  late final TextEditingController _passportNumberCtrl;
-
-  @override
-  void initState() {
-    super.initState();
-    _passportNumberCtrl = TextEditingController(
-      text: widget.data.passportNumber,
-    );
-  }
-
-  @override
-  void dispose() {
-    _passportNumberCtrl.dispose();
-    super.dispose();
-  }
-
   Future<void> _pickFile(void Function(PlatformFile f) onPicked) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -76,7 +60,6 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
 
   void _saveAndNext() {
     final d = widget.data;
-    d.passportNumber = _passportNumberCtrl.text.trim();
 
     if (d.passportCopy != null && d.passportExpiry == null) {
       setState(
@@ -129,13 +112,6 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
             ),
           ),
           SizedBox(height: SizeConfig.r(24)),
-          const RegFieldLabel('Passport number'),
-          SizedBox(height: SizeConfig.r(6)),
-          RegField(
-            controller: _passportNumberCtrl,
-            hintText: 'Enter passport number',
-          ),
-          SizedBox(height: SizeConfig.r(18)),
           const RegFieldLabel('Passport copy (PDF or image)'),
           SizedBox(height: SizeConfig.r(6)),
           UploadBox(

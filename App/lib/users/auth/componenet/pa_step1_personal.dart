@@ -27,6 +27,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
   late final TextEditingController _residentialAddressCtrl;
   late final TextEditingController _rightToWorkCodeCtrl;
   late final TextEditingController _nationalityCtrl;
+  late final TextEditingController _passportNumberCtrl;
   final _scrollCtrl = ScrollController();
   final _companyFieldKey = GlobalKey();
 
@@ -74,6 +75,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
     if (_britishPassport && _nationalityCtrl.text.trim().isEmpty) {
       _nationalityCtrl.text = 'British';
     }
+    _passportNumberCtrl = TextEditingController(text: d.passportNumber);
     _companyFocusNode.addListener(_onCompanyFocusChange);
     _loadCompanies();
   }
@@ -92,6 +94,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
     _residentialAddressCtrl.dispose();
     _rightToWorkCodeCtrl.dispose();
     _nationalityCtrl.dispose();
+    _passportNumberCtrl.dispose();
     _scrollCtrl.dispose();
     super.dispose();
   }
@@ -217,6 +220,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
     d.rightToWorkCode = _britishPassport
         ? ''
         : _rightToWorkCodeCtrl.text.trim();
+    d.passportNumber = _passportNumberCtrl.text.trim();
     widget.onNext();
   }
 
@@ -637,7 +641,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
                 : Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const RegFieldLabel('Right to Work *'),
+                      const RegFieldLabel('Right to Work Code *'),
                       SizedBox(height: SizeConfig.r(6)),
                       RegField(
                         controller: _rightToWorkCodeCtrl,
@@ -647,6 +651,13 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
                     ],
                   ),
           ),
+          const RegFieldLabel('Passport number'),
+          SizedBox(height: SizeConfig.r(6)),
+          RegField(
+            controller: _passportNumberCtrl,
+            hintText: 'Enter passport number',
+          ),
+          SizedBox(height: SizeConfig.r(18)),
           if (_formError != null) ...[
             SizedBox(height: SizeConfig.r(4)),
             Text(

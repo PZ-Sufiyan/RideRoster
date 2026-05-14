@@ -255,6 +255,14 @@ class _Step3RegisterState extends State<Step3Register> {
       return;
     }
 
+    if (d.passportFile != null && d.passportExpiry == null) {
+      setState(() {
+        _errorMessage =
+            'Passport expiry date is required when a passport file is uploaded.';
+      });
+      return;
+    }
+
     setState(() {
       _isLoading = true;
       _errorMessage = null;
@@ -364,6 +372,25 @@ class _Step3RegisterState extends State<Step3Register> {
             ),
           ),
           SizedBox(height: SizeConfig.r(24)),
+
+          // ── Passport copy upload ──────────────────────────────────────────
+          const RegFieldLabel('Passport copy (PDF or image)'),
+          SizedBox(height: SizeConfig.r(6)),
+          UploadBox(
+            file: d.passportFile,
+            onTap: () => _pickFile((f) => d.passportFile = f),
+            subLabel: 'Passport copy (PDF or image)',
+          ),
+          SizedBox(height: SizeConfig.r(10)),
+          ExpiryButton(
+            date: d.passportExpiry,
+            onTap: () =>
+                _pickDate(d.passportExpiry, (dt) => d.passportExpiry = dt),
+            formatDate: _fmt,
+          ),
+          SizedBox(height: SizeConfig.r(6)),
+          const ManualEntryHint(),
+          SizedBox(height: SizeConfig.r(20)),
 
           // ── License Number ────────────────────────────────────────────────
           const RegFieldLabel('License Number *'),
