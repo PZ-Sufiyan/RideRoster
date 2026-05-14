@@ -90,6 +90,22 @@ export const getJobsByAssignedDriver = async (companyId, driverId) => {
   return data || []
 }
 
+/**
+ * Job sessions belonging to a driver (`job_sessions.driver_id`).
+ * Returns rows ordered by most recent session first.
+ */
+export const getJobSessionsByDriver = async (driverId) => {
+  if (!driverId) return []
+  const { data, error } = await supabase
+    .from('job_sessions')
+    .select('id, job_id, session_date, direction, status, started_at, completed_at, driver_id, created_at')
+    .eq('driver_id', driverId)
+    .order('session_date', { ascending: false })
+    .order('started_at', { ascending: false, nullsFirst: false })
+  if (error) throw error
+  return data || []
+}
+
 export const createDriver = async (driverPayload) => {
   const { data, error } = await supabase
     .from('drivers')

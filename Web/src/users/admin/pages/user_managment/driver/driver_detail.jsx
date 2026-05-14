@@ -15,6 +15,7 @@ import {
     getVehiclesByDriver,
     getVehicleDocuments,
     getJobsByAssignedDriver,
+    getJobSessionsByDriver,
 } from '../../../../../services/driverVehicleService';
 
 /** Labels aligned with `add_new_driver.jsx` / DB document_type enums */
@@ -110,6 +111,45 @@ function formatStatusLabel(raw) {
     return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
+/** Returns the first segment of a UUID (text before the first dash). */
+function shortenUuid(value) {
+    if (value == null) return '—';
+    const s = String(value).trim();
+    if (!s) return '—';
+    const first = s.split('-')[0];
+    return first || s;
+}
+
+function formatTime(iso) {
+    if (!iso) return '—';
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '—';
+    return d.toLocaleTimeString(undefined, {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'UTC',
+    });
+}
+
+function formatDirectionLabel(raw) {
+    const s = (raw || '').trim().toLowerCase();
+    if (!s) return '—';
+    if (s === 'outbound') return 'Outbound';
+    if (s === 'inbound') return 'Inbound';
+    return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+function sessionStatusTextClass(statusRaw) {
+    const s = (statusRaw || '').trim().toLowerCase();
+    const map = {
+        completed: 'text-emerald-600',
+        active: 'text-blue-600',
+        pending: 'text-amber-600',
+        cancelled: 'text-red-600',
+    };
+    return map[s] || 'text-gray-600';
+}
+
 const DriverDetail = () => {
     const navigate = useNavigate();
     const { id } = useParams();
@@ -121,6 +161,7 @@ const DriverDetail = () => {
     const [vehicle, setVehicle] = useState(null);
     const [vehicleDocs, setVehicleDocs] = useState([]);
     const [jobs, setJobs] = useState([]);
+    const [jobSessions, setJobSessions] = useState([]);
 
     const load = useCallback(async () => {
         if (!id) {
@@ -147,6 +188,7 @@ const DriverDetail = () => {
                 setVehicle(null);
                 setVehicleDocs([]);
                 setJobs([]);
+                setJobSessions([]);
                 setLoading(false);
                 return;
             }
@@ -154,10 +196,11 @@ const DriverDetail = () => {
                 throw new Error('Driver not found or access denied.');
             }
 
-            const [docs, vehicles, jobRows] = await Promise.all([
+            const [docs, vehicles, jobRows, sessionRows] = await Promise.all([
                 getDriverDocumentsByDriver(id),
                 getVehiclesByDriver(id),
                 getJobsByAssignedDriver(admin.company_id, id),
+                getJobSessionsByDriver(id),
             ]);
 
             const v = vehicles?.[0] || null;
@@ -171,6 +214,7 @@ const DriverDetail = () => {
             setVehicle(v);
             setVehicleDocs(sortDocsByOrder(vDocs, VEHICLE_DOC_ORDER));
             setJobs(jobRows || []);
+            setJobSessions(sessionRows || []);
         } catch (e) {
             setError(e?.message || 'Failed to load driver.');
             setDriver(null);
@@ -193,7 +237,7 @@ const DriverDetail = () => {
         return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=e5e7eb&color=374151&size=128`;
     }, [driver, displayName]);
 
-    const jobsToShow = useMemo(() => jobs.slice(0, 4), [jobs]);
+    const jobSessionsToShow = useMemo(() => jobSessions, [jobSessions]);
     const driverDocByType = useMemo(() => Object.fromEntries(driverDocs.map((d) => [d.document_type, d])), [driverDocs]);
     const vehicleDocByType = useMemo(() => Object.fromEntries(vehicleDocs.map((d) => [d.document_type, d])), [vehicleDocs]);
     const otherCertificateDocs = useMemo(
@@ -514,32 +558,48 @@ const DriverDetail = () => {
                         <thead className="bg-gray-50/60 border-b border-gray-100">
                             <tr>
                                 <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Job ID</th>
+                                <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Job Session ID</th>
                                 <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Date</th>
                                 <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Route</th>
+                                <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Start Time</th>
+                                <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">End Time</th>
                                 <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Status</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-100">
-                            {jobsToShow.length === 0 ? (
+                            {jobSessionsToShow.length === 0 ? (
                                 <tr>
-                                    <td colSpan={4} className="px-5 py-6 text-center text-sm text-gray-500">
-                                        No assigned jobs yet.
+                                    <td colSpan={7} className="px-5 py-6 text-center text-sm text-gray-500">
+                                        No job sessions yet.
                                     </td>
                                 </tr>
                             ) : (
-                                jobsToShow.map((job) => (
-                                    <tr key={job.id}>
+                                jobSessionsToShow.map((session) => (
+                                    <tr key={session.id}>
                                         <td className="px-5 py-2.5 text-[12px] font-semibold text-gray-700">
-                                            {job.internal_job_id?.trim() || job.id?.slice(0, 8) || '—'}
+                                            {shortenUuid(session.job_id)}
+                                        </td>
+                                        <td className="px-5 py-2.5 text-[12px] font-semibold text-gray-700">
+                                            {shortenUuid(session.id)}
                                         </td>
                                         <td className="px-5 py-2.5 text-[12px] text-gray-500">
-                                            {formatDate(job.semester_start || job.created_at)}
+                                            {formatDate(session.session_date)}
                                         </td>
-                                        <td className="px-5 py-2.5 text-[12px] text-gray-700">{job.job_name || '—'}</td>
+                                        <td className="px-5 py-2.5 text-[12px] text-gray-700">
+                                            {formatDirectionLabel(session.direction)}
+                                        </td>
+                                        <td className="px-5 py-2.5 text-[12px] text-gray-500">
+                                            {formatTime(session.started_at)}
+                                        </td>
+                                        <td className="px-5 py-2.5 text-[12px] text-gray-500">
+                                            {formatTime(session.completed_at)}
+                                        </td>
                                         <td className="px-5 py-2.5">
-                                            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
+                                            <span
+                                                className={`inline-flex items-center gap-1 text-[11px] font-semibold ${sessionStatusTextClass(session.status)}`}
+                                            >
                                                 <MdCheckCircle size={14} />
-                                                {formatJobStatusLabel(job.status)}
+                                                {formatJobStatusLabel(session.status)}
                                             </span>
                                         </td>
                                     </tr>
