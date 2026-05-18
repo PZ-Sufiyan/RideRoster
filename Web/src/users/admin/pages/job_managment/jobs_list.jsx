@@ -522,18 +522,41 @@ const ActiveJobs = () => {
                                         )}
                                     </td>
                                     <td className="px-6 py-5 text-center">
-                                        <div className="flex flex-col items-center">
-                                            <span className="text-[12px] font-semibold text-gray-700 uppercase tracking-wide">
-                                                {job.driverApprovalStatus}
-                                            </span>
-                                            {['counter request', 'counter requested'].includes(
-                                                String(job.driverApprovalStatus || '').trim().toLowerCase()
-                                            ) && job.driverCounterOfferLabel ? (
-                                                <span className="mt-1 text-[11px] font-medium text-amber-600">
-                                                    {job.driverCounterOfferLabel}
-                                                </span>
-                                            ) : null}
-                                        </div>
+                                        {(() => {
+                                            const statusNorm = String(job.driverApprovalStatus || '').trim().toLowerCase();
+                                            const isCounter = ['counter request', 'counter requested'].includes(statusNorm);
+
+                                            if (isCounter) {
+                                                return (
+                                                    <button
+                                                        type="button"
+                                                        onClick={() => navigate(`/portal/jobs/${job.id}/counter-offer`)}
+                                                        className="inline-flex flex-col items-center gap-1 group"
+                                                    >
+                                                        <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-600 group-hover:bg-amber-100 transition-colors">
+                                                            <MdWarning size={12} />
+                                                            Counter Request
+                                                        </span>
+                                                        {job.driverCounterOfferLabel && (
+                                                            <span className="text-[11px] font-semibold text-amber-600">
+                                                                {job.driverCounterOfferLabel}
+                                                            </span>
+                                                        )}
+                                                        <span className="text-[10px] text-[#004D6D] font-semibold underline underline-offset-2 group-hover:no-underline">
+                                                            Review →
+                                                        </span>
+                                                    </button>
+                                                );
+                                            }
+
+                                            return (
+                                                <div className="flex flex-col items-center">
+                                                    <span className="text-[12px] font-semibold text-gray-700 uppercase tracking-wide">
+                                                        {job.driverApprovalStatus}
+                                                    </span>
+                                                </div>
+                                            );
+                                        })()}
                                     </td>
                                     <td className="px-6 py-5 text-center">
                                         <div className="flex items-center justify-center gap-1.5 text-gray-600">

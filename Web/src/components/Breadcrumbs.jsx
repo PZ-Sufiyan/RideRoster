@@ -161,6 +161,14 @@ const ROUTE_CRUMB_MAP = [
         ],
     },
     {
+        match: /^\/portal\/jobs\/([^/]+)\/counter-offer$/,
+        crumbs: (_, [id]) => [
+            { label: 'Job Management', to: '/portal/jobs' },
+            { label: decodeURIComponent(id), to: `/portal/jobs/${id}` },
+            { label: 'Counter-Offer Review' },
+        ],
+    },
+    {
         match: /^\/portal\/jobs\/([^/]+)$/,
         crumbs: (_, [id]) => [
             { label: 'Job Management', to: '/portal/jobs' },
@@ -270,6 +278,14 @@ const ROUTE_CRUMB_MAP = [
             { label: 'Job Management', to: '/team/jobs' },
             { label: decodeURIComponent(id), to: `/team/jobs/${id}` },
             { label: 'Edit Job' },
+        ],
+    },
+    {
+        match: /^\/team\/jobs\/([^/]+)\/counter-offer$/,
+        crumbs: (_, [id]) => [
+            { label: 'Job Management', to: '/team/jobs' },
+            { label: decodeURIComponent(id), to: `/team/jobs/${id}` },
+            { label: 'Counter-Offer Review' },
         ],
     },
     {

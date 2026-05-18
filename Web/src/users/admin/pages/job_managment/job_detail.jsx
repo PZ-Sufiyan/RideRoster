@@ -346,6 +346,41 @@ const JobDetail = () => {
                 </div>
             </div>
 
+            {(() => {
+                if (!job) return null;
+                const statusNorm = String(job.driver_approval_status || '').trim().toLowerCase();
+                if (!['counter request', 'counter requested'].includes(statusNorm)) return null;
+
+                const counterPay = job.driver_counter_offer_pay;
+
+                return (
+                    <div className="flex items-center justify-between gap-4 px-5 py-4 bg-amber-50 border border-amber-200 rounded-2xl">
+                        <div className="flex items-start gap-3">
+                            <div className="w-9 h-9 rounded-full bg-amber-100 flex items-center justify-center shrink-0">
+                                <MdWarning size={18} className="text-amber-500" />
+                            </div>
+                            <div>
+                                <p className="text-[14px] font-bold text-gray-900">
+                                    Driver has submitted a counter-offer
+                                </p>
+                                <p className="text-[13px] text-amber-700 mt-0.5">
+                                    {counterPay != null
+                                        ? `Requested pay: £${Number(counterPay).toFixed(2)}`
+                                        : 'Review the counter-offer to accept or reject.'}
+                                </p>
+                            </div>
+                        </div>
+                        <button
+                            type="button"
+                            onClick={() => navigate(`/portal/jobs/${id}/counter-offer`)}
+                            className="shrink-0 flex items-center gap-2 px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-xl text-[13px] font-bold transition-all shadow-sm"
+                        >
+                            Review Offer →
+                        </button>
+                    </div>
+                );
+            })()}
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
                 {/* ════ LEFT (2/3) ════ */}

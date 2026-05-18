@@ -1215,3 +1215,56 @@ export async function fetchSessionPassengers(sessionId, direction = 'outbound') 
   if (error) throw error
   return rows || []
 }
+
+// ── Counter-offer service functions ───────────────────────────────────────────
+/**
+ * Accept a driver's counter-offer.
+ * - Updates driver_pay to the counter offer value
+ * - Sets driver_approval_status to 'accepted'
+ * - Clears driver_counter_offer_pay
+ */
+export async function acceptCounterOffer(jobId, counterOfferPay) {
+  if (!jobId) throw new Error('Job id is required.');
+  if (counterOfferPay == null) throw new Error('Counter offer pay value is missing.');
+
+  const { data, error } = await supabase
+      .from('jobs')
+      .update({
+          driver_pay: counterOfferPay,
+          driver_approval_status: 'accepted',
+          driver_counter_offer_pay: null,
+          updated_at: new Date().toISOString(),
+      })
+      .eq('id', jobId)
+      .select()
+      .single();
+
+  if (error) throw error;
+  return data;
+}
+
+/**
+* Reject a driver's counter-offer.
+* - Removes the assigned driver (sets to null)
+* - Clears driver_approval_status
+* - Clears driver_counter_offer_pay
+* - driver_pay remains untouched
+*/
+export async function rejectCounterOffer(jobId) {
+  if (!jobId) throw new Error('Job id is required.');
+
+  const { data, error } = await supabase
+      .from('jobs')
+      .update({
+          assigned_driver_id: null,
+          driver_approval_status: null,
+          driver_counter_offer_pay: null,
+          updated_at: new Date().toISOString(),
+      })
+      .eq('id', jobId)
+      .select()
+      .single();
+
+  if (error) throw error;
+  return data;
+}

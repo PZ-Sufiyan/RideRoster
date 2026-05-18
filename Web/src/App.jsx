@@ -25,6 +25,7 @@ import Admin_SubAdminDetail from './users/admin/pages/user_managment/subadmin/su
 import Admin_JobsList from './users/admin/pages/job_managment/jobs_list';
 import Admin_JobDetail from './users/admin/pages/job_managment/job_detail';
 import Admin_EditJob from './users/admin/pages/job_managment/edit_job';
+import Admin_CounterOffer from './users/admin/pages/job_managment/counter_offer';
 import Admin_JobCalendar from './users/admin/pages/job_managment/job_calender';
 import Admin_AddJob from './users/admin/pages/job_managment/add_job';
 import Admin_Passengers from './users/admin/pages/user_managment/passenger/passengers';
@@ -65,6 +66,7 @@ import SubAdmin_SuccessConfirmation from './users/subAdmin/pages/user_managment/
 import SubAdmin_JobsList from './users/subAdmin/pages/job_managment/jobs_list';
 import SubAdmin_JobDetail from './users/subAdmin/pages/job_managment/job_detail';
 import SubAdmin_EditJob from './users/subAdmin/pages/job_managment/edit_job';
+import SubAdmin_CounterOffer from './users/subAdmin/pages/job_managment/counter_offer';
 import SubAdmin_JobCalendar from './users/subAdmin/pages/job_managment/job_calender';
 import SubAdmin_AddJob from './users/subAdmin/pages/job_managment/add_job';
 import SubAdmin_SOSPage from './users/subAdmin/pages/sos/sos';
@@ -154,6 +156,7 @@ function App() {
                 <Route path="/portal/jobs/calendar" element={<Admin_JobCalendar />} />
                 <Route path="/portal/jobs/add-job" element={<Admin_AddJob />} />
                 <Route path="/portal/jobs/:id/edit" element={<Admin_EditJob />} />
+                <Route path="/portal/jobs/:id/counter-offer" element={<Admin_CounterOffer />} />
                 <Route path="/portal/jobs/:id" element={<Admin_JobDetail />} />
                 <Route path="/portal/notifications" element={<Admin_Notifications />} />
                 <Route path="/portal/reports" element={<Admin_Report />} />
@@ -309,6 +312,14 @@ function App() {
                 element={
                   <SubAdminProtectedPage permission="edit_jobs">
                     <SubAdmin_EditJob />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/team/jobs/:id/counter-offer"
+                element={
+                  <SubAdminProtectedPage permission="view_jobs">
+                    <SubAdmin_CounterOffer />
                   </SubAdminProtectedPage>
                 }
               />
