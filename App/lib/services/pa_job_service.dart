@@ -3,8 +3,7 @@ import '../model/pa_job_model.dart';
 
 // Re-use the same status enums from the driver layer.
 // ignore: implementation_imports
-import '../model/job_model.dart'
-    show DropoffStatus, pickupStatusFromDb, dropoffStatusFromDb;
+import '../model/job_model.dart' show PickupStatus, DropoffStatus;
 
 /// Read-only Supabase queries for the Passenger Assistant job view.
 ///
@@ -139,7 +138,7 @@ class PaJobService {
       final scheduledTime = _formatTime(row['pickup_time']);
 
       final rawStatus = sessionStatusMap[pid] ?? 'pending';
-      final pickupStatus = pickupStatusFromDb(rawStatus);
+      final pickupStatus = _toPickupStatus(rawStatus);
 
       stops.add(
         PaPassengerStop(
@@ -244,7 +243,7 @@ class PaJobService {
         final dropoffTime = _formatTime(row['dropoff_time']);
 
         final rawStatus = sessionStatusMap[pid] ?? 'pending';
-        final dropoffStatus = dropoffStatusFromDb(rawStatus);
+        final dropoffStatus = _toDropoffStatus(rawStatus);
 
         dropoffs.add(
           PaDropoffStop(
@@ -397,6 +396,22 @@ class PaJobService {
     final last = (row['last_name'] ?? '').toString().trim();
     final full = [first, last].where((x) => x.isNotEmpty).join(' ');
     return full.isEmpty ? 'Unassigned' : full;
+  }
+
+  // ── Status converters ──────────────────────────────────────────────────────
+
+  PickupStatus _toPickupStatus(String raw) {
+    final s = raw.toLowerCase();
+    if (s == 'picked_up') return PickupStatus.completed;
+    if (s == 'dropped_off') return PickupStatus.completed;
+    if (s == 'missed') return PickupStatus.notPicked;
+    return PickupStatus.pending;
+  }
+
+  DropoffStatus _toDropoffStatus(String raw) {
+    return raw.toLowerCase() == 'dropped_off'
+        ? DropoffStatus.completed
+        : DropoffStatus.pending;
   }
 
   // ── Date / time helpers ────────────────────────────────────────────────────

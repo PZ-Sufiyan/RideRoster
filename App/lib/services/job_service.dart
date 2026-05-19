@@ -204,7 +204,7 @@ class JobService {
           lat: lat,
           lng: lng,
           status: sessionExists
-              ? pickupStatusFromDb(row['status'])
+              ? _toPickupStatus(row['status'])
               : PickupStatus.pending,
         ),
       );
@@ -315,7 +315,7 @@ class JobService {
             passengerName: fullName.isEmpty ? 'Student' : fullName,
             passengerIds: [passengerId],
             status: sessionExists
-                ? dropoffStatusFromDb(row['status'])
+                ? _toDropoffStatus(row['status'])
                 : DropoffStatus.pending,
           ),
         );
@@ -732,6 +732,23 @@ class JobService {
     final last = (row['surname'] ?? '').toString().trim();
     final full = [first, last].where((x) => x.isNotEmpty).join(' ');
     return full.isEmpty ? 'Unassigned' : full;
+  }
+
+  // ── Status converters ─────────────────────────────────────────────────────
+
+  PickupStatus _toPickupStatus(dynamic raw) {
+    final s = (raw ?? '').toString().toLowerCase();
+    // dropped_off means the passenger was picked up and later dropped off;
+    // pickup timeline must stay "completed" after drop-off mutations.
+    if (s == 'picked_up') return PickupStatus.completed;
+    if (s == 'dropped_off') return PickupStatus.completed;
+    if (s == 'missed') return PickupStatus.notPicked;
+    return PickupStatus.pending;
+  }
+
+  DropoffStatus _toDropoffStatus(dynamic raw) {
+    final s = (raw ?? '').toString().toLowerCase();
+    return s == 'dropped_off' ? DropoffStatus.completed : DropoffStatus.pending;
   }
 
   String _dbPickupStatus(PickupStatus status) {
