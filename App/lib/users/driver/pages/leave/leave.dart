@@ -7,7 +7,7 @@ import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../providers/driver_leave_provider.dart';
-import '../../../../users/driver/models/driver_leave_model.dart';
+import '../../../../model/driver_leave_model.dart';
 
 class DriverLeavePage extends StatefulWidget {
   const DriverLeavePage({super.key});
@@ -597,9 +597,7 @@ class _LeaveHistoryPageShimmer extends StatelessWidget {
         SizeConfig.r(30),
         SizeConfig.r(30),
       ),
-      child: Shimmer(
-        child: const _LeaveHistoryShimmerList(count: 4),
-      ),
+      child: Shimmer(child: const _LeaveHistoryShimmerList(count: 4)),
     );
   }
 }
@@ -616,7 +614,10 @@ class _LeaveSummaryShimmerCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(SizeConfig.r(12)),
-        border: Border.all(color: const Color(0xFFE9EAEE), width: SizeConfig.r(1)),
+        border: Border.all(
+          color: const Color(0xFFE9EAEE),
+          width: SizeConfig.r(1),
+        ),
       ),
       child: Row(
         children: [
@@ -682,7 +683,10 @@ class _LeaveHistoryShimmerCard extends StatelessWidget {
       decoration: BoxDecoration(
         color: AppColors.background,
         borderRadius: BorderRadius.circular(SizeConfig.r(12)),
-        border: Border.all(color: const Color(0xFFE9EAEE), width: SizeConfig.r(1)),
+        border: Border.all(
+          color: const Color(0xFFE9EAEE),
+          width: SizeConfig.r(1),
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,

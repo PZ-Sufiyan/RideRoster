@@ -1,6 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import '../model/passenger_assistant_register_data.dart';
+import '../../../model/passenger_assistant_register_data.dart';
 import 'register_widgets.dart';
 import 'step3_register.dart';
 import '../../../../utils/app_colors.dart';

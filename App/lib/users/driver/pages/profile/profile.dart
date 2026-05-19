@@ -4,7 +4,7 @@ import '../../../../components/app_button.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../providers/driver_profile_provider.dart';
 import '../../../../routes/app_routes.dart';
-import '../../../../users/driver/models/driver_profile_model.dart';
+import '../../../../model/driver_profile_model.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
@@ -531,19 +531,25 @@ class _ProfilePageShimmer extends StatelessWidget {
                           ShimmerBox(
                             width: SizeConfig.r(88),
                             height: SizeConfig.r(88),
-                            borderRadius: BorderRadius.circular(SizeConfig.r(44)),
+                            borderRadius: BorderRadius.circular(
+                              SizeConfig.r(44),
+                            ),
                           ),
                           SizedBox(height: SizeConfig.r(12)),
                           ShimmerBox(
                             width: SizeConfig.r(180),
                             height: SizeConfig.r(18),
-                            borderRadius: BorderRadius.circular(SizeConfig.r(6)),
+                            borderRadius: BorderRadius.circular(
+                              SizeConfig.r(6),
+                            ),
                           ),
                           SizedBox(height: SizeConfig.r(8)),
                           ShimmerBox(
                             width: SizeConfig.r(86),
                             height: SizeConfig.r(22),
-                            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                            borderRadius: BorderRadius.circular(
+                              SizeConfig.r(4),
+                            ),
                           ),
                         ],
                       ),

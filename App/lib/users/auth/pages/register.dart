@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../model/driver_register_data.dart';
+import '../../../model/driver_register_data.dart';
 import '../componenet/step1_register.dart';
 import '../componenet/step2_register.dart';
 import '../componenet/step3_register.dart';

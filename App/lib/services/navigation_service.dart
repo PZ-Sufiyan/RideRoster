@@ -1,6 +1,6 @@
 import 'package:geolocator/geolocator.dart';
 import 'package:url_launcher/url_launcher.dart';
-import '../users/driver/models/job_model.dart';
+import '../model/job_model.dart';
 
 /// Handles all external Google Maps navigation launches.
 ///

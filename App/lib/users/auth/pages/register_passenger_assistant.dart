@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../model/passenger_assistant_register_data.dart';
+import '../../../model/passenger_assistant_register_data.dart';
 import '../componenet/pa_step1_personal.dart';
 import '../componenet/pa_step2_profile_photo.dart';
 import '../componenet/pa_step3_documents.dart';

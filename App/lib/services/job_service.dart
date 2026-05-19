@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../users/driver/models/job_model.dart';
+import '../model/job_model.dart';
 
 /// All Supabase queries for the active job + session flow.
 ///
@@ -204,7 +204,7 @@ class JobService {
           lat: lat,
           lng: lng,
           status: sessionExists
-              ? _toPickupStatus(row['status'])
+              ? pickupStatusFromDb(row['status'])
               : PickupStatus.pending,
         ),
       );
@@ -315,7 +315,7 @@ class JobService {
             passengerName: fullName.isEmpty ? 'Student' : fullName,
             passengerIds: [passengerId],
             status: sessionExists
-                ? _toDropoffStatus(row['status'])
+                ? dropoffStatusFromDb(row['status'])
                 : DropoffStatus.pending,
           ),
         );
@@ -732,20 +732,6 @@ class JobService {
     final last = (row['surname'] ?? '').toString().trim();
     final full = [first, last].where((x) => x.isNotEmpty).join(' ');
     return full.isEmpty ? 'Unassigned' : full;
-  }
-
-  // ── Status converters ─────────────────────────────────────────────────────
-
-  PickupStatus _toPickupStatus(dynamic raw) {
-    final s = (raw ?? '').toString().toLowerCase();
-    if (s == 'picked_up') return PickupStatus.completed;
-    if (s == 'missed') return PickupStatus.notPicked;
-    return PickupStatus.pending;
-  }
-
-  DropoffStatus _toDropoffStatus(dynamic raw) {
-    final s = (raw ?? '').toString().toLowerCase();
-    return s == 'dropped_off' ? DropoffStatus.completed : DropoffStatus.pending;
   }
 
   String _dbPickupStatus(PickupStatus status) {

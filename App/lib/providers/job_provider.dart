@@ -1,6 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import '../users/driver/models/job_model.dart';
+import '../model/job_model.dart';
 import '../services/job_service.dart';
 import '../services/realtime_service.dart';
 import '../services/navigation_service.dart';

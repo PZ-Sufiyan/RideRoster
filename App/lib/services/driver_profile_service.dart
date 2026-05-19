@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../users/driver/models/driver_profile_model.dart';
+import '../model/driver_profile_model.dart';
 
 class DriverProfileService {
   SupabaseClient get _supabase => Supabase.instance.client;
@@ -39,7 +39,9 @@ class DriverProfileService {
 
     DriverVehicleModel? vehicle;
     if (vehicleRow != null) {
-      vehicle = DriverVehicleModel.fromMap(Map<String, dynamic>.from(vehicleRow));
+      vehicle = DriverVehicleModel.fromMap(
+        Map<String, dynamic>.from(vehicleRow),
+      );
     }
 
     final driverDocsResponse = await _supabase
@@ -49,7 +51,10 @@ class DriverProfileService {
         .order('uploaded_at', ascending: false);
 
     final driverDocs = (driverDocsResponse as List)
-        .map((item) => DriverDocumentModel.fromMap(Map<String, dynamic>.from(item)))
+        .map(
+          (item) =>
+              DriverDocumentModel.fromMap(Map<String, dynamic>.from(item)),
+        )
         .toList();
 
     final vehicleDocs = <VehicleDocumentModel>[];

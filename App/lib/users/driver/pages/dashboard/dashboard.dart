@@ -9,7 +9,7 @@ import '../../../../services/driver_job_request_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
-import '../../models/job_request_model.dart';
+import '../../../../model/job_request_model.dart';
 
 class DriverDashboardPage extends StatefulWidget {
   const DriverDashboardPage({super.key});
@@ -653,8 +653,7 @@ class _StatsGridState extends State<_StatsGrid> {
         iconColor: checklistDone ? AppColors.success : AppColors.warning,
         count: checklistDone ? '✓' : '1',
         label: 'Checklist Pending',
-        onTap: () =>
-            Navigator.pushNamed(context, AppRoutes.vehicleChecklist),
+        onTap: () => Navigator.pushNamed(context, AppRoutes.vehicleChecklist),
       ),
       _StatData(
         icon: Icons.check_circle,

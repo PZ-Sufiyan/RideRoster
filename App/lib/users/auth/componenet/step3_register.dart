@@ -1,6 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
-import '../model/driver_register_data.dart';
+import '../../../model/driver_register_data.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../services/auth_service.dart';
@@ -761,4 +761,3 @@ class _Step3RegisterState extends State<Step3Register> {
     );
   }
 }
-

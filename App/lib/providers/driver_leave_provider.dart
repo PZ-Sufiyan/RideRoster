@@ -1,5 +1,5 @@
 import 'package:flutter/widgets.dart';
-import '../users/driver/models/driver_leave_model.dart';
+import '../model/driver_leave_model.dart';
 import '../services/driver_leave_service.dart';
 
 /// State management for the driver leave feature.

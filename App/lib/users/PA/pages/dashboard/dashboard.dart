@@ -4,14 +4,9 @@ import '../../../../providers/auth_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
-import '../../models/passenger_model.dart';
+import '../../../../providers/pa_job_provider.dart';
+import '../../../../model/pa_job_model.dart';
 
-/// Passenger Assistant — Dashboard
-///
-/// Renders the PA's home screen using static dummy data while the backend
-/// integration is in progress. Mirrors the design provided in the spec
-/// screenshot: header → current job card → passengers list → quick actions
-/// → SOS emergency button → bottom navigation.
 class PaDashboardPage extends StatefulWidget {
   const PaDashboardPage({super.key});
 
@@ -20,7 +15,13 @@ class PaDashboardPage extends StatefulWidget {
 }
 
 class _PaDashboardPageState extends State<PaDashboardPage> {
-  int _currentTab = 0;
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<PaJobProvider>().loadJob();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -33,34 +34,35 @@ class _PaDashboardPageState extends State<PaDashboardPage> {
           children: [
             const _PaAppBar(),
             Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.hPad,
-                  vertical: SizeConfig.spaceSM,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _CurrentJobCard(job: PaDashboardDummyData.currentJob),
-                    SizedBox(height: SizeConfig.r(20)),
-                    const _PassengersSection(
-                      passengers: PaDashboardDummyData.passengers,
+              child: Consumer<PaJobProvider>(
+                builder: (_, provider, __) {
+                  if (provider.isLoading) {
+                    return const Center(child: CircularProgressIndicator());
+                  }
+                  return SingleChildScrollView(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SizeConfig.hPad,
+                      vertical: SizeConfig.spaceSM,
                     ),
-                    SizedBox(height: SizeConfig.r(20)),
-                    const _QuickActionsSection(),
-                    SizedBox(height: SizeConfig.r(18)),
-                    const _SosButton(),
-                    SizedBox(height: SizeConfig.spaceMD),
-                  ],
-                ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _CurrentJobCard(job: provider.job),
+                        SizedBox(height: SizeConfig.r(20)),
+                        _PassengersSection(job: provider.job),
+                        SizedBox(height: SizeConfig.r(20)),
+                        const _QuickActionsSection(),
+                        SizedBox(height: SizeConfig.r(18)),
+                        const _SosButton(),
+                        SizedBox(height: SizeConfig.spaceMD),
+                      ],
+                    ),
+                  );
+                },
               ),
             ),
           ],
         ),
-      ),
-      bottomNavigationBar: _PaBottomNav(
-        currentIndex: _currentTab,
-        onTap: (i) => setState(() => _currentTab = i),
       ),
     );
   }
@@ -75,6 +77,7 @@ class _PaAppBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final auth = context.watch<AuthProvider>();
     return Container(
       color: AppColors.background,
       padding: EdgeInsets.symmetric(
@@ -83,53 +86,60 @@ class _PaAppBar extends StatelessWidget {
       ),
       child: Row(
         children: [
-          CircleAvatar(
-            radius: SizeConfig.r(22),
-            backgroundColor: AppColors.primaryLight,
-            child: Icon(
-              Icons.person,
-              color: AppColors.primary,
-              size: SizeConfig.r(24),
-            ),
-          ),
-          SizedBox(width: SizeConfig.r(10)),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+          GestureDetector(
+            onTap: () => Navigator.pushNamed(context, AppRoutes.paProfile),
+            behavior: HitTestBehavior.opaque,
+            child: Row(
               children: [
-                Text(
-                  PaDashboardDummyData.paName,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(16),
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textDark,
+                CircleAvatar(
+                  radius: SizeConfig.r(22),
+                  backgroundColor: AppColors.primaryLight,
+                  child: Icon(
+                    Icons.person,
+                    color: AppColors.primary,
+                    size: SizeConfig.r(24),
                   ),
                 ),
-                SizedBox(height: SizeConfig.r(3)),
-                Row(
+                SizedBox(width: SizeConfig.r(10)),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: SizeConfig.r(8),
-                      height: SizeConfig.r(8),
-                      decoration: const BoxDecoration(
-                        color: AppColors.success,
-                        shape: BoxShape.circle,
+                    Text(
+                      auth.userName ?? 'Passenger Assistant',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(16),
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
                       ),
                     ),
-                    SizedBox(width: SizeConfig.r(5)),
-                    Text(
-                      PaDashboardDummyData.onShift ? 'On Shift' : 'Off Shift',
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(12),
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.success,
-                      ),
+                    SizedBox(height: SizeConfig.r(3)),
+                    Row(
+                      children: [
+                        Container(
+                          width: SizeConfig.r(8),
+                          height: SizeConfig.r(8),
+                          decoration: const BoxDecoration(
+                            color: AppColors.success,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                        SizedBox(width: SizeConfig.r(5)),
+                        Text(
+                          'On Shift',
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(12),
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.success,
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ],
             ),
           ),
+          const Spacer(),
           GestureDetector(
             onTap: () async {
               await context.read<AuthProvider>().logout();
@@ -147,47 +157,16 @@ class _PaAppBar extends StatelessWidget {
             ),
           ),
           SizedBox(width: SizeConfig.r(14)),
-          _NotificationBell(count: PaDashboardDummyData.notificationCount),
-        ],
-      ),
-    );
-  }
-}
-
-class _NotificationBell extends StatelessWidget {
-  final int count;
-  const _NotificationBell({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      width: SizeConfig.r(28),
-      height: SizeConfig.r(28),
-      child: Stack(
-        clipBehavior: Clip.none,
-        children: [
-          Icon(
-            Icons.notifications_outlined,
-            color: AppColors.textDark,
-            size: SizeConfig.r(26),
-          ),
-          if (count > 0)
-            Positioned(
-              right: SizeConfig.r(2),
-              top: SizeConfig.r(2),
-              child: Container(
-                width: SizeConfig.r(9),
-                height: SizeConfig.r(9),
-                decoration: BoxDecoration(
-                  color: AppColors.error,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: AppColors.background,
-                    width: SizeConfig.r(1.5),
-                  ),
-                ),
-              ),
+          GestureDetector(
+            onTap: () =>
+                Navigator.pushNamed(context, AppRoutes.paNotifications),
+            behavior: HitTestBehavior.opaque,
+            child: Icon(
+              Icons.notifications_outlined,
+              color: AppColors.textDark,
+              size: SizeConfig.r(26),
             ),
+          ),
         ],
       ),
     );
@@ -199,11 +178,41 @@ class _NotificationBell extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _CurrentJobCard extends StatelessWidget {
-  final PaCurrentJob job;
+  final PaJobModel? job;
   const _CurrentJobCard({required this.job});
 
   @override
   Widget build(BuildContext context) {
+    if (job == null) {
+      return Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(SizeConfig.r(18)),
+        decoration: BoxDecoration(
+          color: AppColors.background,
+          borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+          border: Border.all(color: AppColors.inputBorder),
+        ),
+        child: Column(
+          children: [
+            Icon(
+              Icons.work_off_outlined,
+              size: SizeConfig.r(40),
+              color: AppColors.textLight,
+            ),
+            SizedBox(height: SizeConfig.r(10)),
+            Text(
+              'No job assigned for today',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(14),
+                color: AppColors.textMedium,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(SizeConfig.r(18)),
@@ -218,33 +227,48 @@ class _CurrentJobCard extends StatelessWidget {
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text(
-                'Current Job',
-                style: TextStyle(
-                  fontSize: SizeConfig.sp(18),
-                  fontWeight: FontWeight.w700,
-                  color: AppColors.textDark,
-                ),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Current Job',
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(18),
+                      fontWeight: FontWeight.w700,
+                      color: AppColors.textDark,
+                    ),
+                  ),
+                  SizedBox(height: SizeConfig.r(2)),
+                  Text(
+                    job!.isInbound ? 'Evening Run' : 'Morning Run',
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(12),
+                      color: AppColors.textMedium,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
               ),
-              _StatusPill(status: job.status),
+              _StatusPill(status: job!.displayStatus),
             ],
           ),
           SizedBox(height: SizeConfig.r(16)),
-          _DetailRow(label: 'Route', value: job.routeName),
+          _DetailRow(label: 'Route', value: job!.jobName),
           SizedBox(height: SizeConfig.r(10)),
-          _DetailRow(label: 'Driver', value: job.driverName),
+          _DetailRow(label: 'Driver', value: job!.driverName),
           SizedBox(height: SizeConfig.r(10)),
-          _DetailRow(label: 'Pickup Time', value: job.pickupTime),
+          _DetailRow(label: 'Start Time', value: job!.startTime),
           SizedBox(height: SizeConfig.r(10)),
-          _DetailRow(label: 'Total Students', value: '${job.totalStudents}'),
+          _DetailRow(label: 'Total Students', value: '${job!.totalStudents}'),
           SizedBox(height: SizeConfig.r(18)),
           SizedBox(
             width: double.infinity,
             height: SizeConfig.r(48),
             child: ElevatedButton(
-              onPressed: () {},
+              onPressed: () =>
+                  Navigator.pushNamed(context, AppRoutes.paCurrentJob),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.success,
+                backgroundColor: AppColors.primary,
                 foregroundColor: Colors.white,
                 elevation: 0,
                 shape: RoundedRectangleBorder(
@@ -252,7 +276,7 @@ class _CurrentJobCard extends StatelessWidget {
                 ),
               ),
               child: Text(
-                'Start Job',
+                'View Detail',
                 style: TextStyle(
                   fontSize: SizeConfig.sp(15),
                   fontWeight: FontWeight.w700,
@@ -267,7 +291,7 @@ class _CurrentJobCard extends StatelessWidget {
 }
 
 class _StatusPill extends StatelessWidget {
-  final PaJobStatus status;
+  final PaJobDisplayStatus status;
   const _StatusPill({required this.status});
 
   @override
@@ -275,18 +299,24 @@ class _StatusPill extends StatelessWidget {
     late final String label;
     late final Color bg;
     late final Color fg;
+
     switch (status) {
-      case PaJobStatus.startingSoon:
+      case PaJobDisplayStatus.startingSoon:
         label = 'Starting Soon';
         bg = AppColors.warning.withValues(alpha: 0.15);
         fg = AppColors.warning;
         break;
-      case PaJobStatus.inProgress:
+      case PaJobDisplayStatus.inProgress:
         label = 'In Progress';
         bg = AppColors.success.withValues(alpha: 0.15);
         fg = AppColors.success;
         break;
-      case PaJobStatus.completed:
+      case PaJobDisplayStatus.droppingOff:
+        label = 'Dropping Off';
+        bg = AppColors.primary.withValues(alpha: 0.12);
+        fg = AppColors.primary;
+        break;
+      case PaJobDisplayStatus.completed:
         label = 'Completed';
         bg = AppColors.primaryLight;
         fg = AppColors.primaryDark;
@@ -329,7 +359,6 @@ class _DetailRow extends StatelessWidget {
           style: TextStyle(
             fontSize: SizeConfig.sp(13),
             color: AppColors.textMedium,
-            fontWeight: FontWeight.w400,
           ),
         ),
         Text(
@@ -350,16 +379,18 @@ class _DetailRow extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PassengersSection extends StatelessWidget {
-  final List<PassengerModel> passengers;
-  const _PassengersSection({required this.passengers});
+  final PaJobModel? job;
+  const _PassengersSection({required this.job});
 
   @override
   Widget build(BuildContext context) {
+    final stops = job?.stops ?? [];
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'Passengers (${passengers.length})',
+          'Passengers (${stops.length})',
           style: TextStyle(
             fontSize: SizeConfig.sp(17),
             fontWeight: FontWeight.w700,
@@ -367,20 +398,38 @@ class _PassengersSection extends StatelessWidget {
           ),
         ),
         SizedBox(height: SizeConfig.r(10)),
-        ...passengers.map(
-          (p) => Padding(
-            padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
-            child: _PassengerCard(passenger: p),
+        if (stops.isEmpty)
+          Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(SizeConfig.r(16)),
+            decoration: BoxDecoration(
+              color: AppColors.background,
+              borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+              border: Border.all(color: AppColors.inputBorder),
+            ),
+            child: Text(
+              'No passengers scheduled for today.',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(13),
+                color: AppColors.textMedium,
+              ),
+            ),
+          )
+        else
+          ...stops.map(
+            (stop) => Padding(
+              padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+              child: _PassengerCard(stop: stop),
+            ),
           ),
-        ),
       ],
     );
   }
 }
 
 class _PassengerCard extends StatelessWidget {
-  final PassengerModel passenger;
-  const _PassengerCard({required this.passenger});
+  final PaPassengerStop stop;
+  const _PassengerCard({required this.stop});
 
   @override
   Widget build(BuildContext context) {
@@ -401,7 +450,7 @@ class _PassengerCard extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  passenger.name,
+                  stop.passengerName,
                   style: TextStyle(
                     fontSize: SizeConfig.sp(14),
                     fontWeight: FontWeight.w700,
@@ -410,58 +459,85 @@ class _PassengerCard extends StatelessWidget {
                 ),
                 SizedBox(height: SizeConfig.r(3)),
                 Text(
-                  passenger.grade,
+                  stop.address,
                   style: TextStyle(
                     fontSize: SizeConfig.sp(12),
                     color: AppColors.textLight,
                   ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                 ),
               ],
             ),
           ),
-          _ReadinessBadge(readiness: passenger.readiness),
+          SizedBox(width: SizeConfig.r(8)),
+          // Wheelchair / harness badges
+          Row(
+            children: [
+              if (stop.wheelchairRequired)
+                _NeedsBadge(
+                  icon: Icons.accessible,
+                  label: 'Wheelchair',
+                  color: AppColors.primary,
+                ),
+              if (stop.wheelchairRequired && stop.harnessRequired)
+                SizedBox(width: SizeConfig.r(6)),
+              if (stop.harnessRequired)
+                _NeedsBadge(
+                  icon: Icons.safety_check_outlined,
+                  label: 'Harness',
+                  color: const Color(0xFF7C3AED),
+                ),
+            ],
+          ),
         ],
       ),
     );
   }
 }
 
-class _ReadinessBadge extends StatelessWidget {
-  final PassengerReadiness readiness;
-  const _ReadinessBadge({required this.readiness});
+class _NeedsBadge extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final Color color;
+  const _NeedsBadge({
+    required this.icon,
+    required this.label,
+    required this.color,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final bool isReady = readiness == PassengerReadiness.ready;
-    final Color bg = isReady
-        ? AppColors.success.withValues(alpha: 0.15)
-        : AppColors.inputBorder;
-    final Color fg = isReady ? AppColors.success : AppColors.textMedium;
-    final String label = isReady ? 'Ready' : 'Not Ready';
-
     return Container(
       padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.r(12),
-        vertical: SizeConfig.r(6),
+        horizontal: SizeConfig.r(8),
+        vertical: SizeConfig.r(5),
       ),
       decoration: BoxDecoration(
-        color: bg,
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(SizeConfig.r(20)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: SizeConfig.sp(11),
-          fontWeight: FontWeight.w600,
-          color: fg,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: SizeConfig.r(12), color: color),
+          SizedBox(width: SizeConfig.r(3)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(10),
+              fontWeight: FontWeight.w600,
+              color: color,
+            ),
+          ),
+        ],
       ),
     );
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Quick Actions Section
+// Quick Actions Section  (unchanged from original)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _QuickActionsSection extends StatelessWidget {
@@ -487,8 +563,19 @@ class _QuickActionsSection extends StatelessWidget {
       ),
       _QuickActionData(
         icon: Icons.phone,
-        label: 'Contact Driver',
+        label: 'Contact\nDriver',
         color: AppColors.success,
+      ),
+      _QuickActionData(
+        icon: Icons.work_outline,
+        label: 'Assigned\nJob',
+        color: AppColors.primaryDark,
+        onTap: () => Navigator.pushNamed(context, AppRoutes.paAssignedJobs),
+      ),
+      _QuickActionData(
+        icon: Icons.event_available_outlined,
+        label: 'Leave',
+        color: const Color(0xFFEA580C),
       ),
     ];
 
@@ -505,19 +592,25 @@ class _QuickActionsSection extends StatelessWidget {
         ),
         SizedBox(height: SizeConfig.r(10)),
         Row(
-          children: [
-            Expanded(child: _QuickActionCard(data: actions[0])),
-            SizedBox(width: SizeConfig.r(10)),
-            Expanded(child: _QuickActionCard(data: actions[1])),
-          ],
+          children: List.generate(3, (i) {
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: i < 2 ? SizeConfig.r(10) : 0),
+                child: _QuickActionCard(data: actions[i]),
+              ),
+            );
+          }),
         ),
         SizedBox(height: SizeConfig.r(10)),
         Row(
-          children: [
-            Expanded(child: _QuickActionCard(data: actions[2])),
-            SizedBox(width: SizeConfig.r(10)),
-            Expanded(child: _QuickActionCard(data: actions[3])),
-          ],
+          children: List.generate(3, (i) {
+            return Expanded(
+              child: Padding(
+                padding: EdgeInsets.only(right: i < 2 ? SizeConfig.r(10) : 0),
+                child: _QuickActionCard(data: actions[i + 3]),
+              ),
+            );
+          }),
         ),
       ],
     );
@@ -528,10 +621,12 @@ class _QuickActionData {
   final IconData icon;
   final String label;
   final Color color;
+  final VoidCallback? onTap;
   const _QuickActionData({
     required this.icon,
     required this.label,
     required this.color,
+    this.onTap,
   });
 }
 
@@ -542,7 +637,7 @@ class _QuickActionCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return GestureDetector(
-      onTap: () {},
+      onTap: data.onTap,
       child: Container(
         padding: EdgeInsets.symmetric(
           vertical: SizeConfig.r(20),
@@ -575,7 +670,7 @@ class _QuickActionCard extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// SOS Button
+// SOS Button  (unchanged)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SosButton extends StatelessWidget {
@@ -610,109 +705,6 @@ class _SosButton extends StatelessWidget {
             ),
           ],
         ),
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Bottom Navigation
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _PaBottomNav extends StatelessWidget {
-  final int currentIndex;
-  final ValueChanged<int> onTap;
-  const _PaBottomNav({required this.currentIndex, required this.onTap});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        border: Border(top: BorderSide(color: AppColors.inputBorder)),
-      ),
-      child: SafeArea(
-        top: false,
-        child: Padding(
-          padding: EdgeInsets.symmetric(vertical: SizeConfig.r(8)),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceAround,
-            children: [
-              _NavItem(
-                icon: Icons.home_outlined,
-                activeIcon: Icons.home,
-                label: 'Dashboard',
-                isActive: currentIndex == 0,
-                onTap: () => onTap(0),
-              ),
-              _NavItem(
-                icon: Icons.groups_outlined,
-                activeIcon: Icons.groups,
-                label: 'Passengers',
-                isActive: currentIndex == 1,
-                onTap: () => onTap(1),
-              ),
-              _NavItem(
-                icon: Icons.work_outline,
-                activeIcon: Icons.work,
-                label: 'Job',
-                isActive: currentIndex == 2,
-                onTap: () => onTap(2),
-              ),
-              _NavItem(
-                icon: Icons.person_outline,
-                activeIcon: Icons.person,
-                label: 'Profile',
-                isActive: currentIndex == 3,
-                onTap: () => onTap(3),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _NavItem extends StatelessWidget {
-  final IconData icon;
-  final IconData activeIcon;
-  final String label;
-  final bool isActive;
-  final VoidCallback onTap;
-
-  const _NavItem({
-    required this.icon,
-    required this.activeIcon,
-    required this.label,
-    required this.isActive,
-    required this.onTap,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    final Color color = isActive ? AppColors.success : AppColors.textLight;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            isActive ? activeIcon : icon,
-            color: color,
-            size: SizeConfig.r(22),
-          ),
-          SizedBox(height: SizeConfig.r(4)),
-          Text(
-            label,
-            style: TextStyle(
-              fontSize: SizeConfig.sp(11),
-              fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-              color: color,
-            ),
-          ),
-        ],
       ),
     );
   }

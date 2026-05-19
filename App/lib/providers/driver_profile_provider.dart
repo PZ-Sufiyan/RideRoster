@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../services/driver_profile_service.dart';
-import '../users/driver/models/driver_profile_model.dart';
+import '../model/driver_profile_model.dart';
 
 class DriverProfileProvider extends ChangeNotifier {
   final DriverProfileService _service = DriverProfileService();

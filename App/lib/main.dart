@@ -8,6 +8,7 @@ import 'providers/auth_provider.dart';
 import 'providers/driver_leave_provider.dart';
 import 'providers/driver_profile_provider.dart';
 import 'providers/job_provider.dart';
+import 'providers/pa_job_provider.dart';
 import 'routes/app_routes.dart';
 import 'services/location_service.dart';
 import 'services/notification_service.dart';
@@ -53,6 +54,7 @@ class RideRosterApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => JobProvider()),
+        ChangeNotifierProvider(create: (_) => PaJobProvider()),
         ChangeNotifierProvider(create: (_) => DriverProfileProvider()),
         ChangeNotifierProvider(create: (_) => DriverLeaveProvider()),
       ],

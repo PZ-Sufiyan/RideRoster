@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../users/driver/models/job_request_model.dart';
+import '../model/job_request_model.dart';
 
 /// Fetches pending job approval requests for the driver.
 ///

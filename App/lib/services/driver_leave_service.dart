@@ -1,5 +1,5 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../users/driver/models/driver_leave_model.dart';
+import '../model/driver_leave_model.dart';
 
 /// All Supabase queries for the driver leave request feature.
 ///

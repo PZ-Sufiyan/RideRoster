@@ -9,6 +9,21 @@ enum PickupStatus { pending, completed, notPicked }
 /// Maps to job_session_passengers.status for dropoff actions.
 enum DropoffStatus { pending, completed }
 
+/// Parses job_session_passengers.status for pickup UI / counts.
+/// [dropped_off] still counts as picked up — drop-off updates the same row.
+PickupStatus pickupStatusFromDb(dynamic raw) {
+  final s = (raw ?? '').toString().toLowerCase();
+  if (s == 'picked_up' || s == 'dropped_off') return PickupStatus.completed;
+  if (s == 'missed') return PickupStatus.notPicked;
+  return PickupStatus.pending;
+}
+
+/// Parses job_session_passengers.status for drop-off UI.
+DropoffStatus dropoffStatusFromDb(dynamic raw) {
+  final s = (raw ?? '').toString().toLowerCase();
+  return s == 'dropped_off' ? DropoffStatus.completed : DropoffStatus.pending;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // PickupStop
 // ─────────────────────────────────────────────────────────────────────────────

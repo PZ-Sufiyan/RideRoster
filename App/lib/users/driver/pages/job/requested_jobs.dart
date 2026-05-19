@@ -10,7 +10,7 @@ import '../../../../services/driver_job_request_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
-import '../../models/job_request_model.dart';
+import '../../../../model/job_request_model.dart';
 
 class RequestedJobsPage extends StatefulWidget {
   const RequestedJobsPage({super.key});
@@ -229,10 +229,7 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
                               final normalized = controller.text
                                   .trim()
                                   .replaceAll(',', '');
-                              Navigator.pop(
-                                ctx,
-                                double.parse(normalized),
-                              );
+                              Navigator.pop(ctx, double.parse(normalized));
                             }
                           },
                           style: ElevatedButton.styleFrom(

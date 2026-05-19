@@ -3,7 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
 import '../../../../providers/job_provider.dart';
 import '../../../../routes/app_routes.dart';
-import '../../../../users/driver/models/job_model.dart';
+import '../../../../model/job_model.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 

@@ -11,6 +11,10 @@ import '../users/driver/pages/job/pickup_que.dart';
 import '../users/driver/pages/job/requested_jobs.dart';
 import '../users/driver/pages/job/route_detail.dart';
 import '../users/PA/pages/dashboard/dashboard.dart';
+import '../users/PA/pages/profile/profile.dart';
+import '../users/PA/pages/Notification/Notification.dart';
+import '../users/PA/pages/job/assigned_job.dart';
+import '../users/PA/pages/job/current_job.dart';
 import '../users/driver/pages/leave/leave.dart';
 import '../users/driver/pages/leave/leave_request_form.dart';
 import '../users/driver/pages/profile/profile.dart';
@@ -35,6 +39,10 @@ class AppRoutes {
   static const String driverLeave = '/driver/leave';
   static const String driverLeaveRequest = '/driver/leave-request';
   static const String paDashboard = '/pa/dashboard';
+  static const String paProfile = '/pa/profile';
+  static const String paNotifications = '/pa/notifications';
+  static const String paCurrentJob = '/pa/current-job';
+  static const String paAssignedJobs = '/pa/assigned-jobs';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -90,6 +98,18 @@ class AppRoutes {
 
       case paDashboard:
         return MaterialPageRoute(builder: (_) => const PaDashboardPage());
+
+      case paProfile:
+        return MaterialPageRoute(builder: (_) => const PaProfilePage());
+
+      case paNotifications:
+        return MaterialPageRoute(builder: (_) => const PaNotificationsPage());
+
+      case paCurrentJob:
+        return MaterialPageRoute(builder: (_) => const PaCurrentJobPage());
+
+      case paAssignedJobs:
+        return MaterialPageRoute(builder: (_) => const PaAssignedJobsPage());
 
       default:
         return MaterialPageRoute(builder: (_) => const LoginPage());
