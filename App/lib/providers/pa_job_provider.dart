@@ -11,11 +11,17 @@ import '../services/realtime_service.dart';
 ///
 /// Realtime: listens to the same [RealtimeService] streams so the PA's view
 /// updates in real-time as the driver marks pickups and dropoffs.
+///
+/// [completionOverlay]: when the driver completes a run but another run is
+/// still pending today (e.g. morning done, evening next), [job] switches to
+/// the next run for the dashboard while [completionOverlay] keeps the finished
+/// run for [PaCurrentJobPage] until the PA leaves that screen.
 class PaJobProvider extends ChangeNotifier {
   final PaJobService _service = PaJobService();
   final RealtimeService _realtimeService = RealtimeService();
 
   PaJobModel? _job;
+  PaJobModel? _completionOverlay;
   bool _isLoading = false;
   String? _error;
   bool _hasLoadedOnce = false;
@@ -31,7 +37,12 @@ class PaJobProvider extends ChangeNotifier {
 
   // ── Getters ────────────────────────────────────────────────────────────────
 
+  /// Current run for dashboard / list views (may be evening after morning ends).
   PaJobModel? get job => _job;
+
+  /// Finished run shown on current-job completion screen only.
+  PaJobModel? get completionOverlay => _completionOverlay;
+
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasLoadedOnce => _hasLoadedOnce;
@@ -39,16 +50,17 @@ class PaJobProvider extends ChangeNotifier {
   // ── Realtime ───────────────────────────────────────────────────────────────
 
   void _listenToRealtime() {
-    // Reload whenever the driver changes job/session/passenger status.
     _jobSub = _realtimeService.onJobChange.listen((_) => _scheduleReload());
     _sessionSub = _realtimeService.onSessionChange.listen(
       (_) => _scheduleReload(),
     );
     _passengerSub = _realtimeService.onPassengerChange.listen((record) {
-      // Only reload if the change belongs to the current session.
       final sessionId = record['session_id']?.toString() ?? '';
       final currentSessionId = _job?.sessionId ?? '';
-      if (currentSessionId.isEmpty || sessionId == currentSessionId) {
+      final overlaySessionId = _completionOverlay?.sessionId ?? '';
+      if (currentSessionId.isEmpty ||
+          sessionId == currentSessionId ||
+          sessionId == overlaySessionId) {
         _scheduleReload();
       }
     });
@@ -72,12 +84,53 @@ class PaJobProvider extends ChangeNotifier {
       notifyListeners();
     }
 
+    final previous = _job;
+    final previousSessionId = previous?.sessionId ?? '';
+    final previousWasIncomplete =
+        previous != null && !previous.isSessionCompleted;
+
     try {
-      _job = await _service.fetchCurrentJob();
+      final updated = await _service.fetchCurrentJob();
+
+      if (previousWasIncomplete && previousSessionId.isNotEmpty) {
+        final switchedSession =
+            updated == null || updated.sessionId != previousSessionId;
+
+        if (switchedSession) {
+          final morningCompleted = await _service.isSessionCompleted(
+            previousSessionId,
+          );
+          if (morningCompleted) {
+            _job = updated;
+            _completionOverlay = previous.copyWith(
+              sessionStatus: 'completed',
+            );
+            _error = null;
+            if (blockUi) _isLoading = false;
+            _hasLoadedOnce = true;
+            notifyListeners();
+            return;
+          }
+        } else if (updated.isSessionCompleted) {
+          _job = updated;
+          _completionOverlay = updated;
+          _error = null;
+          if (blockUi) _isLoading = false;
+          _hasLoadedOnce = true;
+          notifyListeners();
+          return;
+        }
+      }
+
+      _job = updated;
+      if (updated == null || !updated.isSessionCompleted) {
+        _completionOverlay = null;
+      } else if (_completionOverlay == null) {
+        _completionOverlay = updated;
+      }
       _error = null;
     } catch (e) {
       if (blockUi) _error = e.toString();
-      // Silent refresh: keep existing job, don't flash error.
     } finally {
       if (blockUi) _isLoading = false;
       _hasLoadedOnce = true;
@@ -85,8 +138,15 @@ class PaJobProvider extends ChangeNotifier {
     }
   }
 
+  void clearCompletionOverlay() {
+    if (_completionOverlay == null) return;
+    _completionOverlay = null;
+    notifyListeners();
+  }
+
   void reset() {
     _job = null;
+    _completionOverlay = null;
     _hasLoadedOnce = false;
     _error = null;
     notifyListeners();

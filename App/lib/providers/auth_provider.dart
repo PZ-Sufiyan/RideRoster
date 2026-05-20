@@ -58,7 +58,7 @@ class AuthProvider extends ChangeNotifier {
       // RealtimeService.subscribe() will also wait for the Supabase session
       // internally, but calling it here after result.success ensures the
       // auth token is valid before we open channels.
-      await RealtimeService().subscribe();
+      await _subscribeRealtime();
     } else {
       _token = null;
       _userId = null;
@@ -93,7 +93,7 @@ class AuthProvider extends ChangeNotifier {
       _errorMessage = null;
       _setStatus(AuthStatus.authenticated);
       // Subscribe after successful login — userId is now set
-      await RealtimeService().subscribe();
+      await _subscribeRealtime();
       return true;
     } else {
       _errorMessage = result.error;
@@ -142,5 +142,12 @@ class AuthProvider extends ChangeNotifier {
   void _setStatus(AuthStatus s) {
     _status = s;
     notifyListeners();
+  }
+
+  Future<void> _subscribeRealtime() async {
+    final audience = isPassengerAssistant
+        ? RealtimeAudience.passengerAssistant
+        : RealtimeAudience.driver;
+    await RealtimeService().subscribe(audience: audience);
   }
 }

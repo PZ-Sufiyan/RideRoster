@@ -11,6 +11,12 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 ///      the company) — column-level filters on non-indexed columns are
 ///      unreliable in Supabase Realtime. The JobProvider ignores irrelevant
 ///      events cheaply via a silent reload that returns null if no job matches.
+///
+/// [RealtimeAudience.passengerAssistant]: job_sessions are listened without a
+/// driver_id filter (PA auth id ≠ session driver_id), so session completion
+/// reaches [PaJobProvider].
+enum RealtimeAudience { driver, passengerAssistant }
+
 class RealtimeService {
   RealtimeService._internal();
   static final RealtimeService _instance = RealtimeService._internal();
@@ -24,6 +30,7 @@ class RealtimeService {
   RealtimeChannel? _schedulesChannel;
 
   String? _driverId;
+  RealtimeAudience _audience = RealtimeAudience.driver;
 
   // ── Stream controllers ────────────────────────────────────────────────────
 
@@ -40,7 +47,9 @@ class RealtimeService {
 
   // ── Subscribe ─────────────────────────────────────────────────────────────
 
-  Future<void> subscribe() async {
+  Future<void> subscribe({
+    RealtimeAudience audience = RealtimeAudience.driver,
+  }) async {
     // Guard: get the current user — may be null if called too early on restore
     final user = _supabase.auth.currentUser;
     if (user == null) {
@@ -49,9 +58,11 @@ class RealtimeService {
       if (_supabase.auth.currentUser == null) return; // still null, give up
     }
 
-    if (_subscribed) return;
+    if (_subscribed && _audience == audience) return;
+    if (_subscribed) await unsubscribe();
 
     _driverId = _supabase.auth.currentUser!.id;
+    _audience = audience;
     _subscribed = true;
 
     _subscribeToJobs();
@@ -127,40 +138,43 @@ class RealtimeService {
   void _subscribeToSessions() {
     _sessionsChannel?.unsubscribe();
 
-    final driverId = _driverId!;
-    _sessionsChannel = _supabase
-        .channel('driver-sessions-$driverId')
+    final userId = _driverId!;
+    final isPa = _audience == RealtimeAudience.passengerAssistant;
+    final channelName = isPa ? 'pa-sessions-$userId' : 'driver-sessions-$userId';
+
+    PostgresChangeFilter? driverFilter;
+    if (!isPa) {
+      driverFilter = PostgresChangeFilter(
+        type: PostgresChangeFilterType.eq,
+        column: 'driver_id',
+        value: userId,
+      );
+    }
+
+    void onSessionPayload(PostgresChangePayload payload) {
+      if (!_sessionChanges.isClosed) {
+        _sessionChanges.add(Map<String, dynamic>.from(payload.newRecord));
+      }
+    }
+
+    var channel = _supabase.channel(channelName);
+    channel = channel
         .onPostgresChanges(
           event: PostgresChangeEvent.insert,
           schema: 'public',
           table: 'job_sessions',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'driver_id',
-            value: driverId,
-          ),
-          callback: (payload) {
-            if (!_sessionChanges.isClosed) {
-              _sessionChanges.add(Map<String, dynamic>.from(payload.newRecord));
-            }
-          },
+          filter: driverFilter,
+          callback: onSessionPayload,
         )
         .onPostgresChanges(
           event: PostgresChangeEvent.update,
           schema: 'public',
           table: 'job_sessions',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'driver_id',
-            value: driverId,
-          ),
-          callback: (payload) {
-            if (!_sessionChanges.isClosed) {
-              _sessionChanges.add(Map<String, dynamic>.from(payload.newRecord));
-            }
-          },
+          filter: driverFilter,
+          callback: onSessionPayload,
         );
 
+    _sessionsChannel = channel;
     _sessionsChannel!.subscribe();
   }
 
@@ -237,6 +251,7 @@ class RealtimeService {
   Future<void> unsubscribe() async {
     _subscribed = false;
     _driverId = null;
+    _audience = RealtimeAudience.driver;
     _jobsChannel?.unsubscribe();
     _sessionsChannel?.unsubscribe();
     _passengersChannel?.unsubscribe();

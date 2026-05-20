@@ -20,6 +20,17 @@ class PaJobService {
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
+  /// Whether [sessionId] has status `completed` in job_sessions.
+  Future<bool> isSessionCompleted(String sessionId) async {
+    if (sessionId.isEmpty) return false;
+    final row = await _supabase
+        .from('job_sessions')
+        .select('status')
+        .eq('id', sessionId)
+        .maybeSingle();
+    return (row?['status'] ?? '').toString() == 'completed';
+  }
+
   Future<PaJobModel?> fetchCurrentJob() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return null;
@@ -287,6 +298,7 @@ class PaJobService {
     final hasOutbound = jobRow['has_outbound'] == true;
     final hasInbound = jobRow['has_inbound'] == true;
 
+    // 1. Resume an in-flight session.
     for (final entry in sessionMap.entries) {
       if (entry.value['status'] == 'active') return entry.key;
     }
@@ -294,12 +306,15 @@ class PaJobService {
     final outboundDone = sessionMap['outbound']?['status'] == 'completed';
     final inboundDone = sessionMap['inbound']?['status'] == 'completed';
 
-    if ((!hasOutbound || outboundDone) && (!hasInbound || inboundDone)) {
-      return null;
-    }
-
+    // 2. Show pending runs first (same behavior as driver flow).
+    // If morning is completed but evening is pending, PA should see evening.
     if (hasOutbound && !outboundDone) return 'outbound';
     if (hasInbound && !inboundDone) return 'inbound';
+
+    // 3. Both directions resolved for today — keep a completed summary visible.
+    // Prefer evening when both are completed.
+    if (hasInbound && inboundDone) return 'inbound';
+    if (hasOutbound && outboundDone) return 'outbound';
 
     return null;
   }

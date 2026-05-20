@@ -27,32 +27,49 @@ class PaCurrentJobPage extends StatefulWidget {
 class _PaCurrentJobPageState extends State<PaCurrentJobPage> {
   Timer? _navTimer;
   bool _completionHandled = false;
+  PaJobProvider? _jobProvider;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PaJobProvider>().loadJob(silent: true);
+      if (!mounted) return;
+      _jobProvider = context.read<PaJobProvider>();
+      _jobProvider!.addListener(_onJobProviderUpdate);
+      _jobProvider!.loadJob(silent: true);
     });
   }
 
   @override
   void dispose() {
     _navTimer?.cancel();
+    _jobProvider?.removeListener(_onJobProviderUpdate);
+    // Dashboard should show the next run (e.g. evening), not stay on completion UI.
+    _jobProvider?.clearCompletionOverlay();
     super.dispose();
   }
 
-  void _handleCompletion() {
+  void _onJobProviderUpdate() {
+    if (_jobProvider?.completionOverlay != null) {
+      _scheduleCompletionNav();
+    }
+  }
+
+  void _scheduleCompletionNav() {
     if (_completionHandled) return;
     _completionHandled = true;
-    _navTimer = Timer(const Duration(seconds: 3), () {
-      if (!mounted) return;
-      Navigator.pushNamedAndRemoveUntil(
-        context,
-        AppRoutes.paDashboard,
-        (route) => false,
-      );
-    });
+    _navTimer?.cancel();
+    _navTimer = Timer(const Duration(seconds: 3), _goToDashboard);
+  }
+
+  void _goToDashboard() {
+    if (!mounted) return;
+    context.read<PaJobProvider>().clearCompletionOverlay();
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      AppRoutes.paDashboard,
+      (route) => false,
+    );
   }
 
   @override
@@ -66,6 +83,19 @@ class _PaCurrentJobPageState extends State<PaCurrentJobPage> {
           builder: (_, provider, __) {
             if (provider.isLoading) {
               return const Center(child: CircularProgressIndicator());
+            }
+
+            final completionJob = provider.completionOverlay;
+
+            // ── Run just completed (stay on completion UI even if next run loaded) ──
+            if (completionJob != null) {
+              WidgetsBinding.instance.addPostFrameCallback(
+                (_) => _scheduleCompletionNav(),
+              );
+              return _JobCompletedScreen(
+                job: completionJob,
+                onGoHome: _goToDashboard,
+              );
             }
 
             final job = provider.job;
@@ -88,12 +118,6 @@ class _PaCurrentJobPageState extends State<PaCurrentJobPage> {
                   ),
                 ],
               );
-            }
-
-            // ── Session completed ──────────────────────────────────────────
-            if (job.isSessionCompleted) {
-              _handleCompletion();
-              return _JobCompletedScreen(job: job);
             }
 
             // ── Normal job detail ──────────────────────────────────────────
@@ -168,7 +192,8 @@ class _PaCurrentJobPageState extends State<PaCurrentJobPage> {
 
 class _JobCompletedScreen extends StatelessWidget {
   final PaJobModel job;
-  const _JobCompletedScreen({required this.job});
+  final VoidCallback onGoHome;
+  const _JobCompletedScreen({required this.job, required this.onGoHome});
 
   @override
   Widget build(BuildContext context) {
@@ -251,6 +276,31 @@ class _JobCompletedScreen extends StatelessWidget {
                             color: _Colors.missedRed,
                           ),
                       ],
+                    ),
+                  ),
+                  SizedBox(height: SizeConfig.r(24)),
+                  SizedBox(
+                    width: double.infinity,
+                    height: SizeConfig.buttonHeight,
+                    child: ElevatedButton(
+                      onPressed: onGoHome,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: _Colors.doneGreen,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(
+                            SizeConfig.radiusLG,
+                          ),
+                        ),
+                      ),
+                      child: Text(
+                        'Back to Dashboard',
+                        style: TextStyle(
+                          fontSize: SizeConfig.sp(15),
+                          fontWeight: FontWeight.w600,
+                          color: Colors.white,
+                        ),
+                      ),
                     ),
                   ),
                 ],

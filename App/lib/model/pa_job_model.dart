@@ -81,6 +81,20 @@ class PaJobModel {
     required this.dropoffs,
   });
 
+  PaJobModel copyWith({String? sessionStatus}) {
+    return PaJobModel(
+      jobDbId: jobDbId,
+      jobName: jobName,
+      direction: direction,
+      sessionId: sessionId,
+      sessionStatus: sessionStatus ?? this.sessionStatus,
+      driverName: driverName,
+      startTime: startTime,
+      stops: stops,
+      dropoffs: dropoffs,
+    );
+  }
+
   // ── Derived helpers ───────────────────────────────────────────────────────
 
   bool get isInbound => direction == 'inbound';
