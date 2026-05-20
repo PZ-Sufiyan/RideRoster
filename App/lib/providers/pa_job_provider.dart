@@ -26,6 +26,10 @@ class PaJobProvider extends ChangeNotifier {
   String? _error;
   bool _hasLoadedOnce = false;
 
+  /// Incremented every time [loadJob] finishes. Dashboard sections can refresh
+  /// when this changes without flashing the whole page.
+  int _jobDataEpoch = 0;
+
   StreamSubscription<Map<String, dynamic>>? _jobSub;
   StreamSubscription<Map<String, dynamic>>? _sessionSub;
   StreamSubscription<Map<String, dynamic>>? _passengerSub;
@@ -46,6 +50,7 @@ class PaJobProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasLoadedOnce => _hasLoadedOnce;
+  int get jobDataEpoch => _jobDataEpoch;
 
   // ── Realtime ───────────────────────────────────────────────────────────────
 
@@ -108,6 +113,7 @@ class PaJobProvider extends ChangeNotifier {
             _error = null;
             if (blockUi) _isLoading = false;
             _hasLoadedOnce = true;
+            _jobDataEpoch++;
             notifyListeners();
             return;
           }
@@ -117,6 +123,7 @@ class PaJobProvider extends ChangeNotifier {
           _error = null;
           if (blockUi) _isLoading = false;
           _hasLoadedOnce = true;
+          _jobDataEpoch++;
           notifyListeners();
           return;
         }
@@ -134,6 +141,7 @@ class PaJobProvider extends ChangeNotifier {
     } finally {
       if (blockUi) _isLoading = false;
       _hasLoadedOnce = true;
+      _jobDataEpoch++;
       notifyListeners();
     }
   }
@@ -149,6 +157,7 @@ class PaJobProvider extends ChangeNotifier {
     _completionOverlay = null;
     _hasLoadedOnce = false;
     _error = null;
+    _jobDataEpoch = 0;
     notifyListeners();
   }
 

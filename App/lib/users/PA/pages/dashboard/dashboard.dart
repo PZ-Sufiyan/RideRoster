@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../providers/pa_job_provider.dart';
 import '../../../../model/pa_job_model.dart';
@@ -14,13 +15,32 @@ class PaDashboardPage extends StatefulWidget {
   State<PaDashboardPage> createState() => _PaDashboardPageState();
 }
 
-class _PaDashboardPageState extends State<PaDashboardPage> {
+class _PaDashboardPageState extends State<PaDashboardPage>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<PaJobProvider>().loadJob();
+      _reload();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed || !mounted) return;
+    context.read<PaJobProvider>().loadJob(silent: true);
+  }
+
+  void _reload() {
+    if (!mounted) return;
+    context.read<PaJobProvider>().loadJob();
   }
 
   @override
@@ -34,31 +54,24 @@ class _PaDashboardPageState extends State<PaDashboardPage> {
           children: [
             const _PaAppBar(),
             Expanded(
-              child: Consumer<PaJobProvider>(
-                builder: (_, provider, __) {
-                  if (provider.isLoading) {
-                    return const Center(child: CircularProgressIndicator());
-                  }
-                  return SingleChildScrollView(
-                    padding: EdgeInsets.symmetric(
-                      horizontal: SizeConfig.hPad,
-                      vertical: SizeConfig.spaceSM,
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _CurrentJobCard(job: provider.job),
-                        SizedBox(height: SizeConfig.r(20)),
-                        _PassengersSection(job: provider.job),
-                        SizedBox(height: SizeConfig.r(20)),
-                        const _QuickActionsSection(),
-                        SizedBox(height: SizeConfig.r(18)),
-                        const _SosButton(),
-                        SizedBox(height: SizeConfig.spaceMD),
-                      ],
-                    ),
-                  );
-                },
+              child: SingleChildScrollView(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.hPad,
+                  vertical: SizeConfig.spaceSM,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const _CurrentJobCard(),
+                    SizedBox(height: SizeConfig.r(20)),
+                    const _PassengersSection(),
+                    SizedBox(height: SizeConfig.r(20)),
+                    const _QuickActionsSection(),
+                    SizedBox(height: SizeConfig.r(18)),
+                    const _SosButton(),
+                    SizedBox(height: SizeConfig.spaceMD),
+                  ],
+                ),
               ),
             ),
           ],
@@ -178,112 +191,210 @@ class _PaAppBar extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _CurrentJobCard extends StatelessWidget {
-  final PaJobModel? job;
-  const _CurrentJobCard({required this.job});
+  const _CurrentJobCard();
 
   @override
   Widget build(BuildContext context) {
-    if (job == null) {
-      return Container(
-        width: double.infinity,
-        padding: EdgeInsets.all(SizeConfig.r(18)),
-        decoration: BoxDecoration(
-          color: AppColors.background,
-          borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
-          border: Border.all(color: AppColors.inputBorder),
-        ),
-        child: Column(
-          children: [
-            Icon(
-              Icons.work_off_outlined,
-              size: SizeConfig.r(40),
-              color: AppColors.textLight,
-            ),
-            SizedBox(height: SizeConfig.r(10)),
-            Text(
-              'No job assigned for today',
-              style: TextStyle(
-                fontSize: SizeConfig.sp(14),
-                color: AppColors.textMedium,
-                fontWeight: FontWeight.w500,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    return Consumer<PaJobProvider>(
+      builder: (context, provider, _) {
+        if (provider.isLoading) {
+          return const _PaCurrentJobCardShell(
+            child: PaDashboardCurrentJobCardShimmer(),
+          );
+        }
 
+        if (provider.error != null) {
+          return _PaCurrentJobCardShell(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  provider.error!,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(13),
+                    color: AppColors.textMedium,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.r(14)),
+                SizedBox(
+                  width: double.infinity,
+                  height: SizeConfig.r(44),
+                  child: ElevatedButton(
+                    onPressed: provider.loadJob,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(SizeConfig.radius),
+                      ),
+                    ),
+                    child: Text(
+                      'Retry',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(14),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        final job = provider.job;
+
+        if (job == null) {
+          return Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(SizeConfig.r(18)),
+            decoration: BoxDecoration(
+              color: AppColors.primaryLight,
+              borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+            ),
+            child: Column(
+              children: [
+                Icon(
+                  Icons.assignment_late_outlined,
+                  size: SizeConfig.r(40),
+                  color: AppColors.primaryDark,
+                ),
+                SizedBox(height: SizeConfig.r(10)),
+                Text(
+                  'No job assigned for today',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(14),
+                    color: AppColors.primaryDark,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
+            ),
+          );
+        }
+
+        return _PaCurrentJobCardShell(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        job.isInbound ? 'Evening Run' : 'Morning Run',
+                        style: TextStyle(
+                          fontSize: SizeConfig.sp(12),
+                          color: const Color(0xFF0284C7),
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                  _StatusPill(status: job.displayStatus),
+                ],
+              ),
+              SizedBox(height: SizeConfig.r(16)),
+              _DetailRow(
+                label: 'Route',
+                value: job.jobName,
+                icon: Icons.alt_route_outlined,
+              ),
+              SizedBox(height: SizeConfig.r(10)),
+              _DetailRow(
+                label: 'Driver',
+                value: job.driverName,
+                icon: Icons.badge_outlined,
+              ),
+              SizedBox(height: SizeConfig.r(10)),
+              _DetailRow(
+                label: 'Start Time',
+                value: job.startTime,
+                icon: Icons.access_time,
+              ),
+              SizedBox(height: SizeConfig.r(10)),
+              _DetailRow(
+                label: 'Total Students',
+                value: '${job.totalStudents}',
+                icon: Icons.group_outlined,
+              ),
+              SizedBox(height: SizeConfig.r(18)),
+              SizedBox(
+                width: double.infinity,
+                height: SizeConfig.r(48),
+                child: ElevatedButton(
+                  onPressed: () async {
+                    await Navigator.pushNamed(
+                      context,
+                      AppRoutes.paCurrentJob,
+                    );
+                    if (!context.mounted) return;
+                    context.read<PaJobProvider>().loadJob(silent: true);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.primary,
+                    foregroundColor: Colors.white,
+                    elevation: 0,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    ),
+                  ),
+                  child: Text(
+                    'View Detail',
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(15),
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _PaCurrentJobCardShell extends StatelessWidget {
+  final Widget child;
+  const _PaCurrentJobCardShell({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
       padding: EdgeInsets.all(SizeConfig.r(18)),
       decoration: BoxDecoration(
-        color: AppColors.background,
+        color: AppColors.primaryLight,
         borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
-        border: Border.all(color: AppColors.inputBorder),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Current Job',
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(18),
-                      fontWeight: FontWeight.w700,
-                      color: AppColors.textDark,
-                    ),
-                  ),
-                  SizedBox(height: SizeConfig.r(2)),
-                  Text(
-                    job!.isInbound ? 'Evening Run' : 'Morning Run',
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(12),
-                      color: AppColors.textMedium,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                ],
+              Icon(
+                Icons.assignment_outlined,
+                size: SizeConfig.r(16),
+                color: AppColors.primaryDark,
               ),
-              _StatusPill(status: job!.displayStatus),
+              SizedBox(width: SizeConfig.r(6)),
+              Text(
+                'Current Job',
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(18),
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.primaryDark,
+                ),
+              ),
             ],
           ),
-          SizedBox(height: SizeConfig.r(16)),
-          _DetailRow(label: 'Route', value: job!.jobName),
-          SizedBox(height: SizeConfig.r(10)),
-          _DetailRow(label: 'Driver', value: job!.driverName),
-          SizedBox(height: SizeConfig.r(10)),
-          _DetailRow(label: 'Start Time', value: job!.startTime),
-          SizedBox(height: SizeConfig.r(10)),
-          _DetailRow(label: 'Total Students', value: '${job!.totalStudents}'),
-          SizedBox(height: SizeConfig.r(18)),
-          SizedBox(
-            width: double.infinity,
-            height: SizeConfig.r(48),
-            child: ElevatedButton(
-              onPressed: () =>
-                  Navigator.pushNamed(context, AppRoutes.paCurrentJob),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppColors.primary,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(SizeConfig.radius),
-                ),
-              ),
-              child: Text(
-                'View Detail',
-                style: TextStyle(
-                  fontSize: SizeConfig.sp(15),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ),
+          SizedBox(height: SizeConfig.r(14)),
+          child,
         ],
       ),
     );
@@ -299,27 +410,32 @@ class _StatusPill extends StatelessWidget {
     late final String label;
     late final Color bg;
     late final Color fg;
+    late final IconData icon;
 
     switch (status) {
       case PaJobDisplayStatus.startingSoon:
         label = 'Starting Soon';
         bg = AppColors.warning.withValues(alpha: 0.15);
         fg = AppColors.warning;
+        icon = Icons.schedule;
         break;
       case PaJobDisplayStatus.inProgress:
         label = 'In Progress';
         bg = AppColors.success.withValues(alpha: 0.15);
         fg = AppColors.success;
+        icon = Icons.play_circle_outline;
         break;
       case PaJobDisplayStatus.droppingOff:
         label = 'Dropping Off';
-        bg = AppColors.primary.withValues(alpha: 0.12);
-        fg = AppColors.primary;
+        bg = const Color(0xFF0284C7).withValues(alpha: 0.12);
+        fg = const Color(0xFF0284C7);
+        icon = Icons.location_on_outlined;
         break;
       case PaJobDisplayStatus.completed:
         label = 'Completed';
-        bg = AppColors.primaryLight;
-        fg = AppColors.primaryDark;
+        bg = AppColors.success.withValues(alpha: 0.12);
+        fg = AppColors.success;
+        icon = Icons.check_circle_outline;
         break;
     }
 
@@ -332,13 +448,20 @@ class _StatusPill extends StatelessWidget {
         color: bg,
         borderRadius: BorderRadius.circular(SizeConfig.r(20)),
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: SizeConfig.sp(11),
-          fontWeight: FontWeight.w600,
-          color: fg,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: SizeConfig.r(12), color: fg),
+          SizedBox(width: SizeConfig.r(4)),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(11),
+              fontWeight: FontWeight.w600,
+              color: fg,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -347,26 +470,40 @@ class _StatusPill extends StatelessWidget {
 class _DetailRow extends StatelessWidget {
   final String label;
   final String value;
-  const _DetailRow({required this.label, required this.value});
+  final IconData icon;
+  const _DetailRow({
+    required this.label,
+    required this.value,
+    required this.icon,
+  });
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisAlignment: MainAxisAlignment.spaceBetween,
       children: [
-        Text(
-          label,
-          style: TextStyle(
-            fontSize: SizeConfig.sp(13),
-            color: AppColors.textMedium,
-          ),
+        Row(
+          children: [
+            Icon(icon, size: SizeConfig.r(14), color: const Color(0xFF0284C7)),
+            SizedBox(width: SizeConfig.r(6)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(13),
+                color: AppColors.textMedium,
+              ),
+            ),
+          ],
         ),
-        Text(
-          value,
-          style: TextStyle(
-            fontSize: SizeConfig.sp(13),
-            color: AppColors.textDark,
-            fontWeight: FontWeight.w600,
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(13),
+              color: AppColors.textDark,
+              fontWeight: FontWeight.w600,
+            ),
           ),
         ),
       ],
@@ -379,50 +516,59 @@ class _DetailRow extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PassengersSection extends StatelessWidget {
-  final PaJobModel? job;
-  const _PassengersSection({required this.job});
+  const _PassengersSection();
 
   @override
   Widget build(BuildContext context) {
-    final stops = job?.stops ?? [];
+    return Consumer<PaJobProvider>(
+      builder: (context, provider, _) {
+        final showSkeleton = provider.isLoading;
+        final job = provider.job;
+        final stops = job?.stops ?? [];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          'Passengers (${stops.length})',
-          style: TextStyle(
-            fontSize: SizeConfig.sp(17),
-            fontWeight: FontWeight.w700,
-            color: AppColors.textDark,
-          ),
-        ),
-        SizedBox(height: SizeConfig.r(10)),
-        if (stops.isEmpty)
-          Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(SizeConfig.r(16)),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
-              border: Border.all(color: AppColors.inputBorder),
-            ),
-            child: Text(
-              'No passengers scheduled for today.',
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              showSkeleton
+                  ? 'Passengers'
+                  : 'Passengers (${stops.length})',
               style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textMedium,
+                fontSize: SizeConfig.sp(17),
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
               ),
             ),
-          )
-        else
-          ...stops.map(
-            (stop) => Padding(
-              padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
-              child: _PassengerCard(stop: stop),
-            ),
-          ),
-      ],
+            SizedBox(height: SizeConfig.r(10)),
+            if (showSkeleton)
+              const PaDashboardPassengersShimmer()
+            else if (stops.isEmpty)
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.all(SizeConfig.r(16)),
+                decoration: BoxDecoration(
+                  color: AppColors.background,
+                  borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+                  border: Border.all(color: AppColors.inputBorder),
+                ),
+                child: Text(
+                  'No passengers scheduled for today.',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(13),
+                    color: AppColors.textMedium,
+                  ),
+                ),
+              )
+            else
+              ...stops.map(
+                (stop) => Padding(
+                  padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+                  child: _PassengerCard(stop: stop),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }

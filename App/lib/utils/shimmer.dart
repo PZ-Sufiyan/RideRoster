@@ -224,6 +224,109 @@ class DashboardStatsGridShimmer extends StatelessWidget {
   }
 }
 
+/// Skeleton for the PA dashboard current-job card (title stays real in shell).
+class PaDashboardCurrentJobCardShimmer extends StatelessWidget {
+  const PaDashboardCurrentJobCardShimmer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              ShimmerBox(
+                width: SizeConfig.r(140),
+                height: SizeConfig.r(22),
+                borderRadius: BorderRadius.circular(SizeConfig.r(6)),
+              ),
+              ShimmerBox(
+                width: SizeConfig.r(88),
+                height: SizeConfig.r(24),
+                borderRadius: BorderRadius.circular(SizeConfig.r(20)),
+              ),
+            ],
+          ),
+          SizedBox(height: SizeConfig.r(16)),
+          ...List.generate(4, (i) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  ShimmerBox(
+                    width: SizeConfig.r(100),
+                    height: SizeConfig.r(14),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                  ShimmerBox(
+                    width: SizeConfig.r(120),
+                    height: SizeConfig.r(14),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                ],
+              ),
+            );
+          }),
+          SizedBox(height: SizeConfig.r(8)),
+          ShimmerBox(
+            height: SizeConfig.r(48),
+            borderRadius: BorderRadius.circular(SizeConfig.radius),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Skeleton passenger rows for the PA dashboard (section title is real).
+class PaDashboardPassengersShimmer extends StatelessWidget {
+  const PaDashboardPassengersShimmer({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer(
+      child: Column(
+        children: List.generate(
+          3,
+          (i) => Padding(
+            padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+            child: Container(
+              width: double.infinity,
+              padding: EdgeInsets.symmetric(
+                horizontal: SizeConfig.r(16),
+                vertical: SizeConfig.r(14),
+              ),
+              decoration: BoxDecoration(
+                color: AppColors.background,
+                borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+                border: Border.all(color: AppColors.inputBorder),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  ShimmerBox(
+                    width: SizeConfig.r(140),
+                    height: SizeConfig.r(14),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                  SizedBox(height: SizeConfig.r(8)),
+                  ShimmerBox(
+                    height: SizeConfig.r(12),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Skeleton rows for the job-requests list (section title is rendered by the parent).
 class DashboardJobRequestsShimmer extends StatelessWidget {
   const DashboardJobRequestsShimmer({super.key});
