@@ -4,18 +4,19 @@ import '../model/pa_job_model.dart';
 import '../services/pa_job_service.dart';
 import '../services/realtime_service.dart';
 
-/// Read-only job state for the Passenger Assistant.
+// ─────────────────────────────────────────────────────────────────────────────
+// PaJobProvider  —  live job view (dashboard + current job page)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Read-only live job state for the Passenger Assistant.
 ///
-/// Mirrors the reload behaviour of [JobProvider] but has no write methods,
-/// no location tracking, and no pickup/dropoff mutation logic.
-///
-/// Realtime: listens to the same [RealtimeService] streams so the PA's view
-/// updates in real-time as the driver marks pickups and dropoffs.
+/// Realtime: listens to RealtimeService so the PA's view updates as the
+/// driver marks pickups and dropoffs.
 ///
 /// [completionOverlay]: when the driver completes a run but another run is
-/// still pending today (e.g. morning done, evening next), [job] switches to
-/// the next run for the dashboard while [completionOverlay] keeps the finished
-/// run for [PaCurrentJobPage] until the PA leaves that screen.
+/// still pending today, [job] switches to the next run for the dashboard
+/// while [completionOverlay] keeps the finished run for PaCurrentJobPage
+/// until the PA leaves that screen.
 class PaJobProvider extends ChangeNotifier {
   final PaJobService _service = PaJobService();
   final RealtimeService _realtimeService = RealtimeService();
@@ -25,9 +26,6 @@ class PaJobProvider extends ChangeNotifier {
   bool _isLoading = false;
   String? _error;
   bool _hasLoadedOnce = false;
-
-  /// Incremented every time [loadJob] finishes. Dashboard sections can refresh
-  /// when this changes without flashing the whole page.
   int _jobDataEpoch = 0;
 
   StreamSubscription<Map<String, dynamic>>? _jobSub;
@@ -41,12 +39,8 @@ class PaJobProvider extends ChangeNotifier {
 
   // ── Getters ────────────────────────────────────────────────────────────────
 
-  /// Current run for dashboard / list views (may be evening after morning ends).
   PaJobModel? get job => _job;
-
-  /// Finished run shown on current-job completion screen only.
   PaJobModel? get completionOverlay => _completionOverlay;
-
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasLoadedOnce => _hasLoadedOnce;
@@ -107,9 +101,7 @@ class PaJobProvider extends ChangeNotifier {
           );
           if (morningCompleted) {
             _job = updated;
-            _completionOverlay = previous.copyWith(
-              sessionStatus: 'completed',
-            );
+            _completionOverlay = previous.copyWith(sessionStatus: 'completed');
             _error = null;
             if (blockUi) _isLoading = false;
             _hasLoadedOnce = true;
@@ -117,7 +109,7 @@ class PaJobProvider extends ChangeNotifier {
             notifyListeners();
             return;
           }
-        } else if (updated.isSessionCompleted) {
+        } else if (updated!.isSessionCompleted) {
           _job = updated;
           _completionOverlay = updated;
           _error = null;
@@ -168,5 +160,80 @@ class PaJobProvider extends ChangeNotifier {
     _sessionSub?.cancel();
     _passengerSub?.cancel();
     super.dispose();
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PaAssignedJobsProvider  —  weekly schedule view (assigned jobs page)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// Holds the PA's weekly recurring schedule.
+///
+/// Load strategy:
+///   - First visit: shows loading indicator, fetches, caches result.
+///   - Subsequent visits: returns cached data instantly, silently refreshes
+///     in the background — UI only updates if data changed.
+///   - Manual pull-to-refresh: call [refresh()].
+class PaAssignedJobsProvider extends ChangeNotifier {
+  final PaJobService _service = PaJobService();
+
+  PaAssignedJobModel? _job;
+  bool _isLoading = false;
+  String? _error;
+  bool _hasLoadedOnce = false;
+  bool _isRefreshing = false;
+
+  PaAssignedJobModel? get job => _job;
+  bool get isLoading => _isLoading;
+  String? get error => _error;
+  bool get hasLoadedOnce => _hasLoadedOnce;
+  bool get isRefreshing => _isRefreshing;
+
+  /// Call on every page entry — instant if cached, background refresh otherwise.
+  Future<void> loadIfNeeded() async {
+    if (!_hasLoadedOnce) {
+      await _fetch(blockUi: true);
+    } else {
+      _fetch(blockUi: false); // fire-and-forget
+    }
+  }
+
+  /// Force a full reload (pull-to-refresh).
+  Future<void> refresh() async {
+    await _fetch(blockUi: false);
+  }
+
+  Future<void> _fetch({required bool blockUi}) async {
+    if (blockUi) {
+      _isLoading = true;
+      _error = null;
+      notifyListeners();
+    } else {
+      _isRefreshing = true;
+      // No notifyListeners — don't flash UI just because refresh started.
+    }
+
+    try {
+      final updated = await _service.fetchAssignedJob();
+      _job = updated;
+      _error = null;
+    } catch (e) {
+      if (blockUi) _error = e.toString();
+      // Background refresh: swallow error, keep existing data visible.
+    } finally {
+      _isLoading = false;
+      _isRefreshing = false;
+      _hasLoadedOnce = true;
+      notifyListeners();
+    }
+  }
+
+  void reset() {
+    _job = null;
+    _hasLoadedOnce = false;
+    _isLoading = false;
+    _isRefreshing = false;
+    _error = null;
+    notifyListeners();
   }
 }

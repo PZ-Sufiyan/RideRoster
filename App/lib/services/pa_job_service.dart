@@ -1,24 +1,18 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/pa_job_model.dart';
-
-// Re-use the same status enums from the driver layer.
-// ignore: implementation_imports
 import '../model/job_model.dart' show PickupStatus, DropoffStatus;
 
-/// Read-only Supabase queries for the Passenger Assistant job view.
+/// All read-only Supabase queries for the Passenger Assistant.
 ///
-/// The PA is assigned via [jobs.assigned_pa_id].  All data comes from the
-/// same tables the driver uses — this service never writes anything.
-///
-/// Direction priority (mirrors JobService._pickDirection):
-///   1. Active session wins unconditionally.
-///   2. Outbound before inbound when both are pending.
-///   3. Inbound when outbound is done / absent.
-///   4. null → nothing to show today.
+/// Covers two feature areas:
+///   1. Live job view  — [fetchCurrentJob], [isSessionCompleted]
+///   2. Weekly schedule — [fetchAssignedJob]
 class PaJobService {
   SupabaseClient get _supabase => Supabase.instance.client;
 
-  // ── Public API ─────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // 1. LIVE JOB VIEW
+  // ══════════════════════════════════════════════════════════════════════════
 
   /// Whether [sessionId] has status `completed` in job_sessions.
   Future<bool> isSessionCompleted(String sessionId) async {
@@ -104,15 +98,12 @@ class PaJobService {
     }
 
     // ── 5. Get session passenger rows (status) ──────────────────────────────
-    // Maps passenger_id → status string.  Empty if session not started.
     final sessionStatusMap = <String, String>{};
-
     if (sessionExists) {
       final spRows = await _supabase
           .from('job_session_passengers')
           .select('passenger_id, status')
           .eq('session_id', sessionId);
-
       for (final row in spRows) {
         final pid = (row['passenger_id'] ?? '').toString();
         final status = (row['status'] ?? 'pending').toString();
@@ -132,35 +123,23 @@ class PaJobService {
 
     // ── 7. Build PaPassengerStop list ───────────────────────────────────────
     final stops = <PaPassengerStop>[];
-
     for (final row in scheduleRows) {
       final pid = (row['passenger_id'] ?? '').toString();
       final profile = profileMap[pid];
-
-      final firstName = (profile?['first_name'] ?? '').toString().trim();
-      final surname = (profile?['surname'] ?? '').toString().trim();
-      final fullName = [
-        firstName,
-        surname,
-      ].where((s) => s.isNotEmpty).join(' ');
-
-      final address = (row['pickup_address'] ?? '').toString();
-      final order = _asInt(row['stop_order']);
-      final scheduledTime = _formatTime(row['pickup_time']);
-
+      final fullName = _fullName(profile);
       final rawStatus = sessionStatusMap[pid] ?? 'pending';
-      final pickupStatus = _toPickupStatus(rawStatus);
+      final order = _asInt(row['stop_order']);
 
       stops.add(
         PaPassengerStop(
           passengerId: pid,
           passengerName: fullName.isEmpty ? 'Student' : fullName,
-          address: address,
-          scheduledTime: scheduledTime,
+          address: (row['pickup_address'] ?? '').toString(),
+          scheduledTime: _formatTime(row['pickup_time']),
           stopNumber: order == 0 ? stops.length + 1 : order,
           wheelchairRequired: profile?['wheelchair_required'] == true,
           harnessRequired: profile?['harness_required'] == true,
-          status: pickupStatus,
+          status: _toPickupStatus(rawStatus),
         ),
       );
     }
@@ -169,7 +148,6 @@ class PaJobService {
     final dropoffs = <PaDropoffStop>[];
 
     if (direction == 'outbound') {
-      // Group by school address — one stop per school.
       final schoolOrder = <String>[];
       final schoolPassengers = <String, List<String>>{};
       final schoolMeta = <String, Map<String, dynamic>>{};
@@ -178,7 +156,6 @@ class PaJobService {
         final pid = (row['passenger_id'] ?? '').toString();
         final profile = profileMap[pid];
         if (profile == null) continue;
-
         final schoolAddress = (profile['educational_site_address'] ?? '')
             .toString();
         if (schoolAddress.isEmpty) continue;
@@ -190,26 +167,16 @@ class PaJobService {
             'dropoff_time': profile['educational_site_dropoff_time'],
           };
         }
-
-        final firstName = (profile['first_name'] ?? '').toString().trim();
-        final surname = (profile['surname'] ?? '').toString().trim();
-        final fullName = [
-          firstName,
-          surname,
-        ].where((s) => s.isNotEmpty).join(' ');
         schoolPassengers[schoolAddress]!.add(
-          fullName.isEmpty ? 'Student' : fullName,
+          _fullName(profile).isEmpty ? 'Student' : _fullName(profile),
         );
       }
 
       for (final schoolAddress in schoolOrder) {
-        // Outbound school dropoff: check if all passengers for this school
-        // are dropped_off in the session.
         final schoolPids = scheduleRows
             .where((r) {
               final pid = (r['passenger_id'] ?? '').toString();
-              final profile = profileMap[pid];
-              return (profile?['educational_site_address'] ?? '') ==
+              return (profileMap[pid]?['educational_site_address'] ?? '') ==
                   schoolAddress;
             })
             .map((r) => (r['passenger_id'] ?? '').toString())
@@ -238,43 +205,30 @@ class PaJobService {
         );
       }
     } else {
-      // Inbound: one dropoff per passenger (home address).
       for (final row in scheduleRows) {
         final pid = (row['passenger_id'] ?? '').toString();
         final profile = profileMap[pid];
-
-        final firstName = (profile?['first_name'] ?? '').toString().trim();
-        final surname = (profile?['surname'] ?? '').toString().trim();
-        final fullName = [
-          firstName,
-          surname,
-        ].where((s) => s.isNotEmpty).join(' ');
-
         final homeAddress = (row['dropoff_address'] ?? '').toString();
-        final dropoffTime = _formatTime(row['dropoff_time']);
-
         final rawStatus = sessionStatusMap[pid] ?? 'pending';
-        final dropoffStatus = _toDropoffStatus(rawStatus);
 
         dropoffs.add(
           PaDropoffStop(
             address: homeAddress.isNotEmpty ? homeAddress : 'Home address',
-            scheduledTime: dropoffTime,
-            passengerNames: [fullName.isEmpty ? 'Student' : fullName],
-            status: dropoffStatus,
+            scheduledTime: _formatTime(row['dropoff_time']),
+            passengerNames: [
+              _fullName(profile).isEmpty ? 'Student' : _fullName(profile),
+            ],
+            status: _toDropoffStatus(rawStatus),
           ),
         );
       }
     }
 
-    // ── 9. Resolve driver name ──────────────────────────────────────────────
+    // ── 9. Driver name + start time ─────────────────────────────────────────
     final driverName = await _fetchDriverName(jobRow['assigned_driver_id']);
-
-    // ── 10. Start time ──────────────────────────────────────────────────────
     final rawStartTime = direction == 'outbound'
         ? jobRow['morning_start_time']
         : jobRow['evening_start_time'];
-    final startTime = _formatTime(rawStartTime);
 
     return PaJobModel(
       jobDbId: jobDbId,
@@ -283,13 +237,13 @@ class PaJobService {
       sessionId: sessionId,
       sessionStatus: sessionStatus,
       driverName: driverName,
-      startTime: startTime,
+      startTime: _formatTime(rawStartTime),
       stops: stops,
       dropoffs: dropoffs,
     );
   }
 
-  // ── Direction picker (mirrors JobService._pickDirection) ──────────────────
+  // ── Direction picker ───────────────────────────────────────────────────────
 
   String? _pickDirection({
     required Map<String, dynamic> jobRow,
@@ -298,7 +252,6 @@ class PaJobService {
     final hasOutbound = jobRow['has_outbound'] == true;
     final hasInbound = jobRow['has_inbound'] == true;
 
-    // 1. Resume an in-flight session.
     for (final entry in sessionMap.entries) {
       if (entry.value['status'] == 'active') return entry.key;
     }
@@ -306,20 +259,150 @@ class PaJobService {
     final outboundDone = sessionMap['outbound']?['status'] == 'completed';
     final inboundDone = sessionMap['inbound']?['status'] == 'completed';
 
-    // 2. Show pending runs first (same behavior as driver flow).
-    // If morning is completed but evening is pending, PA should see evening.
     if (hasOutbound && !outboundDone) return 'outbound';
     if (hasInbound && !inboundDone) return 'inbound';
 
-    // 3. Both directions resolved for today — keep a completed summary visible.
-    // Prefer evening when both are completed.
     if (hasInbound && inboundDone) return 'inbound';
     if (hasOutbound && outboundDone) return 'outbound';
 
     return null;
   }
 
-  // ── Private helpers ────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // 2. WEEKLY SCHEDULE VIEW
+  // ══════════════════════════════════════════════════════════════════════════
+
+  /// Fetches the PA's full weekly recurring schedule.
+  /// Uses base rows only (exception_date IS NULL).
+  Future<PaAssignedJobModel?> fetchAssignedJob() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) return null;
+
+    // ── 1. Fetch job ────────────────────────────────────────────────────────
+    final jobRows = await _supabase
+        .from('jobs')
+        .select(
+          'id, job_name, assigned_driver_id, '
+          'has_outbound, has_inbound, '
+          'morning_start_time, evening_start_time, '
+          'semester_start, semester_end',
+        )
+        .eq('assigned_pa_id', userId)
+        .eq('driver_approval_status', 'accepted')
+        .neq('status', 'cancelled')
+        .limit(1);
+
+    if (jobRows.isEmpty) return null;
+    final jobRow = Map<String, dynamic>.from(jobRows.first);
+    final jobDbId = (jobRow['id'] ?? '').toString();
+    if (jobDbId.isEmpty) return null;
+
+    final hasOutbound = jobRow['has_outbound'] == true;
+    final hasInbound = jobRow['has_inbound'] == true;
+    final morningStartTime = _formatTime(jobRow['morning_start_time']);
+    final eveningStartTime = _formatTime(jobRow['evening_start_time']);
+
+    // ── 2. Driver name ──────────────────────────────────────────────────────
+    final driverName = await _fetchDriverName(jobRow['assigned_driver_id']);
+
+    // ── 3. All base schedule rows ───────────────────────────────────────────
+    final scheduleRows = await _supabase
+        .from('passenger_schedules')
+        .select(
+          'passenger_id, weekday, direction, stop_order, '
+          'pickup_address, pickup_time, dropoff_address',
+        )
+        .eq('job_id', jobDbId)
+        .isFilter('exception_date', null)
+        .order('weekday')
+        .order('direction')
+        .order('stop_order', ascending: true);
+
+    if (scheduleRows.isEmpty) {
+      return PaAssignedJobModel(
+        jobDbId: jobDbId,
+        jobName: (jobRow['job_name'] ?? '').toString(),
+        semesterStart: _formatDate(jobRow['semester_start']),
+        semesterEnd: _formatDate(jobRow['semester_end']),
+        activeDays: [],
+        schedule: {},
+      );
+    }
+
+    // ── 4. Passenger profiles ───────────────────────────────────────────────
+    final passengerIds = scheduleRows
+        .map((r) => r['passenger_id']?.toString())
+        .whereType<String>()
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final profileMap = await _fetchPassengerProfiles(passengerIds);
+
+    // ── 5. Build raw map: weekday → direction → rows ────────────────────────
+    final rawMap = <String, Map<String, List<Map<String, dynamic>>>>{};
+    for (final row in scheduleRows) {
+      final weekday = (row['weekday'] ?? '').toString();
+      final direction = (row['direction'] ?? '').toString();
+      if (weekday.isEmpty || direction.isEmpty) continue;
+      if (direction == 'outbound' && !hasOutbound) continue;
+      if (direction == 'inbound' && !hasInbound) continue;
+
+      rawMap.putIfAbsent(weekday, () => {});
+      rawMap[weekday]!.putIfAbsent(direction, () => []);
+      rawMap[weekday]![direction]!.add(Map<String, dynamic>.from(row as Map));
+    }
+
+    // ── 6. Convert to PaDayRun / PaScheduleStop ─────────────────────────────
+    final schedule = <String, Map<String, PaDayRun>>{};
+    for (final weekday in rawMap.keys) {
+      schedule[weekday] = {};
+      for (final direction in rawMap[weekday]!.keys) {
+        final rows = rawMap[weekday]![direction]!
+          ..sort(
+            (a, b) =>
+                _asInt(a['stop_order']).compareTo(_asInt(b['stop_order'])),
+          );
+
+        final stops = rows.map((row) {
+          final pid = (row['passenger_id'] ?? '').toString();
+          final profile = profileMap[pid];
+          final name = _fullName(profile);
+          return PaScheduleStop(
+            passengerName: name.isEmpty ? 'Student' : name,
+            pickupAddress: (row['pickup_address'] ?? '').toString(),
+            dropoffAddress: (row['dropoff_address'] ?? '').toString(),
+            pickupTime: _formatTime(row['pickup_time']),
+            wheelchairRequired: profile?['wheelchair_required'] == true,
+            harnessRequired: profile?['harness_required'] == true,
+            stopOrder: _asInt(row['stop_order']),
+          );
+        }).toList();
+
+        schedule[weekday]![direction] = PaDayRun(
+          direction: direction,
+          startTime: direction == 'outbound'
+              ? morningStartTime
+              : eveningStartTime,
+          driverName: driverName,
+          stops: stops,
+        );
+      }
+    }
+
+    return PaAssignedJobModel(
+      jobDbId: jobDbId,
+      jobName: (jobRow['job_name'] ?? '').toString(),
+      semesterStart: _formatDate(jobRow['semester_start']),
+      semesterEnd: _formatDate(jobRow['semester_end']),
+      activeDays: rawMap.keys.toList(),
+      schedule: schedule,
+    );
+  }
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SHARED PRIVATE HELPERS
+  // ══════════════════════════════════════════════════════════════════════════
 
   Future<List<Map<String, dynamic>>> _resolvedScheduleForDay({
     required String jobDbId,
@@ -407,13 +490,19 @@ class PaJobService {
         .eq('id', id)
         .maybeSingle();
     if (row == null) return 'Unassigned';
-    final first = (row['first_name'] ?? '').toString().trim();
-    final last = (row['last_name'] ?? '').toString().trim();
-    final full = [first, last].where((x) => x.isNotEmpty).join(' ');
+    final full = [
+      (row['first_name'] ?? '').toString().trim(),
+      (row['last_name'] ?? '').toString().trim(),
+    ].where((x) => x.isNotEmpty).join(' ');
     return full.isEmpty ? 'Unassigned' : full;
   }
 
-  // ── Status converters ──────────────────────────────────────────────────────
+  String _fullName(Map<String, dynamic>? profile) {
+    if (profile == null) return '';
+    final first = (profile['first_name'] ?? '').toString().trim();
+    final last = (profile['surname'] ?? '').toString().trim();
+    return [first, last].where((s) => s.isNotEmpty).join(' ');
+  }
 
   PickupStatus _toPickupStatus(String raw) {
     final s = raw.toLowerCase();
@@ -428,8 +517,6 @@ class PaJobService {
         ? DropoffStatus.completed
         : DropoffStatus.pending;
   }
-
-  // ── Date / time helpers ────────────────────────────────────────────────────
 
   String _weekdayKey(DateTime dt) {
     const keys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
@@ -454,6 +541,32 @@ class PaJobService {
     final h12 = hour % 12 == 0 ? 12 : hour % 12;
     final mm = minute.toString().padLeft(2, '0');
     return '$h12:$mm $period';
+  }
+
+  String _formatDate(dynamic raw) {
+    if (raw == null) return '--';
+    final s = raw.toString().trim();
+    if (s.isEmpty || s == 'null') return '--';
+    try {
+      final dt = DateTime.parse(s);
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+    } catch (_) {
+      return s;
+    }
   }
 
   int _asInt(dynamic value) {
