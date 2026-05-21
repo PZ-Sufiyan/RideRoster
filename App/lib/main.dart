@@ -5,7 +5,7 @@ import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
 import 'providers/auth_provider.dart';
-import 'providers/driver_leave_provider.dart';
+import 'providers/leave_provider.dart';
 import 'providers/driver_profile_provider.dart';
 import 'providers/job_provider.dart';
 import 'providers/pa_job_provider.dart';
@@ -55,8 +55,13 @@ class RideRosterApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => JobProvider()),
         ChangeNotifierProvider(create: (_) => PaJobProvider()),
+        ChangeNotifierProvider(create: (_) => PaAssignedJobsProvider()),
         ChangeNotifierProvider(create: (_) => DriverProfileProvider()),
+        // Two typed subclasses — driver UI reads DriverLeaveProvider,
+        // PA UI reads PaLeaveProvider. Both extend LeaveProvider with
+        // the correct userRole baked in.
         ChangeNotifierProvider(create: (_) => DriverLeaveProvider()),
+        ChangeNotifierProvider(create: (_) => PaLeaveProvider()),
       ],
       child: MaterialApp(
         title: 'RideRoster',
@@ -116,7 +121,6 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused ||
         state == AppLifecycleState.detached) {
-      // Only drivers stream location; skip for non-driver users.
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
       if (auth.isAuthenticated && auth.isDriver) {
@@ -127,29 +131,22 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
 
   Future<void> _enforceLocationRequirement({bool showLoader = true}) async {
     if (!mounted) return;
-    if (showLoader) {
-      setState(() => _isCheckingLocation = true);
-    }
+    if (showLoader) setState(() => _isCheckingLocation = true);
     final hasPermission = await _locationService.ensurePermission();
     if (!mounted) return;
     setState(() {
       _locationReady = hasPermission;
-      if (showLoader) {
-        _isCheckingLocation = false;
-      }
+      if (showLoader) _isCheckingLocation = false;
     });
   }
 
   Future<void> _startSosTrackingIfAuthenticated() async {
     final auth = context.read<AuthProvider>();
     if (!auth.isAuthenticated) return;
-    // SOS / driver_locations is a driver-only feature. Skip for PA users.
     if (!auth.isDriver) return;
-
     final currentUserId = auth.userId;
     if (currentUserId == null || currentUserId.isEmpty) return;
     if (_lastAuthUserId == currentUserId) return;
-
     _lastAuthUserId = currentUserId;
     await _sosLocationService.refresh();
   }
@@ -207,9 +204,7 @@ class _AuthEntryPage extends StatelessWidget {
           );
         }
         if (auth.isAuthenticated) {
-          if (auth.isPassengerAssistant) {
-            return const PaDashboardPage();
-          }
+          if (auth.isPassengerAssistant) return const PaDashboardPage();
           return const DriverDashboardPage();
         }
         return const LoginPage();
@@ -220,7 +215,6 @@ class _AuthEntryPage extends StatelessWidget {
 
 class MissingConfigApp extends StatelessWidget {
   final String message;
-
   const MissingConfigApp({super.key, required this.message});
 
   @override
@@ -264,7 +258,6 @@ class MissingConfigApp extends StatelessWidget {
 
 class LocationRequiredPage extends StatelessWidget {
   final Future<void> Function() onRetry;
-
   const LocationRequiredPage({super.key, required this.onRetry});
 
   @override
@@ -290,7 +283,8 @@ class LocationRequiredPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'RideRoster requires location service and location permission at all times while the app is open.',
+                  'RideRoster requires location service and location '
+                  'permission at all times while the app is open.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: Colors.black87),
                 ),

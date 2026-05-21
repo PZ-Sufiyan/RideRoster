@@ -722,6 +722,7 @@ class _QuickActionsSection extends StatelessWidget {
         icon: Icons.event_available_outlined,
         label: 'Leave',
         color: const Color(0xFFEA580C),
+        onTap: () => Navigator.pushNamed(context, AppRoutes.paLeave),
       ),
     ];
 

@@ -9,19 +9,19 @@ import '../../../../utils/size_confg.dart';
 import '../../../../providers/leave_provider.dart';
 import '../../../../model/leave_model.dart';
 
-class DriverLeavePage extends StatefulWidget {
-  const DriverLeavePage({super.key});
+class PaLeavePage extends StatefulWidget {
+  const PaLeavePage({super.key});
 
   @override
-  State<DriverLeavePage> createState() => _DriverLeavePageState();
+  State<PaLeavePage> createState() => _PaLeavePageState();
 }
 
-class _DriverLeavePageState extends State<DriverLeavePage> {
+class _PaLeavePageState extends State<PaLeavePage> {
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<DriverLeaveProvider>().loadLeaveData();
+      context.read<PaLeaveProvider>().loadLeaveData();
     });
   }
 
@@ -47,7 +47,7 @@ class _DriverLeavePageState extends State<DriverLeavePage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Expanded(
-                      child: Consumer<DriverLeaveProvider>(
+                      child: Consumer<PaLeaveProvider>(
                         builder: (context, provider, _) {
                           if (provider.isLoading) {
                             return const _LeavePageShimmer();
@@ -102,10 +102,10 @@ class _DriverLeavePageState extends State<DriverLeavePage> {
                       onPressed: () async {
                         await Navigator.pushNamed(
                           context,
-                          AppRoutes.driverLeaveRequest,
+                          AppRoutes.paLeaveRequest,
                         );
                         if (mounted && context.mounted) {
-                          context.read<DriverLeaveProvider>().loadLeaveData(
+                          context.read<PaLeaveProvider>().loadLeaveData(
                             silent: true,
                           );
                         }
@@ -155,9 +155,7 @@ class _EmptyHistory extends StatelessWidget {
 // ── History list ──────────────────────────────────────────────────────────────
 
 class _LeaveHistoryList extends StatelessWidget {
-  // Updated: LeaveRequest (was DriverLeaveRequest)
   final List<LeaveRequest> history;
-
   const _LeaveHistoryList({required this.history});
 
   @override
@@ -202,13 +200,12 @@ class _LeaveHistoryList extends StatelessWidget {
 
 // ── Leave history page ────────────────────────────────────────────────────────
 
-class LeaveHistoryPage extends StatelessWidget {
-  const LeaveHistoryPage({super.key});
+class PaLeaveHistoryPage extends StatelessWidget {
+  const PaLeaveHistoryPage({super.key});
 
   @override
   Widget build(BuildContext context) {
     SizeConfig.init(context);
-
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
@@ -216,14 +213,11 @@ class LeaveHistoryPage extends StatelessWidget {
           children: [
             const _LeaveAppBar(title: 'Leave History'),
             Expanded(
-              child: Consumer<DriverLeaveProvider>(
+              child: Consumer<PaLeaveProvider>(
                 builder: (context, provider, _) {
-                  if (provider.isLoading) {
+                  if (provider.isLoading)
                     return const _LeaveHistoryPageShimmer();
-                  }
-                  if (provider.history.isEmpty) {
-                    return _EmptyHistory();
-                  }
+                  if (provider.history.isEmpty) return _EmptyHistory();
                   return SingleChildScrollView(
                     padding: EdgeInsets.fromLTRB(
                       SizeConfig.r(30),
@@ -294,7 +288,6 @@ class _LeaveSummaryCard extends StatelessWidget {
   final int pending;
   final int rejected;
   final int approved;
-
   const _LeaveSummaryCard({
     required this.pending,
     required this.rejected,
@@ -357,13 +350,11 @@ class _LeaveSummaryCard extends StatelessWidget {
 
 class _SummaryDivider extends StatelessWidget {
   @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: SizeConfig.r(1),
-      height: SizeConfig.r(65),
-      color: const Color(0xFFE9EAEE),
-    );
-  }
+  Widget build(BuildContext context) => Container(
+    width: SizeConfig.r(1),
+    height: SizeConfig.r(65),
+    color: const Color(0xFFE9EAEE),
+  );
 }
 
 class _LeaveSummaryItem extends StatelessWidget {
@@ -536,7 +527,6 @@ class _LeaveHistoryCard extends StatelessWidget {
                     style: TextStyle(
                       fontSize: SizeConfig.sp(14),
                       height: 1.35,
-                      fontWeight: FontWeight.w400,
                       color: const Color(0xFF565A64),
                     ),
                   ),
@@ -658,11 +648,9 @@ class _LeaveHistoryShimmerList extends StatelessWidget {
   const _LeaveHistoryShimmerList({required this.count});
 
   @override
-  Widget build(BuildContext context) {
-    return Column(
-      children: List.generate(count, (_) => const _LeaveHistoryShimmerCard()),
-    );
-  }
+  Widget build(BuildContext context) => Column(
+    children: List.generate(count, (_) => const _LeaveHistoryShimmerCard()),
+  );
 }
 
 class _LeaveHistoryShimmerCard extends StatelessWidget {

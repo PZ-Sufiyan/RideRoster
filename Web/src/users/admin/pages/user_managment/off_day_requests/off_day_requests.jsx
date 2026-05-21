@@ -9,8 +9,10 @@ import {
   MdRoute,
 } from 'react-icons/md'
 import {
-  getOffDayRequestsEnrichedForCurrentAdmin,
-  updateOffDayRequestStatus,
+  getLeaveRequestsEnrichedForCurrentAdmin,
+  updateLeaveRequestStatus,
+  USER_ROLE_DRIVER,
+  USER_ROLE_PA,
 } from '../../../../../services/driverOffDayRequestService'
 import { ShimmerBlock } from '../../../../../utils/Shimmer'
 
@@ -22,8 +24,23 @@ const STATUS_LABEL = {
   rejected: 'Rejected',
 }
 
-function driverName(r) {
-  return [r.driver_first_name, r.driver_last_name].filter(Boolean).join(' ').trim() || '—'
+function requesterName(r) {
+  const first = r.requester_first_name ?? r.driver_first_name ?? ''
+  const last = r.requester_last_name ?? r.driver_last_name ?? ''
+  return [first, last].filter(Boolean).join(' ').trim() || '—'
+}
+
+function roleLabel(userRole) {
+  const role = (userRole || '').toLowerCase()
+  if (role === USER_ROLE_PA) return 'Passenger assistant'
+  if (role === USER_ROLE_DRIVER) return 'Driver'
+  return role || '—'
+}
+
+function roleBadgeClass(userRole) {
+  const role = (userRole || '').toLowerCase()
+  if (role === USER_ROLE_PA) return 'bg-violet-50 text-violet-800'
+  return 'bg-sky-50 text-sky-800'
 }
 
 function formatYmd(ymdStr) {
@@ -137,9 +154,14 @@ function RequestRow({ r, notesDraft, setNoteFor, busyId, onDecision }) {
         <div className="min-w-0 flex-1 space-y-3">
 
           {/* Header: name + badge + leave type */}
-          <div className="flex flex-wrap items-center gap-x-12 gap-y-1">
-            <span className="text-2xl font-semibold text-gray-900">{driverName(r)}</span>
-            <span className={`rounded-full px-2.5 py-0.5 font-medium ${statusClass(st)}`}>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+            <span className="text-2xl font-semibold text-gray-900">{requesterName(r)}</span>
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${roleBadgeClass(r.user_role)}`}
+            >
+              {roleLabel(r.user_role)}
+            </span>
+            <span className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${statusClass(st)}`}>
               {STATUS_LABEL[st] ?? st}
             </span>
             {r.leave_type ? (
@@ -206,8 +228,8 @@ function RequestRow({ r, notesDraft, setNoteFor, busyId, onDecision }) {
         {pending ? (
           <div className="w-full shrink-0 space-y-2.5 border-gray-100 sm:w-56 sm:border-l sm:pl-5">
             <div className="space-y-1">
-              <FieldLabel>Note to driver</FieldLabel>
-              <p className="text-[11px] text-gray-400">Optional — visible on decision</p>
+              <FieldLabel>Admin note</FieldLabel>
+              <p className="text-[11px] text-gray-400">Optional — shared with the requester</p>
               <textarea
                 rows={3}
                 maxLength={MAX_NOTES}
@@ -271,6 +293,7 @@ export default function OffDayRequestsPage() {
   const [error, setError] = useState(null)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('all')
+  const [roleFilter, setRoleFilter] = useState('all')
   const [currentPage, setCurrentPage] = useState(1)
   const [notesDraft, setNotesDraft] = useState({})
   const [busyId, setBusyId] = useState(null)
@@ -279,10 +302,10 @@ export default function OffDayRequestsPage() {
     setLoading(true)
     setError(null)
     try {
-      const data = await getOffDayRequestsEnrichedForCurrentAdmin()
+      const data = await getLeaveRequestsEnrichedForCurrentAdmin()
       setRows(data || [])
     } catch (e) {
-      setError(e?.message || 'Could not load off day requests.')
+      setError(e?.message || 'Could not load leave requests.')
       setRows([])
     } finally {
       setLoading(false)
@@ -298,14 +321,17 @@ export default function OffDayRequestsPage() {
     return rows.filter((r) => {
       const matchQ =
         !q ||
-        driverName(r).toLowerCase().includes(q) ||
+        requesterName(r).toLowerCase().includes(q) ||
+        roleLabel(r.user_role).toLowerCase().includes(q) ||
         (r.leave_type || '').toLowerCase().includes(q) ||
         (r.reason || '').toLowerCase().includes(q)
       const st = (r.status || 'pending').toLowerCase()
       const matchSt = statusFilter === 'all' || st === statusFilter
-      return matchQ && matchSt
+      const role = (r.user_role || '').toLowerCase()
+      const matchRole = roleFilter === 'all' || role === roleFilter
+      return matchQ && matchSt && matchRole
     })
-  }, [rows, search, statusFilter])
+  }, [rows, search, statusFilter, roleFilter])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE))
   const paginated = filtered.slice(
@@ -324,7 +350,7 @@ export default function OffDayRequestsPage() {
     setBusyId(requestId)
     setError(null)
     try {
-      await updateOffDayRequestStatus(requestId, { status, adminNotes: notes })
+      await updateLeaveRequestStatus(requestId, { status, adminNotes: notes })
       await load()
       setNotesDraft((prev) => {
         const next = { ...prev }
@@ -356,13 +382,13 @@ export default function OffDayRequestsPage() {
         </div>
       ) : null}
 
-      <h1 className="text-xl font-bold text-gray-900">Off-day requests</h1>
+      <h1 className="text-xl font-bold text-gray-900">Leave requests</h1>
 
       <div className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white sm:flex-row sm:items-center sm:justify-between sm:gap-3">
         <div className="flex flex-1 flex-col gap-2 p-3 sm:flex-row sm:items-center">
           <input
             type="search"
-            placeholder="Search driver, type, reason"
+            placeholder="Search name, role, type, reason"
             value={search}
             onChange={(e) => {
               setSearch(e.target.value)
@@ -383,6 +409,18 @@ export default function OffDayRequestsPage() {
             <option value="approved">Approved</option>
             <option value="rejected">Rejected</option>
           </select>
+          <select
+            value={roleFilter}
+            onChange={(e) => {
+              setRoleFilter(e.target.value)
+              setCurrentPage(1)
+            }}
+            className="w-full rounded-md border border-gray-200 px-3 py-2 text-sm sm:w-48"
+          >
+            <option value="all">All roles</option>
+            <option value={USER_ROLE_DRIVER}>Drivers</option>
+            <option value={USER_ROLE_PA}>Passenger assistants</option>
+          </select>
         </div>
         {!loading ? (
           <p className="px-3 pb-3 text-xs text-gray-500 sm:pb-0 sm:pr-3">
@@ -399,7 +437,7 @@ export default function OffDayRequestsPage() {
             <MdOutlineEventBusy className="mb-2 text-gray-300" size={40} />
             <p className="text-sm font-medium text-gray-600">No requests</p>
             <p className="mt-1 text-xs text-gray-400">
-              {search || statusFilter !== 'all'
+              {search || statusFilter !== 'all' || roleFilter !== 'all'
                 ? 'Change search or filter.'
                 : 'Nothing submitted yet.'}
             </p>

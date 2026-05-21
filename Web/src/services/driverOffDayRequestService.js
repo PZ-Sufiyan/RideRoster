@@ -3,6 +3,9 @@ import { getCompanyAdminById } from './companyService'
 
 const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
+export const USER_ROLE_DRIVER = 'driver'
+export const USER_ROLE_PA = 'passenger_assistant'
+
 /**
  * Weekday keys (mon…sun) that occur at least once between start and end (local calendar dates).
  */
@@ -59,12 +62,17 @@ async function getCompanyIdForCurrentAdmin() {
   return admin.company_id
 }
 
-function normalizeDriverLeaveRow(row) {
-  const d = row.drivers
-  const driver = Array.isArray(d) ? d[0] : d
+function normalizeLeaveRequestRow(row, profileByUserId) {
+  const userId = row.user_id
+  const userRole = (row.user_role ?? '').toString().toLowerCase()
+  const profile = profileByUserId.get(userId) || {}
+
   return {
     id: row.id,
-    driver_id: row.driver_id,
+    user_id: userId,
+    user_role: userRole,
+    /** @deprecated use user_id — kept for older UI references */
+    driver_id: userRole === USER_ROLE_DRIVER ? userId : null,
     leave_type: row.leave_type,
     start_date: String(row.start_date || '').slice(0, 10),
     end_date: String(row.end_date || '').slice(0, 10),
@@ -74,22 +82,25 @@ function normalizeDriverLeaveRow(row) {
     admin_notes: row.admin_notes ?? null,
     created_at: row.created_at,
     updated_at: row.updated_at,
-    driver_first_name: driver?.first_name ?? '',
-    driver_last_name: driver?.last_name ?? '',
+    requester_first_name: profile.first_name ?? '',
+    requester_last_name: profile.last_name ?? '',
+    /** @deprecated use requester_* — kept for older UI */
+    driver_first_name: profile.first_name ?? '',
+    driver_last_name: profile.last_name ?? '',
   }
 }
 
 /**
- * Approve or reject a driver leave / off-day request.
+ * Approve or reject a leave request (driver or passenger assistant).
  * @param {string} requestId
  * @param {{ status: 'approved'|'rejected', adminNotes?: string|null }} payload
  */
-export async function updateOffDayRequestStatus(requestId, { status, adminNotes = null }) {
+export async function updateLeaveRequestStatus(requestId, { status, adminNotes = null }) {
   if (status !== 'approved' && status !== 'rejected') {
     throw new Error('status must be approved or rejected')
   }
   const { data, error } = await supabase
-    .from('driver_leave_requests')
+    .from('leave_requests')
     .update({
       status,
       admin_notes:
@@ -105,25 +116,65 @@ export async function updateOffDayRequestStatus(requestId, { status, adminNotes 
   return data
 }
 
+/** @deprecated use updateLeaveRequestStatus */
+export const updateOffDayRequestStatus = updateLeaveRequestStatus
+
 /**
- * All driver leave requests for the admin's company, enriched with assigned-job
- * passenger schedule context for weekdays that fall within the request range.
+ * All leave requests for users in the admin's company (drivers + passenger assistants),
+ * enriched with assigned-job passenger schedule context for weekdays in the request range.
  *
  * Each request gets a `jobContexts` array:
  *   [{ job, outbound: ScheduleRow[], inbound: ScheduleRow[] }, …]
- *
- * jobContexts is empty when the driver has no accepted job that runs on those weekdays.
  */
-export async function getOffDayRequestsEnrichedForCurrentAdmin() {
+export async function getLeaveRequestsEnrichedForCurrentAdmin() {
   const companyId = await getCompanyIdForCurrentAdmin()
 
-  // ── 1. Fetch all leave requests for this company's drivers ─────────────────
+  const [driversRes, pasRes] = await Promise.all([
+    supabase
+      .from('drivers')
+      .select('id, first_name, last_name, company_id')
+      .eq('company_id', companyId),
+    supabase
+      .from('passenger_assistant')
+      .select('id, first_name, surname, company_id')
+      .eq('company_id', companyId),
+  ])
+
+  if (driversRes.error) throw driversRes.error
+  if (pasRes.error) throw pasRes.error
+
+  const profileByUserId = new Map()
+  const companyUserIds = []
+
+  for (const d of driversRes.data || []) {
+    if (!d?.id) continue
+    companyUserIds.push(d.id)
+    profileByUserId.set(d.id, {
+      first_name: d.first_name ?? '',
+      last_name: d.last_name ?? '',
+      user_role: USER_ROLE_DRIVER,
+    })
+  }
+
+  for (const pa of pasRes.data || []) {
+    if (!pa?.id) continue
+    companyUserIds.push(pa.id)
+    profileByUserId.set(pa.id, {
+      first_name: pa.first_name ?? '',
+      last_name: pa.surname ?? '',
+      user_role: USER_ROLE_PA,
+    })
+  }
+
+  if (!companyUserIds.length) return []
+
   const { data: rawRows, error: reqErr } = await supabase
-    .from('driver_leave_requests')
+    .from('leave_requests')
     .select(
       `
       id,
-      driver_id,
+      user_id,
+      user_role,
       leave_type,
       start_date,
       end_date,
@@ -132,56 +183,95 @@ export async function getOffDayRequestsEnrichedForCurrentAdmin() {
       status,
       admin_notes,
       created_at,
-      updated_at,
-      drivers!inner (
-        first_name,
-        last_name,
-        company_id
-      )
+      updated_at
     `,
     )
-    .eq('drivers.company_id', companyId)
+    .in('user_id', companyUserIds)
     .order('created_at', { ascending: false })
 
   if (reqErr) throw reqErr
   if (!rawRows?.length) return []
 
-  const requests = rawRows.map(normalizeDriverLeaveRow)
+  const requests = rawRows.map((row) => normalizeLeaveRequestRow(row, profileByUserId))
 
-  // ── 2. Fetch accepted, non-cancelled jobs for those drivers ────────────────
-  const driverIds = [...new Set(requests.map((r) => r.driver_id).filter(Boolean))]
-  if (!driverIds.length) return requests.map((r) => ({ ...r, jobContexts: [] }))
+  const driverIds = requests
+    .filter((r) => r.user_role === USER_ROLE_DRIVER)
+    .map((r) => r.user_id)
+    .filter(Boolean)
+  const paIds = requests
+    .filter((r) => r.user_role === USER_ROLE_PA)
+    .map((r) => r.user_id)
+    .filter(Boolean)
 
-  const { data: jobRows, error: jobErr } = await supabase
-    .from('jobs')
-    .select(
-      `
-      id,
-      company_id,
-      assigned_driver_id,
-      job_name,
-      job_type,
-      client_school_name,
-      internal_job_id,
-      status,
-      driver_approval_status,
-      semester_start,
-      semester_end,
-      has_outbound,
-      has_inbound
-    `,
+  const jobQueries = []
+  if (driverIds.length) {
+    jobQueries.push(
+      supabase
+        .from('jobs')
+        .select(
+          `
+          id,
+          company_id,
+          assigned_driver_id,
+          assigned_pa_id,
+          job_name,
+          job_type,
+          client_school_name,
+          internal_job_id,
+          status,
+          driver_approval_status,
+          semester_start,
+          semester_end,
+          has_outbound,
+          has_inbound
+        `,
+        )
+        .eq('company_id', companyId)
+        .in('assigned_driver_id', [...new Set(driverIds)])
+        .eq('driver_approval_status', 'accepted')
+        .neq('status', 'cancelled'),
     )
-    .eq('company_id', companyId)
-    .in('assigned_driver_id', driverIds)
-    .eq('driver_approval_status', 'accepted')
-    .neq('status', 'cancelled')
+  }
+  if (paIds.length) {
+    jobQueries.push(
+      supabase
+        .from('jobs')
+        .select(
+          `
+          id,
+          company_id,
+          assigned_driver_id,
+          assigned_pa_id,
+          job_name,
+          job_type,
+          client_school_name,
+          internal_job_id,
+          status,
+          driver_approval_status,
+          semester_start,
+          semester_end,
+          has_outbound,
+          has_inbound
+        `,
+        )
+        .eq('company_id', companyId)
+        .in('assigned_pa_id', [...new Set(paIds)])
+        .eq('driver_approval_status', 'accepted')
+        .neq('status', 'cancelled'),
+    )
+  }
 
-  if (jobErr) throw jobErr
-  const jobs = jobRows || []
+  const jobResults = jobQueries.length ? await Promise.all(jobQueries) : []
+  const jobs = []
+  for (const res of jobResults) {
+    if (res.error) throw res.error
+    for (const j of res.data || []) {
+      if (!jobs.some((x) => x.id === j.id)) jobs.push(j)
+    }
+  }
+
   if (!jobs.length) return requests.map((r) => ({ ...r, jobContexts: [] }))
 
-  // ── 3. Collect all weekdays across all requests (union) ───────────────────
-  // We fetch schedules in one query, then filter per-request in JS.
   const allWeekdays = new Set()
   for (const r of requests) {
     const s = parseYmd(r.start_date)
@@ -191,7 +281,6 @@ export async function getOffDayRequestsEnrichedForCurrentAdmin() {
   const weekdayList = [...allWeekdays]
   const jobIds = [...new Set(jobs.map((j) => j.id))]
 
-  // ── 4. Fetch relevant schedule rows (one query) ───────────────────────────
   const schedulesByJobId = {}
   if (jobIds.length && weekdayList.length) {
     const { data: schedRows, error: schErr } = await supabase
@@ -228,18 +317,22 @@ export async function getOffDayRequestsEnrichedForCurrentAdmin() {
     }
   }
 
-  // ── 5. Enrich each request with its job contexts ─────────────────────────
   return requests.map((req) => {
     const s = parseYmd(req.start_date)
     const e = parseYmd(req.end_date)
     const leaveWeekdays = s && e ? weekdayKeysBetween(s, e) : []
 
     const jobContexts = jobs
-      .filter(
-        (job) =>
-          job.assigned_driver_id === req.driver_id &&
-          semesterOverlapsLeaveRange(job, req.start_date, req.end_date),
-      )
+      .filter((job) => {
+        if (!semesterOverlapsLeaveRange(job, req.start_date, req.end_date)) return false
+        if (req.user_role === USER_ROLE_DRIVER) {
+          return job.assigned_driver_id === req.user_id
+        }
+        if (req.user_role === USER_ROLE_PA) {
+          return job.assigned_pa_id === req.user_id
+        }
+        return false
+      })
       .reduce((acc, job) => {
         const relevant = (schedulesByJobId[job.id] || []).filter((row) =>
           leaveWeekdays.includes(String(row.weekday).toLowerCase()),
@@ -260,3 +353,6 @@ export async function getOffDayRequestsEnrichedForCurrentAdmin() {
     return { ...req, jobContexts }
   })
 }
+
+/** @deprecated use getLeaveRequestsEnrichedForCurrentAdmin */
+export const getOffDayRequestsEnrichedForCurrentAdmin = getLeaveRequestsEnrichedForCurrentAdmin

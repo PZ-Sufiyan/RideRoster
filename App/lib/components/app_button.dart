@@ -65,33 +65,36 @@ class AppButton extends StatelessWidget {
             ? SizedBox(
                 width: SizeConfig.r(20),
                 height: SizeConfig.r(20),
-                child: CircularProgressIndicator(
-                  color: fg,
-                  strokeWidth: 2,
-                ),
+                child: CircularProgressIndicator(color: fg, strokeWidth: 2),
               )
-            : Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (leadingIcon != null) ...[
-                    leadingIcon!,
-                    SizedBox(width: SizeConfig.r(8)),
-                  ],
-                  Text(
-                    label,
-                    style: TextStyle(
-                      color: fg,
-                      fontSize: fontSize ?? SizeConfig.sp(15),
-                      fontWeight: fontWeight ?? FontWeight.w600,
-                      letterSpacing: 0.1,
+            : FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (leadingIcon != null) ...[
+                      leadingIcon!,
+                      SizedBox(width: SizeConfig.r(8)),
+                    ],
+                    Text(
+                      label,
+                      maxLines: 1,
+                      softWrap: false,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        color: fg,
+                        fontSize: fontSize ?? SizeConfig.sp(15),
+                        fontWeight: fontWeight ?? FontWeight.w600,
+                        letterSpacing: 0.1,
+                      ),
                     ),
-                  ),
-                  if (trailingIcon != null) ...[
-                    SizedBox(width: SizeConfig.r(8)),
-                    trailingIcon!,
+                    if (trailingIcon != null) ...[
+                      SizedBox(width: SizeConfig.r(8)),
+                      trailingIcon!,
+                    ],
                   ],
-                ],
+                ),
               ),
       ),
     );

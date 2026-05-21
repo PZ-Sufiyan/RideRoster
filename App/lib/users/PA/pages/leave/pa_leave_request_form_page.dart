@@ -72,20 +72,19 @@ String _monthName(int month) {
 // Main page
 // ─────────────────────────────────────────────────────────────────────────────
 
-class LeaveRequestFormPage extends StatefulWidget {
-  const LeaveRequestFormPage({super.key});
+class PaLeaveRequestFormPage extends StatefulWidget {
+  const PaLeaveRequestFormPage({super.key});
 
   @override
-  State<LeaveRequestFormPage> createState() => _LeaveRequestFormPageState();
+  State<PaLeaveRequestFormPage> createState() => _PaLeaveRequestFormPageState();
 }
 
-class _LeaveRequestFormPageState extends State<LeaveRequestFormPage> {
+class _PaLeaveRequestFormPageState extends State<PaLeaveRequestFormPage> {
   _LeaveRequestStep _step = _LeaveRequestStep.form;
   final _request = _LeaveRequestData();
   final _reasonController = TextEditingController();
   bool _confirmed = false;
-  // Updated: DriverLeaveProvider (typed subclass of LeaveProvider)
-  DriverLeaveProvider? _leaveProvider;
+  PaLeaveProvider? _leaveProvider;
 
   @override
   void initState() {
@@ -99,7 +98,7 @@ class _LeaveRequestFormPageState extends State<LeaveRequestFormPage> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    _leaveProvider = context.read<DriverLeaveProvider>();
+    _leaveProvider = context.read<PaLeaveProvider>();
   }
 
   @override
@@ -155,7 +154,6 @@ class _LeaveRequestFormPageState extends State<LeaveRequestFormPage> {
       firstDate: firstDate,
       lastDate: DateTime(2035),
     );
-
     if (selectedDate == null) return;
     setState(() {
       if (isStartDate) {
@@ -190,12 +188,11 @@ class _LeaveRequestFormPageState extends State<LeaveRequestFormPage> {
       return;
     }
 
-    final provider = context.read<DriverLeaveProvider>();
+    final provider = context.read<PaLeaveProvider>();
     await provider.checkConflict(
       startDate: _request.startDate!,
       endDate: _request.endDate!,
     );
-
     if (!mounted) return;
 
     final conflict = provider.conflictResult;
@@ -215,7 +212,7 @@ class _LeaveRequestFormPageState extends State<LeaveRequestFormPage> {
       return;
     }
 
-    final provider = context.read<DriverLeaveProvider>();
+    final provider = context.read<PaLeaveProvider>();
     await provider.submitRequest(
       leaveType: _request.leaveType,
       startDate: _request.startDate!,
@@ -223,7 +220,6 @@ class _LeaveRequestFormPageState extends State<LeaveRequestFormPage> {
       reason: _request.reason,
       attachmentUrl: null,
     );
-
     if (!mounted) return;
 
     if (provider.error != null) {
@@ -252,86 +248,84 @@ class _LeaveRequestFormPageState extends State<LeaveRequestFormPage> {
     await showDialog<void>(
       context: context,
       barrierColor: const Color(0xFF111827).withValues(alpha: 0.72),
-      builder: (dialogContext) {
-        return Dialog(
-          insetPadding: EdgeInsets.symmetric(horizontal: SizeConfig.r(22)),
-          backgroundColor: Colors.transparent,
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.fromLTRB(
-              SizeConfig.r(28),
-              SizeConfig.r(28),
-              SizeConfig.r(28),
-              SizeConfig.r(24),
-            ),
-            decoration: BoxDecoration(
-              color: AppColors.background,
-              borderRadius: BorderRadius.circular(SizeConfig.r(12)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.18),
-                  blurRadius: SizeConfig.r(26),
-                  offset: Offset(0, SizeConfig.r(18)),
+      builder: (dialogContext) => Dialog(
+        insetPadding: EdgeInsets.symmetric(horizontal: SizeConfig.r(22)),
+        backgroundColor: Colors.transparent,
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.fromLTRB(
+            SizeConfig.r(28),
+            SizeConfig.r(28),
+            SizeConfig.r(28),
+            SizeConfig.r(24),
+          ),
+          decoration: BoxDecoration(
+            color: AppColors.background,
+            borderRadius: BorderRadius.circular(SizeConfig.r(12)),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.18),
+                blurRadius: SizeConfig.r(26),
+                offset: Offset(0, SizeConfig.r(18)),
+              ),
+            ],
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: SizeConfig.r(72),
+                height: SizeConfig.r(72),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFE8F4FC),
+                  shape: BoxShape.circle,
                 ),
-              ],
-            ),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: SizeConfig.r(72),
-                  height: SizeConfig.r(72),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFFE8F4FC),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(
-                    Icons.event_busy_rounded,
-                    color: const Color(0xFF0284C7),
-                    size: SizeConfig.r(40),
-                  ),
+                child: Icon(
+                  Icons.event_busy_rounded,
+                  color: const Color(0xFF0284C7),
+                  size: SizeConfig.r(40),
                 ),
-                SizedBox(height: SizeConfig.r(22)),
-                Text(
-                  'Those dates are already covered',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(18),
-                    fontWeight: FontWeight.w800,
-                    color: const Color(0xFF202631),
-                  ),
+              ),
+              SizedBox(height: SizeConfig.r(22)),
+              Text(
+                'Those dates are already covered',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(18),
+                  fontWeight: FontWeight.w800,
+                  color: const Color(0xFF202631),
                 ),
-                SizedBox(height: SizeConfig.r(14)),
-                ConstrainedBox(
-                  constraints: BoxConstraints(
-                    maxHeight: MediaQuery.of(dialogContext).size.height * 0.4,
-                  ),
-                  child: SingleChildScrollView(
-                    child: Text(
-                      message,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(14),
-                        height: 1.45,
-                        color: const Color(0xFF5E636E),
-                      ),
+              ),
+              SizedBox(height: SizeConfig.r(14)),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(dialogContext).size.height * 0.4,
+                ),
+                child: SingleChildScrollView(
+                  child: Text(
+                    message,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(14),
+                      height: 1.45,
+                      color: const Color(0xFF5E636E),
                     ),
                   ),
                 ),
-                SizedBox(height: SizeConfig.r(26)),
-                AppButton(
-                  label: 'Got it',
-                  height: SizeConfig.r(56),
-                  borderRadius: SizeConfig.r(11),
-                  fontSize: SizeConfig.sp(15),
-                  fontWeight: FontWeight.w800,
-                  onPressed: () => Navigator.pop(dialogContext),
-                ),
-              ],
-            ),
+              ),
+              SizedBox(height: SizeConfig.r(26)),
+              AppButton(
+                label: 'Got it',
+                height: SizeConfig.r(56),
+                borderRadius: SizeConfig.r(11),
+                fontSize: SizeConfig.sp(15),
+                fontWeight: FontWeight.w800,
+                onPressed: () => Navigator.pop(dialogContext),
+              ),
+            ],
           ),
-        );
-      },
+        ),
+      ),
     );
   }
 
@@ -509,8 +503,7 @@ class _LeaveRequestFormView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Updated: DriverLeaveProvider (typed subclass of LeaveProvider)
-    final isChecking = context.watch<DriverLeaveProvider>().isCheckingConflict;
+    final isChecking = context.watch<PaLeaveProvider>().isCheckingConflict;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
@@ -768,8 +761,7 @@ class _ReviewRequestView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Updated: DriverLeaveProvider (typed subclass of LeaveProvider)
-    final isSubmitting = context.watch<DriverLeaveProvider>().isSubmitting;
+    final isSubmitting = context.watch<PaLeaveProvider>().isSubmitting;
 
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
@@ -952,13 +944,12 @@ class _LeaveSubmittedView extends StatelessWidget {
                 fontWeight: FontWeight.w800,
                 backgroundColor: const Color(0xFFF4F5F7),
                 textColor: const Color(0xFF202631),
-                onPressed: () {
-                  Navigator.pushNamedAndRemoveUntil(
-                    context,
-                    AppRoutes.driverDashboard,
-                    (route) => false,
-                  );
-                },
+                // PA dashboard route instead of driver dashboard
+                onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                  context,
+                  AppRoutes.paDashboard,
+                  (route) => false,
+                ),
               ),
             ],
           ),
