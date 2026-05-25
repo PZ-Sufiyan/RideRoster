@@ -9,6 +9,7 @@ import 'providers/leave_provider.dart';
 import 'providers/driver_profile_provider.dart';
 import 'providers/job_provider.dart';
 import 'providers/pa_job_provider.dart';
+import 'providers/pa_profile_provider.dart';
 import 'routes/app_routes.dart';
 import 'services/location_service.dart';
 import 'services/notification_service.dart';
@@ -57,6 +58,7 @@ class RideRosterApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PaJobProvider()),
         ChangeNotifierProvider(create: (_) => PaAssignedJobsProvider()),
         ChangeNotifierProvider(create: (_) => DriverProfileProvider()),
+        ChangeNotifierProvider(create: (_) => PaProfileProvider()),
         // Two typed subclasses — driver UI reads DriverLeaveProvider,
         // PA UI reads PaLeaveProvider. Both extend LeaveProvider with
         // the correct userRole baked in.

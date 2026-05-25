@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
+import '../../../../model/pa_profile_model.dart';
 import '../../../../providers/auth_provider.dart';
+import '../../../../providers/pa_profile_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
-import '../../models/passenger_model.dart';
 
 /// PA profile palette — matches the design screenshot (green header / accents).
 class _PaProfileColors {
@@ -19,53 +22,79 @@ class _PaProfileColors {
   static const Color docRedBg = Color(0xFFFDECEA);
 }
 
-/// Static dummy data for the PA profile screen (screenshot values).
-class PaProfileDummyData {
-  static const String fullName = PaDashboardDummyData.paName;
-  static const String phone = '+1 (555) 123-4567';
-  static const String email = 'sarah.j@email.com';
-  static const String passportNumber = '12345-6789012-3';
-  static const String gender = 'Female';
-  static const String emergencyContact = '+1 (555) 987-6543';
-  static const bool onDuty = true;
+class PaProfilePage extends StatefulWidget {
+  const PaProfilePage({super.key});
 
-  static const String assignedDriver = 'Mike Thompson';
-  static const String routeName = 'Route A - Morning';
-  static const String pickupStartTime = '7:30 AM';
-  static const String numberOfStudents = '12 Students';
+  @override
+  State<PaProfilePage> createState() => _PaProfilePageState();
 }
 
-class PaProfilePage extends StatelessWidget {
-  const PaProfilePage({super.key});
+class _PaProfilePageState extends State<PaProfilePage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<PaProfileProvider>().loadProfile();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig.init(context);
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Column(
-        children: [
-          const _ProfileHeader(),
-          Expanded(
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const _PersonalInformationSection(),
-                  SizedBox(height: SizeConfig.r(24)),
-                  const _CertificatesSection(),
-                  SizedBox(height: SizeConfig.r(24)),
-                  const _AssignedJobSection(),
-                  SizedBox(height: SizeConfig.r(24)),
-                  _SettingsSection(
-                    onLogout: () => _logout(context),
-                  ),
-                  SizedBox(height: SizeConfig.r(28)),
-                ],
+      body: Consumer<PaProfileProvider>(
+        builder: (context, provider, _) {
+          if (provider.isLoading && !provider.hasProfile) {
+            return const _ProfileLoadingBody();
+          }
+
+          if (provider.error != null && !provider.hasProfile) {
+            return _ProfileErrorBody(
+              message: provider.error!,
+              onRetry: () => context.read<PaProfileProvider>().loadProfile(
+                forceRefresh: true,
               ),
+            );
+          }
+
+          final profile = provider.profile;
+          if (profile == null) {
+            return _ProfileErrorBody(
+              message: 'Profile not available right now.',
+              onRetry: () => context.read<PaProfileProvider>().loadProfile(
+                forceRefresh: true,
+              ),
+            );
+          }
+
+          return RefreshIndicator(
+            onRefresh: () => context.read<PaProfileProvider>().loadProfile(
+              forceRefresh: true,
             ),
-          ),
-        ],
+            child: Column(
+              children: [
+                _ProfileHeader(profile: profile),
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _PersonalInformationSection(profile: profile),
+                        SizedBox(height: SizeConfig.r(24)),
+                        _CertificatesSection(documents: profile.documents),
+                        SizedBox(height: SizeConfig.r(24)),
+                        _SettingsSection(onLogout: () => _logout(context)),
+                        SizedBox(height: SizeConfig.r(28)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -82,14 +111,92 @@ class PaProfilePage extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Loading / error
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ProfileLoadingBody extends StatelessWidget {
+  const _ProfileLoadingBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return Shimmer(
+      child: Column(
+        children: [
+          ShimmerBox(
+            width: double.infinity,
+            height: SizeConfig.r(220),
+            borderRadius: BorderRadius.zero,
+          ),
+          Expanded(
+            child: ListView(
+              padding: EdgeInsets.all(SizeConfig.hPad),
+              children: List.generate(
+                6,
+                (_) => Padding(
+                  padding: EdgeInsets.only(bottom: SizeConfig.r(12)),
+                  child: ShimmerBox(
+                    width: double.infinity,
+                    height: SizeConfig.r(18),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileErrorBody extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ProfileErrorBody({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(SizeConfig.hPad),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.error_outline,
+              color: AppColors.error,
+              size: SizeConfig.r(40),
+            ),
+            SizedBox(height: SizeConfig.r(12)),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(14),
+                color: AppColors.textMedium,
+              ),
+            ),
+            SizedBox(height: SizeConfig.r(16)),
+            TextButton(onPressed: onRetry, child: const Text('Retry')),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Header (green)
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ProfileHeader extends StatelessWidget {
-  const _ProfileHeader();
+  final PaProfileModel profile;
+  const _ProfileHeader({required this.profile});
 
   @override
   Widget build(BuildContext context) {
+    final pictureUrl = profile.profilePictureUrl;
+
     return Container(
       width: double.infinity,
       color: _PaProfileColors.header,
@@ -145,22 +252,15 @@ class _ProfileHeader extends StatelessWidget {
                     shape: BoxShape.circle,
                   ),
                   child: ClipOval(
-                    child: Image.network(
-                      'https://i.pravatar.cc/300?img=5',
-                      width: SizeConfig.r(96),
-                      height: SizeConfig.r(96),
-                      fit: BoxFit.cover,
-                      errorBuilder: (_, __, ___) => Container(
-                        width: SizeConfig.r(96),
-                        height: SizeConfig.r(96),
-                        color: const Color(0xFFE8E8E8),
-                        child: Icon(
-                          Icons.person,
-                          size: SizeConfig.r(48),
-                          color: AppColors.textLight,
-                        ),
-                      ),
-                    ),
+                    child: pictureUrl != null && pictureUrl.isNotEmpty
+                        ? Image.network(
+                            pictureUrl,
+                            width: SizeConfig.r(96),
+                            height: SizeConfig.r(96),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, __, ___) => _avatarPlaceholder(),
+                          )
+                        : _avatarPlaceholder(),
                   ),
                 ),
                 Positioned(
@@ -208,14 +308,16 @@ class _ProfileHeader extends StatelessWidget {
                 Container(
                   width: SizeConfig.r(8),
                   height: SizeConfig.r(8),
-                  decoration: const BoxDecoration(
-                    color: _PaProfileColors.onDutyDot,
+                  decoration: BoxDecoration(
+                    color: profile.isOnDuty
+                        ? _PaProfileColors.onDutyDot
+                        : Colors.white54,
                     shape: BoxShape.circle,
                   ),
                 ),
                 SizedBox(width: SizeConfig.r(6)),
                 Text(
-                  PaProfileDummyData.onDuty ? 'On Duty' : 'Off Duty',
+                  profile.isOnDuty ? 'On Duty' : profile.statusLabel,
                   style: TextStyle(
                     fontSize: SizeConfig.sp(13),
                     fontWeight: FontWeight.w500,
@@ -230,6 +332,19 @@ class _ProfileHeader extends StatelessWidget {
       ),
     );
   }
+
+  Widget _avatarPlaceholder() {
+    return Container(
+      width: SizeConfig.r(96),
+      height: SizeConfig.r(96),
+      color: const Color(0xFFE8E8E8),
+      child: Icon(
+        Icons.person,
+        size: SizeConfig.r(48),
+        color: AppColors.textLight,
+      ),
+    );
+  }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -237,7 +352,8 @@ class _ProfileHeader extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _PersonalInformationSection extends StatelessWidget {
-  const _PersonalInformationSection();
+  final PaProfileModel profile;
+  const _PersonalInformationSection({required this.profile});
 
   @override
   Widget build(BuildContext context) {
@@ -270,23 +386,40 @@ class _PersonalInformationSection extends StatelessWidget {
             ],
           ),
           SizedBox(height: SizeConfig.r(16)),
-          const _InfoRow(label: 'Full Name', value: PaProfileDummyData.fullName),
+          _InfoRow(label: 'Full Name', value: profile.fullName),
           SizedBox(height: SizeConfig.r(12)),
-          const _InfoRow(label: 'Phone Number', value: PaProfileDummyData.phone),
+          _InfoRow(
+            label: 'Phone Number',
+            value: profile.phone.isEmpty ? '-' : profile.phone,
+          ),
           SizedBox(height: SizeConfig.r(12)),
-          const _InfoRow(label: 'Email', value: PaProfileDummyData.email),
+          _InfoRow(
+            label: 'Email',
+            value: profile.email.isEmpty ? '-' : profile.email,
+          ),
           SizedBox(height: SizeConfig.r(12)),
-          const _InfoRow(
+          _InfoRow(
             label: 'Passport number',
-            value: PaProfileDummyData.passportNumber,
+            value: profile.passportNumber ?? '-',
           ),
           SizedBox(height: SizeConfig.r(12)),
-          const _InfoRow(label: 'Gender', value: PaProfileDummyData.gender),
+          _InfoRow(label: 'Nationality', value: profile.nationality ?? '-'),
+          if (profile.rightToWorkCode != null) ...[
+            SizedBox(height: SizeConfig.r(12)),
+            _InfoRow(
+              label: 'Right to work code',
+              value: profile.rightToWorkCode!,
+            ),
+          ],
           SizedBox(height: SizeConfig.r(12)),
-          const _InfoRow(
+          _InfoRow(
             label: 'Emergency Contact',
-            value: PaProfileDummyData.emergencyContact,
+            value: profile.emergencyContactDisplay,
           ),
+          if (profile.residentialAddress != null) ...[
+            SizedBox(height: SizeConfig.r(12)),
+            _InfoRow(label: 'Address', value: profile.residentialAddress!),
+          ],
         ],
       ),
     );
@@ -336,34 +469,8 @@ class _InfoRow extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _CertificatesSection extends StatelessWidget {
-  const _CertificatesSection();
-
-  static const _docs = [
-    _DocumentCardData(
-      title: 'Child Safety Training',
-      status: 'Verified',
-      statusType: _DocStatusType.verified,
-      icon: Icons.workspace_premium_outlined,
-    ),
-    _DocumentCardData(
-      title: 'Medical Fitness Certificate',
-      status: 'Pending',
-      statusType: _DocStatusType.pending,
-      icon: Icons.monitor_heart_outlined,
-    ),
-    _DocumentCardData(
-      title: 'CNIC / ID',
-      status: 'Verified',
-      statusType: _DocStatusType.verified,
-      icon: Icons.badge_outlined,
-    ),
-    _DocumentCardData(
-      title: 'Profile Photo',
-      status: 'Reupload Required',
-      statusType: _DocStatusType.reupload,
-      icon: Icons.photo_camera_outlined,
-    ),
-  ];
+  final List<PaDocumentModel> documents;
+  const _CertificatesSection({required this.documents});
 
   @override
   Widget build(BuildContext context) {
@@ -381,55 +488,105 @@ class _CertificatesSection extends StatelessWidget {
             ),
           ),
           SizedBox(height: SizeConfig.r(14)),
-          ..._docs.map(
-            (d) => Padding(
-              padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
-              child: _DocumentCard(data: d),
+          if (documents.isEmpty)
+            Text(
+              'No documents uploaded yet.',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(13),
+                color: AppColors.textLight,
+              ),
+            )
+          else
+            ...documents.map(
+              (doc) => Padding(
+                padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+                child: _DocumentCard(document: doc),
+              ),
             ),
-          ),
         ],
       ),
     );
   }
 }
 
-enum _DocStatusType { verified, pending, reupload }
-
-class _DocumentCardData {
-  final String title;
-  final String status;
-  final _DocStatusType statusType;
-  final IconData icon;
-  const _DocumentCardData({
-    required this.title,
-    required this.status,
-    required this.statusType,
-    required this.icon,
-  });
-}
+enum _DocStatusType { verified, pending, expiring, expired }
 
 class _DocumentCard extends StatelessWidget {
-  final _DocumentCardData data;
-  const _DocumentCard({required this.data});
+  final PaDocumentModel document;
+  const _DocumentCard({required this.document});
+
+  _DocStatusType get _statusType {
+    if (document.isExpiryDateMissing) return _DocStatusType.expired;
+    switch (document.expiryState) {
+      case PaDocumentExpiryState.expired:
+        return _DocStatusType.expired;
+      case PaDocumentExpiryState.expiringSoon:
+        return _DocStatusType.expiring;
+      case PaDocumentExpiryState.missing:
+        return _DocStatusType.expired;
+      case PaDocumentExpiryState.ok:
+        if (document.verified) return _DocStatusType.verified;
+        return _DocStatusType.pending;
+    }
+  }
+
+  String get _statusLabel {
+    if (document.isExpiryDateMissing) return 'Date required';
+    switch (_statusType) {
+      case _DocStatusType.expired:
+        return 'Expired';
+      case _DocStatusType.expiring:
+        return 'Expiring soon';
+      case _DocStatusType.verified:
+        return 'Verified';
+      case _DocStatusType.pending:
+        return 'Pending';
+    }
+  }
+
+  IconData get _icon {
+    switch (document.documentType) {
+      case 'passport':
+        return Icons.badge_outlined;
+      case 'safeguarding_certificate':
+        return Icons.workspace_premium_outlined;
+      case 'background_check':
+        return Icons.verified_user_outlined;
+      case 'first_aid_certificate':
+        return Icons.monitor_heart_outlined;
+      default:
+        return Icons.description_outlined;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     late final Color accent;
     late final Color bg;
-    switch (data.statusType) {
+    switch (_statusType) {
       case _DocStatusType.verified:
         accent = _PaProfileColors.docGreen;
         bg = _PaProfileColors.docGreenBg;
         break;
       case _DocStatusType.pending:
+      case _DocStatusType.expiring:
         accent = _PaProfileColors.docYellow;
         bg = _PaProfileColors.docYellowBg;
         break;
-      case _DocStatusType.reupload:
+      case _DocStatusType.expired:
         accent = _PaProfileColors.docRed;
         bg = _PaProfileColors.docRedBg;
         break;
     }
+
+    final showExpiryRow = document.hasExpiryIssue;
+    final expiryColor = document.isExpiryDateMissing ||
+            document.expiryState == PaDocumentExpiryState.expired
+        ? _PaProfileColors.docRed
+        : _PaProfileColors.docYellow;
+    final showExpiryAlert = document.isExpiryDateMissing ||
+        document.expiryState == PaDocumentExpiryState.expiringSoon ||
+        document.expiryState == PaDocumentExpiryState.expired;
 
     return Container(
       padding: EdgeInsets.symmetric(
@@ -443,14 +600,14 @@ class _DocumentCard extends StatelessWidget {
       ),
       child: Row(
         children: [
-          Icon(data.icon, color: accent, size: SizeConfig.r(26)),
+          Icon(_icon, color: accent, size: SizeConfig.r(26)),
           SizedBox(width: SizeConfig.r(12)),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  data.title,
+                  document.displayTitle,
                   style: TextStyle(
                     fontSize: SizeConfig.sp(14),
                     fontWeight: FontWeight.w600,
@@ -468,7 +625,7 @@ class _DocumentCard extends StatelessWidget {
                     borderRadius: BorderRadius.circular(SizeConfig.r(12)),
                   ),
                   child: Text(
-                    data.status,
+                    _statusLabel,
                     style: TextStyle(
                       fontSize: SizeConfig.sp(10),
                       fontWeight: FontWeight.w600,
@@ -476,6 +633,30 @@ class _DocumentCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (showExpiryRow) ...[
+                  SizedBox(height: SizeConfig.r(8)),
+                  Row(
+                    children: [
+                      if (showExpiryAlert)
+                        Padding(
+                          padding: EdgeInsets.only(right: SizeConfig.r(4)),
+                          child: Icon(
+                            Icons.warning_amber_rounded,
+                            color: expiryColor,
+                            size: SizeConfig.r(16),
+                          ),
+                        ),
+                      Text(
+                        document.expiryDisplayText,
+                        style: TextStyle(
+                          fontSize: SizeConfig.sp(12),
+                          fontWeight: FontWeight.w600,
+                          color: expiryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
             ),
           ),
@@ -483,84 +664,6 @@ class _DocumentCard extends StatelessWidget {
             Icons.chevron_right,
             color: AppColors.textLight,
             size: SizeConfig.r(22),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Assigned Job Information
-// ─────────────────────────────────────────────────────────────────────────────
-
-class _AssignedJobSection extends StatelessWidget {
-  const _AssignedJobSection();
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            'Assigned Job Information',
-            style: TextStyle(
-              fontSize: SizeConfig.sp(16),
-              fontWeight: FontWeight.w700,
-              color: AppColors.textDark,
-            ),
-          ),
-          SizedBox(height: SizeConfig.r(16)),
-          const _InfoRow(
-            label: 'Assigned Driver',
-            value: PaProfileDummyData.assignedDriver,
-          ),
-          SizedBox(height: SizeConfig.r(12)),
-          const _InfoRow(
-            label: 'Route Name',
-            value: PaProfileDummyData.routeName,
-          ),
-          SizedBox(height: SizeConfig.r(12)),
-          const _InfoRow(
-            label: 'Pickup Start Time',
-            value: PaProfileDummyData.pickupStartTime,
-          ),
-          SizedBox(height: SizeConfig.r(12)),
-          const _InfoRow(
-            label: 'Number of Students',
-            value: PaProfileDummyData.numberOfStudents,
-          ),
-          SizedBox(height: SizeConfig.r(18)),
-          SizedBox(
-            width: double.infinity,
-            height: SizeConfig.r(50),
-            child: ElevatedButton(
-              onPressed: () {},
-              style: ElevatedButton.styleFrom(
-                backgroundColor: _PaProfileColors.action,
-                foregroundColor: Colors.white,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(SizeConfig.radius),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.arrow_forward, size: SizeConfig.r(18)),
-                  SizedBox(width: SizeConfig.r(8)),
-                  Text(
-                    'View Job Details',
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(15),
-                      fontWeight: FontWeight.w700,
-                    ),
-                  ),
-                ],
-              ),
-            ),
           ),
         ],
       ),
