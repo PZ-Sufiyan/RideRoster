@@ -225,5 +225,3 @@ CREATE INDEX idx_jobs_company ON public.jobs(company_id);
 CREATE INDEX idx_jobs_driver ON public.jobs(assigned_driver_id);
 CREATE INDEX idx_job_pickups_job ON public.job_pickups(job_id);
 CREATE INDEX idx_job_dropoffs_job ON public.job_dropoffs(job_id);
-CREATE INDEX idx_jpr_job ON public.job_passenger_routes(job_id);
-CREATE INDEX idx_jpr_passenger ON public.job_passenger_routes(passenger_id);

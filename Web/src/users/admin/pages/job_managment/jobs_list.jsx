@@ -33,6 +33,7 @@ import {
     removeJobAssignedPa,
 } from '../../../../services/jobService';
 import { ShimmerBlock } from '../../../../utils/Shimmer';
+import { useJobsListRealtimeSync } from '../../../../hooks/useJobsListRealtimeSync';
 
 // ── Confirmation dialog ───────────────────────────────────────────────────────
 
@@ -126,48 +127,62 @@ const ActiveJobs = () => {
         };
     }, [activeMenu]);
 
-    const loadPageData = useCallback(async () => {
-        const {
-            data: { session },
-        } = await supabase.auth.getSession();
-        const uid = session?.user?.id;
-        if (!uid) throw new Error('Not authenticated.');
-        const admin = await getCompanyAdminById(uid);
-        const cid = admin?.company_id;
-        if (!cid) throw new Error('No company linked to your account.');
-        setCompanyId(cid);
-        return { data: await fetchJobsListPageData(cid), companyId: cid };
-    }, []);
+    const companyIdRef = useRef(null);
 
     useEffect(() => {
         let cancelled = false;
         (async () => {
             setLoading(true);
             try {
-                const { data } = await loadPageData();
+                const { data: { session } } = await supabase.auth.getSession();
+                const uid = session?.user?.id;
+                if (!uid) throw new Error('Not authenticated.');
+                const admin = await getCompanyAdminById(uid);
+                const cid = admin?.company_id;
+                if (!cid) throw new Error('No company linked to your account.');
+                companyIdRef.current = cid;
+                setCompanyId(cid);
+                const data = await fetchJobsListPageData(cid);
                 if (cancelled) return;
                 setJobs(data.jobs);
                 setJobsMinimal(data.jobsMinimal);
                 setDriversCatalog(data.drivers);
                 setPasCatalog(data.passengerAssistants);
             } catch (e) {
-                if (!cancelled) {
-                    pushToast('error', e?.message || 'Could not load jobs.');
-                }
+                if (!cancelled) pushToast('error', e?.message || 'Could not load jobs.');
             } finally {
                 if (!cancelled) setLoading(false);
             }
         })();
         return () => { cancelled = true; };
-    }, [loadPageData]);
+    }, []);
 
-    const reloadData = async () => {
-        const { data } = await loadPageData();
+    const reloadData = useCallback(async () => {
+        const cid = companyIdRef.current;
+        if (!cid) return;
+        const data = await fetchJobsListPageData(cid);
         setJobs(data.jobs);
         setJobsMinimal(data.jobsMinimal);
         setDriversCatalog(data.drivers);
         setPasCatalog(data.passengerAssistants);
-    };
+    }, []);
+
+    const reloadDataRef = useRef(reloadData);
+    useEffect(() => { reloadDataRef.current = reloadData; }, [reloadData]);
+
+    const catalogsRef = useRef({ drivers: [], passengerAssistants: [] });
+    useEffect(() => {
+        catalogsRef.current = { drivers: driversCatalog, passengerAssistants: pasCatalog };
+    }, [driversCatalog, pasCatalog]);
+
+    useJobsListRealtimeSync({
+        companyId,
+        companyIdRef,
+        setJobs,
+        setJobsMinimal,
+        getCatalogs: () => catalogsRef.current,
+        reloadDataRef,
+    });
 
     const handleRefresh = async () => {
         setRefreshing(true);

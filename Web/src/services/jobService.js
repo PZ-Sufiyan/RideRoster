@@ -1085,6 +1085,102 @@ export function mapJobToListRow(job, passengerCount, driver, pa, seatCapacityTot
   }
 }
 
+async function countPassengersByJobId(jobIds) {
+  const passengerCounts = {}
+  if (!jobIds?.length) return passengerCounts
+
+  const { data: schedCounts, error: schedError } = await supabase
+    .from('passenger_schedules')
+    .select('job_id, passenger_id')
+    .in('job_id', jobIds)
+    .is('exception_date', null)
+  if (schedError) throw schedError
+
+  for (const r of schedCounts || []) {
+    passengerCounts[r.job_id] = passengerCounts[r.job_id] || new Set()
+    passengerCounts[r.job_id].add(r.passenger_id)
+  }
+
+  return passengerCounts
+}
+
+function mapRawJobsToListRows(jobsRaw, passengerCounts, drivers, pas, vehicleRows) {
+  const driversById            = new Map(drivers.map((d) => [d.id, d]))
+  const pasById                = new Map(pas.map((p) => [p.id, p]))
+  const seatCapacityByDriverId = buildSeatCapacityByDriverId(vehicleRows || [])
+
+  const jobs = jobsRaw.map((job) => {
+    const countSet  = passengerCounts[job.id]
+    const count     = countSet instanceof Set ? countSet.size : 0
+    const seatTotal = job.assigned_driver_id
+      ? seatCapacityByDriverId.get(job.assigned_driver_id) ?? null
+      : null
+    return mapJobToListRow(
+      job,
+      count,
+      driversById.get(job.assigned_driver_id),
+      pasById.get(job.assigned_pa_id),
+      seatTotal
+    )
+  })
+
+  const jobsMinimal = jobsRaw.map((j) => ({
+    id:                 j.id,
+    assigned_driver_id: j.assigned_driver_id,
+    assigned_pa_id:     j.assigned_pa_id,
+  }))
+
+  return { jobs, jobsMinimal }
+}
+
+/**
+ * Apply a single `jobs` Realtime event to the jobs list (driver approval, assignment, etc.).
+ * Re-fetches the affected row so driver_approval_status is always current.
+ */
+export async function applyJobsListRealtimeChange({
+  companyId,
+  eventType,
+  newRecord,
+  oldRecord,
+  drivers = [],
+  passengerAssistants = [],
+}) {
+  const jobId = newRecord?.id ?? oldRecord?.id
+  if (!jobId) return { type: 'reload' }
+
+  if (eventType === 'DELETE') {
+    return { type: 'remove', jobId }
+  }
+
+  const { data: job, error } = await supabase
+    .from('jobs')
+    .select('*')
+    .eq('id', jobId)
+    .eq('company_id', companyId)
+    .maybeSingle()
+  if (error) throw error
+  if (!job) return { type: 'remove', jobId }
+
+  const [passengerCounts, vehiclesRes] = await Promise.all([
+    countPassengersByJobId([jobId]),
+    supabase
+      .from('vehicles')
+      .select('driver_id, seating_capacity, wheelchair_accessible')
+      .eq('company_id', companyId),
+  ])
+  if (vehiclesRes.error) throw vehiclesRes.error
+
+  const { jobs, jobsMinimal } = mapRawJobsToListRows(
+    [job],
+    passengerCounts,
+    drivers,
+    passengerAssistants,
+    vehiclesRes.data || []
+  )
+
+  return { type: 'upsert', row: jobs[0], minimal: jobsMinimal[0] }
+}
+
 export async function fetchJobsListPageData(companyId) {
   if (!companyId) throw new Error('company_id is required')
 
@@ -1102,55 +1198,18 @@ export async function fetchJobsListPageData(companyId) {
   if (pasRes.error)      throw pasRes.error
   if (vehiclesRes.error) throw vehiclesRes.error
 
-  const jobsRaw = jobsRes.data || []
-  const jobIds  = jobsRaw.map((j) => j.id)
+  const jobsRaw         = jobsRes.data || []
+  const passengerCounts = await countPassengersByJobId(jobsRaw.map((j) => j.id))
+  const drivers         = driversRes.data || []
+  const pas             = pasRes.data || []
+  const { jobs, jobsMinimal } = mapRawJobsToListRows(
+    jobsRaw,
+    passengerCounts,
+    drivers,
+    pas,
+    vehiclesRes.data || []
+  )
 
-  const passengerCounts = {}
-  if (jobIds.length > 0) {
-    const { data: schedCounts } = await supabase
-      .from('passenger_schedules')
-      .select('job_id, passenger_id')
-      .in('job_id', jobIds)
-      .is('exception_date', null)
-
-    for (const r of schedCounts || []) {
-      passengerCounts[r.job_id] = passengerCounts[r.job_id] || new Set()
-      passengerCounts[r.job_id].add(r.passenger_id)
-    }
-
-    const { data: routesCounts } = await supabase
-      .from('job_passenger_routes')
-      .select('job_id')
-      .in('job_id', jobIds)
-
-    for (const r of routesCounts || []) {
-      if (!passengerCounts[r.job_id]) passengerCounts[r.job_id] = new Set()
-    }
-    for (const r of routesCounts || []) {
-      if (passengerCounts[r.job_id] instanceof Set) {
-        passengerCounts[r.job_id].add(r.passenger_id || r.job_id + '_route')
-      }
-    }
-  }
-
-  const drivers                = driversRes.data || []
-  const pas                    = pasRes.data     || []
-  const driversById            = new Map(drivers.map((d) => [d.id, d]))
-  const pasById                = new Map(pas.map((p)     => [p.id, p]))
-  const seatCapacityByDriverId = buildSeatCapacityByDriverId(vehiclesRes.data || [])
-
-  const jobs = jobsRaw.map((job) => {
-    const countSet  = passengerCounts[job.id]
-    const count     = countSet instanceof Set ? countSet.size : 0
-    const seatTotal = job.assigned_driver_id ? seatCapacityByDriverId.get(job.assigned_driver_id) ?? null : null
-    return mapJobToListRow(job, count, driversById.get(job.assigned_driver_id), pasById.get(job.assigned_pa_id), seatTotal)
-  })
-
-  const jobsMinimal = jobsRaw.map((j) => ({
-    id:                 j.id,
-    assigned_driver_id: j.assigned_driver_id,
-    assigned_pa_id:     j.assigned_pa_id,
-  }))
   return { jobs, jobsMinimal, drivers, passengerAssistants: pas }
 }
 
