@@ -111,18 +111,19 @@ function formatStatusLabel(raw) {
     return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
+function formatRouteLabel(raw) {
+    const s = (raw || '').trim().toLowerCase();
+    if (!s) return '—';
+    if (s === 'outbound') return 'Morning';
+    if (s === 'inbound') return 'Evening';
+    return raw || '—';
+}
+
 const DriverDetail = () => {
     const navigate = useNavigate();
     const { id } = useParams();
     const { can } = useSubAdminPermissions();
     const canViewUsers = can('view_users');
-    if (!canViewUsers) {
-        return (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                You do not have permission to view users.
-            </div>
-        );
-    }
 
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState('');
@@ -190,8 +191,9 @@ const DriverDetail = () => {
     }, [id]);
 
     useEffect(() => {
+        if (!canViewUsers) return;
         load();
-    }, [load]);
+    }, [canViewUsers, load]);
 
     const displayName = useMemo(() => {
         if (!driver) return '';
@@ -252,6 +254,14 @@ const DriverDetail = () => {
         </div>
         );
     };
+
+    if (!canViewUsers) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to view users.
+            </div>
+        );
+    }
 
     if (loading) {
         return (
@@ -324,7 +334,7 @@ const DriverDetail = () => {
                     </button>
                     <button
                         type="button"
-                        onClick={() => navigate('/team/users/drivers')}
+                        onClick={() => navigate(`/team/users/drivers/${id}/edit`)}
                         className="flex items-center gap-2 px-4 py-2 bg-[#005580] text-white rounded-lg text-xs font-semibold hover:bg-[#004663]"
                     >
                         <MdEdit size={14} />
@@ -513,7 +523,7 @@ const DriverDetail = () => {
                     <h2 className="text-[22px] font-bold text-gray-900">Job History</h2>
                     <button
                         type="button"
-                        onClick={() => navigate('/portal/jobs')}
+                        onClick={() => navigate('/team/jobs')}
                         className="text-[12px] text-[#005580] font-semibold hover:underline"
                     >
                         View All Jobs
@@ -545,7 +555,7 @@ const DriverDetail = () => {
                                         <td className="px-5 py-2.5 text-[12px] text-gray-500">
                                             {formatDate(job.semester_start || job.created_at)}
                                         </td>
-                                        <td className="px-5 py-2.5 text-[12px] text-gray-700">{job.job_name || '—'}</td>
+                                        <td className="px-5 py-2.5 text-[12px] text-gray-700">{formatRouteLabel(job.job_name)}</td>
                                         <td className="px-5 py-2.5">
                                             <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-emerald-600">
                                                 <MdCheckCircle size={14} />

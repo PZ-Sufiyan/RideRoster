@@ -16,9 +16,11 @@ import Admin_Dashboard from './users/admin/pages/dashboard/dashboard';
 import Admin_Drivers from './users/admin/pages/user_managment/driver/drivers';
 import Admin_DriverDetail from './users/admin/pages/user_managment/driver/driver_detail';
 import Admin_AddDriver from './users/admin/pages/user_managment/driver/add_new_driver';
+import Admin_EditDriver from './users/admin/pages/user_managment/driver/edit_driver';
 import Admin_PAList from './users/admin/pages/user_managment/PA/pa_list';
 import Admin_PADetail from './users/admin/pages/user_managment/PA/pa_detail';
 import Admin_AddPA from './users/admin/pages/user_managment/PA/add_new_pa';
+import Admin_EditPA from './users/admin/pages/user_managment/PA/edit_pa';
 import SubAdminList from './users/admin/pages/user_managment/subadmin/sub_admin';
 import Admin_AddSubAdmin from './users/admin/pages/user_managment/subadmin/add_sub_admin';
 import Admin_SubAdminDetail from './users/admin/pages/user_managment/subadmin/sub_admin_detail';
@@ -53,9 +55,11 @@ import SubAdmin_Approvals from './users/subAdmin/pages/approvals/approvals';
 import SubAdmin_Drivers from './users/subAdmin/pages/user_managment/driver/drivers';
 import SubAdmin_AddDriver from './users/subAdmin/pages/user_managment/driver/add_new_driver';
 import SubAdmin_DriverDetail from './users/subAdmin/pages/user_managment/driver/driver_detail';
+import SubAdmin_EditDriver from './users/subAdmin/pages/user_managment/driver/edit_driver';
 import SubAdmin_PAList from './users/subAdmin/pages/user_managment/PA/pa_list';
 import SubAdmin_AddPA from './users/subAdmin/pages/user_managment/PA/add_new_pa';
 import SubAdmin_PADetail from './users/subAdmin/pages/user_managment/PA/pa_detail';
+import SubAdmin_EditPA from './users/subAdmin/pages/user_managment/PA/edit_pa';
 import SubAdmin_Passengers from './users/subAdmin/pages/user_managment/passenger/passengers';
 import SubAdmin_AddPassenger from './users/subAdmin/pages/user_managment/passenger/add_new_passenger';
 import SubAdmin_EditPassenger from './users/subAdmin/pages/user_managment/passenger/edit_passenger';
@@ -137,9 +141,11 @@ function App() {
                 <Route path="/portal/dashboard" element={<Admin_Dashboard />} />
                 <Route path="/portal/users/drivers" element={<Admin_Drivers />} />
                 <Route path="/portal/users/drivers/add" element={<Admin_AddDriver />} />
+                <Route path="/portal/users/drivers/:driverId/edit" element={<Admin_EditDriver />} />
                 <Route path="/portal/users/drivers/:id" element={<Admin_DriverDetail />} />
                 <Route path="/portal/users/pa" element={<Admin_PAList />} />
                 <Route path="/portal/users/pa/add" element={<Admin_AddPA />} />
+                <Route path="/portal/users/pa/:id/edit" element={<Admin_EditPA />} />
                 <Route path="/portal/users/pa/:id" element={<Admin_PADetail />} />
                 <Route path="/portal/users/subadmins" element={<SubAdminList />} />
                 <Route path="/portal/users/subadmins/add" element={<Admin_AddSubAdmin />} />
@@ -204,6 +210,14 @@ function App() {
                 }
               />
               <Route
+                path="/team/users/drivers/:driverId/edit"
+                element={
+                  <SubAdminProtectedPage permission="edit_profiles">
+                    <SubAdmin_EditDriver />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
                 path="/team/users/pa"
                 element={
                   <SubAdminProtectedPage permission="view_users">
@@ -224,6 +238,14 @@ function App() {
                 element={
                   <SubAdminProtectedPage permission="view_users">
                     <SubAdmin_PADetail />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/team/users/pa/:id/edit"
+                element={
+                  <SubAdminProtectedPage permission="edit_profiles">
+                    <SubAdmin_EditPA />
                   </SubAdminProtectedPage>
                 }
               />

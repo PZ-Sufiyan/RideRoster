@@ -134,8 +134,8 @@ function formatTime(iso) {
 function formatDirectionLabel(raw) {
     const s = (raw || '').trim().toLowerCase();
     if (!s) return '—';
-    if (s === 'outbound') return 'Outbound';
-    if (s === 'inbound') return 'Inbound';
+    if (s === 'outbound') return 'Morning';
+    if (s === 'inbound') return 'Evening';
     return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
@@ -358,7 +358,7 @@ const DriverDetail = () => {
                     </button>
                     <button
                         type="button"
-                        onClick={() => navigate('/portal/users/drivers')}
+                        onClick={() => navigate(`/portal/users/drivers/${id}/edit`)}
                         className="flex items-center gap-2 px-4 py-2 bg-[#005580] text-white rounded-lg text-xs font-semibold hover:bg-[#004663]"
                     >
                         <MdEdit size={14} />
