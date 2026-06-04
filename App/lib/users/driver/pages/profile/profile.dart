@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
+import '../../../../components/offline_banner.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../providers/driver_profile_provider.dart';
 import '../../../../routes/app_routes.dart';
@@ -39,7 +40,6 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
 
             if (provider.error != null && !provider.hasProfile) {
               return _ProfileErrorState(
-                message: provider.error!,
                 onRetry: () => context
                     .read<DriverProfileProvider>()
                     .loadProfile(forceRefresh: true),
@@ -49,7 +49,6 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
             final profile = provider.profile;
             if (profile == null) {
               return _ProfileErrorState(
-                message: 'Profile not available right now.',
                 onRetry: () => context
                     .read<DriverProfileProvider>()
                     .loadProfile(forceRefresh: true),
@@ -62,6 +61,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                   .loadProfile(forceRefresh: true),
               child: Column(
                 children: [
+                  const OfflineBanner(),
                   _buildAppBar(context),
                   Expanded(
                     child: SingleChildScrollView(
@@ -438,43 +438,78 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
 }
 
 class _ProfileErrorState extends StatelessWidget {
-  final String message;
   final VoidCallback onRetry;
 
-  const _ProfileErrorState({required this.message, required this.onRetry});
+  const _ProfileErrorState({required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(SizeConfig.r(20)),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline,
-              size: SizeConfig.r(42),
-              color: AppColors.error,
+    return Column(
+      children: [
+        const OfflineBanner(),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            onPressed: () => Navigator.pushNamedAndRemoveUntil(
+              context,
+              AppRoutes.driverDashboard,
+              (route) => false,
             ),
-            SizedBox(height: SizeConfig.r(12)),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textMedium,
+            icon: Icon(
+              Icons.arrow_back,
+              color: AppColors.textDark,
+              size: SizeConfig.r(22),
+            ),
+          ),
+        ),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(SizeConfig.r(20)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.cloud_off_outlined,
+                    size: SizeConfig.r(42),
+                    color: AppColors.warning,
+                  ),
+                  SizedBox(height: SizeConfig.r(12)),
+                  Text(
+                    'No internet. Please try again.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(14),
+                      color: AppColors.textDark,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: SizeConfig.r(20)),
+                  AppButton(
+                    label: 'Retry',
+                    onPressed: onRetry,
+                    height: SizeConfig.r(42),
+                    borderRadius: SizeConfig.radius,
+                  ),
+                  SizedBox(height: SizeConfig.r(10)),
+                  AppButton(
+                    label: 'Back to Dashboard',
+                    onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      AppRoutes.driverDashboard,
+                      (route) => false,
+                    ),
+                    height: SizeConfig.r(42),
+                    borderRadius: SizeConfig.radius,
+                    backgroundColor: AppColors.surfaceGray,
+                    textColor: AppColors.textDark,
+                  ),
+                ],
               ),
             ),
-            SizedBox(height: SizeConfig.r(14)),
-            AppButton(
-              label: 'Retry',
-              onPressed: onRetry,
-              height: SizeConfig.r(42),
-              borderRadius: SizeConfig.radius,
-            ),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
+import '../../../../components/offline_banner.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../providers/job_provider.dart';
+import '../../../../repositories/local_job_repository.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../services/dashboard_stats_service.dart';
 import '../../../../services/driver_job_request_service.dart';
@@ -10,6 +12,17 @@ import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../model/job_request_model.dart';
+import 'vehicle_check_list.dart';
+
+Future<void> _pushVehicleChecklist(BuildContext context) {
+  final localRepo = context.read<LocalJobRepository>();
+  return Navigator.push(
+    context,
+    MaterialPageRoute(
+      builder: (_) => VehicleCheckListPage(localRepo: localRepo),
+    ),
+  );
+}
 
 class DriverDashboardPage extends StatefulWidget {
   const DriverDashboardPage({super.key});
@@ -56,6 +69,7 @@ class _DriverDashboardPageState extends State<DriverDashboardPage>
       body: SafeArea(
         child: Column(
           children: [
+            const OfflineBanner(),
             _DashboardAppBar(),
             Expanded(
               child: SingleChildScrollView(
@@ -481,10 +495,7 @@ class _CurrentJobCard extends StatelessWidget {
                       ),
                 onPressed: () {
                   if (buttonBlocked) {
-                    Navigator.pushNamed(
-                      context,
-                      AppRoutes.vehicleChecklist,
-                    ).then((_) {
+                    _pushVehicleChecklist(context).then((_) {
                       if (!context.mounted) return;
                       context.read<JobProvider>().loadJob(silent: true);
                     });
@@ -574,7 +585,7 @@ class _StatsGridState extends State<_StatsGrid> {
   static DashboardStats? _cachedStats;
   static bool _cachedStatsLoaded = false;
 
-  final DashboardStatsService _statsService = DashboardStatsService();
+  late final DashboardStatsService _statsService;
   DashboardStats? _stats = _cachedStats;
   bool _statsFirstLoadDone = _cachedStatsLoaded;
   late final JobProvider _jobProvider;
@@ -584,6 +595,7 @@ class _StatsGridState extends State<_StatsGrid> {
   @override
   void initState() {
     super.initState();
+    _statsService = DashboardStatsService(context.read<LocalJobRepository>());
     _jobProvider = context.read<JobProvider>();
     _lastSyncedJobDataEpoch = _jobProvider.jobDataEpoch;
     _fetchStats();
@@ -653,7 +665,7 @@ class _StatsGridState extends State<_StatsGrid> {
         iconColor: checklistDone ? AppColors.success : AppColors.warning,
         count: checklistDone ? '✓' : '1',
         label: 'Checklist Pending',
-        onTap: () => Navigator.pushNamed(context, AppRoutes.vehicleChecklist),
+        onTap: () => _pushVehicleChecklist(context),
       ),
       _StatData(
         icon: Icons.check_circle,
@@ -1105,7 +1117,7 @@ class _QuickActionsSection extends StatelessWidget {
     final preRideBlocked = !checklistDone && !sessionActive;
 
     void openChecklist() {
-      Navigator.pushNamed(context, AppRoutes.vehicleChecklist).then((_) {
+      _pushVehicleChecklist(context).then((_) {
         if (!context.mounted) return;
         context.read<JobProvider>().loadJob(silent: true);
       });
@@ -1125,7 +1137,7 @@ class _QuickActionsSection extends StatelessWidget {
         icon: Icons.assignment_outlined,
         label: 'Vehicle\nChecklist',
         iconBgColor: AppColors.primary,
-        onTap: () => Navigator.pushNamed(context, AppRoutes.vehicleChecklist),
+        onTap: () => _pushVehicleChecklist(context),
       ),
       _QuickActionData(
         icon: Icons.alt_route,
@@ -1138,6 +1150,13 @@ class _QuickActionsSection extends StatelessWidget {
         icon: Icons.warning_amber_rounded,
         label: 'Report\nIssue',
         iconBgColor: AppColors.warning,
+        onTap: () async {
+          await context.read<LocalJobRepository>().clearAllLocalData();
+          if (!context.mounted) return;
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(const SnackBar(content: Text('Local DB cleared')));
+        },
       ),
       _QuickActionData(
         icon: Icons.phone,

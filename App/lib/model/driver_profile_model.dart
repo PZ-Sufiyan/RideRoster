@@ -50,6 +50,59 @@ class DriverProfileModel {
 
   bool get isActive => (status ?? '').trim().toLowerCase() == 'active';
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'company_id': companyId,
+    'first_name': firstName,
+    'last_name': lastName,
+    'email': email,
+    'phone': phone,
+    'residential_address': residentialAddress,
+    'emergency_contact_name': emergencyContactName,
+    'emergency_contact_phone': emergencyContactPhone,
+    'passport_number': passportNumber,
+    'right_to_work_code': rightToWorkCode,
+    'license_no': licenseNo,
+    'status': status,
+    'dbs_service_update_id': dbsServiceUpdateId,
+    'vehicle': vehicle?.toJson(),
+    'driver_documents': driverDocuments.map((d) => d.toJson()).toList(),
+    'vehicle_documents': vehicleDocuments.map((d) => d.toJson()).toList(),
+  };
+
+  factory DriverProfileModel.fromJson(Map<String, dynamic> json) {
+    final vehicleRaw = json['vehicle'];
+    return DriverProfileModel(
+      id: (json['id'] ?? '').toString(),
+      companyId: (json['company_id'] ?? '').toString(),
+      firstName: (json['first_name'] ?? '').toString(),
+      lastName: (json['last_name'] ?? '').toString(),
+      email: (json['email'] ?? '').toString(),
+      phone: (json['phone'] ?? '').toString(),
+      residentialAddress: (json['residential_address'] ?? '').toString(),
+      emergencyContactName: (json['emergency_contact_name'] ?? '').toString(),
+      emergencyContactPhone: (json['emergency_contact_phone'] ?? '').toString(),
+      passportNumber: json['passport_number']?.toString(),
+      rightToWorkCode: json['right_to_work_code']?.toString(),
+      licenseNo: (json['license_no'] ?? '').toString(),
+      status: json['status']?.toString(),
+      dbsServiceUpdateId: json['dbs_service_update_id']?.toString(),
+      vehicle: vehicleRaw is Map<String, dynamic>
+          ? DriverVehicleModel.fromJson(vehicleRaw)
+          : null,
+      driverDocuments: (json['driver_documents'] as List<dynamic>? ?? [])
+          .map((e) => DriverDocumentModel.fromJson(
+                Map<String, dynamic>.from(e as Map),
+              ))
+          .toList(),
+      vehicleDocuments: (json['vehicle_documents'] as List<dynamic>? ?? [])
+          .map((e) => VehicleDocumentModel.fromJson(
+                Map<String, dynamic>.from(e as Map),
+              ))
+          .toList(),
+    );
+  }
+
   factory DriverProfileModel.fromMap(
     Map<String, dynamic> row, {
     required DriverVehicleModel? vehicle,
@@ -112,6 +165,33 @@ class DriverVehicleModel {
     return composed.isEmpty ? 'Not assigned' : composed;
   }
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'name': name,
+    'make': make,
+    'model': model,
+    'taxi_license_plate_number': taxiLicensePlateNumber,
+    'registration_number': registrationNumber,
+    'vehicle_colour': vehicleColour,
+    'seating_capacity': seatingCapacity,
+    'wheelchair_accessible': wheelchairAccessible,
+  };
+
+  factory DriverVehicleModel.fromJson(Map<String, dynamic> json) {
+    return DriverVehicleModel(
+      id: (json['id'] ?? '').toString(),
+      name: _toNullableText(json['name']),
+      make: _toNullableText(json['make']),
+      model: _toNullableText(json['model']),
+      taxiLicensePlateNumber: (json['taxi_license_plate_number'] ?? '')
+          .toString(),
+      registrationNumber: _toNullableText(json['registration_number']),
+      vehicleColour: _toNullableText(json['vehicle_colour']),
+      seatingCapacity: _toNullableInt(json['seating_capacity']),
+      wheelchairAccessible: json['wheelchair_accessible'] == true,
+    );
+  }
+
   factory DriverVehicleModel.fromMap(Map<String, dynamic> row) {
     return DriverVehicleModel(
       id: (row['id'] ?? '').toString(),
@@ -154,6 +234,22 @@ class DriverDocumentModel {
     required this.expiryDate,
   });
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'document_type': documentType,
+    'file_url': fileUrl,
+    'expiry_date': expiryDate?.toIso8601String(),
+  };
+
+  factory DriverDocumentModel.fromJson(Map<String, dynamic> json) {
+    return DriverDocumentModel(
+      id: (json['id'] ?? '').toString(),
+      documentType: (json['document_type'] ?? '').toString(),
+      fileUrl: (json['file_url'] ?? '').toString(),
+      expiryDate: _parseDate(json['expiry_date']),
+    );
+  }
+
   factory DriverDocumentModel.fromMap(Map<String, dynamic> row) {
     return DriverDocumentModel(
       id: (row['id'] ?? '').toString(),
@@ -176,6 +272,22 @@ class VehicleDocumentModel {
     required this.fileUrl,
     required this.expiryDate,
   });
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'document_type': documentType,
+    'file_url': fileUrl,
+    'expiry_date': expiryDate?.toIso8601String(),
+  };
+
+  factory VehicleDocumentModel.fromJson(Map<String, dynamic> json) {
+    return VehicleDocumentModel(
+      id: (json['id'] ?? '').toString(),
+      documentType: (json['document_type'] ?? '').toString(),
+      fileUrl: (json['file_url'] ?? '').toString(),
+      expiryDate: _parseDate(json['expiry_date']),
+    );
+  }
 
   factory VehicleDocumentModel.fromMap(Map<String, dynamic> row) {
     return VehicleDocumentModel(

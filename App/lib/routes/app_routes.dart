@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../repositories/local_job_repository.dart';
 import '../users/auth/pages/choose_account_type.dart';
 import '../users/auth/pages/login.dart';
 import '../users/auth/pages/register.dart';
@@ -12,7 +13,7 @@ import '../users/driver/pages/job/requested_jobs.dart';
 import '../users/driver/pages/job/route_detail.dart';
 import '../users/PA/pages/dashboard/dashboard.dart';
 import '../users/PA/pages/profile/profile.dart';
-import '../users/PA/pages/Notification/Notification.dart';
+import '../users/PA/pages/notification/notification.dart';
 import '../users/PA/pages/job/assigned_job.dart';
 import '../users/PA/pages/job/current_job.dart';
 import '../users/driver/pages/leave/leave.dart';
@@ -48,7 +49,10 @@ class AppRoutes {
   static const String paLeave = '/pa/leave';
   static const String paLeaveRequest = '/pa/leave-request';
 
-  static Route<dynamic> generateRoute(RouteSettings settings) {
+  static Route<dynamic> generateRoute(
+    RouteSettings settings, {
+    required LocalJobRepository localRepo,
+  }) {
     switch (settings.name) {
       case login:
         return MaterialPageRoute(builder: (_) => const LoginPage());
@@ -68,7 +72,9 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const DriverDashboardPage());
 
       case vehicleChecklist:
-        return MaterialPageRoute(builder: (_) => const VehicleCheckListPage());
+        return MaterialPageRoute(
+          builder: (_) => VehicleCheckListPage(localRepo: localRepo),
+        );
 
       case sos:
         return MaterialPageRoute(builder: (_) => const SOSPage());
@@ -119,7 +125,9 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const PaLeavePage());
 
       case paLeaveRequest:
-        return MaterialPageRoute(builder: (_) => const PaLeaveRequestFormPage());
+        return MaterialPageRoute(
+          builder: (_) => const PaLeaveRequestFormPage(),
+        );
 
       default:
         return MaterialPageRoute(builder: (_) => const LoginPage());

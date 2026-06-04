@@ -1,8 +1,0 @@
-{
-  "permissions": {
-    "allow": [
-      "Bash(wc -l /c/Users/shoai/OneDrive/Desktop/RideRoster/App/lib/users/driver/pages/auth/*.dart /c/Users/shoai/OneDrive/Desktop/RideRoster/App/lib/users/driver/components/*.dart)",
-      "Bash(flutter pub:*)"
-    ]
-  }
-}

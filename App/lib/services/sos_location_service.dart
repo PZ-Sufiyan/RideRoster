@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:geolocator/geolocator.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'location_service.dart';
@@ -30,6 +31,10 @@ class SosLocationService {
   bool _streaming = false;
   Position? _latestPosition;
 
+  static const Duration _networkTimeout = Duration(seconds: 4);
+
+  String _companyIdPrefsKey(String userId) => 'driver_company_id_$userId';
+
   Future<void> init() async {
     if (_initialized) return;
     _initialized = true;
@@ -44,15 +49,28 @@ class SosLocationService {
 
     _driverId = user.id;
 
-    final driverRow = await _supabase
-        .from('drivers')
-        .select('company_id')
-        .eq('id', user.id)
-        .maybeSingle();
+    if (_companyId == null || _companyId!.isEmpty) {
+      final prefs = await SharedPreferences.getInstance();
+      _companyId = prefs.getString(_companyIdPrefsKey(user.id));
+    }
 
-    final companyId = driverRow?['company_id']?.toString();
-    if (companyId == null || companyId.isEmpty) return;
-    _companyId = companyId;
+    try {
+      final driverRow = await _supabase
+          .from('drivers')
+          .select('company_id')
+          .eq('id', user.id)
+          .maybeSingle()
+          .timeout(_networkTimeout);
+
+      final companyId = driverRow?['company_id']?.toString();
+      if (companyId == null || companyId.isEmpty) return;
+
+      _companyId = companyId;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_companyIdPrefsKey(user.id), companyId);
+    } catch (_) {
+      // Offline or unreachable — driverId is set; companyId may come from prefs.
+    }
   }
 
   Future<String> createSosAlert({String? notes}) async {
@@ -61,7 +79,9 @@ class SosLocationService {
     final driverId = _driverId;
     final companyId = _companyId;
     if (driverId == null || companyId == null) {
-      throw StateError('Unable to determine the current driver profile.');
+      throw StateError(
+        'Unable to send SOS while offline. Reconnect and try again.',
+      );
     }
 
     final hasPermission = await _locationService.ensurePermission();
@@ -74,126 +94,144 @@ class SosLocationService {
     );
     _latestPosition = position;
 
-    // ── Vehicle lookup (unchanged) ────────────────────────────────────────
-    final vehicles = await _supabase
-        .from('vehicles')
-        .select('id')
-        .eq('driver_id', driverId)
-        .limit(1);
+    try {
+      // ── Vehicle lookup ──────────────────────────────────────────────────
+      final vehicles = await _supabase
+          .from('vehicles')
+          .select('id')
+          .eq('driver_id', driverId)
+          .limit(1)
+          .timeout(_networkTimeout);
 
-    if (vehicles.isEmpty) {
-      throw StateError('No assigned vehicle found for this driver.');
-    }
-    final vehicleId = vehicles.first['id']?.toString();
-    if (vehicleId == null || vehicleId.isEmpty) {
-      throw StateError('No assigned vehicle found for this driver.');
-    }
+      if (vehicles.isEmpty) {
+        throw StateError('No assigned vehicle found for this driver.');
+      }
+      final vehicleId = vehicles.first['id']?.toString();
+      if (vehicleId == null || vehicleId.isEmpty) {
+        throw StateError('No assigned vehicle found for this driver.');
+      }
 
-    // ── Active job lookup (semester-based, no job_date ordering) ─────────
-    final today = DateTime.now();
-    final todayDate =
-        '${today.year.toString().padLeft(4, '0')}-'
-        '${today.month.toString().padLeft(2, '0')}-'
-        '${today.day.toString().padLeft(2, '0')}';
+      // ── Active job lookup (semester-based) ──────────────────────────────
+      final today = DateTime.now();
+      final todayDate =
+          '${today.year.toString().padLeft(4, '0')}-'
+          '${today.month.toString().padLeft(2, '0')}-'
+          '${today.day.toString().padLeft(2, '0')}';
 
-    final activeJobs = await _supabase
-        .from('jobs')
-        .select('id, assigned_pa_id')
-        .eq('assigned_driver_id', driverId)
-        .eq('status', 'active')
-        .lte('semester_start', todayDate)
-        .gte('semester_end', todayDate)
-        .order('semester_start', ascending: true)
-        .limit(1);
+      final activeJobs = await _supabase
+          .from('jobs')
+          .select('id, assigned_pa_id')
+          .eq('assigned_driver_id', driverId)
+          .eq('status', 'active')
+          .lte('semester_start', todayDate)
+          .gte('semester_end', todayDate)
+          .order('semester_start', ascending: true)
+          .limit(1)
+          .timeout(_networkTimeout);
 
-    String? jobId;
-    String? passengerAssistantId;
-    int passengerCount = 0;
+      String? jobId;
+      String? passengerAssistantId;
+      int passengerCount = 0;
 
-    if (activeJobs.isNotEmpty) {
-      final activeJob = Map<String, dynamic>.from(activeJobs.first);
-      final resolvedJobId = activeJob['id']?.toString();
+      if (activeJobs.isNotEmpty) {
+        final activeJob = Map<String, dynamic>.from(activeJobs.first);
+        final resolvedJobId = activeJob['id']?.toString();
 
-      if (resolvedJobId != null && resolvedJobId.isNotEmpty) {
-        jobId = resolvedJobId;
-        passengerAssistantId = activeJob['assigned_pa_id']?.toString();
+        if (resolvedJobId != null && resolvedJobId.isNotEmpty) {
+          jobId = resolvedJobId;
+          passengerAssistantId = activeJob['assigned_pa_id']?.toString();
 
-        // ── Passenger count from today's active session ───────────────────
-        // Use job_session_passengers instead of the deleted job_passenger_routes.
-        final sessionRows = await _supabase
-            .from('job_sessions')
-            .select('id')
-            .eq('job_id', resolvedJobId)
-            .eq('session_date', todayDate)
-            .eq('status', 'active')
-            .limit(1);
+          final sessionRows = await _supabase
+              .from('job_sessions')
+              .select('id')
+              .eq('job_id', resolvedJobId)
+              .eq('session_date', todayDate)
+              .eq('status', 'active')
+              .limit(1)
+              .timeout(_networkTimeout);
 
-        if (sessionRows.isNotEmpty) {
-          final sessionId = sessionRows.first['id']?.toString();
-          if (sessionId != null && sessionId.isNotEmpty) {
-            final spRows = await _supabase
-                .from('job_session_passengers')
+          if (sessionRows.isNotEmpty) {
+            final sessionId = sessionRows.first['id']?.toString();
+            if (sessionId != null && sessionId.isNotEmpty) {
+              final spRows = await _supabase
+                  .from('job_session_passengers')
+                  .select('passenger_id')
+                  .eq('session_id', sessionId)
+                  .neq('status', 'missed')
+                  .timeout(_networkTimeout);
+
+              final uniquePassengers = spRows
+                  .map((r) => r['passenger_id']?.toString())
+                  .whereType<String>()
+                  .where((id) => id.isNotEmpty)
+                  .toSet();
+              passengerCount = uniquePassengers.length;
+            }
+          } else {
+            final weekdayKeys = [
+              'mon',
+              'tue',
+              'wed',
+              'thu',
+              'fri',
+              'sat',
+              'sun',
+            ];
+            final weekday = weekdayKeys[today.weekday - 1];
+
+            final scheduleRows = await _supabase
+                .from('passenger_schedules')
                 .select('passenger_id')
-                .eq('session_id', sessionId)
-                .neq('status', 'missed'); // count on-board passengers only
+                .eq('job_id', resolvedJobId)
+                .eq('weekday', weekday)
+                .isFilter('exception_date', null)
+                .timeout(_networkTimeout);
 
-            final uniquePassengers = spRows
+            final uniquePassengers = scheduleRows
                 .map((r) => r['passenger_id']?.toString())
                 .whereType<String>()
                 .where((id) => id.isNotEmpty)
                 .toSet();
             passengerCount = uniquePassengers.length;
           }
-        } else {
-          // Session not started yet — count scheduled passengers for today
-          final weekdayKeys = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun'];
-          final weekday = weekdayKeys[today.weekday - 1];
-
-          final scheduleRows = await _supabase
-              .from('passenger_schedules')
-              .select('passenger_id')
-              .eq('job_id', resolvedJobId)
-              .eq('weekday', weekday)
-              .isFilter('exception_date', null);
-
-          final uniquePassengers = scheduleRows
-              .map((r) => r['passenger_id']?.toString())
-              .whereType<String>()
-              .where((id) => id.isNotEmpty)
-              .toSet();
-          passengerCount = uniquePassengers.length;
         }
       }
+
+      final insertPayload = <String, dynamic>{
+        'vehicle_id': vehicleId,
+        'company_id': companyId,
+        'driver_id': driverId,
+        'longitude': position.longitude,
+        'latitude': position.latitude,
+        'number_of_passenger': passengerCount,
+        'notes': (notes ?? '').trim().isEmpty
+            ? 'SOS triggered from driver app.'
+            : notes!.trim(),
+        if (jobId != null) 'job_id': jobId,
+        if (passengerAssistantId != null && passengerAssistantId.isNotEmpty)
+          'passenger_assistant_id': passengerAssistantId,
+      };
+
+      final inserted = await _supabase
+          .from('sos')
+          .insert(insertPayload)
+          .select('id')
+          .single()
+          .timeout(_networkTimeout);
+
+      final sosId = inserted['id']?.toString();
+      if (sosId == null || sosId.isEmpty) {
+        throw StateError('SOS was created but no id was returned.');
+      }
+
+      return sosId;
+    } on StateError {
+      rethrow;
+    } catch (_) {
+      throw StateError(
+        'Unable to send SOS. Check your connection and try again.',
+      );
     }
-
-    // ── Insert SOS alert ──────────────────────────────────────────────────
-    final insertPayload = <String, dynamic>{
-      'vehicle_id': vehicleId,
-      'company_id': companyId,
-      'driver_id': driverId,
-      'longitude': position.longitude,
-      'latitude': position.latitude,
-      'number_of_passenger': passengerCount,
-      'notes': (notes ?? '').trim().isEmpty
-          ? 'SOS triggered from driver app.'
-          : notes!.trim(),
-      if (jobId != null) 'job_id': jobId,
-      if (passengerAssistantId != null && passengerAssistantId.isNotEmpty)
-        'passenger_assistant_id': passengerAssistantId,
-    };
-
-    final inserted = await _supabase
-        .from('sos')
-        .insert(insertPayload)
-        .select('id')
-        .single();
-
-    final sosId = inserted['id']?.toString();
-    if (sosId == null || sosId.isEmpty) {
-      throw StateError('SOS was created but no id was returned.');
-    }
-
-    return sosId;
   }
 
   // ── Realtime subscription (unchanged logic) ───────────────────────────────
@@ -201,11 +239,12 @@ class SosLocationService {
   Future<void> _subscribeToSos() async {
     final companyId = _companyId;
     final driverId = _driverId;
-    if (companyId == null || driverId == null) return;
+    if (companyId == null || companyId.isEmpty || driverId == null) return;
 
-    await _sosChannel?.unsubscribe();
+    try {
+      await _sosChannel?.unsubscribe();
 
-    final channel = _supabase.channel('sos-location-$companyId-$driverId');
+      final channel = _supabase.channel('sos-location-$companyId-$driverId');
 
     channel.onPostgresChanges(
       event: PostgresChangeEvent.insert,
@@ -250,32 +289,40 @@ class SosLocationService {
       },
     );
 
-    channel.subscribe();
-    _sosChannel = channel;
+      channel.subscribe();
+      _sosChannel = channel;
+    } catch (_) {
+      // Offline — realtime subscription unavailable until refresh().
+    }
   }
 
   Future<void> _syncCurrentActiveSos() async {
     final companyId = _companyId;
-    if (companyId == null) return;
+    if (companyId == null || companyId.isEmpty) return;
 
-    final rows = await _supabase
-        .from('sos')
-        .select('id, status')
-        .eq('company_id', companyId)
-        .eq('status', 'active')
-        .order('created_at', ascending: false)
-        .limit(1);
+    try {
+      final rows = await _supabase
+          .from('sos')
+          .select('id, status')
+          .eq('company_id', companyId)
+          .eq('status', 'active')
+          .order('created_at', ascending: false)
+          .limit(1)
+          .timeout(_networkTimeout);
 
-    if (rows.isEmpty) {
-      _activeSosId = null;
-      await _stopLocationStream(markOffline: true);
-      return;
+      if (rows.isEmpty) {
+        _activeSosId = null;
+        await _stopLocationStream(markOffline: true);
+        return;
+      }
+
+      final sosId = rows.first['id']?.toString();
+      if (sosId == null || sosId.isEmpty) return;
+      _activeSosId = sosId;
+      await _startLocationStream();
+    } catch (_) {
+      // Offline — skip server SOS sync; no active alert assumed.
     }
-
-    final sosId = rows.first['id']?.toString();
-    if (sosId == null || sosId.isEmpty) return;
-    _activeSosId = sosId;
-    await _startLocationStream();
   }
 
   Future<void> _startLocationStream() async {
@@ -306,14 +353,19 @@ class SosLocationService {
     final companyId = _companyId;
     if (driverId == null || companyId == null) return;
 
-    await _supabase.from('driver_locations').upsert({
-      'driver_id': driverId,
-      'company_id': companyId,
-      'latitude': position.latitude,
-      'longitude': position.longitude,
-      'is_online': isOnline,
-      'updated_at': DateTime.now().toIso8601String(),
-    }, onConflict: 'driver_id');
+    try {
+      await _supabase
+          .from('driver_locations')
+          .upsert({
+            'driver_id': driverId,
+            'company_id': companyId,
+            'latitude': position.latitude,
+            'longitude': position.longitude,
+            'is_online': isOnline,
+            'updated_at': DateTime.now().toIso8601String(),
+          }, onConflict: 'driver_id')
+          .timeout(_networkTimeout);
+    } catch (_) {}
   }
 
   Future<void> _stopLocationStream({required bool markOffline}) async {
@@ -332,14 +384,19 @@ class SosLocationService {
         // (e.g. a non-driver user, or dispose() called before init completed).
         // driver_locations.company_id is NOT NULL.
         if (driverId != null && companyId != null && companyId.isNotEmpty) {
-          await _supabase.from('driver_locations').upsert({
-            'driver_id': driverId,
-            'company_id': companyId,
-            'latitude': 0,
-            'longitude': 0,
-            'is_online': false,
-            'updated_at': DateTime.now().toIso8601String(),
-          }, onConflict: 'driver_id');
+          try {
+            await _supabase
+                .from('driver_locations')
+                .upsert({
+                  'driver_id': driverId,
+                  'company_id': companyId,
+                  'latitude': 0,
+                  'longitude': 0,
+                  'is_online': false,
+                  'updated_at': DateTime.now().toIso8601String(),
+                }, onConflict: 'driver_id')
+                .timeout(_networkTimeout);
+          } catch (_) {}
         }
       }
     }

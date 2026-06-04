@@ -1,42 +1,28 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/job_model.dart';
-import '../services/job_service.dart';
+import '../repositories/cache_repository.dart';
+import '../repositories/local_job_repository.dart';
+import '../services/connectivity_service.dart';
 import '../services/realtime_service.dart';
 import '../services/navigation_service.dart';
 import '../services/location_service.dart';
 import '../services/location_task.dart';
 import '../services/notification_service.dart';
-import '../services/vehicle_safety_check_service.dart';
 
 /// Manages active job + session state for the driver flow.
 ///
-/// Realtime behaviour:
-///   - Subscribes to RealtimeService streams on construction.
-///   - Job changes (approval_status, status) → full reload via loadJob().
-///   - Session changes → full reload (session status affects UI state).
-///   - Passenger changes → reload only if the change belongs to the
-///     current session (avoids unnecessary reloads from other sessions).
+/// All reads and writes go through [LocalJobRepository] (drift-backed).
+/// [LocalJobRepository] writes locally first and enqueues a sync_queue op —
+/// so every mutation works identically whether online or offline.
 ///
-/// Dropoff mutations:
-///   - Inbound: markDropoffAsCompleted() calls updateDropoffStatus() for a
-///     single job_session_passengers row (one passenger, one home address).
-///   - Outbound: markDropoffAsCompleted() calls updateDropoffStatusForSchool()
-///     which bulk-updates ALL passengers sharing the same school address in one
-///     query — because the whole group arrives at the school simultaneously.
-///
-/// Arrival behaviour (pickup and dropoff tracking):
-///   When the driver enters the threshold radius, tracking stops and a
-///   notification is shown. The driver must still tap the action button
-///   ("Pickup complete" / "Arrived at Drop-off") to confirm.
-///   Auto-completing on arrival was removed because:
-///     - GPS accuracy in urban areas can drift ±20–50 m.
-///     - Drivers sometimes pass close to an address without stopping.
-///     - A wrongly auto-confirmed pickup is difficult to undo.
-///   [hasArrivedAtPickup] and [hasArrivedAtDropoff] expose arrival state
-///   so the UI can highlight the confirm button or show a banner.
+/// [RealtimeService] still subscribes when online and triggers silent
+/// reloads, which read from the local DB (already up to date from optimistic
+/// writes). This means the UI stays consistent without needing a round-trip.
 class JobProvider extends ChangeNotifier {
-  final JobService _jobService = JobService();
+  final LocalJobRepository _localRepo;
+  final CacheRepository _cacheRepo;
   final RealtimeService _realtimeService = RealtimeService();
   final NavigationService _navService = NavigationService();
   final LocationService _locationService = LocationService();
@@ -48,30 +34,23 @@ class JobProvider extends ChangeNotifier {
   String? _lastLoadedDayKey;
   bool _checklistCompletedToday = false;
 
-  /// Incremented every time [loadJob] finishes (success or error). Listeners
-  /// (e.g. dashboard job requests) can refresh when this changes.
   int _jobDataEpoch = 0;
   int _activePickupIndex = 0;
   bool _isTracking = false;
   double? _currentDistanceMeters;
-
-  /// True after the driver has entered the pickup threshold radius.
-  /// Cleared when tracking starts for the next stop or on job reset.
   bool _hasArrivedAtPickup = false;
-
-  /// True after the driver has entered the dropoff threshold radius.
-  /// Cleared when tracking starts for a new dropoff or on job reset.
   bool _hasArrivedAtDropoff = false;
 
-  // Realtime stream subscriptions
   StreamSubscription<Map<String, dynamic>>? _jobSub;
   StreamSubscription<Map<String, dynamic>>? _sessionSub;
   StreamSubscription<Map<String, dynamic>>? _passengerSub;
-
-  // Debounce timer — prevents multiple rapid reloads from burst events
   Timer? _reloadDebounce;
 
-  JobProvider() {
+  JobProvider({
+    required LocalJobRepository localRepo,
+    required CacheRepository cacheRepo,
+  }) : _localRepo = localRepo,
+       _cacheRepo = cacheRepo {
     _listenToRealtime();
   }
 
@@ -87,13 +66,7 @@ class JobProvider extends ChangeNotifier {
   bool get isTracking => _isTracking;
   double? get currentDistanceMeters => _currentDistanceMeters;
   bool get sessionStarted => _job != null && _job!.sessionId.isNotEmpty;
-
-  /// True once the driver has entered the arrival radius for the current pickup.
-  /// UI can use this to highlight the "Pickup complete" button.
   bool get hasArrivedAtPickup => _hasArrivedAtPickup;
-
-  /// True once the driver has entered the arrival radius for the current dropoff.
-  /// UI can use this to highlight the "Arrived at Drop-off" button.
   bool get hasArrivedAtDropoff => _hasArrivedAtDropoff;
 
   PickupStop? get activePickup {
@@ -117,16 +90,14 @@ class JobProvider extends ChangeNotifier {
   bool get allResolved => _job?.allPickupsResolved ?? false;
 
   // ── Realtime setup ────────────────────────────────────────────────────────
+  // Realtime still fires when online — it triggers a silent local reload,
+  // which is cheap because it reads from drift, not Supabase.
 
   void _listenToRealtime() {
-    _jobSub = _realtimeService.onJobChange.listen((_) {
-      _scheduleReload();
-    });
-
-    _sessionSub = _realtimeService.onSessionChange.listen((_) {
-      _scheduleReload();
-    });
-
+    _jobSub = _realtimeService.onJobChange.listen((_) => _scheduleReload());
+    _sessionSub = _realtimeService.onSessionChange.listen(
+      (_) => _scheduleReload(),
+    );
     _passengerSub = _realtimeService.onPassengerChange.listen((record) {
       final sessionId = record['session_id']?.toString() ?? '';
       final currentSessionId = _job?.sessionId ?? '';
@@ -143,11 +114,19 @@ class JobProvider extends ChangeNotifier {
     });
   }
 
-  // ── Load ──────────────────────────────────────────────────────────────────
+  // ── Load — reads from local drift DB ─────────────────────────────────────
 
   Future<void> loadJob({bool silent = false}) async {
-    // Hard day boundary: never keep yesterday's in-memory job/session visible.
-    // If the date changed while app was backgrounded, clear cached job first.
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) return;
+
+    // Warm cache when Supabase is reachable (main() may run before auth restore).
+    if (ConnectivityService().canReachServer) {
+      try {
+        await _cacheRepo.ensureFresh().timeout(const Duration(seconds: 3));
+      } catch (_) {}
+    }
+
     final todayKey = _todayKey(DateTime.now());
     if (_lastLoadedDayKey != null && _lastLoadedDayKey != todayKey) {
       _job = null;
@@ -158,14 +137,12 @@ class JobProvider extends ChangeNotifier {
       _currentDistanceMeters = null;
       _checklistCompletedToday = false;
       _error = null;
+      // Clear write tables for the new day
+      await _localRepo.clearWriteTablesForNewDay();
       notifyListeners();
     }
 
-    // Block UI with loading only when there is nothing to show yet (first load
-    // or error retry). If we already have a job, refresh in the background so
-    // resume / epoch updates do not flash the skeleton.
     final blockUiWithLoading = !silent && _job == null && !_hasLoadedOnce;
-
     if (blockUiWithLoading) {
       _isLoading = true;
       _error = null;
@@ -174,8 +151,8 @@ class JobProvider extends ChangeNotifier {
 
     try {
       final results = await Future.wait<dynamic>([
-        _jobService.fetchCurrentJob(),
-        VehicleSafetyCheckService().isChecklistCompletedToday(),
+        _localRepo.fetchCurrentJob(userId),
+        _localRepo.isChecklistCompletedToday(userId),
       ]);
       final updatedJob = results[0] as JobModel?;
       _checklistCompletedToday = results[1] as bool;
@@ -199,17 +176,11 @@ class JobProvider extends ChangeNotifier {
       } else {
         _activePickupIndex = 0;
       }
-
       _error = null;
     } catch (e) {
-      if (blockUiWithLoading) {
-        _error = e.toString();
-      }
-      // Silent / background refresh: keep existing [_job] and error state.
+      if (blockUiWithLoading) _error = e.toString();
     } finally {
-      if (blockUiWithLoading) {
-        _isLoading = false;
-      }
+      if (blockUiWithLoading) _isLoading = false;
       _lastLoadedDayKey = todayKey;
       _hasLoadedOnce = true;
       _jobDataEpoch++;
@@ -217,11 +188,7 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
-  /// Lightweight refresh hook for pages that mutate job approval/request
-  /// state outside this provider (e.g. requested jobs review flow).
-  Future<void> refreshJobDataSilently() async {
-    await loadJob(silent: true);
-  }
+  Future<void> refreshJobDataSilently() async => loadJob(silent: true);
 
   // ── Session start ─────────────────────────────────────────────────────────
 
@@ -230,16 +197,20 @@ class JobProvider extends ChangeNotifier {
     if (job == null) return;
     if (job.sessionId.isNotEmpty) return;
 
+    final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
+    if (userId.isEmpty) return;
+
     _isLoading = true;
     _error = null;
     notifyListeners();
 
     try {
-      await _jobService.startSession(
-        jobDbId: job.jobDbId,
+      await _localRepo.startSessionLocally(
+        jobId: job.jobDbId,
         direction: job.direction,
+        driverId: userId,
       );
-      _job = await _jobService.fetchCurrentJob();
+      _job = await _localRepo.fetchCurrentJob(userId);
       if (_job != null) _setActiveToFirstPending();
     } catch (e) {
       _error = e.toString();
@@ -249,7 +220,7 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
-  // ── Navigation ────────────────────────────────────────────────────────────
+  // ── Navigation (unchanged) ────────────────────────────────────────────────
 
   Future<void> navigateFullRoute() async {
     if (_job == null) return;
@@ -265,10 +236,6 @@ class JobProvider extends ChangeNotifier {
     );
   }
 
-  /// Launches Google Maps to the current pickup stop and starts proximity
-  /// tracking. When the driver enters the arrival radius, tracking stops and
-  /// a notification fires — but the pickup is NOT auto-completed.
-  /// The driver must tap "Pickup complete" in the UI to confirm.
   Future<void> navigateToCurrentPickup() async {
     final stop = activePickup;
     if (stop == null) return;
@@ -288,10 +255,6 @@ class JobProvider extends ChangeNotifier {
     _startPickupTracking(stop);
   }
 
-  /// Launches Google Maps to the current dropoff stop and starts proximity
-  /// tracking. When the driver enters the arrival radius, tracking stops and
-  /// a notification fires — but the dropoff is NOT auto-completed.
-  /// The driver must tap the confirm button in complete_job_page.
   Future<void> navigateToDropoff() async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
@@ -311,7 +274,7 @@ class JobProvider extends ChangeNotifier {
     _startDropoffTracking(dropoff);
   }
 
-  // ── Status mutations ──────────────────────────────────────────────────────
+  // ── Status mutations — write-first via LocalJobRepository ─────────────────
 
   Future<void> markCurrentAsCompleted() async {
     if (_job == null) return;
@@ -319,13 +282,27 @@ class JobProvider extends ChangeNotifier {
 
     try {
       final stop = _job!.pickups[_activePickupIndex];
-      if (stop.id.isEmpty) {
+      // Resolve the local session ID, then find the passenger's local row ID.
+      final localSessionId = await _localRepo.resolveLocalSessionIdAsync(
+        _job!.sessionId,
+      );
+      final localId =
+          await _localRepo.resolvePassengerLocalId(
+            localSessionId: localSessionId,
+            passengerId: stop
+                .id, // stop.id is set to localId or serverId by fetchCurrentJob
+          ) ??
+          stop.id;
+
+      if (localId.isEmpty) {
         _error = 'Session not ready. Please try again.';
         notifyListeners();
         return;
       }
-      await _jobService.updatePickupStatus(stop.id, PickupStatus.completed);
-      // Optimistic update — realtime will confirm
+      await _localRepo.updatePickupStatusLocally(
+        passengerLocalId: localId,
+        status: PickupStatus.completed,
+      );
       _job!.pickups[_activePickupIndex].status = PickupStatus.completed;
       _hasArrivedAtPickup = false;
       _error = null;
@@ -342,12 +319,16 @@ class JobProvider extends ChangeNotifier {
 
     try {
       final stop = _job!.pickups[_activePickupIndex];
-      if (stop.id.isEmpty) {
+      final localId = stop.id;
+      if (localId.isEmpty) {
         _error = 'Session not ready. Please try again.';
         notifyListeners();
         return;
       }
-      await _jobService.updatePickupStatus(stop.id, PickupStatus.notPicked);
+      await _localRepo.updatePickupStatusLocally(
+        passengerLocalId: localId,
+        status: PickupStatus.notPicked,
+      );
       _job!.pickups[_activePickupIndex].status = PickupStatus.notPicked;
       _hasArrivedAtPickup = false;
       _error = null;
@@ -358,24 +339,22 @@ class JobProvider extends ChangeNotifier {
     }
   }
 
-  /// Marks the current pending dropoff as completed.
-  ///
-  /// - Inbound: updates a single job_session_passengers row by ID.
-  /// - Outbound: bulk-updates ALL passengers sharing the same school address
-  ///   via updateDropoffStatusForSchool().
   Future<void> markDropoffAsCompleted() async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
 
     try {
+      final localSessionId = await _localRepo.resolveLocalSessionIdAsync(
+        _job!.sessionId,
+      );
+
       if (_job!.isInbound) {
-        await _jobService.updateDropoffStatus(
-          dropoff.id,
-          DropoffStatus.completed,
+        await _localRepo.updateDropoffStatusLocally(
+          passengerLocalId: dropoff.id,
         );
       } else {
-        await _jobService.updateDropoffStatusForSchool(
-          sessionId: _job!.sessionId,
+        await _localRepo.updateDropoffStatusForSchoolLocally(
+          localSessionId: localSessionId,
           schoolAddress: dropoff.address,
         );
       }
@@ -421,8 +400,11 @@ class JobProvider extends ChangeNotifier {
     _isTracking = false;
 
     try {
-      await _jobService.completeJob(
-        sessionId: _job!.sessionId,
+      final localSessionId = await _localRepo.resolveLocalSessionIdAsync(
+        _job!.sessionId,
+      );
+      await _localRepo.completeJobLocally(
+        localSessionId: localSessionId,
         comments: comments,
       );
       _error = null;
@@ -448,14 +430,7 @@ class JobProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  // ── Background tracking ───────────────────────────────────────────────────
-  //
-  // Both _startPickupTracking and _startDropoffTracking follow the same
-  // pattern:
-  //   1. Stream GPS ticks and update _currentDistanceMeters for live display.
-  //   2. When threshold is reached: stop tracking, fire a notification, set
-  //      the arrived flag so the UI can highlight the confirm button.
-  //   3. Do NOT call any mark*AsCompleted method — the driver confirms manually.
+  // ── Background tracking (unchanged) ──────────────────────────────────────
 
   void _startPickupTracking(PickupStop stop) {
     _isTracking = true;
@@ -471,9 +446,6 @@ class JobProvider extends ChangeNotifier {
         notifyListeners();
       },
       onArrived: () async {
-        // Stop tracking — driver is at the stop.
-        // Show a notification so they know even if the app is in the background.
-        // Do NOT auto-complete: driver taps "Pickup complete" to confirm.
         _isTracking = false;
         _currentDistanceMeters = null;
         _hasArrivedAtPickup = true;
@@ -500,8 +472,6 @@ class JobProvider extends ChangeNotifier {
         notifyListeners();
       },
       onArrived: () async {
-        // Stop tracking — driver is at the dropoff location.
-        // Show a notification. Driver taps the confirm button to record dropoff.
         _isTracking = false;
         _currentDistanceMeters = null;
         _hasArrivedAtDropoff = true;

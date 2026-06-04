@@ -1,9 +1,14 @@
 import 'dart:async';
+import 'dart:convert';
 
+import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../components/app_button.dart';
+import '../../../../components/offline_banner.dart';
+import '../../../../database/app_database.dart';
+import '../../../../repositories/local_job_repository.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../services/vehicle_safety_check_service.dart';
 import '../../../../utils/app_colors.dart';
@@ -22,11 +27,7 @@ class _CheckItem {
   final IconData icon;
   _CheckStatus status = _CheckStatus.none;
 
-  _CheckItem({
-    required this.dbColumn,
-    required this.label,
-    required this.icon,
-  });
+  _CheckItem({required this.dbColumn, required this.label, required this.icon});
 }
 
 class _CheckSection {
@@ -48,7 +49,8 @@ class _CheckSection {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class VehicleCheckListPage extends StatefulWidget {
-  const VehicleCheckListPage({super.key});
+  final LocalJobRepository localRepo;
+  const VehicleCheckListPage({super.key, required this.localRepo});
 
   @override
   State<VehicleCheckListPage> createState() => _VehicleCheckListPageState();
@@ -61,12 +63,21 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
   late final List<_CheckSection> _sections;
 
   DriverVehicleSafetyInfo? _vehicle;
-  String? _todayCheckRowId;
+
+  // Local checklist row ID (drift). Null until a row is saved locally.
+  String? _localCheckId;
+
+  // Server row ID — populated after sync or when loaded from Supabase online.
+  String? _serverCheckId;
+
   bool _todayCheckLocked = false;
   bool _loading = true;
   bool _saving = false;
   String? _loadError;
   bool _hasJobToday = false;
+
+  // True when the save was written locally but not yet synced.
+
   DateTime? _anchorLocalDay;
   Timer? _midnightTimer;
 
@@ -105,8 +116,11 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
   void _armMidnightTimer() {
     _midnightTimer?.cancel();
     final now = DateTime.now();
-    final nextMidnight =
-        DateTime(now.year, now.month, now.day).add(const Duration(days: 1));
+    final nextMidnight = DateTime(
+      now.year,
+      now.month,
+      now.day,
+    ).add(const Duration(days: 1));
     var ms = nextMidnight.difference(now).inMilliseconds + 1500;
     if (ms < 1000) ms = 1000;
     _midnightTimer = Timer(Duration(milliseconds: ms), () {
@@ -115,6 +129,8 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
       _armMidnightTimer();
     });
   }
+
+  // ── Section template (unchanged) ─────────────────────────────────────────
 
   List<_CheckSection> _buildSectionTemplate() {
     return [
@@ -192,21 +208,13 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
             label: 'Windscreen',
             icon: Icons.panorama_wide_angle,
           ),
-          _CheckItem(
-            dbColumn: 'mirrors',
-            label: 'Mirrors',
-            icon: Icons.flip,
-          ),
+          _CheckItem(dbColumn: 'mirrors', label: 'Mirrors', icon: Icons.flip),
           _CheckItem(
             dbColumn: 'number_plates',
             label: 'Number Plates',
             icon: Icons.credit_card,
           ),
-          _CheckItem(
-            dbColumn: 'horn',
-            label: 'Horn',
-            icon: Icons.volume_up,
-          ),
+          _CheckItem(dbColumn: 'horn', label: 'Horn', icon: Icons.volume_up),
         ],
       ),
       _CheckSection(
@@ -304,6 +312,28 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
     }
   }
 
+  // Applies check statuses from a Map<String,String> stored in local DB.
+  void _applyLocalChecks(Map<String, String> checks) {
+    _clearAllItemStatuses();
+    for (final section in _sections) {
+      for (final item in section.items) {
+        final v = checks[item.dbColumn];
+        if (v == 'pass') {
+          item.status = _CheckStatus.pass;
+        } else if (v == 'fail') {
+          item.status = _CheckStatus.fail;
+        }
+      }
+    }
+  }
+
+  // ── Load — local first, Supabase fallback when online ────────────────────
+  //
+  // Priority:
+  //   1. Local drift row for today → always use if present (locked or not).
+  //   2. No local row + online → fetch from Supabase, cache into local DB.
+  //   3. No local row + offline → show empty checklist with error banner.
+
   Future<void> _loadData() async {
     setState(() {
       _loading = true;
@@ -314,27 +344,39 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
       final user = Supabase.instance.client.auth.currentUser;
       final driverId = user?.id;
       if (driverId == null || driverId.isEmpty) {
-        _applySafetyRow(null);
+        _clearAllItemStatuses();
         if (!mounted) return;
         setState(() {
           _vehicle = null;
-          _todayCheckRowId = null;
+          _localCheckId = null;
+          _serverCheckId = null;
           _todayCheckLocked = false;
           _loadError = 'You need to be signed in to use the safety check.';
         });
         return;
       }
 
-      final vehicle = await _service.fetchDriverVehicle();
       final today = DateTime.now();
       final dayKey = _localDayKey(today);
 
+      // ── Step 1: resolve vehicle (local cache first) ─────────────────────
+      DriverVehicleSafetyInfo? vehicle = await _vehicleFromCache();
       if (vehicle == null) {
-        _applySafetyRow(null);
+        try {
+          vehicle = await _service
+              .fetchDriverVehicle()
+              .timeout(const Duration(seconds: 3));
+          if (vehicle != null) await _persistVehicleToCache(vehicle);
+        } catch (_) {}
+      }
+
+      if (vehicle == null) {
+        _clearAllItemStatuses();
         if (!mounted) return;
         setState(() {
           _vehicle = null;
-          _todayCheckRowId = null;
+          _localCheckId = null;
+          _serverCheckId = null;
           _todayCheckLocked = false;
           _hasJobToday = false;
           _anchorLocalDay = dayKey;
@@ -343,31 +385,82 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
         return;
       }
 
-      final row = await _service.fetchCheckForLocalDay(
-        driverId: driverId,
-        vehicleId: vehicle.id,
-        localDay: today,
-      );
+      // ── Step 2: load today's checklist from local DB ────────────────────
+      final localRow = await widget.localRepo.fetchChecklistForToday(driverId);
 
-      final hasJob =
-          await _service.driverHasJobSessionOnLocalDay(today);
+      bool locked = false;
+      bool hasJob = false;
 
-      final locked = row?.isReadOnlyLocked ?? false;
+      if (localRow != null) {
+        // Local row found — apply it regardless of online status.
+        final checks = Map<String, String>.from(
+          (jsonDecode(localRow.checksJson) as Map<String, dynamic>).map(
+            (k, v) => MapEntry(k, v.toString()),
+          ),
+        );
+        _applyLocalChecks(checks);
+        locked = localRow.isLocked;
+        _localCheckId = localRow.id;
+        _serverCheckId = localRow.serverId;
+      } else {
+        _clearAllItemStatuses();
+        // No local row — optional Supabase hydrate when network actually works.
+        try {
+          final serverRow = await _service
+              .fetchCheckForLocalDay(
+                driverId: driverId,
+                vehicleId: vehicle.id,
+                localDay: today,
+              )
+              .timeout(const Duration(seconds: 3));
+          if (serverRow != null) {
+            final checks = <String, String>{};
+            for (final entry in serverRow.checksByColumn.entries) {
+              if (entry.value != null) checks[entry.key] = entry.value!;
+            }
+            _localCheckId = await widget.localRepo.saveChecklistLocally(
+              driverId: driverId,
+              vehicleId: vehicle.id,
+              vehicleCompanyId: vehicle.companyId,
+              checksPassFail: checks,
+              existingLocalId: null,
+            );
+            await widget.localRepo.patchChecklistServerId(
+              localId: _localCheckId!,
+              serverId: serverRow.id,
+            );
+            _serverCheckId = serverRow.id;
+            _applySafetyRow(serverRow);
+            locked = serverRow.isReadOnlyLocked;
+          }
+        } catch (_) {}
+      }
 
-      _applySafetyRow(row);
+      // ── Step 3: has job today (schedules cache, not sessions) ───────────
+      hasJob = await widget.localRepo.hasJobScheduledToday(driverId);
+      if (!hasJob) {
+        try {
+          hasJob = await _service
+              .driverHasJobSessionOnLocalDay(today)
+              .timeout(const Duration(seconds: 3));
+        } catch (_) {}
+      }
+
       if (!mounted) return;
       setState(() {
         _vehicle = vehicle;
-        _todayCheckRowId = row?.id;
         _todayCheckLocked = locked;
         _hasJobToday = hasJob;
         _anchorLocalDay = dayKey;
         _loadError = null;
       });
     } catch (e) {
-      setState(() {
-        _loadError = e.toString();
-      });
+      if (mounted) {
+        setState(() {
+          _loadError =
+              'Unable to load safety check. Please check your connection and try again.';
+        });
+      }
     } finally {
       if (mounted) {
         setState(() => _loading = false);
@@ -376,13 +469,55 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
     }
   }
 
+  Future<void> _persistVehicleToCache(DriverVehicleSafetyInfo vehicle) async {
+    final db = widget.localRepo.appDb;
+    await db.transaction(() async {
+      await db.delete(db.vehiclesCache).go();
+      await db.into(db.vehiclesCache).insert(
+        VehiclesCacheCompanion.insert(
+          id: vehicle.id,
+          companyId: vehicle.companyId,
+          name: Value(vehicle.name),
+          make: Value(vehicle.make),
+          model: Value(vehicle.model),
+          taxiLicensePlateNumber: vehicle.taxiLicensePlateNumber,
+          yearOfFirstRegistration: Value(
+            vehicle.yearOfFirstRegistration?.toIso8601String(),
+          ),
+          cachedAt: Value(DateTime.now()),
+        ),
+      );
+    });
+  }
+
+  // Reads vehicle from the drift vehicles_cache table.
+  Future<DriverVehicleSafetyInfo?> _vehicleFromCache() async {
+    final cached = await widget.localRepo.appDb
+        .select(widget.localRepo.appDb.vehiclesCache)
+        .getSingleOrNull();
+    if (cached == null) return null;
+    DateTime? year;
+    if (cached.yearOfFirstRegistration != null) {
+      year = DateTime.tryParse(cached.yearOfFirstRegistration!);
+    }
+    return DriverVehicleSafetyInfo(
+      id: cached.id,
+      companyId: cached.companyId,
+      name: cached.name,
+      make: cached.make,
+      model: cached.model,
+      taxiLicensePlateNumber: cached.taxiLicensePlateNumber,
+      yearOfFirstRegistration: year,
+    );
+  }
+
   int get _totalItems => _sections.fold(0, (sum, s) => sum + s.items.length);
 
   int get _checkedItems => _sections.fold(
-        0,
-        (sum, s) =>
-            sum + s.items.where((i) => i.status != _CheckStatus.none).length,
-      );
+    0,
+    (sum, s) =>
+        sum + s.items.where((i) => i.status != _CheckStatus.none).length,
+  );
 
   bool get _allChecked => _checkedItems == _totalItems;
 
@@ -392,14 +527,18 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
       for (final section in _sections) {
         for (final item in section.items) {
           if (item.dbColumn == dbColumn) {
-            item.status =
-                item.status == status ? _CheckStatus.none : status;
+            item.status = item.status == status ? _CheckStatus.none : status;
             return;
           }
         }
       }
     });
   }
+
+  // ── Save — local first, always ────────────────────────────────────────────
+  //
+  // 1. Write to local drift DB immediately (works offline).
+  // 2. SyncEngine will push to Supabase on next reconnect.
 
   Future<void> _onCompletePressed() async {
     if (!_allChecked || _vehicle == null || _todayCheckLocked) return;
@@ -411,33 +550,35 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
     for (final section in _sections) {
       for (final item in section.items) {
         if (item.status == _CheckStatus.none) return;
-        checks[item.dbColumn] =
-            item.status == _CheckStatus.pass ? 'pass' : 'fail';
+        checks[item.dbColumn] = item.status == _CheckStatus.pass
+            ? 'pass'
+            : 'fail';
       }
     }
 
     setState(() => _saving = true);
     try {
-      final newId = await _service.saveChecklist(
+      // Always write locally first.
+      final newLocalId = await widget.localRepo.saveChecklistLocally(
         driverId: userId,
-        vehicle: _vehicle!,
+        vehicleId: _vehicle!.id,
+        vehicleCompanyId: _vehicle!.companyId,
         checksPassFail: checks,
-        existingRowId: _todayCheckRowId,
+        existingLocalId: _localCheckId,
       );
-      if (!mounted) return;
 
       final allPass = checks.values.every((v) => v == 'pass');
+
+      if (!mounted) return;
       setState(() {
-        _todayCheckRowId = newId;
+        _localCheckId = newLocalId;
         _todayCheckLocked = allPass;
         _saving = false;
       });
 
       if (allPass) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Safety check completed for today.'),
-          ),
+          const SnackBar(content: Text('Safety check completed for today.')),
         );
         await Navigator.pushReplacementNamed(
           context,
@@ -447,8 +588,7 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text(
-              'Checklist saved as incomplete. Fix failed items and submit again '
-              'to mark the day complete.',
+              'Checklist saved as incomplete. Fix failed items and submit again.',
             ),
           ),
         );
@@ -456,9 +596,9 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
     } catch (e) {
       if (mounted) {
         setState(() => _saving = false);
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Could not save: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Could not save: $e')));
       }
     }
   }
@@ -471,6 +611,7 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
       body: SafeArea(
         child: Column(
           children: [
+            const OfflineBanner(),
             _buildAppBar(context),
             if (_loadError != null && _vehicle == null && !_loading)
               Padding(
@@ -488,8 +629,9 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
               child: _loading
                   ? const _VehicleChecklistPageShimmer()
                   : SingleChildScrollView(
-                      padding:
-                          EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
+                      padding: EdgeInsets.symmetric(
+                        horizontal: SizeConfig.hPad,
+                      ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -561,11 +703,8 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
           Expanded(
             child: Text(
               done
-                  ? 'Today\'s safety check is complete. You can review the '
-                      'items below; editing is locked until tomorrow.'
-                  : 'You have a job scheduled today. Complete this checklist '
-                      'once before driving — if any item fails it is saved as '
-                      'incomplete until everything passes.',
+                  ? 'Today\'s safety check is complete. You can review the items below; editing is locked until tomorrow.'
+                  : 'You have a job scheduled today. Complete this checklist once before driving.',
               style: TextStyle(
                 fontSize: SizeConfig.sp(12),
                 height: 1.35,
@@ -623,7 +762,6 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
     final total = _totalItems;
     final checked = _checkedItems;
     final progress = total > 0 ? checked / total : 0.0;
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -655,8 +793,7 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
             value: progress,
             minHeight: SizeConfig.r(6),
             backgroundColor: AppColors.inputBorder,
-            valueColor:
-                const AlwaysStoppedAnimation<Color>(Color(0xFF0284C7)),
+            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF0284C7)),
           ),
         ),
       ],
@@ -665,16 +802,8 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
 
   Widget _buildBottomButton() {
     final locked = _todayCheckLocked;
-    final canSubmit =
-        _allChecked && _vehicle != null && !locked && !_loading;
-
-    String label;
-    if (locked) {
-      label = 'Completed for today';
-    } else {
-      label = 'Complete Safety Check';
-    }
-
+    final canSubmit = _allChecked && _vehicle != null && !locked && !_loading;
+    final label = locked ? 'Completed for today' : 'Complete Safety Check';
     return Container(
       padding: EdgeInsets.fromLTRB(
         SizeConfig.hPad,
@@ -691,14 +820,17 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
         isLoading: _saving,
         backgroundColor: locked
             ? AppColors.success
-            : (canSubmit
-                ? const Color(0xFF0284C7)
-                : AppColors.textLight),
+            : (canSubmit ? const Color(0xFF0284C7) : AppColors.textLight),
         onPressed: canSubmit && !_saving ? _onCompletePressed : null,
       ),
     );
   }
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Shimmer, VehicleInfoCard, SectionCard, CheckItemRow, CheckCircle
+// (all unchanged from original)
+// ─────────────────────────────────────────────────────────────────────────────
 
 class _VehicleChecklistPageShimmer extends StatelessWidget {
   const _VehicleChecklistPageShimmer();
@@ -856,13 +988,8 @@ class _ChecklistSectionShimmerCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Vehicle Info Card
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _VehicleInfoCard extends StatelessWidget {
   final DriverVehicleSafetyInfo? vehicle;
-
   const _VehicleInfoCard({required this.vehicle});
 
   @override
@@ -880,8 +1007,11 @@ class _VehicleInfoCard extends StatelessWidget {
         ),
         child: Row(
           children: [
-            Icon(Icons.directions_car_outlined,
-                color: AppColors.textLight, size: SizeConfig.r(28)),
+            Icon(
+              Icons.directions_car_outlined,
+              color: AppColors.textLight,
+              size: SizeConfig.r(28),
+            ),
             SizedBox(width: SizeConfig.r(12)),
             Expanded(
               child: Text(
@@ -897,7 +1027,6 @@ class _VehicleInfoCard extends StatelessWidget {
         ),
       );
     }
-
     final v = vehicle!;
     return Container(
       padding: EdgeInsets.symmetric(
@@ -953,10 +1082,6 @@ class _VehicleInfoCard extends StatelessWidget {
     );
   }
 }
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Section Card
-// ─────────────────────────────────────────────────────────────────────────────
 
 class _SectionCard extends StatelessWidget {
   final _CheckSection section;
@@ -1034,10 +1159,6 @@ class _SectionCard extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Check Item Row
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _CheckItemRow extends StatelessWidget {
   final _CheckItem item;
   final bool readOnly;
@@ -1091,10 +1212,6 @@ class _CheckItemRow extends StatelessWidget {
   }
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Check Circle Button
-// ─────────────────────────────────────────────────────────────────────────────
-
 class _CheckCircle extends StatelessWidget {
   final bool isSelected;
   final Color selectedColor;
@@ -1129,9 +1246,7 @@ class _CheckCircle extends StatelessWidget {
         ),
       ),
     );
-    if (readOnly) {
-      return IgnorePointer(child: control);
-    }
+    if (readOnly) return IgnorePointer(child: control);
     return control;
   }
 }

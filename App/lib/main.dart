@@ -4,22 +4,30 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import 'config/supabase_config.dart';
+import 'database/app_database.dart';
 import 'providers/auth_provider.dart';
 import 'providers/leave_provider.dart';
 import 'providers/driver_profile_provider.dart';
 import 'providers/job_provider.dart';
 import 'providers/pa_job_provider.dart';
 import 'providers/pa_profile_provider.dart';
+import 'repositories/cache_repository.dart';
+import 'repositories/local_job_repository.dart';
 import 'routes/app_routes.dart';
+import 'services/connectivity_service.dart';
+import 'providers/connectivity_provider.dart';
 import 'services/location_service.dart';
 import 'services/notification_service.dart';
 import 'services/sos_location_service.dart';
+import 'services/sync_engine.dart';
 import 'users/auth/pages/login.dart';
 import 'users/driver/pages/dashboard/dashboard.dart';
 import 'users/PA/pages/dashboard/dashboard.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // ── Supabase ──────────────────────────────────────────────────────────────
   const supabaseUrl = String.fromEnvironment(
     'SUPABASE_URL',
     defaultValue: SupabaseConfig.url,
@@ -41,27 +49,73 @@ Future<void> main() async {
     return;
   }
   await Supabase.initialize(url: normalizedUrl, anonKey: normalizedAnonKey);
+
+  // ── Offline infrastructure ────────────────────────────────────────────────
+  // Order matters: DB → repo → connectivity → sync engine → cache warm-up.
+
+  final db = AppDatabase();
+  final localRepo = LocalJobRepository(db);
+  final cacheRepo = CacheRepository(db);
+
+  // Init connectivity FIRST — probes Supabase to establish canReachServer.
+  // Everything downstream reads from canReachServer, not just link state.
+  await ConnectivityService().init(
+    probeHost: Uri.parse(normalizedUrl).host,
+  );
+
+  SyncEngine.init(localRepo);
+  SyncEngine.instance.listenForReconnect();
+
+  // ── Device services ───────────────────────────────────────────────────────
   await LocationService().ensurePermission();
   await NotificationService().init();
-  runApp(const RideRosterApp());
+
+  // Warm cache only when we can actually reach Supabase (not just link-up).
+  if (ConnectivityService().canReachServer) {
+    try {
+      await cacheRepo.ensureFresh();
+    } catch (_) {
+      // canReachServer can lag by one probe cycle — swallow and read local DB.
+    }
+  }
+
+  // onReconnect fires when canReachServer transitions false→true (real internet,
+  // not just link restored). Safe to sync + refresh here.
+  // SyncEngine.listenForReconnect() already runs processQueue on reconnect.
+  ConnectivityService().onReconnect.listen((_) async {
+    try {
+      await cacheRepo.forceRefresh();
+    } catch (_) {}
+  });
+
+  runApp(RideRosterApp(localRepo: localRepo, cacheRepo: cacheRepo));
 }
 
 class RideRosterApp extends StatelessWidget {
-  const RideRosterApp({super.key});
+  final LocalJobRepository localRepo;
+  final CacheRepository cacheRepo;
+  const RideRosterApp({
+    super.key,
+    required this.localRepo,
+    required this.cacheRepo,
+  });
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // ConnectivityProvider must be first — JobProvider may read it.
+        ChangeNotifierProvider(create: (_) => ConnectivityProvider()),
+        Provider<LocalJobRepository>.value(value: localRepo),
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => JobProvider()),
+        ChangeNotifierProvider(
+          create: (_) =>
+              JobProvider(localRepo: localRepo, cacheRepo: cacheRepo),
+        ),
         ChangeNotifierProvider(create: (_) => PaJobProvider()),
         ChangeNotifierProvider(create: (_) => PaAssignedJobsProvider()),
         ChangeNotifierProvider(create: (_) => DriverProfileProvider()),
         ChangeNotifierProvider(create: (_) => PaProfileProvider()),
-        // Two typed subclasses — driver UI reads DriverLeaveProvider,
-        // PA UI reads PaLeaveProvider. Both extend LeaveProvider with
-        // the correct userRole baked in.
         ChangeNotifierProvider(create: (_) => DriverLeaveProvider()),
         ChangeNotifierProvider(create: (_) => PaLeaveProvider()),
       ],
@@ -78,11 +132,14 @@ class RideRosterApp extends StatelessWidget {
           primaryTextTheme: GoogleFonts.manropeTextTheme(),
         ),
         home: const _AppRuntimeGuard(),
-        onGenerateRoute: AppRoutes.generateRoute,
+        onGenerateRoute: (settings) =>
+            AppRoutes.generateRoute(settings, localRepo: localRepo),
       ),
     );
   }
 }
+
+// ─── Everything below is unchanged from your original main.dart ───────────────
 
 class _AppRuntimeGuard extends StatefulWidget {
   const _AppRuntimeGuard();
@@ -117,6 +174,8 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
     if (state == AppLifecycleState.resumed) {
       _enforceLocationRequirement(showLoader: false);
       _resumeSosTrackingIfAuthenticated();
+      // Re-probe on foreground so banner updates quickly after app switch.
+      ConnectivityService().triggerProbe();
       return;
     }
 

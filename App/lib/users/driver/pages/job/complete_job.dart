@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
+import '../../../../components/offline_banner.dart';
 import '../../../../providers/job_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../model/job_model.dart';
@@ -48,6 +49,7 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
 
             return Column(
               children: [
+                const OfflineBanner(),
                 _buildAppBar(context, job),
                 _StatusBar(job: job),
                 if (provider.isTracking)
