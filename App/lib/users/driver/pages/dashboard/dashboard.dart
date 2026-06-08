@@ -1150,13 +1150,14 @@ class _QuickActionsSection extends StatelessWidget {
         icon: Icons.warning_amber_rounded,
         label: 'Report\nIssue',
         iconBgColor: AppColors.warning,
-        onTap: () async {
-          await context.read<LocalJobRepository>().clearAllLocalData();
-          if (!context.mounted) return;
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(const SnackBar(content: Text('Local DB cleared')));
-        },
+        onTap: null,
+        // onTap: () async {
+        //   await context.read<LocalJobRepository>().clearAllLocalData();
+        //   if (!context.mounted) return;
+        //   ScaffoldMessenger.of(
+        //     context,
+        //   ).showSnackBar(const SnackBar(content: Text('Local DB cleared')));
+        // },
       ),
       _QuickActionData(
         icon: Icons.phone,

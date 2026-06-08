@@ -15,7 +15,7 @@ import '../config/supabase_config.dart';
 ///   - init()
 ///   - link restored (offline→online link transition)
 ///   - app resume (via triggerProbe() from WidgetsBindingObserver)
-///   - periodic 30s timer while app is active
+///   - periodic 15s timer while app is active
 ///
 /// [onReconnect] fires when canReachServer transitions false→true.
 /// [onlineStream] emits canReachServer on every change.
@@ -72,8 +72,8 @@ class ConnectivityService {
       }
     });
 
-    // Periodic probe every 30s — catches "Wi-Fi but no internet" recovery
-    _periodicTimer = Timer.periodic(const Duration(seconds: 30), (_) {
+    // Periodic probe every 15s — catches "Wi-Fi but no internet" recovery
+    _periodicTimer = Timer.periodic(const Duration(seconds: 15), (_) {
       if (_hasLink) _probe();
     });
   }
