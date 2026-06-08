@@ -79,6 +79,48 @@ class PaProfileModel {
     );
   }
 
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'company_id': companyId,
+    'first_name': firstName,
+    'surname': surname,
+    'email': email,
+    'phone': phone,
+    'residential_address': residentialAddress,
+    'profile_picture_url': profilePictureUrl,
+    'emergency_contact_name': emergencyContactName,
+    'emergency_contact_phone': emergencyContactPhone,
+    'nationality': nationality,
+    'right_to_work_code': rightToWorkCode,
+    'passport_number': passportNumber,
+    'status': status,
+    'documents': documents.map((d) => d.toJson()).toList(),
+  };
+
+  factory PaProfileModel.fromJson(Map<String, dynamic> json) {
+    return PaProfileModel(
+      id: (json['id'] ?? '').toString(),
+      companyId: (json['company_id'] ?? '').toString(),
+      firstName: (json['first_name'] ?? '').toString(),
+      surname: (json['surname'] ?? '').toString(),
+      email: (json['email'] ?? '').toString(),
+      phone: (json['phone'] ?? '').toString(),
+      residentialAddress: json['residential_address']?.toString(),
+      profilePictureUrl: json['profile_picture_url']?.toString(),
+      emergencyContactName: json['emergency_contact_name']?.toString(),
+      emergencyContactPhone: json['emergency_contact_phone']?.toString(),
+      nationality: json['nationality']?.toString(),
+      rightToWorkCode: json['right_to_work_code']?.toString(),
+      passportNumber: json['passport_number']?.toString(),
+      status: json['status']?.toString(),
+      documents: (json['documents'] as List<dynamic>? ?? [])
+          .map(
+            (e) => PaDocumentModel.fromJson(Map<String, dynamic>.from(e as Map)),
+          )
+          .toList(),
+    );
+  }
+
   static String? _toNullableText(dynamic raw) {
     final value = (raw ?? '').toString().trim();
     return value.isEmpty ? null : value;
@@ -192,6 +234,28 @@ class PaDocumentModel {
       expiryDate: _parseDate(row['expiry_date']),
       verified: row['verified'] == true,
       uploadedAt: _parseDateTime(row['uploaded_at']),
+    );
+  }
+
+  Map<String, dynamic> toJson() => {
+    'id': id,
+    'document_type': documentType,
+    'file_name': fileName,
+    'file_url': fileUrl,
+    'expiry_date': expiryDate?.toIso8601String(),
+    'verified': verified,
+    'uploaded_at': uploadedAt?.toIso8601String(),
+  };
+
+  factory PaDocumentModel.fromJson(Map<String, dynamic> json) {
+    return PaDocumentModel(
+      id: (json['id'] ?? '').toString(),
+      documentType: (json['document_type'] ?? '').toString(),
+      fileName: _toNullableText(json['file_name']),
+      fileUrl: (json['file_url'] ?? '').toString(),
+      expiryDate: _parseDate(json['expiry_date']),
+      verified: json['verified'] == true,
+      uploadedAt: _parseDateTime(json['uploaded_at']),
     );
   }
 

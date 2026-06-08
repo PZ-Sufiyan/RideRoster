@@ -17,7 +17,7 @@ class CacheRepository {
 
   CacheRepository(this._db);
 
-  /// Entry point. Call from [JobProvider.loadJob] after auth is available.
+  /// Entry point. Call once on launch when ConnectivityService.isOnline == true.
   /// Safe to call multiple times — checks freshness before fetching.
   Future<void> ensureFresh() async {
     final userId = _supabase.auth.currentUser?.id;
@@ -25,12 +25,16 @@ class CacheRepository {
 
     final stale = await _isCacheStale();
     final vehicleMissing = await _isVehicleCacheEmpty();
-
     if (!stale && !vehicleMissing) return;
 
     if (stale) {
-      await Future.wait([_refreshJobs(userId), _refreshVehicle(userId)]);
-      // Schedules and passengers depend on job IDs, so fetch after jobs.
+      // Fetch as both driver and PA — one will return empty rows if user
+      // doesn't have that role, which is harmless (insertOnConflictUpdate).
+      await Future.wait([
+        _refreshJobs(userId),
+        _refreshPaJobs(userId),
+        _refreshVehicle(userId),
+      ]);
       await _refreshSchedulesAndPassengers(userId);
     } else if (vehicleMissing) {
       await _refreshVehicle(userId);
@@ -42,35 +46,34 @@ class CacheRepository {
   Future<void> forceRefresh() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return;
-    await Future.wait([_refreshJobs(userId), _refreshVehicle(userId)]);
+    await Future.wait([
+      _refreshJobs(userId),
+      _refreshPaJobs(userId),
+      _refreshVehicle(userId),
+    ]);
     await _refreshSchedulesAndPassengers(userId);
   }
 
   // ── Staleness check ────────────────────────────────────────────────────────
 
   Future<bool> _isVehicleCacheEmpty() async {
-    final row =
-        await (_db.select(_db.vehiclesCache)..limit(1)).getSingleOrNull();
+    final row = await (_db.select(
+      _db.vehiclesCache,
+    )..limit(1)).getSingleOrNull();
     return row == null;
   }
 
   Future<bool> _isCacheStale() async {
-    final jobsRow =
+    final row =
         await (_db.select(_db.jobsCache)
               ..orderBy([(t) => OrderingTerm.asc(t.cachedAt)])
               ..limit(1))
             .getSingleOrNull();
 
-    if (jobsRow == null) return true;
+    if (row == null) return true;
 
-    final vehicleRow =
-        await (_db.select(_db.vehiclesCache)..limit(1)).getSingleOrNull();
-    if (vehicleRow == null) return true;
-
-    final now = DateTime.now();
-    if (now.difference(jobsRow.cachedAt).inHours >= _maxAgeHours) return true;
-    if (now.difference(vehicleRow.cachedAt).inHours >= _maxAgeHours) return true;
-    return false;
+    final age = DateTime.now().difference(row.cachedAt);
+    return age.inHours >= _maxAgeHours;
   }
 
   // ── Jobs ───────────────────────────────────────────────────────────────────
@@ -92,14 +95,48 @@ class CacheRepository {
         .lte('semester_start', today)
         .gte('semester_end', today);
 
-    final companions = (rows as List<dynamic>).map((raw) {
-      final m = Map<String, dynamic>.from(raw as Map);
+    // Collect unique driver IDs across all jobs so we can batch-fetch names.
+    final jobList = (rows as List<dynamic>)
+        .map((r) => Map<String, dynamic>.from(r as Map))
+        .toList();
+
+    final driverIds = jobList
+        .map((m) => (m['assigned_driver_id'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    // Batch-fetch driver names from the drivers table.
+    final driverNameMap = <String, String>{};
+    if (driverIds.isNotEmpty) {
+      try {
+        final driverRows = await _supabase
+            .from('drivers')
+            .select('id, first_name, last_name')
+            .inFilter('id', driverIds);
+        for (final d in driverRows as List<dynamic>) {
+          final dm = Map<String, dynamic>.from(d as Map);
+          final id = (dm['id'] ?? '').toString();
+          if (id.isEmpty) continue;
+          final first = (dm['first_name'] ?? '').toString().trim();
+          final last = (dm['last_name'] ?? '').toString().trim();
+          final full = [first, last].where((s) => s.isNotEmpty).join(' ');
+          driverNameMap[id] = full.isEmpty ? 'Driver' : full;
+        }
+      } catch (_) {
+        // Non-fatal — driver name falls back to null, shown as 'Driver' in UI
+      }
+    }
+
+    final companions = jobList.map((m) {
+      final driverId = (m['assigned_driver_id'] ?? '').toString();
       return JobsCacheCompanion.insert(
         id: (m['id'] ?? '').toString(),
         jobName: (m['job_name'] ?? '').toString(),
         internalJobId: Value(m['internal_job_id']?.toString()),
-        assignedDriverId: (m['assigned_driver_id'] ?? '').toString(),
+        assignedDriverId: driverId,
         assignedPaId: Value(m['assigned_pa_id']?.toString()),
+        driverName: Value(driverNameMap[driverId]),
         hasOutbound: Value(m['has_outbound'] == true),
         hasInbound: Value(m['has_inbound'] == true),
         morningStartTime: Value(m['morning_start_time']?.toString()),
@@ -118,6 +155,91 @@ class CacheRepository {
       if (companions.isNotEmpty) {
         await _db.batch((b) => b.insertAll(_db.jobsCache, companions));
       }
+    });
+  }
+
+  // ── PA Jobs ───────────────────────────────────────────────────────────────
+  // Mirrors _refreshJobs but filters by assigned_pa_id instead of
+  // assigned_driver_id. Both can run in parallel — one will return empty rows
+  // if the user is not a PA, which is harmless.
+
+  Future<void> _refreshPaJobs(String userId) async {
+    final today = _dateString(DateTime.now());
+
+    final rows = await _supabase
+        .from('jobs')
+        .select(
+          'id, job_name, internal_job_id, assigned_driver_id, assigned_pa_id, '
+          'has_outbound, has_inbound, morning_start_time, morning_end_time, '
+          'evening_start_time, semester_start, semester_end, status, '
+          'driver_approval_status',
+        )
+        .eq('assigned_pa_id', userId)
+        .eq('driver_approval_status', 'accepted')
+        .neq('status', 'cancelled')
+        .lte('semester_start', today)
+        .gte('semester_end', today);
+
+    if ((rows as List<dynamic>).isEmpty) return;
+
+    final jobList = rows
+        .map((r) => Map<String, dynamic>.from(r as Map))
+        .toList();
+
+    // Batch-fetch driver names
+    final driverIds = jobList
+        .map((m) => (m['assigned_driver_id'] ?? '').toString())
+        .where((id) => id.isNotEmpty)
+        .toSet()
+        .toList();
+
+    final driverNameMap = <String, String>{};
+    if (driverIds.isNotEmpty) {
+      try {
+        final driverRows = await _supabase
+            .from('drivers')
+            .select('id, first_name, last_name')
+            .inFilter('id', driverIds);
+        for (final d in driverRows as List<dynamic>) {
+          final dm = Map<String, dynamic>.from(d as Map);
+          final id = (dm['id'] ?? '').toString();
+          if (id.isEmpty) continue;
+          final first = (dm['first_name'] ?? '').toString().trim();
+          final last = (dm['last_name'] ?? '').toString().trim();
+          final full = [first, last].where((s) => s.isNotEmpty).join(' ');
+          driverNameMap[id] = full.isEmpty ? 'Driver' : full;
+        }
+      } catch (_) {}
+    }
+
+    final companions = jobList.map((m) {
+      final driverId = (m['assigned_driver_id'] ?? '').toString();
+      return JobsCacheCompanion.insert(
+        id: (m['id'] ?? '').toString(),
+        jobName: (m['job_name'] ?? '').toString(),
+        internalJobId: Value(m['internal_job_id']?.toString()),
+        assignedDriverId: driverId,
+        assignedPaId: Value(m['assigned_pa_id']?.toString()),
+        driverName: Value(driverNameMap[driverId]),
+        hasOutbound: Value(m['has_outbound'] == true),
+        hasInbound: Value(m['has_inbound'] == true),
+        morningStartTime: Value(m['morning_start_time']?.toString()),
+        morningEndTime: Value(m['morning_end_time']?.toString()),
+        eveningStartTime: Value(m['evening_start_time']?.toString()),
+        semesterStart: (m['semester_start'] ?? '').toString(),
+        semesterEnd: (m['semester_end'] ?? '').toString(),
+        status: (m['status'] ?? '').toString(),
+        driverApprovalStatus: Value(m['driver_approval_status']?.toString()),
+        cachedAt: Value(DateTime.now()),
+      );
+    }).toList();
+
+    // Use insertOnConflictUpdate so driver rows already in cache aren't wiped.
+    // PA job rows are inserted alongside driver rows, not instead of them.
+    await _db.transaction(() async {
+      await _db.batch(
+        (b) => b.insertAllOnConflictUpdate(_db.jobsCache, companions),
+      );
     });
   }
 

@@ -1,15 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 
-import 'package:drift/drift.dart' hide Column;
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../../../../components/app_button.dart';
-import '../../../../components/offline_banner.dart';
-import '../../../../database/app_database.dart';
 import '../../../../repositories/local_job_repository.dart';
 import '../../../../routes/app_routes.dart';
+import '../../../../services/connectivity_service.dart';
 import '../../../../services/vehicle_safety_check_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
@@ -67,9 +65,6 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
   // Local checklist row ID (drift). Null until a row is saved locally.
   String? _localCheckId;
 
-  // Server row ID — populated after sync or when loaded from Supabase online.
-  String? _serverCheckId;
-
   bool _todayCheckLocked = false;
   bool _loading = true;
   bool _saving = false;
@@ -77,6 +72,7 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
   bool _hasJobToday = false;
 
   // True when the save was written locally but not yet synced.
+  bool _savedOffline = false;
 
   DateTime? _anchorLocalDay;
   Timer? _midnightTimer;
@@ -338,6 +334,7 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
     setState(() {
       _loading = true;
       _loadError = null;
+      _savedOffline = false;
     });
 
     try {
@@ -349,7 +346,6 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
         setState(() {
           _vehicle = null;
           _localCheckId = null;
-          _serverCheckId = null;
           _todayCheckLocked = false;
           _loadError = 'You need to be signed in to use the safety check.';
         });
@@ -362,12 +358,10 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
       // ── Step 1: resolve vehicle (local cache first) ─────────────────────
       DriverVehicleSafetyInfo? vehicle = await _vehicleFromCache();
       if (vehicle == null) {
-        try {
-          vehicle = await _service
-              .fetchDriverVehicle()
-              .timeout(const Duration(seconds: 3));
-          if (vehicle != null) await _persistVehicleToCache(vehicle);
-        } catch (_) {}
+        final online = await ConnectivityService().isOnline;
+        if (online) {
+          vehicle = await _service.fetchDriverVehicle();
+        }
       }
 
       if (vehicle == null) {
@@ -376,7 +370,6 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
         setState(() {
           _vehicle = null;
           _localCheckId = null;
-          _serverCheckId = null;
           _todayCheckLocked = false;
           _hasJobToday = false;
           _anchorLocalDay = dayKey;
@@ -401,19 +394,18 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
         _applyLocalChecks(checks);
         locked = localRow.isLocked;
         _localCheckId = localRow.id;
-        _serverCheckId = localRow.serverId;
+        _savedOffline = !localRow.isSynced;
       } else {
-        _clearAllItemStatuses();
-        // No local row — optional Supabase hydrate when network actually works.
-        try {
-          final serverRow = await _service
-              .fetchCheckForLocalDay(
-                driverId: driverId,
-                vehicleId: vehicle.id,
-                localDay: today,
-              )
-              .timeout(const Duration(seconds: 3));
+        // No local row — try Supabase if online.
+        final online = await ConnectivityService().isOnline;
+        if (online) {
+          final serverRow = await _service.fetchCheckForLocalDay(
+            driverId: driverId,
+            vehicleId: vehicle.id,
+            localDay: today,
+          );
           if (serverRow != null) {
+            // Hydrate into local DB so future loads work offline.
             final checks = <String, String>{};
             for (final entry in serverRow.checksByColumn.entries) {
               if (entry.value != null) checks[entry.key] = entry.value!;
@@ -425,25 +417,28 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
               checksPassFail: checks,
               existingLocalId: null,
             );
+            // Mark it as already synced since it came from server.
             await widget.localRepo.patchChecklistServerId(
               localId: _localCheckId!,
               serverId: serverRow.id,
             );
-            _serverCheckId = serverRow.id;
             _applySafetyRow(serverRow);
             locked = serverRow.isReadOnlyLocked;
+          } else {
+            _clearAllItemStatuses();
           }
-        } catch (_) {}
+        } else {
+          _clearAllItemStatuses();
+        }
       }
 
-      // ── Step 3: has job today (schedules cache, not sessions) ───────────
-      hasJob = await widget.localRepo.hasJobScheduledToday(driverId);
+      // ── Step 3: has job today (local sessions first) ────────────────────
+      hasJob = await widget.localRepo.hasSessionToday(driverId);
       if (!hasJob) {
-        try {
-          hasJob = await _service
-              .driverHasJobSessionOnLocalDay(today)
-              .timeout(const Duration(seconds: 3));
-        } catch (_) {}
+        final online = await ConnectivityService().isOnline;
+        if (online) {
+          hasJob = await _service.driverHasJobSessionOnLocalDay(today);
+        }
       }
 
       if (!mounted) return;
@@ -456,10 +451,7 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
       });
     } catch (e) {
       if (mounted) {
-        setState(() {
-          _loadError =
-              'Unable to load safety check. Please check your connection and try again.';
-        });
+        setState(() => _loadError = e.toString());
       }
     } finally {
       if (mounted) {
@@ -467,27 +459,6 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
         _armMidnightTimer();
       }
     }
-  }
-
-  Future<void> _persistVehicleToCache(DriverVehicleSafetyInfo vehicle) async {
-    final db = widget.localRepo.appDb;
-    await db.transaction(() async {
-      await db.delete(db.vehiclesCache).go();
-      await db.into(db.vehiclesCache).insert(
-        VehiclesCacheCompanion.insert(
-          id: vehicle.id,
-          companyId: vehicle.companyId,
-          name: Value(vehicle.name),
-          make: Value(vehicle.make),
-          model: Value(vehicle.model),
-          taxiLicensePlateNumber: vehicle.taxiLicensePlateNumber,
-          yearOfFirstRegistration: Value(
-            vehicle.yearOfFirstRegistration?.toIso8601String(),
-          ),
-          cachedAt: Value(DateTime.now()),
-        ),
-      );
-    });
   }
 
   // Reads vehicle from the drift vehicles_cache table.
@@ -539,6 +510,7 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
   //
   // 1. Write to local drift DB immediately (works offline).
   // 2. SyncEngine will push to Supabase on next reconnect.
+  // 3. Show "saved offline" banner if not connected.
 
   Future<void> _onCompletePressed() async {
     if (!_allChecked || _vehicle == null || _todayCheckLocked) return;
@@ -568,27 +540,39 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
       );
 
       final allPass = checks.values.every((v) => v == 'pass');
+      final online = await ConnectivityService().isOnline;
 
       if (!mounted) return;
       setState(() {
         _localCheckId = newLocalId;
         _todayCheckLocked = allPass;
         _saving = false;
+        _savedOffline = !online;
       });
 
       if (allPass) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Safety check completed for today.')),
-        );
+        if (!online) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Safety check saved — will sync when back online.'),
+            ),
+          );
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Safety check completed for today.')),
+          );
+        }
         await Navigator.pushReplacementNamed(
           context,
           AppRoutes.driverDashboard,
         );
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
+          SnackBar(
             content: Text(
-              'Checklist saved as incomplete. Fix failed items and submit again.',
+              online
+                  ? 'Checklist saved as incomplete. Fix failed items and submit again.'
+                  : 'Saved offline as incomplete. Fix failed items and submit again.',
             ),
           ),
         );
@@ -611,7 +595,6 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
       body: SafeArea(
         child: Column(
           children: [
-            const OfflineBanner(),
             _buildAppBar(context),
             if (_loadError != null && _vehicle == null && !_loading)
               Padding(
@@ -624,6 +607,8 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
                   ),
                 ),
               ),
+            // Offline sync pending banner
+            if (_savedOffline) _OfflineSyncBanner(),
             if (_hasJobToday) _buildJobBanner(),
             Expanded(
               child: _loading
@@ -822,6 +807,43 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
             ? AppColors.success
             : (canSubmit ? const Color(0xFF0284C7) : AppColors.textLight),
         onPressed: canSubmit && !_saving ? _onCompletePressed : null,
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Offline sync pending banner
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _OfflineSyncBanner extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: AppColors.warning.withValues(alpha: 0.12),
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.hPad,
+        vertical: SizeConfig.r(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.cloud_off_outlined,
+            size: SizeConfig.r(16),
+            color: AppColors.warning,
+          ),
+          SizedBox(width: SizeConfig.r(8)),
+          Expanded(
+            child: Text(
+              'Saved locally — will sync when back online.',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.textDark,
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

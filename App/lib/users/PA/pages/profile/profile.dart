@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../../../components/app_button.dart';
+import '../../../../components/offline_banner.dart';
 import '../../../../model/pa_profile_model.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../providers/pa_profile_provider.dart';
@@ -51,7 +53,6 @@ class _PaProfilePageState extends State<PaProfilePage> {
 
           if (provider.error != null && !provider.hasProfile) {
             return _ProfileErrorBody(
-              message: provider.error!,
               onRetry: () => context.read<PaProfileProvider>().loadProfile(
                 forceRefresh: true,
               ),
@@ -61,7 +62,6 @@ class _PaProfilePageState extends State<PaProfilePage> {
           final profile = provider.profile;
           if (profile == null) {
             return _ProfileErrorBody(
-              message: 'Profile not available right now.',
               onRetry: () => context.read<PaProfileProvider>().loadProfile(
                 forceRefresh: true,
               ),
@@ -74,6 +74,7 @@ class _PaProfilePageState extends State<PaProfilePage> {
             ),
             child: Column(
               children: [
+                const OfflineBanner(),
                 _ProfileHeader(profile: profile),
                 Expanded(
                   child: SingleChildScrollView(
@@ -149,38 +150,78 @@ class _ProfileLoadingBody extends StatelessWidget {
 }
 
 class _ProfileErrorBody extends StatelessWidget {
-  final String message;
   final VoidCallback onRetry;
 
-  const _ProfileErrorBody({required this.message, required this.onRetry});
+  const _ProfileErrorBody({required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Padding(
-        padding: EdgeInsets.all(SizeConfig.hPad),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(
-              Icons.error_outline,
-              color: AppColors.error,
-              size: SizeConfig.r(40),
+    return Column(
+      children: [
+        const OfflineBanner(),
+        Align(
+          alignment: Alignment.centerLeft,
+          child: IconButton(
+            onPressed: () => Navigator.pushNamedAndRemoveUntil(
+              context,
+              AppRoutes.paDashboard,
+              (route) => false,
             ),
-            SizedBox(height: SizeConfig.r(12)),
-            Text(
-              message,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(14),
-                color: AppColors.textMedium,
+            icon: Icon(
+              Icons.arrow_back,
+              color: AppColors.textDark,
+              size: SizeConfig.r(22),
+            ),
+          ),
+        ),
+        Expanded(
+          child: Center(
+            child: Padding(
+              padding: EdgeInsets.all(SizeConfig.r(20)),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    Icons.cloud_off_outlined,
+                    size: SizeConfig.r(42),
+                    color: AppColors.warning,
+                  ),
+                  SizedBox(height: SizeConfig.r(12)),
+                  Text(
+                    'No internet. Please try again.',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(14),
+                      color: AppColors.textDark,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  SizedBox(height: SizeConfig.r(20)),
+                  AppButton(
+                    label: 'Retry',
+                    onPressed: onRetry,
+                    height: SizeConfig.r(42),
+                    borderRadius: SizeConfig.radius,
+                  ),
+                  SizedBox(height: SizeConfig.r(10)),
+                  AppButton(
+                    label: 'Back to Dashboard',
+                    onPressed: () => Navigator.pushNamedAndRemoveUntil(
+                      context,
+                      AppRoutes.paDashboard,
+                      (route) => false,
+                    ),
+                    height: SizeConfig.r(42),
+                    borderRadius: SizeConfig.radius,
+                    backgroundColor: AppColors.surfaceGray,
+                    textColor: AppColors.textDark,
+                  ),
+                ],
               ),
             ),
-            SizedBox(height: SizeConfig.r(16)),
-            TextButton(onPressed: onRetry, child: const Text('Retry')),
-          ],
+          ),
         ),
-      ),
+      ],
     );
   }
 }

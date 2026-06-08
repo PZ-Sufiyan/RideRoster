@@ -3,6 +3,8 @@ import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../components/app_button.dart';
+import '../../../../components/leave_offline_ui.dart';
+import '../../../../providers/connectivity_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
@@ -112,6 +114,10 @@ class _LeaveRequestFormPageState extends State<LeaveRequestFormPage> {
   @override
   Widget build(BuildContext context) {
     SizeConfig.init(context);
+
+    if (!context.watch<ConnectivityProvider>().isOnline) {
+      return const LeaveRequestOfflineGate();
+    }
 
     switch (_step) {
       case _LeaveRequestStep.form:

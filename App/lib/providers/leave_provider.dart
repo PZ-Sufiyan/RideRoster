@@ -31,6 +31,7 @@ class LeaveProvider extends ChangeNotifier {
   bool _isCheckingConflict = false;
   bool _isSubmitting = false;
   String? _error;
+  bool _loadSucceededOnce = false;
 
   LeaveSummary? _summary;
   List<LeaveRequest> _history = [];
@@ -44,6 +45,7 @@ class LeaveProvider extends ChangeNotifier {
   bool get isCheckingConflict => _isCheckingConflict;
   bool get isSubmitting => _isSubmitting;
   String? get error => _error;
+  bool get hasLoadedOnce => _loadSucceededOnce;
   LeaveSummary? get summary => _summary;
   List<LeaveRequest> get history => _history;
   LeaveJobConflict? get conflictResult => _conflictResult;
@@ -57,9 +59,13 @@ class LeaveProvider extends ChangeNotifier {
   // ── Load ───────────────────────────────────────────────────────────────────
 
   Future<void> loadLeaveData({bool silent = false}) async {
+    if (!silent && _loadSucceededOnce) {
+      silent = true;
+    }
+
     if (!silent) {
       _isLoading = true;
-      _error = null;
+      if (!_loadSucceededOnce) _error = null;
       notifyListeners();
     }
 
@@ -67,9 +73,12 @@ class LeaveProvider extends ChangeNotifier {
       final result = await _service.fetchLeaveData();
       _summary = result.summary;
       _history = result.history;
-      if (!silent) _error = null;
+      _loadSucceededOnce = true;
+      _error = null;
     } catch (e) {
-      _error = e.toString();
+      if (!_loadSucceededOnce) {
+        _error = 'No internet. Please try again.';
+      }
     } finally {
       _isLoading = false;
       notifyListeners();

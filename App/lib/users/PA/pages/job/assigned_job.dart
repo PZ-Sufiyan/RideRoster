@@ -53,8 +53,12 @@ class _PaAssignedJobsPageState extends State<PaAssignedJobsPage> {
     final days = model.orderedActiveDays;
     if (days.isEmpty) return;
     final today = _todayKey();
-    setState(() {
-      _selectedDay = days.contains(today) ? today : days.first;
+    final target = days.contains(today) ? today : days.first;
+    // Defer so setState never fires during a Consumer build pass
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_selectedDay.isNotEmpty) return;
+      setState(() => _selectedDay = target);
     });
   }
 

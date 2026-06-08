@@ -59,9 +59,7 @@ Future<void> main() async {
 
   // Init connectivity FIRST — probes Supabase to establish canReachServer.
   // Everything downstream reads from canReachServer, not just link state.
-  await ConnectivityService().init(
-    probeHost: Uri.parse(normalizedUrl).host,
-  );
+  await ConnectivityService().init();
 
   SyncEngine.init(localRepo);
   SyncEngine.instance.listenForReconnect();
@@ -81,8 +79,8 @@ Future<void> main() async {
 
   // onReconnect fires when canReachServer transitions false→true (real internet,
   // not just link restored). Safe to sync + refresh here.
-  // SyncEngine.listenForReconnect() already runs processQueue on reconnect.
   ConnectivityService().onReconnect.listen((_) async {
+    await SyncEngine.instance.processQueue();
     try {
       await cacheRepo.forceRefresh();
     } catch (_) {}
@@ -112,8 +110,12 @@ class RideRosterApp extends StatelessWidget {
           create: (_) =>
               JobProvider(localRepo: localRepo, cacheRepo: cacheRepo),
         ),
-        ChangeNotifierProvider(create: (_) => PaJobProvider()),
-        ChangeNotifierProvider(create: (_) => PaAssignedJobsProvider()),
+        ChangeNotifierProvider(
+          create: (_) => PaJobProvider(localRepo: localRepo),
+        ),
+        ChangeNotifierProvider(
+          create: (_) => PaAssignedJobsProvider(localRepo: localRepo),
+        ),
         ChangeNotifierProvider(create: (_) => DriverProfileProvider()),
         ChangeNotifierProvider(create: (_) => PaProfileProvider()),
         ChangeNotifierProvider(create: (_) => DriverLeaveProvider()),

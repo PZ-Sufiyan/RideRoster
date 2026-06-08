@@ -62,6 +62,17 @@ class $JobsCacheTable extends JobsCache
     type: DriftSqlType.string,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _driverNameMeta = const VerificationMeta(
+    'driverName',
+  );
+  @override
+  late final GeneratedColumn<String> driverName = GeneratedColumn<String>(
+    'driver_name',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _hasOutboundMeta = const VerificationMeta(
     'hasOutbound',
   );
@@ -186,6 +197,7 @@ class $JobsCacheTable extends JobsCache
     internalJobId,
     assignedDriverId,
     assignedPaId,
+    driverName,
     hasOutbound,
     hasInbound,
     morningStartTime,
@@ -249,6 +261,12 @@ class $JobsCacheTable extends JobsCache
           data['assigned_pa_id']!,
           _assignedPaIdMeta,
         ),
+      );
+    }
+    if (data.containsKey('driver_name')) {
+      context.handle(
+        _driverNameMeta,
+        driverName.isAcceptableOrUnknown(data['driver_name']!, _driverNameMeta),
       );
     }
     if (data.containsKey('has_outbound')) {
@@ -367,6 +385,10 @@ class $JobsCacheTable extends JobsCache
         DriftSqlType.string,
         data['${effectivePrefix}assigned_pa_id'],
       ),
+      driverName: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}driver_name'],
+      ),
       hasOutbound: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}has_outbound'],
@@ -422,6 +444,7 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
   final String? internalJobId;
   final String assignedDriverId;
   final String? assignedPaId;
+  final String? driverName;
   final bool hasOutbound;
   final bool hasInbound;
   final String? morningStartTime;
@@ -438,6 +461,7 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
     this.internalJobId,
     required this.assignedDriverId,
     this.assignedPaId,
+    this.driverName,
     required this.hasOutbound,
     required this.hasInbound,
     this.morningStartTime,
@@ -460,6 +484,9 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
     map['assigned_driver_id'] = Variable<String>(assignedDriverId);
     if (!nullToAbsent || assignedPaId != null) {
       map['assigned_pa_id'] = Variable<String>(assignedPaId);
+    }
+    if (!nullToAbsent || driverName != null) {
+      map['driver_name'] = Variable<String>(driverName);
     }
     map['has_outbound'] = Variable<bool>(hasOutbound);
     map['has_inbound'] = Variable<bool>(hasInbound);
@@ -493,6 +520,9 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
       assignedPaId: assignedPaId == null && nullToAbsent
           ? const Value.absent()
           : Value(assignedPaId),
+      driverName: driverName == null && nullToAbsent
+          ? const Value.absent()
+          : Value(driverName),
       hasOutbound: Value(hasOutbound),
       hasInbound: Value(hasInbound),
       morningStartTime: morningStartTime == null && nullToAbsent
@@ -525,6 +555,7 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
       internalJobId: serializer.fromJson<String?>(json['internalJobId']),
       assignedDriverId: serializer.fromJson<String>(json['assignedDriverId']),
       assignedPaId: serializer.fromJson<String?>(json['assignedPaId']),
+      driverName: serializer.fromJson<String?>(json['driverName']),
       hasOutbound: serializer.fromJson<bool>(json['hasOutbound']),
       hasInbound: serializer.fromJson<bool>(json['hasInbound']),
       morningStartTime: serializer.fromJson<String?>(json['morningStartTime']),
@@ -548,6 +579,7 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
       'internalJobId': serializer.toJson<String?>(internalJobId),
       'assignedDriverId': serializer.toJson<String>(assignedDriverId),
       'assignedPaId': serializer.toJson<String?>(assignedPaId),
+      'driverName': serializer.toJson<String?>(driverName),
       'hasOutbound': serializer.toJson<bool>(hasOutbound),
       'hasInbound': serializer.toJson<bool>(hasInbound),
       'morningStartTime': serializer.toJson<String?>(morningStartTime),
@@ -567,6 +599,7 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
     Value<String?> internalJobId = const Value.absent(),
     String? assignedDriverId,
     Value<String?> assignedPaId = const Value.absent(),
+    Value<String?> driverName = const Value.absent(),
     bool? hasOutbound,
     bool? hasInbound,
     Value<String?> morningStartTime = const Value.absent(),
@@ -585,6 +618,7 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
         : this.internalJobId,
     assignedDriverId: assignedDriverId ?? this.assignedDriverId,
     assignedPaId: assignedPaId.present ? assignedPaId.value : this.assignedPaId,
+    driverName: driverName.present ? driverName.value : this.driverName,
     hasOutbound: hasOutbound ?? this.hasOutbound,
     hasInbound: hasInbound ?? this.hasInbound,
     morningStartTime: morningStartTime.present
@@ -617,6 +651,9 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
       assignedPaId: data.assignedPaId.present
           ? data.assignedPaId.value
           : this.assignedPaId,
+      driverName: data.driverName.present
+          ? data.driverName.value
+          : this.driverName,
       hasOutbound: data.hasOutbound.present
           ? data.hasOutbound.value
           : this.hasOutbound,
@@ -654,6 +691,7 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
           ..write('internalJobId: $internalJobId, ')
           ..write('assignedDriverId: $assignedDriverId, ')
           ..write('assignedPaId: $assignedPaId, ')
+          ..write('driverName: $driverName, ')
           ..write('hasOutbound: $hasOutbound, ')
           ..write('hasInbound: $hasInbound, ')
           ..write('morningStartTime: $morningStartTime, ')
@@ -675,6 +713,7 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
     internalJobId,
     assignedDriverId,
     assignedPaId,
+    driverName,
     hasOutbound,
     hasInbound,
     morningStartTime,
@@ -695,6 +734,7 @@ class JobsCacheData extends DataClass implements Insertable<JobsCacheData> {
           other.internalJobId == this.internalJobId &&
           other.assignedDriverId == this.assignedDriverId &&
           other.assignedPaId == this.assignedPaId &&
+          other.driverName == this.driverName &&
           other.hasOutbound == this.hasOutbound &&
           other.hasInbound == this.hasInbound &&
           other.morningStartTime == this.morningStartTime &&
@@ -713,6 +753,7 @@ class JobsCacheCompanion extends UpdateCompanion<JobsCacheData> {
   final Value<String?> internalJobId;
   final Value<String> assignedDriverId;
   final Value<String?> assignedPaId;
+  final Value<String?> driverName;
   final Value<bool> hasOutbound;
   final Value<bool> hasInbound;
   final Value<String?> morningStartTime;
@@ -730,6 +771,7 @@ class JobsCacheCompanion extends UpdateCompanion<JobsCacheData> {
     this.internalJobId = const Value.absent(),
     this.assignedDriverId = const Value.absent(),
     this.assignedPaId = const Value.absent(),
+    this.driverName = const Value.absent(),
     this.hasOutbound = const Value.absent(),
     this.hasInbound = const Value.absent(),
     this.morningStartTime = const Value.absent(),
@@ -748,6 +790,7 @@ class JobsCacheCompanion extends UpdateCompanion<JobsCacheData> {
     this.internalJobId = const Value.absent(),
     required String assignedDriverId,
     this.assignedPaId = const Value.absent(),
+    this.driverName = const Value.absent(),
     this.hasOutbound = const Value.absent(),
     this.hasInbound = const Value.absent(),
     this.morningStartTime = const Value.absent(),
@@ -771,6 +814,7 @@ class JobsCacheCompanion extends UpdateCompanion<JobsCacheData> {
     Expression<String>? internalJobId,
     Expression<String>? assignedDriverId,
     Expression<String>? assignedPaId,
+    Expression<String>? driverName,
     Expression<bool>? hasOutbound,
     Expression<bool>? hasInbound,
     Expression<String>? morningStartTime,
@@ -789,6 +833,7 @@ class JobsCacheCompanion extends UpdateCompanion<JobsCacheData> {
       if (internalJobId != null) 'internal_job_id': internalJobId,
       if (assignedDriverId != null) 'assigned_driver_id': assignedDriverId,
       if (assignedPaId != null) 'assigned_pa_id': assignedPaId,
+      if (driverName != null) 'driver_name': driverName,
       if (hasOutbound != null) 'has_outbound': hasOutbound,
       if (hasInbound != null) 'has_inbound': hasInbound,
       if (morningStartTime != null) 'morning_start_time': morningStartTime,
@@ -810,6 +855,7 @@ class JobsCacheCompanion extends UpdateCompanion<JobsCacheData> {
     Value<String?>? internalJobId,
     Value<String>? assignedDriverId,
     Value<String?>? assignedPaId,
+    Value<String?>? driverName,
     Value<bool>? hasOutbound,
     Value<bool>? hasInbound,
     Value<String?>? morningStartTime,
@@ -828,6 +874,7 @@ class JobsCacheCompanion extends UpdateCompanion<JobsCacheData> {
       internalJobId: internalJobId ?? this.internalJobId,
       assignedDriverId: assignedDriverId ?? this.assignedDriverId,
       assignedPaId: assignedPaId ?? this.assignedPaId,
+      driverName: driverName ?? this.driverName,
       hasOutbound: hasOutbound ?? this.hasOutbound,
       hasInbound: hasInbound ?? this.hasInbound,
       morningStartTime: morningStartTime ?? this.morningStartTime,
@@ -859,6 +906,9 @@ class JobsCacheCompanion extends UpdateCompanion<JobsCacheData> {
     }
     if (assignedPaId.present) {
       map['assigned_pa_id'] = Variable<String>(assignedPaId.value);
+    }
+    if (driverName.present) {
+      map['driver_name'] = Variable<String>(driverName.value);
     }
     if (hasOutbound.present) {
       map['has_outbound'] = Variable<bool>(hasOutbound.value);
@@ -906,6 +956,7 @@ class JobsCacheCompanion extends UpdateCompanion<JobsCacheData> {
           ..write('internalJobId: $internalJobId, ')
           ..write('assignedDriverId: $assignedDriverId, ')
           ..write('assignedPaId: $assignedPaId, ')
+          ..write('driverName: $driverName, ')
           ..write('hasOutbound: $hasOutbound, ')
           ..write('hasInbound: $hasInbound, ')
           ..write('morningStartTime: $morningStartTime, ')
@@ -6469,6 +6520,7 @@ typedef $$JobsCacheTableCreateCompanionBuilder =
       Value<String?> internalJobId,
       required String assignedDriverId,
       Value<String?> assignedPaId,
+      Value<String?> driverName,
       Value<bool> hasOutbound,
       Value<bool> hasInbound,
       Value<String?> morningStartTime,
@@ -6488,6 +6540,7 @@ typedef $$JobsCacheTableUpdateCompanionBuilder =
       Value<String?> internalJobId,
       Value<String> assignedDriverId,
       Value<String?> assignedPaId,
+      Value<String?> driverName,
       Value<bool> hasOutbound,
       Value<bool> hasInbound,
       Value<String?> morningStartTime,
@@ -6532,6 +6585,11 @@ class $$JobsCacheTableFilterComposer
 
   ColumnFilters<String> get assignedPaId => $composableBuilder(
     column: $table.assignedPaId,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get driverName => $composableBuilder(
+    column: $table.driverName,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -6620,6 +6678,11 @@ class $$JobsCacheTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get driverName => $composableBuilder(
+    column: $table.driverName,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get hasOutbound => $composableBuilder(
     column: $table.hasOutbound,
     builder: (column) => ColumnOrderings(column),
@@ -6698,6 +6761,11 @@ class $$JobsCacheTableAnnotationComposer
 
   GeneratedColumn<String> get assignedPaId => $composableBuilder(
     column: $table.assignedPaId,
+    builder: (column) => column,
+  );
+
+  GeneratedColumn<String> get driverName => $composableBuilder(
+    column: $table.driverName,
     builder: (column) => column,
   );
 
@@ -6784,6 +6852,7 @@ class $$JobsCacheTableTableManager
                 Value<String?> internalJobId = const Value.absent(),
                 Value<String> assignedDriverId = const Value.absent(),
                 Value<String?> assignedPaId = const Value.absent(),
+                Value<String?> driverName = const Value.absent(),
                 Value<bool> hasOutbound = const Value.absent(),
                 Value<bool> hasInbound = const Value.absent(),
                 Value<String?> morningStartTime = const Value.absent(),
@@ -6801,6 +6870,7 @@ class $$JobsCacheTableTableManager
                 internalJobId: internalJobId,
                 assignedDriverId: assignedDriverId,
                 assignedPaId: assignedPaId,
+                driverName: driverName,
                 hasOutbound: hasOutbound,
                 hasInbound: hasInbound,
                 morningStartTime: morningStartTime,
@@ -6820,6 +6890,7 @@ class $$JobsCacheTableTableManager
                 Value<String?> internalJobId = const Value.absent(),
                 required String assignedDriverId,
                 Value<String?> assignedPaId = const Value.absent(),
+                Value<String?> driverName = const Value.absent(),
                 Value<bool> hasOutbound = const Value.absent(),
                 Value<bool> hasInbound = const Value.absent(),
                 Value<String?> morningStartTime = const Value.absent(),
@@ -6837,6 +6908,7 @@ class $$JobsCacheTableTableManager
                 internalJobId: internalJobId,
                 assignedDriverId: assignedDriverId,
                 assignedPaId: assignedPaId,
+                driverName: driverName,
                 hasOutbound: hasOutbound,
                 hasInbound: hasInbound,
                 morningStartTime: morningStartTime,

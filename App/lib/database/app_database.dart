@@ -19,6 +19,7 @@ class JobsCache extends Table {
   TextColumn get internalJobId => text().nullable()();
   TextColumn get assignedDriverId => text()();
   TextColumn get assignedPaId => text().nullable()();
+  TextColumn get driverName => text().nullable()(); // cached from drivers table
   BoolColumn get hasOutbound => boolean().withDefault(const Constant(true))();
   BoolColumn get hasInbound => boolean().withDefault(const Constant(true))();
   TextColumn get morningStartTime => text().nullable()();
@@ -225,7 +226,7 @@ class AppDatabase extends _$AppDatabase {
 
   /// Bump this whenever you add/change a table.
   @override
-  int get schemaVersion => 1;
+  int get schemaVersion => 2;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(

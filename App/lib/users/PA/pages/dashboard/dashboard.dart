@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../../components/offline_banner.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
@@ -52,6 +53,7 @@ class _PaDashboardPageState extends State<PaDashboardPage>
         bottom: false,
         child: Column(
           children: [
+            const OfflineBanner(),
             const _PaAppBar(),
             Expanded(
               child: SingleChildScrollView(
@@ -327,10 +329,7 @@ class _CurrentJobCard extends StatelessWidget {
                 height: SizeConfig.r(48),
                 child: ElevatedButton(
                   onPressed: () async {
-                    await Navigator.pushNamed(
-                      context,
-                      AppRoutes.paCurrentJob,
-                    );
+                    await Navigator.pushNamed(context, AppRoutes.paCurrentJob);
                     if (!context.mounted) return;
                     context.read<PaJobProvider>().loadJob(silent: true);
                   },
@@ -530,9 +529,7 @@ class _PassengersSection extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              showSkeleton
-                  ? 'Passengers'
-                  : 'Passengers (${stops.length})',
+              showSkeleton ? 'Passengers' : 'Passengers (${stops.length})',
               style: TextStyle(
                 fontSize: SizeConfig.sp(17),
                 fontWeight: FontWeight.w700,

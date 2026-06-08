@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../../../components/app_button.dart';
+import '../../../../components/leave_offline_ui.dart';
+import '../../../../components/offline_banner.dart';
+import '../../../../providers/connectivity_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
@@ -21,7 +24,8 @@ class _DriverLeavePageState extends State<DriverLeavePage> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<DriverLeaveProvider>().loadLeaveData();
+      final provider = context.read<DriverLeaveProvider>();
+      provider.loadLeaveData(silent: provider.hasLoadedOnce);
     });
   }
 
@@ -34,26 +38,35 @@ class _DriverLeavePageState extends State<DriverLeavePage> {
       body: SafeArea(
         child: Column(
           children: [
+            const OfflineBanner(),
             const _LeaveAppBar(title: 'Apply for Leave'),
             Expanded(
-              child: Padding(
-                padding: EdgeInsets.fromLTRB(
-                  SizeConfig.r(30),
-                  SizeConfig.r(31),
-                  SizeConfig.r(30),
-                  SizeConfig.r(28),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Consumer<DriverLeaveProvider>(
-                        builder: (context, provider, _) {
-                          if (provider.isLoading) {
-                            return const _LeavePageShimmer();
-                          }
+              child: Consumer<DriverLeaveProvider>(
+                builder: (context, provider, _) {
+                  if (provider.isLoading && !provider.hasLoadedOnce) {
+                    return const _LeavePageShimmer();
+                  }
 
-                          return SingleChildScrollView(
+                  if (provider.error != null && !provider.hasLoadedOnce) {
+                    return LeaveOfflineErrorBody(
+                      onRetry: () => context
+                          .read<DriverLeaveProvider>()
+                          .loadLeaveData(),
+                    );
+                  }
+
+                  return Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      SizeConfig.r(30),
+                      SizeConfig.r(31),
+                      SizeConfig.r(30),
+                      SizeConfig.r(28),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: SingleChildScrollView(
                             child: Column(
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
@@ -88,31 +101,57 @@ class _DriverLeavePageState extends State<DriverLeavePage> {
                                 SizedBox(height: SizeConfig.r(16)),
                               ],
                             ),
-                          );
-                        },
-                      ),
+                          ),
+                        ),
+                        SizedBox(height: SizeConfig.r(12)),
+                        Consumer<ConnectivityProvider>(
+                          builder: (context, connectivity, _) {
+                            final isOnline = connectivity.isOnline;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                if (!isOnline) ...[
+                                  Text(
+                                    'Connect to the internet to apply for leave.',
+                                    textAlign: TextAlign.center,
+                                    style: TextStyle(
+                                      fontSize: SizeConfig.sp(12),
+                                      color: const Color(0xFF74777F),
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                  SizedBox(height: SizeConfig.r(8)),
+                                ],
+                                AppButton(
+                                  label: 'Request Leave',
+                                  height: SizeConfig.r(70),
+                                  borderRadius: SizeConfig.r(12),
+                                  fontSize: SizeConfig.sp(15),
+                                  fontWeight: FontWeight.w700,
+                                  onPressed: () async {
+                                    if (!isOnline) {
+                                      showLeaveRequiresInternetMessage(context);
+                                      return;
+                                    }
+                                    await Navigator.pushNamed(
+                                      context,
+                                      AppRoutes.driverLeaveRequest,
+                                    );
+                                    if (mounted && context.mounted) {
+                                      context
+                                          .read<DriverLeaveProvider>()
+                                          .loadLeaveData(silent: true);
+                                    }
+                                  },
+                                ),
+                              ],
+                            );
+                          },
+                        ),
+                      ],
                     ),
-                    SizedBox(height: SizeConfig.r(12)),
-                    AppButton(
-                      label: 'Request Leave',
-                      height: SizeConfig.r(70),
-                      borderRadius: SizeConfig.r(12),
-                      fontSize: SizeConfig.sp(15),
-                      fontWeight: FontWeight.w700,
-                      onPressed: () async {
-                        await Navigator.pushNamed(
-                          context,
-                          AppRoutes.driverLeaveRequest,
-                        );
-                        if (mounted && context.mounted) {
-                          context.read<DriverLeaveProvider>().loadLeaveData(
-                            silent: true,
-                          );
-                        }
-                      },
-                    ),
-                  ],
-                ),
+                  );
+                },
               ),
             ),
           ],

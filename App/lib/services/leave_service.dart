@@ -20,6 +20,8 @@ class LeaveService {
   /// 'driver' | 'passenger_assistant'
   final String userRole;
 
+  static const Duration _networkTimeout = Duration(seconds: 4);
+
   SupabaseClient get _db => Supabase.instance.client;
 
   String? get _currentUserId => _db.auth.currentUser?.id;
@@ -53,7 +55,8 @@ class LeaveService {
         )
         .eq('user_id', userId)
         .eq('user_role', userRole)
-        .order('created_at', ascending: false);
+        .order('created_at', ascending: false)
+        .timeout(_networkTimeout);
 
     final history = rows
         .map((r) => LeaveRequest.fromJson(Map<String, dynamic>.from(r as Map)))

@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
 import '../../model/job_model.dart';
+import '../../model/pa_job_model.dart';
 
 /// Replaces the network calls in [JobService] with local drift reads/writes.
 ///
@@ -655,45 +656,20 @@ class LocalJobRepository {
     return row?.isLocked ?? false;
   }
 
-  /// True if the driver has schedule rows for today in cache (no session required).
+  /// True if the driver has at least one session_local row for today.
   /// Used by VehicleCheckListPage to show the job banner without a network call.
-  Future<bool> hasJobScheduledToday(String driverId) async {
-    final today = DateTime.now();
-    final todayDate = _dateString(today);
-    final weekday = _weekdayKey(today);
-
-    final job =
-        await (_db.select(_db.jobsCache)
+  Future<bool> hasSessionToday(String driverId) async {
+    final todayDate = _dateString(DateTime.now());
+    final row =
+        await (_db.select(_db.sessionsLocal)
               ..where(
                 (t) =>
-                    t.assignedDriverId.equals(driverId) &
-                    t.status.isNotIn(['cancelled']) &
-                    t.driverApprovalStatus.equalsNullable('accepted'),
+                    t.driverId.equals(driverId) &
+                    t.sessionDate.equals(todayDate),
               )
               ..limit(1))
             .getSingleOrNull();
-
-    if (job == null) return false;
-
-    if (job.hasOutbound) {
-      final outbound = await _resolvedScheduleForDay(
-        jobId: job.id,
-        weekday: weekday,
-        direction: 'outbound',
-        todayDate: todayDate,
-      );
-      if (outbound.isNotEmpty) return true;
-    }
-    if (job.hasInbound) {
-      final inbound = await _resolvedScheduleForDay(
-        jobId: job.id,
-        weekday: weekday,
-        direction: 'inbound',
-        todayDate: todayDate,
-      );
-      if (inbound.isNotEmpty) return true;
-    }
-    return false;
+    return row != null;
   }
 
   // ── Stats helpers (for DashboardStatsService offline fallback) ────────────
@@ -734,6 +710,47 @@ class LocalJobRepository {
   // Called by the midnight timer in JobProvider (same logic as current
   // _lastLoadedDayKey check). Clears write tables only — cache stays valid.
 
+  /// True if the driver has schedule rows for today in cache (no session required).
+  /// Used by VehicleCheckListPage to show the job banner without a network call.
+  Future<bool> hasJobScheduledToday(String driverId) async {
+    final today = DateTime.now();
+    final todayDate = _dateString(today);
+    final weekday = _weekdayKey(today);
+
+    final job =
+        await (_db.select(_db.jobsCache)
+              ..where(
+                (t) =>
+                    t.assignedDriverId.equals(driverId) &
+                    t.status.isNotIn(['cancelled']) &
+                    t.driverApprovalStatus.equalsNullable('accepted'),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+
+    if (job == null) return false;
+
+    if (job.hasOutbound) {
+      final rows = await _resolvedScheduleForDay(
+        jobId: job.id,
+        weekday: weekday,
+        direction: 'outbound',
+        todayDate: todayDate,
+      );
+      if (rows.isNotEmpty) return true;
+    }
+    if (job.hasInbound) {
+      final rows = await _resolvedScheduleForDay(
+        jobId: job.id,
+        weekday: weekday,
+        direction: 'inbound',
+        todayDate: todayDate,
+      );
+      if (rows.isNotEmpty) return true;
+    }
+    return false;
+  }
+
   Future<void> clearWriteTablesForNewDay() async {
     await _db.transaction(() async {
       await _db.delete(_db.sessionsLocal).go();
@@ -742,6 +759,20 @@ class LocalJobRepository {
       // Keep sync_queue — any unsynced ops from previous day must still flush.
       // SyncEngine will handle them and they'll land on the correct date
       // because payload carries session_date.
+    });
+  }
+
+  /// DEV ONLY — wipes all local tables. Use during debugging to reset state.
+  Future<void> clearAllLocalData() async {
+    await _db.transaction(() async {
+      await _db.delete(_db.syncQueue).go();
+      await _db.delete(_db.passengersLocal).go();
+      await _db.delete(_db.sessionsLocal).go();
+      await _db.delete(_db.checklistLocal).go();
+      await _db.delete(_db.jobsCache).go();
+      await _db.delete(_db.schedulesCache).go();
+      await _db.delete(_db.passengersCache).go();
+      await _db.delete(_db.vehiclesCache).go();
     });
   }
 
@@ -845,6 +876,444 @@ class LocalJobRepository {
     );
   }
 
+  // ── PA read methods ──────────────────────────────────────────────────────────
+  //
+  // These mirror PaJobService queries but read entirely from drift cache +
+  // write tables. Called by PaJobProvider/PaAssignedJobsProvider when offline.
+
+  /// PA equivalent of fetchCurrentJob — reads from cached tables.
+  /// [paUserId] is the PA's Supabase auth user ID (assigned_pa_id on jobs).
+  Future<PaJobModel?> fetchPaCurrentJob(String paUserId) async {
+    final today = DateTime.now();
+    final todayDate = _dateString(today);
+    final weekday = _weekdayKey(today);
+
+    // Find job assigned to this PA
+    final jobRow =
+        await (_db.select(_db.jobsCache)
+              ..where(
+                (t) =>
+                    t.assignedPaId.equalsNullable(paUserId) &
+                    t.status.isNotIn(['cancelled']) &
+                    t.driverApprovalStatus.equalsNullable('accepted'),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+
+    if (jobRow == null) return null;
+
+    // Sessions from sessions_local (driver-written, PA reads)
+    final sessions =
+        await (_db.select(_db.sessionsLocal)..where(
+              (t) =>
+                  t.jobId.equals(jobRow.id) & t.sessionDate.equals(todayDate),
+            ))
+            .get();
+
+    final sessionMap = {for (final s in sessions) s.direction: s};
+    final direction = _pickDirection(jobRow: jobRow, sessionMap: sessionMap);
+    if (direction == null) return null;
+
+    final hasDirection = direction == 'outbound'
+        ? jobRow.hasOutbound
+        : jobRow.hasInbound;
+    if (!hasDirection) return null;
+
+    final existingSession = sessionMap[direction];
+    final sessionId =
+        existingSession?.serverId ?? existingSession?.localId ?? '';
+    final sessionStatus = existingSession?.status ?? '';
+    final sessionExists = existingSession != null;
+
+    // Resolve schedule rows for today
+    final scheduleRows = await _resolvedScheduleForDay(
+      jobId: jobRow.id,
+      weekday: weekday,
+      direction: direction,
+      todayDate: todayDate,
+    );
+    if (scheduleRows.isEmpty) return null;
+
+    // Passenger status from passengers_local
+    final statusMap = <String, String>{};
+    if (sessionExists &&
+        existingSession != null &&
+        existingSession.localId.isNotEmpty) {
+      final localPassengers = await (_db.select(
+        _db.passengersLocal,
+      )..where((t) => t.localSessionId.equals(existingSession.localId))).get();
+      for (final lp in localPassengers) {
+        statusMap[lp.passengerId] = lp.status;
+      }
+    }
+
+    // Passenger profiles
+    final passengerIds = scheduleRows.map((s) => s.passengerId).toList();
+    final profiles = await (_db.select(
+      _db.passengersCache,
+    )..where((t) => t.id.isIn(passengerIds))).get();
+    final profileMap = {for (final p in profiles) p.id: p};
+
+    // Build PaPassengerStop list
+    final stops = <PaPassengerStop>[];
+    for (final s in scheduleRows) {
+      final profile = profileMap[s.passengerId];
+      final rawStatus = statusMap[s.passengerId] ?? 'pending';
+      final order = s.stopOrder ?? stops.length + 1;
+      final fullName = _fullName(profile);
+      stops.add(
+        PaPassengerStop(
+          passengerId: s.passengerId,
+          passengerName: fullName.isEmpty ? 'Student' : fullName,
+          address: s.pickupAddress,
+          scheduledTime: _formatTime(s.pickupTime),
+          stopNumber: order,
+          wheelchairRequired: profile?.wheelchairRequired ?? false,
+          harnessRequired: profile?.harnessRequired ?? false,
+          status: _toPickupStatus(rawStatus),
+        ),
+      );
+    }
+
+    // Build PaDropoffStop list
+    final dropoffs = <PaDropoffStop>[];
+    if (direction == 'outbound') {
+      // Group by school address
+      final schoolOrder = <String>[];
+      final schoolNames = <String, List<String>>{};
+      final schoolMeta = <String, String>{}; // address → dropoff_time
+      final schoolPids = <String, List<String>>{};
+
+      for (final s in scheduleRows) {
+        final profile = profileMap[s.passengerId];
+        final addr = profile?.educationalSiteAddress ?? '';
+        if (addr.isEmpty) continue;
+        if (!schoolNames.containsKey(addr)) {
+          schoolOrder.add(addr);
+          schoolNames[addr] = [];
+          schoolMeta[addr] = profile?.educationalSiteDropoffTime ?? '';
+          schoolPids[addr] = [];
+        }
+        schoolNames[addr]!.add(
+          _fullName(profile).isEmpty ? 'Student' : _fullName(profile),
+        );
+        schoolPids[addr]!.add(s.passengerId);
+      }
+
+      for (final addr in schoolOrder) {
+        final pids = schoolPids[addr]!;
+        final allDropped =
+            sessionExists &&
+            pids.isNotEmpty &&
+            pids.every(
+              (pid) =>
+                  (statusMap[pid] ?? 'pending').toLowerCase() == 'dropped_off',
+            );
+        dropoffs.add(
+          PaDropoffStop(
+            address: addr,
+            scheduledTime: _formatTime(schoolMeta[addr]),
+            passengerNames: schoolNames[addr]!,
+            status: allDropped
+                ? DropoffStatus.completed
+                : DropoffStatus.pending,
+          ),
+        );
+      }
+    } else {
+      // Inbound — one dropoff per passenger home
+      for (final s in scheduleRows) {
+        final profile = profileMap[s.passengerId];
+        final rawStatus = statusMap[s.passengerId] ?? 'pending';
+        final homeAddress = s.dropoffAddress;
+        dropoffs.add(
+          PaDropoffStop(
+            address: homeAddress.isNotEmpty ? homeAddress : 'Home address',
+            scheduledTime: _formatTime(s.dropoffTime),
+            passengerNames: [
+              _fullName(profile).isEmpty ? 'Student' : _fullName(profile),
+            ],
+            status: _toDropoffStatus(rawStatus),
+          ),
+        );
+      }
+    }
+
+    final rawStartTime = direction == 'outbound'
+        ? jobRow.morningStartTime
+        : jobRow.eveningStartTime;
+
+    return PaJobModel(
+      jobDbId: jobRow.id,
+      jobName: jobRow.jobName,
+      direction: direction,
+      sessionId: sessionId,
+      sessionStatus: sessionStatus,
+      driverName: jobRow.driverName ?? 'Driver',
+      startTime: _formatTime(rawStartTime),
+      stops: stops,
+      dropoffs: dropoffs,
+    );
+  }
+
+  /// PA equivalent of fetchAssignedJob — reads full weekly schedule from cache.
+  Future<PaAssignedJobModel?> fetchPaAssignedJob(String paUserId) async {
+    final jobRow =
+        await (_db.select(_db.jobsCache)
+              ..where(
+                (t) =>
+                    t.assignedPaId.equalsNullable(paUserId) &
+                    t.status.isNotIn(['cancelled']) &
+                    t.driverApprovalStatus.equalsNullable('accepted'),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+
+    if (jobRow == null) return null;
+
+    final hasOutbound = jobRow.hasOutbound;
+    final hasInbound = jobRow.hasInbound;
+    final morningStart = _formatTime(jobRow.morningStartTime);
+    final eveningStart = _formatTime(jobRow.eveningStartTime);
+    final driverName = jobRow.driverName ?? 'Driver';
+
+    // All base schedule rows (no exception) for this job
+    final scheduleRows =
+        await (_db.select(_db.schedulesCache)
+              ..where(
+                (t) => t.jobId.equals(jobRow.id) & t.exceptionDate.isNull(),
+              )
+              ..orderBy([(t) => OrderingTerm.asc(t.stopOrder)]))
+            .get();
+
+    if (scheduleRows.isEmpty) {
+      return PaAssignedJobModel(
+        jobDbId: jobRow.id,
+        jobName: jobRow.jobName,
+        semesterStart: _formatDate(jobRow.semesterStart),
+        semesterEnd: _formatDate(jobRow.semesterEnd),
+        activeDays: [],
+        schedule: {},
+      );
+    }
+
+    // Passenger profiles
+    final passengerIds = scheduleRows
+        .map((s) => s.passengerId)
+        .toSet()
+        .toList();
+    final profiles = await (_db.select(
+      _db.passengersCache,
+    )..where((t) => t.id.isIn(passengerIds))).get();
+    final profileMap = {for (final p in profiles) p.id: p};
+
+    // Build raw map: weekday → direction → rows
+    final rawMap = <String, Map<String, List<SchedulesCacheData>>>{};
+    for (final row in scheduleRows) {
+      if (row.direction == 'outbound' && !hasOutbound) continue;
+      if (row.direction == 'inbound' && !hasInbound) continue;
+      rawMap.putIfAbsent(row.weekday, () => {});
+      rawMap[row.weekday]!.putIfAbsent(row.direction, () => []);
+      rawMap[row.weekday]![row.direction]!.add(row);
+    }
+
+    // Convert to PaDayRun / PaScheduleStop
+    final schedule = <String, Map<String, PaDayRun>>{};
+    for (final weekday in rawMap.keys) {
+      schedule[weekday] = {};
+      for (final direction in rawMap[weekday]!.keys) {
+        final rows = rawMap[weekday]![direction]!
+          ..sort((a, b) => (a.stopOrder ?? 0).compareTo(b.stopOrder ?? 0));
+
+        final paStops = rows.map((row) {
+          final profile = profileMap[row.passengerId];
+          final name = _fullName(profile);
+          return PaScheduleStop(
+            passengerName: name.isEmpty ? 'Student' : name,
+            pickupAddress: row.pickupAddress,
+            dropoffAddress: row.dropoffAddress,
+            pickupTime: _formatTime(row.pickupTime),
+            wheelchairRequired: profile?.wheelchairRequired ?? false,
+            harnessRequired: profile?.harnessRequired ?? false,
+            stopOrder: row.stopOrder ?? 0,
+          );
+        }).toList();
+
+        schedule[weekday]![direction] = PaDayRun(
+          direction: direction,
+          startTime: direction == 'outbound' ? morningStart : eveningStart,
+          driverName: driverName,
+          stops: paStops,
+        );
+      }
+    }
+
+    return PaAssignedJobModel(
+      jobDbId: jobRow.id,
+      jobName: jobRow.jobName,
+      semesterStart: _formatDate(jobRow.semesterStart),
+      semesterEnd: _formatDate(jobRow.semesterEnd),
+      activeDays: rawMap.keys.toList(),
+      schedule: schedule,
+    );
+  }
+
+  /// Mirrors server [job_sessions] + [job_session_passengers] into local write
+  /// tables so PA devices (read-only) stay in sync after the driver updates
+  /// Supabase from another device.
+  Future<void> mirrorPaLiveStateFromServer({
+    required String jobId,
+    required String todayDate,
+    required List<Map<String, dynamic>> sessions,
+    required Map<String, List<Map<String, dynamic>>> passengersByServerSessionId,
+  }) async {
+    if (sessions.isEmpty) return;
+
+    await _db.transaction(() async {
+      for (final sessionRow in sessions) {
+        final serverId = (sessionRow['id'] ?? '').toString();
+        if (serverId.isEmpty) continue;
+
+        final direction = (sessionRow['direction'] ?? '').toString();
+        final status = (sessionRow['status'] ?? 'active').toString();
+        final driverId = (sessionRow['driver_id'] ?? '').toString();
+        final startedAt = _parseDateTime(sessionRow['started_at']) ?? DateTime.now();
+        final completedAt = _parseDateTime(sessionRow['completed_at']);
+
+        var localSession =
+            await (_db.select(_db.sessionsLocal)
+                  ..where((t) => t.serverId.equals(serverId)))
+                .getSingleOrNull();
+
+        localSession ??=
+            await (_db.select(_db.sessionsLocal)..where(
+                  (t) =>
+                      t.jobId.equals(jobId) &
+                      t.sessionDate.equals(todayDate) &
+                      t.direction.equals(direction),
+                ))
+                .getSingleOrNull();
+
+        late final String localSessionId;
+        if (localSession != null) {
+          localSessionId = localSession.localId;
+          await (_db.update(_db.sessionsLocal)
+                ..where((t) => t.localId.equals(localSessionId)))
+              .write(
+            SessionsLocalCompanion(
+              serverId: Value(serverId),
+              status: Value(status),
+              driverId: Value(
+                driverId.isNotEmpty ? driverId : localSession.driverId,
+              ),
+              startedAt: Value(startedAt),
+              completedAt: Value(completedAt),
+              isSynced: const Value(true),
+              updatedAt: Value(DateTime.now()),
+            ),
+          );
+        } else {
+          localSessionId = _uuid.v4();
+          await _db.into(_db.sessionsLocal).insert(
+            SessionsLocalCompanion.insert(
+              localId: localSessionId,
+              serverId: Value(serverId),
+              jobId: jobId,
+              sessionDate: todayDate,
+              direction: direction,
+              status: Value(status),
+              driverId: driverId,
+              startedAt: Value(startedAt),
+              completedAt: Value(completedAt),
+              isSynced: const Value(true),
+            ),
+          );
+        }
+
+        final passengerRows = passengersByServerSessionId[serverId] ?? [];
+        for (final pr in passengerRows) {
+          final serverPassengerId = (pr['id'] ?? '').toString();
+          final passengerId = (pr['passenger_id'] ?? '').toString();
+          if (passengerId.isEmpty) continue;
+
+          final prStatus = (pr['status'] ?? 'pending').toString();
+          final pickedUpAt = _parseDateTime(pr['picked_up_at']);
+          final droppedOffAt = _parseDateTime(pr['dropped_off_at']);
+
+          var localPassenger =
+              serverPassengerId.isNotEmpty
+                  ? await (_db.select(_db.passengersLocal)
+                        ..where((t) => t.serverId.equals(serverPassengerId)))
+                      .getSingleOrNull()
+                  : null;
+
+          localPassenger ??=
+              await (_db.select(_db.passengersLocal)..where(
+                    (t) =>
+                        t.localSessionId.equals(localSessionId) &
+                        t.passengerId.equals(passengerId),
+                  ))
+                  .getSingleOrNull();
+
+          if (localPassenger != null) {
+            await (_db.update(_db.passengersLocal)
+                  ..where((t) => t.localId.equals(localPassenger!.localId)))
+                .write(
+              PassengersLocalCompanion(
+                serverId: serverPassengerId.isNotEmpty
+                    ? Value(serverPassengerId)
+                    : const Value.absent(),
+                status: Value(prStatus),
+                pickedUpAt: Value(pickedUpAt),
+                droppedOffAt: Value(droppedOffAt),
+                isSynced: const Value(true),
+                updatedAt: Value(DateTime.now()),
+              ),
+            );
+          } else {
+            await _db.into(_db.passengersLocal).insert(
+              PassengersLocalCompanion.insert(
+                localId: _uuid.v4(),
+                serverId: serverPassengerId.isNotEmpty
+                    ? Value(serverPassengerId)
+                    : const Value(null),
+                localSessionId: localSessionId,
+                passengerId: passengerId,
+                stopOrder: _asInt(pr['stop_order']),
+                status: Value(prStatus),
+                pickupAddress: (pr['pickup_address'] ?? '').toString(),
+                pickupPostcode: Value(pr['pickup_postcode']?.toString()),
+                pickupLatitude: Value(_asDouble(pr['pickup_latitude'])),
+                pickupLongitude: Value(_asDouble(pr['pickup_longitude'])),
+                dropoffAddress: (pr['dropoff_address'] ?? '').toString(),
+                dropoffPostcode: Value(pr['dropoff_postcode']?.toString()),
+                pickedUpAt: Value(pickedUpAt),
+                droppedOffAt: Value(droppedOffAt),
+                notes: Value(pr['notes']?.toString()),
+                isSynced: const Value(true),
+              ),
+            );
+          }
+        }
+      }
+    });
+  }
+
+  /// PA equivalent of isSessionCompleted — reads from sessions_local.
+  Future<bool> isPaSessionCompleted(String sessionId) async {
+    if (sessionId.isEmpty) return false;
+    // Try by serverId first, then localId
+    final byServer = await (_db.select(
+      _db.sessionsLocal,
+    )..where((t) => t.serverId.equals(sessionId))).getSingleOrNull();
+    if (byServer != null) return byServer.status == 'completed';
+
+    final byLocal = await (_db.select(
+      _db.sessionsLocal,
+    )..where((t) => t.localId.equals(sessionId))).getSingleOrNull();
+    return byLocal?.status == 'completed';
+  }
+
   // ── Private helpers ────────────────────────────────────────────────────────
 
   Future<void> _enqueue({
@@ -927,8 +1396,9 @@ class LocalJobRepository {
     final inboundDone = sessionMap['inbound']?.status == 'completed';
 
     if ((!jobRow.hasOutbound || outboundDone) &&
-        (!jobRow.hasInbound || inboundDone))
+        (!jobRow.hasInbound || inboundDone)) {
       return null;
+    }
 
     if (jobRow.hasOutbound && !outboundDone) return 'outbound';
     if (jobRow.hasInbound && !inboundDone) return 'inbound';
@@ -986,6 +1456,30 @@ class LocalJobRepository {
       '${dt.month.toString().padLeft(2, '0')}-'
       '${dt.day.toString().padLeft(2, '0')}';
 
+  String _formatDate(String raw) {
+    if (raw.isEmpty || raw == 'null') return '--';
+    try {
+      final dt = DateTime.parse(raw);
+      const months = [
+        'Jan',
+        'Feb',
+        'Mar',
+        'Apr',
+        'May',
+        'Jun',
+        'Jul',
+        'Aug',
+        'Sep',
+        'Oct',
+        'Nov',
+        'Dec',
+      ];
+      return '${months[dt.month - 1]} ${dt.day}, ${dt.year}';
+    } catch (_) {
+      return raw;
+    }
+  }
+
   String _formatTime(String? rawTime) {
     final raw = (rawTime ?? '').trim();
     if (raw.isEmpty) return '--:--';
@@ -1001,17 +1495,23 @@ class LocalJobRepository {
     return '$h12:$mm $period';
   }
 
-  /// DEV ONLY — wipes all local tables. Use during debugging to reset state.
-  Future<void> clearAllLocalData() async {
-    await _db.transaction(() async {
-      await _db.delete(_db.syncQueue).go();
-      await _db.delete(_db.passengersLocal).go();
-      await _db.delete(_db.sessionsLocal).go();
-      await _db.delete(_db.checklistLocal).go();
-      await _db.delete(_db.jobsCache).go();
-      await _db.delete(_db.schedulesCache).go();
-      await _db.delete(_db.passengersCache).go();
-      await _db.delete(_db.vehiclesCache).go();
-    });
+  DateTime? _parseDateTime(dynamic raw) {
+    if (raw == null) return null;
+    final s = raw.toString().trim();
+    if (s.isEmpty || s == 'null') return null;
+    return DateTime.tryParse(s);
+  }
+
+  int _asInt(dynamic value) {
+    if (value is int) return value;
+    if (value is num) return value.toInt();
+    return int.tryParse(value?.toString() ?? '') ?? 0;
+  }
+
+  double? _asDouble(dynamic value) {
+    if (value == null) return null;
+    if (value is double) return value;
+    if (value is num) return value.toDouble();
+    return double.tryParse(value.toString());
   }
 }

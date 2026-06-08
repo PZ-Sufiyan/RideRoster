@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import '../model/pa_job_model.dart';
+import '../repositories/local_job_repository.dart';
+import '../services/connectivity_service.dart';
 import '../services/pa_job_service.dart';
 import '../services/realtime_service.dart';
 
@@ -10,15 +12,13 @@ import '../services/realtime_service.dart';
 
 /// Read-only live job state for the Passenger Assistant.
 ///
+/// Uses [PaJobService] which is now offline-first:
+///   reads local drift cache → falls back to Supabase when online.
+///
 /// Realtime: listens to RealtimeService so the PA's view updates as the
 /// driver marks pickups and dropoffs.
-///
-/// [completionOverlay]: when the driver completes a run but another run is
-/// still pending today, [job] switches to the next run for the dashboard
-/// while [completionOverlay] keeps the finished run for PaCurrentJobPage
-/// until the PA leaves that screen.
 class PaJobProvider extends ChangeNotifier {
-  final PaJobService _service = PaJobService();
+  late final PaJobService _service;
   final RealtimeService _realtimeService = RealtimeService();
 
   PaJobModel? _job;
@@ -31,10 +31,15 @@ class PaJobProvider extends ChangeNotifier {
   StreamSubscription<Map<String, dynamic>>? _jobSub;
   StreamSubscription<Map<String, dynamic>>? _sessionSub;
   StreamSubscription<Map<String, dynamic>>? _passengerSub;
+  StreamSubscription<void>? _reconnectSub;
   Timer? _reloadDebounce;
 
-  PaJobProvider() {
+  PaJobProvider({required LocalJobRepository localRepo}) {
+    _service = PaJobService(localRepo);
     _listenToRealtime();
+    _reconnectSub = ConnectivityService().onReconnect.listen((_) {
+      loadJob(silent: true);
+    });
   }
 
   // ── Getters ────────────────────────────────────────────────────────────────
@@ -159,23 +164,17 @@ class PaJobProvider extends ChangeNotifier {
     _jobSub?.cancel();
     _sessionSub?.cancel();
     _passengerSub?.cancel();
+    _reconnectSub?.cancel();
     super.dispose();
   }
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PaAssignedJobsProvider  —  weekly schedule view (assigned jobs page)
+// PaAssignedJobsProvider  —  weekly schedule view
 // ─────────────────────────────────────────────────────────────────────────────
 
-/// Holds the PA's weekly recurring schedule.
-///
-/// Load strategy:
-///   - First visit: shows loading indicator, fetches, caches result.
-///   - Subsequent visits: returns cached data instantly, silently refreshes
-///     in the background — UI only updates if data changed.
-///   - Manual pull-to-refresh: call [refresh()].
 class PaAssignedJobsProvider extends ChangeNotifier {
-  final PaJobService _service = PaJobService();
+  late final PaJobService _service;
 
   PaAssignedJobModel? _job;
   bool _isLoading = false;
@@ -183,22 +182,24 @@ class PaAssignedJobsProvider extends ChangeNotifier {
   bool _hasLoadedOnce = false;
   bool _isRefreshing = false;
 
+  PaAssignedJobsProvider({required LocalJobRepository localRepo}) {
+    _service = PaJobService(localRepo);
+  }
+
   PaAssignedJobModel? get job => _job;
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasLoadedOnce => _hasLoadedOnce;
   bool get isRefreshing => _isRefreshing;
 
-  /// Call on every page entry — instant if cached, background refresh otherwise.
   Future<void> loadIfNeeded() async {
     if (!_hasLoadedOnce) {
       await _fetch(blockUi: true);
     } else {
-      _fetch(blockUi: false); // fire-and-forget
+      _fetch(blockUi: false);
     }
   }
 
-  /// Force a full reload (pull-to-refresh).
   Future<void> refresh() async {
     await _fetch(blockUi: false);
   }
@@ -210,7 +211,6 @@ class PaAssignedJobsProvider extends ChangeNotifier {
       notifyListeners();
     } else {
       _isRefreshing = true;
-      // No notifyListeners — don't flash UI just because refresh started.
     }
 
     try {
@@ -219,7 +219,6 @@ class PaAssignedJobsProvider extends ChangeNotifier {
       _error = null;
     } catch (e) {
       if (blockUi) _error = e.toString();
-      // Background refresh: swallow error, keep existing data visible.
     } finally {
       _isLoading = false;
       _isRefreshing = false;

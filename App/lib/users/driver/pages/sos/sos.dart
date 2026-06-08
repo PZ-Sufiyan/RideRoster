@@ -1,6 +1,8 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../../../components/offline_banner.dart';
+import '../../../../services/connectivity_service.dart';
 import '../../../../services/sos_location_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
@@ -12,8 +14,7 @@ class SOSPage extends StatefulWidget {
   State<SOSPage> createState() => _SOSPageState();
 }
 
-class _SOSPageState extends State<SOSPage>
-    with SingleTickerProviderStateMixin {
+class _SOSPageState extends State<SOSPage> with SingleTickerProviderStateMixin {
   static const String _safetyLineDisplay = '+92 321 5352420';
   static final Uri _safetyLineTel = Uri.parse('tel:+923215352420');
 
@@ -39,30 +40,84 @@ class _SOSPageState extends State<SOSPage>
   Future<void> _onSOSTriggered() async {
     if (_isSubmittingSos) return;
 
+    if (!ConnectivityService().canReachServer) {
+      _controller.reset();
+      _showOfflineSosToast();
+      return;
+    }
+
     setState(() => _isSubmittingSos = true);
     try {
-      final sosId = await _sosLocationService.createSosAlert();
+      await _sosLocationService.createSosAlert();
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('SOS alert sent successfully (#$sosId).'),
-          backgroundColor: const Color(0xFF16A34A),
+        const SnackBar(
+          content: Text('SOS alert sent successfully.'),
+          backgroundColor: Color(0xFF16A34A),
+          behavior: SnackBarBehavior.floating,
         ),
       );
     } catch (error) {
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error.toString().replaceFirst('Exception: ', '')),
-          backgroundColor: const Color(0xFFDC2626),
-        ),
-      );
+      if (_isConnectivityError(error)) {
+        _showOfflineSosToast();
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(_friendlySosError(error)),
+            backgroundColor: const Color(0xFFDC2626),
+            duration: const Duration(seconds: 5),
+          ),
+        );
+      }
     } finally {
       _controller.reset();
       if (mounted) {
         setState(() => _isSubmittingSos = false);
       }
     }
+  }
+
+  bool _isConnectivityError(Object error) {
+    if (!ConnectivityService().canReachServer) return true;
+    final text = error is StateError ? error.message : error.toString();
+    final lower = text.toLowerCase();
+    return lower.contains('offline') ||
+        lower.contains('connection') ||
+        lower.contains('internet') ||
+        lower.contains('socket') ||
+        lower.contains('network') ||
+        lower.contains('host');
+  }
+
+  String _friendlySosError(Object error) {
+    if (error is StateError) {
+      final msg = error.message;
+      if (msg.contains('Location permission')) {
+        return 'Location permission is required to send an SOS alert.';
+      }
+      if (msg.contains('vehicle')) {
+        return 'No assigned vehicle found. Call the safety line if you need help.';
+      }
+      return msg.replaceFirst('Bad state: ', '');
+    }
+    return 'Unable to send SOS right now. Call the safety line if you need immediate help.';
+  }
+
+  void _showOfflineSosToast() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('No internet. Please call $_safetyLineDisplay instead.'),
+        backgroundColor: AppColors.textDark,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 5),
+        action: SnackBarAction(
+          label: 'Call',
+          textColor: Colors.white,
+          onPressed: _callSafetyLine,
+        ),
+      ),
+    );
   }
 
   void _onLongPressStart(LongPressStartDetails _) {
@@ -117,6 +172,7 @@ class _SOSPageState extends State<SOSPage>
       body: SafeArea(
         child: Column(
           children: [
+            const OfflineBanner(),
             _buildAppBar(context),
             Expanded(
               child: SingleChildScrollView(
@@ -149,20 +205,22 @@ class _SOSPageState extends State<SOSPage>
                     _buildSOSButton(),
                     SizedBox(height: SizeConfig.r(36)),
                     _buildSilentAlertCard(),
-                    SizedBox(height: SizeConfig.r(20)),
+                    SizedBox(height: SizeConfig.r(28)),
                     Text(
                       'Other Safety Options',
                       style: TextStyle(
                         fontSize: SizeConfig.sp(13),
+                        fontWeight: FontWeight.w600,
                         color: AppColors.textLight,
                       ),
                     ),
-                    SizedBox(height: SizeConfig.r(20)),
+                    SizedBox(height: SizeConfig.r(12)),
+                    _buildCallSafetyLine(),
+                    SizedBox(height: SizeConfig.r(28)),
                   ],
                 ),
               ),
             ),
-            _buildCallSafetyLine(),
           ],
         ),
       ),
@@ -245,8 +303,7 @@ class _SOSPageState extends State<SOSPage>
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color:
-                            const Color(0xFFEF4444).withValues(alpha: 0.15),
+                        color: const Color(0xFFEF4444).withValues(alpha: 0.15),
                         blurRadius: 20,
                         spreadRadius: 4,
                       ),
@@ -348,94 +405,75 @@ class _SOSPageState extends State<SOSPage>
   }
 
   Widget _buildCallSafetyLine() {
-    return Container(
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        border: Border(
-          top: BorderSide(color: AppColors.inputBorder, width: 1),
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _callSafetyLine,
-              child: Padding(
-                padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.hPad,
-                  vertical: SizeConfig.r(16),
+    return Material(
+      color: AppColors.background,
+      borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+      child: InkWell(
+        onTap: _callSafetyLine,
+        borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(SizeConfig.r(16)),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+            border: Border.all(color: AppColors.inputBorder, width: 1),
+          ),
+          child: Row(
+            children: [
+              Container(
+                width: SizeConfig.r(44),
+                height: SizeConfig.r(44),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFDCEEFD),
+                  shape: BoxShape.circle,
                 ),
-                child: Row(
+                child: Icon(
+                  Icons.phone,
+                  color: const Color(0xFF0284C7),
+                  size: SizeConfig.r(22),
+                ),
+              ),
+              SizedBox(width: SizeConfig.r(12)),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Container(
-                      width: SizeConfig.r(44),
-                      height: SizeConfig.r(44),
-                      decoration: const BoxDecoration(
-                        color: Color(0xFFDCEEFD),
-                        shape: BoxShape.circle,
+                    Text(
+                      'Call Safety Line',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(15),
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
                       ),
-                      child: Icon(
-                        Icons.phone,
+                    ),
+                    SizedBox(height: SizeConfig.r(2)),
+                    Text(
+                      _safetyLineDisplay,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(13),
+                        fontWeight: FontWeight.w600,
                         color: const Color(0xFF0284C7),
-                        size: SizeConfig.r(22),
                       ),
                     ),
-                    SizedBox(width: SizeConfig.r(12)),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Call Safety Line',
-                            style: TextStyle(
-                              fontSize: SizeConfig.sp(15),
-                              fontWeight: FontWeight.w700,
-                              color: AppColors.textDark,
-                            ),
-                          ),
-                          SizedBox(height: SizeConfig.r(2)),
-                          Text(
-                            _safetyLineDisplay,
-                            style: TextStyle(
-                              fontSize: SizeConfig.sp(13),
-                              fontWeight: FontWeight.w600,
-                              color: const Color(0xFF0284C7),
-                            ),
-                          ),
-                          SizedBox(height: SizeConfig.r(2)),
-                          Text(
-                            '24/7 Support Team',
-                            style: TextStyle(
-                              fontSize: SizeConfig.sp(12),
-                              color: AppColors.textLight,
-                            ),
-                          ),
-                        ],
+                    SizedBox(height: SizeConfig.r(2)),
+                    Text(
+                      '24/7 Support Team',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(12),
+                        color: AppColors.textLight,
                       ),
-                    ),
-                    Icon(
-                      Icons.chevron_right,
-                      color: AppColors.textLight,
-                      size: SizeConfig.r(22),
                     ),
                   ],
                 ),
               ),
-            ),
+              Icon(
+                Icons.chevron_right,
+                color: AppColors.textLight,
+                size: SizeConfig.r(22),
+              ),
+            ],
           ),
-          // Home indicator pill
-          Container(
-            width: SizeConfig.r(48),
-            height: SizeConfig.r(4),
-            margin: EdgeInsets.only(bottom: SizeConfig.r(8)),
-            decoration: BoxDecoration(
-              color: AppColors.inputBorder,
-              borderRadius: BorderRadius.circular(SizeConfig.r(2)),
-            ),
-          ),
-        ],
+        ),
       ),
     );
   }
