@@ -39,7 +39,7 @@ function toDateOrNull(v) {
  * @param {object} params
  * @param {string} params.companyId
  * @param {object} params.personal
- * @param {object} [params.expiry] — YYYY-MM-DD for passport / safeguarding when those files are provided
+ * @param {object} [params.expiry] — YYYY-MM-DD for safeguarding when that file is provided
  * @param {File|undefined} [params.avatarFile]
  * @param {object} params.files — optional Files keyed by PA_DOCUMENT_TYPES values
  */
@@ -66,10 +66,11 @@ export async function registerPassengerAssistantWithAuthAndRecords({
   if (!cleanString(personal?.contactName)) throw new Error('Emergency contact name is required.')
   if (!cleanString(personal?.contactPhone)) throw new Error('Emergency contact phone is required.')
 
+  const passportNumber = toNullableString(personal?.passportNumber)
   const passportFile = files[PA_DOCUMENT_TYPES.PASSPORT]
   const safeguardingFile = files[PA_DOCUMENT_TYPES.SAFEGUARDING_CERTIFICATE]
-  if (passportFile && !toDateOrNull(expiry.passport)) {
-    throw new Error('Passport expiry date is required when a passport document is uploaded.')
+  if (passportNumber && !passportFile) {
+    throw new Error('Passport document is required when a passport number is provided.')
   }
   if (safeguardingFile && !toDateOrNull(expiry.safeguarding)) {
     throw new Error('Safeguarding expiry date is required when a safeguarding certificate is uploaded.')
@@ -133,7 +134,7 @@ export async function registerPassengerAssistantWithAuthAndRecords({
     const docRows = []
 
     const docSpecs = [
-      { type: PA_DOCUMENT_TYPES.PASSPORT, file: files[PA_DOCUMENT_TYPES.PASSPORT], expiry: toDateOrNull(expiry.passport) },
+      { type: PA_DOCUMENT_TYPES.PASSPORT, file: files[PA_DOCUMENT_TYPES.PASSPORT], expiry: null },
       {
         type: PA_DOCUMENT_TYPES.SAFEGUARDING_CERTIFICATE,
         file: files[PA_DOCUMENT_TYPES.SAFEGUARDING_CERTIFICATE],

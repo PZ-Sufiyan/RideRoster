@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useCallback } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import {
     MdArrowBack,
@@ -8,6 +8,7 @@ import {
     MdFileUpload,
     MdOpenInNew,
     MdCheckCircle,
+    MdPersonOutline,
 } from 'react-icons/md';
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
@@ -213,6 +214,7 @@ const VEHICLE_TYPES = [
 ];
 
 const initialFilesState = {
+    passport: null,
     driving_license_front: null,
     driving_license_back: null,
     taxi_badge_front: null,
@@ -248,6 +250,11 @@ const EditDriver = () => {
 
     const [existingUrls, setExistingUrls] = useState({});
     const [existingVehiclePhotoUrl, setExistingVehiclePhotoUrl] = useState(null);
+    const [existingAvatarUrl, setExistingAvatarUrl] = useState(null);
+
+    const avatarRef = useRef();
+    const [avatarPreview, setAvatarPreview] = useState(null);
+    const [avatarFile, setAvatarFile] = useState(null);
 
     const [form, setForm] = useState({
         firstName: '', lastName: '', email: '', phone: '',
@@ -283,6 +290,23 @@ const EditDriver = () => {
     const setExpiry = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
     const setFile = (key) => (f) => setFiles((prev) => ({ ...prev, [key]: f }));
 
+    const handleAvatarChange = (file) => {
+        if (!file) return;
+        setAvatarFile(file);
+        setAvatarPreview((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return URL.createObjectURL(file);
+        });
+    };
+
+    const avatarBlobRef = useRef(null);
+    useLayoutEffect(() => { avatarBlobRef.current = avatarPreview; });
+    useEffect(() => {
+        return () => {
+            if (avatarBlobRef.current) URL.revokeObjectURL(avatarBlobRef.current);
+        };
+    }, []);
+
     const pushToast = (type, message) => {
         setToasts((prev) => [
             ...prev,
@@ -313,6 +337,7 @@ const EditDriver = () => {
                 }
                 setExistingUrls(urls);
                 setExistingVehiclePhotoUrl(vehicle?.vehicle_photo_url || null);
+                setExistingAvatarUrl(driver.profile_picture_url || null);
 
                 const driverExp = (type) => driverDocsByType[type]?.expiry_date?.slice(0, 10) || '';
                 const vehicleExp = (type) => vehicleDocsByType[type]?.expiry_date?.slice(0, 10) || '';
@@ -375,6 +400,8 @@ const EditDriver = () => {
         if (!form.emergencyName?.trim()) missing.push('emergencyName');
         if (!form.emergencyPhone?.trim()) missing.push('emergencyPhone');
         if (!form.nationality?.trim()) missing.push('nationality');
+        if (!avatarFile && !existingAvatarUrl) missing.push('avatarFile');
+        if (form.passport?.trim() && !hasDoc('passport')) missing.push('passport');
         if (!form.licenseNo?.trim()) missing.push('licenseNo');
         if (!form.licenseExpiry) missing.push('licenseExpiry');
         if (!form.taxiBadgeExpiry) missing.push('taxiBadgeExpiry');
@@ -411,7 +438,7 @@ const EditDriver = () => {
             return false;
         }
         return true;
-    }, [form, hasDoc]);
+    }, [form, hasDoc, avatarFile, existingAvatarUrl]);
 
     const showMissing = (key) => submitAttempted && missingKeys.includes(key);
 
@@ -434,6 +461,8 @@ const EditDriver = () => {
                 driverId,
                 companyId: admin.company_id,
                 vehicleId,
+                avatarFile: avatarFile || null,
+                existingAvatarUrl,
                 personal: {
                     firstName: form.firstName,
                     lastName: form.lastName,
@@ -458,6 +487,7 @@ const EditDriver = () => {
                     insurance: form.insuranceExpiry,
                 },
                 driverFiles: {
+                    passport: files.passport,
                     driving_license_front: files.driving_license_front,
                     driving_license_back: files.driving_license_back,
                     taxi_badge_front: files.taxi_badge_front,
@@ -592,7 +622,6 @@ const EditDriver = () => {
                             <FormField label="Emergency Contact Phone" required placeholder="Enter emergency contact phone" value={form.emergencyPhone} onChange={set('emergencyPhone')} showError={showMissing('emergencyPhone')} />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                            <FormField label="Passport Number" placeholder="Enter passport number" value={form.passport} onChange={set('passport')} />
                             <div className="flex items-end">
                                 <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600">
                                     <input
@@ -611,6 +640,7 @@ const EditDriver = () => {
                                     British (no right to work code)
                                 </label>
                             </div>
+                            <div />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <FormField label="Nationality" required placeholder="e.g. British, Pakistani" value={form.nationality} onChange={set('nationality')} showError={showMissing('nationality')} />
@@ -621,12 +651,79 @@ const EditDriver = () => {
                     </div>
                 </div>
 
+                {/* ── Profile Picture ── */}
+                <div className="rounded-xl border border-gray-100 bg-gray-50/40 p-4 sm:p-5 lg:p-6">
+                    <SectionHeading title="Profile Picture" />
+                    <p className="text-sm text-gray-500 mb-4 -mt-3">Upload a clear, professional headshot.</p>
+                    <div className={`flex items-stretch gap-4 border rounded-xl overflow-hidden ${
+                        showMissing('avatarFile') ? 'border-red-300' : 'border-gray-200'
+                    }`}>
+                        <div className="w-24 shrink-0 bg-gray-100 flex items-center justify-center border-r border-gray-200">
+                            {(avatarPreview || existingAvatarUrl) ? (
+                                <img src={avatarPreview || existingAvatarUrl} alt="Preview" className="w-full h-full object-cover" />
+                            ) : (
+                                <MdPersonOutline size={36} className="text-gray-400" />
+                            )}
+                        </div>
+                        <div
+                            className="flex-1 flex flex-col items-center justify-center py-8 px-4 cursor-pointer hover:bg-gray-50/60 transition-colors"
+                            onClick={() => avatarRef.current.click()}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => { e.preventDefault(); handleAvatarChange(e.dataTransfer.files[0]); }}
+                        >
+                            <MdCloudUpload size={32} className="text-[#005580] mb-2" />
+                            <p className="text-sm text-center">
+                                <span className="text-[#005580] font-semibold cursor-pointer hover:underline">Click to upload</span>
+                                {' '}or drag and drop
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">
+                                {existingAvatarUrl && !avatarPreview ? 'A profile photo is already on file — upload to replace it.' : 'SVG, PNG, JPG or GIF (max. 800×800px)'}
+                            </p>
+                        </div>
+                        <input
+                            ref={avatarRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                                handleAvatarChange(e.target.files[0]);
+                                e.target.value = '';
+                            }}
+                        />
+                    </div>
+                    {showMissing('avatarFile') && (
+                        <p className="text-xs text-red-600 font-medium mt-2">Profile picture is required.</p>
+                    )}
+                </div>
+
                 <div className="rounded-xl border border-gray-100 bg-gray-50/40 p-4 sm:p-5 lg:p-6">
                     <SectionHeading title="Document Uploads" />
                     <p className="text-xs text-gray-500 mb-5 -mt-3">
                         Documents with a green checkmark are already on file. Click <strong>Replace</strong> to upload a new version.
                     </p>
                     <div className="space-y-6">
+
+                        {/* Passport (optional — document required if number provided) */}
+                        <div className="rounded-xl border border-gray-200 p-4 space-y-3 bg-white">
+                            <p className="text-sm font-semibold text-gray-800">Passport (optional)</p>
+                            <p className="text-xs text-gray-500">If you enter a passport number, you must also have a passport document on file.</p>
+                            <FormField
+                                label="Passport Number"
+                                placeholder="e.g. AB1234567"
+                                value={form.passport}
+                                onChange={set('passport')}
+                            />
+                            <UploadBox
+                                label="Passport copy"
+                                hint="PDF or image"
+                                file={files.passport}
+                                existingUrl={existingUrls.passport}
+                                onFileChange={setFile('passport')}
+                                showError={showMissing('passport')}
+                                errorText="Passport document is required when a passport number is provided."
+                            />
+                        </div>
+
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <UploadBox label="Driving License (Front)" required
                                 file={files.driving_license_front} existingUrl={existingUrls.driving_license_front}

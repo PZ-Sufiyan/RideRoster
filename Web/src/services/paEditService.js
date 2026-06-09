@@ -108,6 +108,13 @@ export async function updatePAWithRecords({
   if (!assistantId) throw new Error('Passenger assistant ID is required.')
   if (!companyId) throw new Error('Company ID is required.')
 
+  const passportNumber = toNullableString(personal?.passportNumber)
+  const passportFile = files[PA_DOCUMENT_TYPES.PASSPORT]
+  const existingPassport = existingDocs[PA_DOCUMENT_TYPES.PASSPORT]
+  if (passportNumber && !passportFile && !existingPassport?.file_url) {
+    throw new Error('Passport document is required when a passport number is provided.')
+  }
+
   // ── 1. Update PA row ──────────────────────────────────────
   const paUpdates = {
     first_name: cleanString(personal?.firstName),
@@ -150,7 +157,7 @@ export async function updatePAWithRecords({
     {
       type: PA_DOCUMENT_TYPES.PASSPORT,
       file: files[PA_DOCUMENT_TYPES.PASSPORT],
-      expiryValue: toDateOrNull(expiry.passport),
+      expiryValue: null,
     },
     {
       type: PA_DOCUMENT_TYPES.SAFEGUARDING_CERTIFICATE,

@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import {
   uploadDriverVehicleDocument,
+  uploadDriverProfileImage,
   removeCompanyDocument,
 } from './storageService'
 
@@ -66,7 +67,8 @@ export const REQUIRED_VEHICLE_DOC_TYPES = [
  * @param {string} params.companyId
  * @param {object} params.personal
  * @param {object} params.expiry — optional ISO date strings (YYYY-MM-DD) per doc group
- * @param {Record<string, File|undefined>} params.driverFiles
+ * @param {File} params.avatarFile — required profile picture
+ * @param {Record<string, File|undefined>} params.driverFiles — may include optional `passport`
  * @param {Record<string, File|undefined>} params.vehicleFiles — must include `vehicle_photo` File
  * @param {object} params.vehicle — taxiLicensePlate, seatingCapacity
  */
@@ -74,6 +76,7 @@ export async function registerDriverWithAuthAndRecords({
   companyId,
   personal,
   expiry = {},
+  avatarFile = null,
   driverFiles = {},
   vehicleFiles = {},
   vehicle = {},
@@ -91,6 +94,13 @@ export async function registerDriverWithAuthAndRecords({
   if (!cleanString(personal?.emergencyName)) throw new Error('Emergency contact name is required.')
   if (!cleanString(personal?.emergencyPhone)) throw new Error('Emergency contact phone is required.')
   if (!cleanString(personal?.nationality)) throw new Error('Nationality is required.')
+  if (!avatarFile) throw new Error('Profile picture is required.')
+
+  const passportNumber = toNullableString(personal?.passport)
+  const passportFile = driverFiles.passport
+  if (passportNumber && !passportFile) {
+    throw new Error('Passport document is required when a passport number is provided.')
+  }
 
   for (const key of REQUIRED_DRIVER_DOC_TYPES) {
     if (!driverFiles[key]) throw new Error(`Missing required document: ${key.replace(/_/g, ' ')}`)
@@ -134,6 +144,13 @@ export async function registerDriverWithAuthAndRecords({
     if (!createdAuth?.user?.id) throw new Error('Could not create auth user.')
     authUserId = createdAuth.user.id
 
+    const profileMeta = await uploadDriverProfileImage({
+      companyId,
+      driverId: authUserId,
+      file: avatarFile,
+    })
+    pushUpload(profileMeta)
+
     const driverPayload = {
       id: authUserId,
       company_id: companyId,
@@ -144,11 +161,12 @@ export async function registerDriverWithAuthAndRecords({
       residential_address: cleanString(personal?.address),
       emergency_contact_name: cleanString(personal?.emergencyName),
       emergency_contact_phone: cleanString(personal?.emergencyPhone),
-      passport_number: toNullableString(personal?.passport),
+      passport_number: passportNumber,
       nationality: cleanString(personal?.nationality),
       right_to_work_code: toNullableString(personal?.rightToWork),
       license_no: licenseNo,
       dbs_service_update_id: toNullableString(personal?.dbsUpdateId),
+      profile_picture_url: profileMeta.file_url,
       status: 'pending',
     }
 
@@ -208,6 +226,24 @@ export async function registerDriverWithAuthAndRecords({
         document_type: documentType,
         file_url: meta.file_url,
         expiry_date: expiryDate,
+      })
+    }
+
+    if (passportFile) {
+      const meta = await uploadDriverVehicleDocument({
+        companyId,
+        kind: 'driver',
+        scopeId: authUserId,
+        documentType: 'passport',
+        file: passportFile,
+      })
+      pushUpload(meta)
+      driverDocRows.push({
+        company_id: companyId,
+        driver_id: authUserId,
+        document_type: 'passport',
+        file_url: meta.file_url,
+        expiry_date: null,
       })
     }
 

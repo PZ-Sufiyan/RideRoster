@@ -1,6 +1,6 @@
-﻿import React, { useState, useRef, useEffect } from 'react';
+﻿import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MdArrowBack, MdCloudUpload, MdVisibility, MdDeleteOutline, MdFileUpload } from 'react-icons/md';
+import { MdArrowBack, MdCloudUpload, MdVisibility, MdDeleteOutline, MdFileUpload, MdPersonOutline } from 'react-icons/md';
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { registerDriverWithAuthAndRecords } from '../../../../../services/driverRegistrationService';
@@ -225,6 +225,7 @@ const VEHICLE_TYPES = [
 
 // ─── Main Component ───────────────────────────────────────────
 const initialFilesState = {
+    passport: null,
     driving_license_front: null,
     driving_license_back: null,
     taxi_badge_front: null,
@@ -251,6 +252,9 @@ const AddNewDriver = () => {
             </div>
         );
     }
+    const avatarRef = useRef();
+    const [avatarPreview, setAvatarPreview] = useState(null);
+    const [avatarFile, setAvatarFile] = useState(null);
     const [currentStep] = useState(1);
     const [submitting, setSubmitting] = useState(false);
     const [submitError, setSubmitError] = useState('');
@@ -292,6 +296,23 @@ const AddNewDriver = () => {
     const setExpiry = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
     const setFile = (key) => (f) => setFiles((prev) => ({ ...prev, [key]: f }));
 
+    const handleAvatarChange = (file) => {
+        if (!file) return;
+        setAvatarFile(file);
+        setAvatarPreview((prev) => {
+            if (prev) URL.revokeObjectURL(prev);
+            return URL.createObjectURL(file);
+        });
+    };
+
+    const avatarBlobRef = useRef(null);
+    useLayoutEffect(() => { avatarBlobRef.current = avatarPreview; });
+    useEffect(() => {
+        return () => {
+            if (avatarBlobRef.current) URL.revokeObjectURL(avatarBlobRef.current);
+        };
+    }, []);
+
     const pushToast = (type, message) => {
         setToasts((prev) => [
             ...prev,
@@ -319,6 +340,8 @@ const AddNewDriver = () => {
         if (!form.emergencyName?.trim()) missingFields.push('emergencyName');
         if (!form.emergencyPhone?.trim()) missingFields.push('emergencyPhone');
         if (!form.nationality?.trim()) missingFields.push('nationality');
+        if (!avatarFile) missingFields.push('avatarFile');
+        if (form.passport?.trim() && !files.passport) missingFields.push('passport');
         if (!form.licenseNo?.trim()) missingFields.push('licenseNo');
         if (!form.licenseExpiry) missingFields.push('licenseExpiry');
         if (!form.taxiBadgeExpiry) missingFields.push('taxiBadgeExpiry');
@@ -385,6 +408,7 @@ const AddNewDriver = () => {
             }
             await registerDriverWithAuthAndRecords({
                 companyId: admin.company_id,
+                avatarFile,
                 personal: {
                     firstName: form.firstName,
                     lastName: form.lastName,
@@ -410,6 +434,7 @@ const AddNewDriver = () => {
                     insurance: form.insuranceExpiry,
                 },
                 driverFiles: {
+                    ...(files.passport ? { passport: files.passport } : {}),
                     driving_license_front: files.driving_license_front,
                     driving_license_back: files.driving_license_back,
                     taxi_badge_front: files.taxi_badge_front,
@@ -514,7 +539,6 @@ const AddNewDriver = () => {
                         </div>
                         {/* Row 5 */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                            <FormField label="Passport Number" placeholder="Enter passport number" value={form.passport} onChange={set('passport')} />
                             <div className="flex items-end">
                                 <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600">
                                     <input
@@ -533,6 +557,7 @@ const AddNewDriver = () => {
                                     British (no right to work code)
                                 </label>
                             </div>
+                            <div />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <FormField label="Nationality" required placeholder="e.g. British, Pakistani" value={form.nationality} onChange={set('nationality')} showError={showMissing('nationality')} />
@@ -543,10 +568,73 @@ const AddNewDriver = () => {
                     </div>
                 </div>
 
+                {/* ── Profile Picture ── */}
+                <div className="rounded-xl border border-gray-100 bg-gray-50/40 p-4 sm:p-5 lg:p-6">
+                    <SectionHeading title="Profile Picture" />
+                    <p className="text-sm text-gray-500 mb-4">Upload a clear, professional headshot.</p>
+                    <div className={`flex items-stretch gap-4 border rounded-xl overflow-hidden ${
+                        showMissing('avatarFile') ? 'border-red-300' : 'border-gray-200'
+                    }`}>
+                        <div className="w-24 shrink-0 bg-gray-100 flex items-center justify-center border-r border-gray-200">
+                            {avatarPreview ? (
+                                <img src={avatarPreview} alt="Preview" className="w-full h-full object-cover" />
+                            ) : (
+                                <MdPersonOutline size={36} className="text-gray-400" />
+                            )}
+                        </div>
+                        <div
+                            className="flex-1 flex flex-col items-center justify-center py-8 px-4 cursor-pointer hover:bg-gray-50/60 transition-colors"
+                            onClick={() => avatarRef.current.click()}
+                            onDragOver={(e) => e.preventDefault()}
+                            onDrop={(e) => { e.preventDefault(); handleAvatarChange(e.dataTransfer.files[0]); }}
+                        >
+                            <MdCloudUpload size={32} className="text-[#005580] mb-2" />
+                            <p className="text-sm text-center">
+                                <span className="text-[#005580] font-semibold cursor-pointer hover:underline">Click to upload</span>
+                                {' '}or drag and drop
+                            </p>
+                            <p className="text-xs text-gray-400 mt-1">SVG, PNG, JPG or GIF (max. 800×800px)</p>
+                        </div>
+                        <input
+                            ref={avatarRef}
+                            type="file"
+                            accept="image/*"
+                            className="hidden"
+                            onChange={(e) => {
+                                handleAvatarChange(e.target.files[0]);
+                                e.target.value = '';
+                            }}
+                        />
+                    </div>
+                    {showMissing('avatarFile') && (
+                        <p className="text-xs text-red-600 font-medium mt-2">Profile picture is required.</p>
+                    )}
+                </div>
+
                 {/* ── Document Uploads ── */}
                 <div className="rounded-xl border border-gray-100 bg-gray-50/40 p-4 sm:p-5 lg:p-6">
                     <SectionHeading title="Document Uploads" />
                     <div className="space-y-6">
+
+                        {/* Passport (optional — document required if number provided) */}
+                        <div className="rounded-xl border border-gray-200 p-4 space-y-3 bg-white">
+                            <p className="text-sm font-semibold text-gray-800">Passport (optional)</p>
+                            <p className="text-xs text-gray-500">If you enter a passport number, you must also upload a copy of the passport.</p>
+                            <FormField
+                                label="Passport Number"
+                                placeholder="e.g. AB1234567"
+                                value={form.passport}
+                                onChange={set('passport')}
+                            />
+                            <UploadBox
+                                label="Passport copy"
+                                hint="PDF or image"
+                                file={files.passport}
+                                onFileChange={setFile('passport')}
+                                showError={showMissing('passport')}
+                                errorText="Passport document is required when a passport number is provided."
+                            />
+                        </div>
 
                         {/* Driving License */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">

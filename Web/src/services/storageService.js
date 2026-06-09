@@ -71,6 +71,15 @@ export function buildPassengerAssistantProfilePath({ companyId, assistantId, fil
   return `${companyId}/passenger-assistants/${assistantId}/profile/${randomId()}_${safeName}`
 }
 
+export function buildDriverProfilePath({ companyId, driverId, file }) {
+  const safeName = (file?.name || 'profile')
+    .toLowerCase()
+    .replace(/[^a-z0-9.\-_]+/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 120)
+  return `${companyId}/drivers/${driverId}/profile/${randomId()}_${safeName}`
+}
+
 export function assertValidProfileImageFile(file, { maxBytes = 8 * 1024 * 1024 } = {}) {
   if (!file) throw new Error('No file selected.')
   const ok =
@@ -121,6 +130,35 @@ export async function uploadPassengerAssistantProfileImage({
   assertValidProfileImageFile(file)
 
   const filePath = buildPassengerAssistantProfilePath({ companyId, assistantId, file })
+  const { error: uploadError } = await supabase
+    .storage
+    .from(bucket)
+    .upload(filePath, file, { upsert: false, contentType: file.type })
+
+  if (uploadError) throw uploadError
+
+  const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(filePath)
+  const fileUrl = publicData?.publicUrl || ''
+
+  if (!fileUrl) throw new Error('Uploaded but could not resolve public URL for profile image.')
+
+  return {
+    file_name: file.name,
+    file_path: filePath,
+    file_url: fileUrl,
+    bucket,
+  }
+}
+
+export async function uploadDriverProfileImage({
+  companyId,
+  driverId,
+  file,
+  bucket = COMPANY_DOCS_BUCKET,
+}) {
+  assertValidProfileImageFile(file)
+
+  const filePath = buildDriverProfilePath({ companyId, driverId, file })
   const { error: uploadError } = await supabase
     .storage
     .from(bucket)

@@ -26,6 +26,7 @@ import {
 } from '../../../../../services/paEditService';
 import { ToastStack } from '../../../../../utils/Toast';
 import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
+import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
 // ─── Reusable: Form Field ─────────────────────────────────────
 const FormField = ({
@@ -204,6 +205,8 @@ const DocumentSlot = ({ label, hint, newFile, existingUrl, onFile, onRemove }) =
 const EditPA = () => {
     const navigate = useNavigate();
     const { id } = useParams();
+    const { can } = useSubAdminPermissions();
+    const canEditProfiles = can('edit_profiles');
 
     const [loading, setLoading] = useState(true);
     const [loadError, setLoadError] = useState('');
@@ -223,7 +226,6 @@ const EditPA = () => {
         nationality: '', rightToWork: '', isBritish: false, passportNumber: '',
     });
 
-    const [passportExpiry, setPassportExpiry] = useState('');
     const [safeguardingExpiry, setSafeguardingExpiry] = useState('');
 
     // New files (null = keep existing)
@@ -272,10 +274,7 @@ const EditPA = () => {
                 setExistingAvatarUrl(pa.profile_picture_url || null);
                 setExistingOtherCerts(docsByType[PA_DOCUMENT_TYPES.OTHER_CERTIFICATE] || []);
 
-                // Extract expiry dates
-                const passportDoc = docsByType[PA_DOCUMENT_TYPES.PASSPORT];
                 const safeguardingDoc = docsByType[PA_DOCUMENT_TYPES.SAFEGUARDING_CERTIFICATE];
-                setPassportExpiry(passportDoc?.expiry_date?.slice(0, 10) || '');
                 setSafeguardingExpiry(safeguardingDoc?.expiry_date?.slice(0, 10) || '');
 
                 setForm({
@@ -334,10 +333,10 @@ const EditPA = () => {
             pushToast('warning', 'Please fill in all required fields before saving.');
             return false;
         }
-        // Passport expiry required if: new passport file uploaded, OR existing doc has no expiry and we're clearing it
-        const passportNewFile = newFiles[PA_DOCUMENT_TYPES.PASSPORT];
-        if (passportNewFile && !passportExpiry?.trim()) {
-            pushToast('warning', 'Passport expiry is required when uploading a passport document.');
+        const hasPassportDoc = !!existingDocs[PA_DOCUMENT_TYPES.PASSPORT]?.file_url
+            || newFiles[PA_DOCUMENT_TYPES.PASSPORT] instanceof File;
+        if (form.passportNumber?.trim() && !hasPassportDoc) {
+            pushToast('warning', 'Passport document is required when a passport number is provided.');
             return false;
         }
         const safeguardingNewFile = newFiles[PA_DOCUMENT_TYPES.SAFEGUARDING_CERTIFICATE];
@@ -350,7 +349,7 @@ const EditPA = () => {
             return false;
         }
         return true;
-    }, [form, newFiles, passportExpiry, safeguardingExpiry]);
+    }, [form, newFiles, existingDocs, safeguardingExpiry]);
 
     const showRequired = (value) => submitAttempted && !String(value || '').trim();
 
@@ -393,7 +392,6 @@ const EditPA = () => {
                     passportNumber: form.passportNumber,
                 },
                 expiry: {
-                    passport: passportExpiry,
                     safeguarding: safeguardingExpiry,
                 },
                 avatarFile: avatarFile || null,
@@ -406,7 +404,7 @@ const EditPA = () => {
             });
 
             pushToast('success', 'Passenger assistant updated successfully.');
-            setTimeout(() => navigate('/portal/users/pa'), 1200);
+            setTimeout(() => navigate('/team/users/pa'), 1200);
         } catch (e) {
             const msg = e?.message || 'Could not save changes.';
             setSubmitError(msg);
@@ -420,11 +418,21 @@ const EditPA = () => {
     const dateInputClass = 'w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-900 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] transition-colors bg-white';
     const dateInputClassError = 'w-full px-3 py-2.5 border border-red-400 rounded-lg text-sm text-red-700 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors bg-white';
 
-    const showPassportExpiryError = submitAttempted && !!newFiles[PA_DOCUMENT_TYPES.PASSPORT] && !passportExpiry?.trim();
+    const showPassportDocError = submitAttempted && form.passportNumber?.trim()
+        && !existingDocs[PA_DOCUMENT_TYPES.PASSPORT]?.file_url
+        && !(newFiles[PA_DOCUMENT_TYPES.PASSPORT] instanceof File);
     const showSafeguardingExpiryError = submitAttempted && !!newFiles[PA_DOCUMENT_TYPES.SAFEGUARDING_CERTIFICATE] && !safeguardingExpiry?.trim();
 
     // ── Existing doc URLs (for DocumentSlot) ──────────────────
     const existingUrl = (type) => existingDocs[type]?.file_url || null;
+
+    if (!canEditProfiles) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to edit profiles.
+            </div>
+        );
+    }
 
     // ── Loading / Error states ────────────────────────────────
     if (loading) {
@@ -448,7 +456,7 @@ const EditPA = () => {
         return (
             <div className="flex flex-col items-center justify-center min-h-[300px] gap-4">
                 <p className="text-sm text-red-600 bg-red-50 border border-red-100 rounded-lg px-4 py-3">{loadError}</p>
-                <button type="button" onClick={() => navigate('/portal/users/pa')} className="text-sm text-[#005580] underline">
+                <button type="button" onClick={() => navigate('/team/users/pa')} className="text-sm text-[#005580] underline">
                     Back to passenger assistants
                 </button>
             </div>
@@ -556,9 +564,10 @@ const EditPA = () => {
                 subtitle="Documents with a green border are already on file. Click Replace to upload a new version.">
                 <div className="space-y-4">
 
-                    {/* Passport */}
+                    {/* Passport — optional number + document (no expiry) */}
                     <div className="rounded-xl border border-gray-200 p-4 space-y-3 bg-white">
-                        <p className="text-sm font-semibold text-gray-800">Passport</p>
+                        <p className="text-sm font-semibold text-gray-800">Passport (optional)</p>
+                        <p className="text-xs text-gray-500">If you enter a passport number, you must also have a passport document on file.</p>
                         <div className="space-y-1.5">
                             <label className="text-xs font-medium text-gray-600">Passport number</label>
                             <input
@@ -569,34 +578,19 @@ const EditPA = () => {
                                 className={dateInputClass}
                             />
                         </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-start">
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-gray-600">Document</label>
-                                <DocumentSlot
-                                    label="Passport copy"
-                                    hint="PDF or image"
-                                    newFile={newFiles[PA_DOCUMENT_TYPES.PASSPORT]}
-                                    existingUrl={existingUrl(PA_DOCUMENT_TYPES.PASSPORT)}
-                                    onFile={setNewFile(PA_DOCUMENT_TYPES.PASSPORT)}
-                                    onRemove={clearNewFile(PA_DOCUMENT_TYPES.PASSPORT)}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-gray-600">Expiry date</label>
-                                <input
-                                    type="date"
-                                    value={passportExpiry}
-                                    onChange={(e) => setPassportExpiry(e.target.value)}
-                                    className={showPassportExpiryError ? dateInputClassError : dateInputClass}
-                                />
-                                <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
-                                    <MdInfoOutline size={12} className="shrink-0 opacity-70" />
-                                    You can update the expiry date without re-uploading the file.
-                                </p>
-                                {showPassportExpiryError && (
-                                    <p className="text-xs text-red-600 font-medium">Expiry date is required when uploading a new passport.</p>
-                                )}
-                            </div>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-gray-600">Document</label>
+                            <DocumentSlot
+                                label="Passport copy"
+                                hint="PDF or image"
+                                newFile={newFiles[PA_DOCUMENT_TYPES.PASSPORT]}
+                                existingUrl={existingUrl(PA_DOCUMENT_TYPES.PASSPORT)}
+                                onFile={setNewFile(PA_DOCUMENT_TYPES.PASSPORT)}
+                                onRemove={clearNewFile(PA_DOCUMENT_TYPES.PASSPORT)}
+                            />
+                            {showPassportDocError && (
+                                <p className="text-xs text-red-600 font-medium">Passport document is required when a passport number is provided.</p>
+                            )}
                         </div>
                     </div>
 
@@ -767,7 +761,7 @@ const EditPA = () => {
                     </p>
                 )}
                 <div className="flex items-center gap-3">
-                    <button type="button" onClick={() => navigate('/portal/users/pa')} disabled={submitting}
+                    <button type="button" onClick={() => navigate('/team/users/pa')} disabled={submitting}
                         className="px-5 py-2.5 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors disabled:opacity-50">
                         Cancel
                     </button>

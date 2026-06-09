@@ -1,6 +1,7 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import {
   uploadDriverVehicleDocument,
+  uploadDriverProfileImage,
   removeCompanyDocument,
 } from './storageService'
 
@@ -96,7 +97,9 @@ export async function getDriverEditData(driverId) {
  * @param {string} params.vehicleId  — may be null if no vehicle exists yet
  * @param {object} params.personal
  * @param {object} params.expiry
- * @param {Record<string, File|null>} params.driverFiles  — null = keep existing
+ * @param {File|null}   params.avatarFile       — null = keep existing profile picture
+ * @param {string|null} params.existingAvatarUrl — for old file cleanup
+ * @param {Record<string, File|null>} params.driverFiles  — null = keep existing; may include optional `passport`
  * @param {Record<string, File|null>} params.vehicleFiles — null = keep existing
  * @param {object} params.vehicle
  * @param {object} params.existingDriverDocs — map of document_type → existing DB row
@@ -108,6 +111,8 @@ export async function updateDriverWithRecords({
   vehicleId,
   personal,
   expiry = {},
+  avatarFile = null,
+  existingAvatarUrl = null,
   driverFiles = {},
   vehicleFiles = {},
   vehicle = {},
@@ -116,6 +121,13 @@ export async function updateDriverWithRecords({
 }) {
   if (!driverId) throw new Error('Driver ID is required.')
   if (!companyId) throw new Error('Company ID is required.')
+
+  const passportNumber = toNullableString(personal?.passport)
+  const passportFile = driverFiles.passport
+  const existingPassport = existingDriverDocs.passport
+  if (passportNumber && !passportFile && !existingPassport?.file_url) {
+    throw new Error('Passport document is required when a passport number is provided.')
+  }
 
   const uploadedForRollback = []
 
@@ -137,6 +149,21 @@ export async function updateDriverWithRecords({
     license_no: cleanString(personal?.licenseNo),
     dbs_service_update_id: toNullableString(personal?.dbsUpdateId),
     updated_at: new Date().toISOString(),
+  }
+
+  if (avatarFile) {
+    const meta = await uploadDriverProfileImage({
+      companyId,
+      driverId,
+      file: avatarFile,
+    })
+    pushUpload(meta)
+    driverUpdates.profile_picture_url = meta.file_url
+
+    if (existingAvatarUrl) {
+      const oldPath = extractStoragePath(existingAvatarUrl)
+      if (oldPath) await removeCompanyDocument({ filePath: oldPath }).catch(() => {})
+    }
   }
 
   const { error: driverErr } = await supabaseAdmin
@@ -244,6 +271,43 @@ export async function updateDriverWithRecords({
         document_type: documentType,
         file_url: meta.file_url,
         expiry_date: expiryDate,
+      })
+      if (insertErr) throw insertErr
+    }
+  }
+
+  if (passportFile) {
+    const meta = await uploadDriverVehicleDocument({
+      companyId,
+      kind: 'driver',
+      scopeId: driverId,
+      documentType: 'passport',
+      file: passportFile,
+    })
+    pushUpload(meta)
+
+    if (existingPassport?.id) {
+      const { error: updateErr } = await supabaseAdmin
+        .from('driver_documents')
+        .update({
+          file_url: meta.file_url,
+          expiry_date: null,
+          uploaded_at: new Date().toISOString(),
+        })
+        .eq('id', existingPassport.id)
+      if (updateErr) throw updateErr
+
+      if (existingPassport.file_url) {
+        const oldPath = extractStoragePath(existingPassport.file_url)
+        if (oldPath) await removeCompanyDocument({ filePath: oldPath }).catch(() => {})
+      }
+    } else {
+      const { error: insertErr } = await supabaseAdmin.from('driver_documents').insert({
+        company_id: companyId,
+        driver_id: driverId,
+        document_type: 'passport',
+        file_url: meta.file_url,
+        expiry_date: null,
       })
       if (insertErr) throw insertErr
     }

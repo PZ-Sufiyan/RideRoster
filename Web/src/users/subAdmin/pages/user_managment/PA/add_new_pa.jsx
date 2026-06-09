@@ -174,9 +174,9 @@ const AddNewPA = () => {
         nationality: '',
         rightToWork: '',
         isBritish: false,
+        passportNumber: '',
     });
 
-    const [passportExpiry, setPassportExpiry] = useState('');
     const [safeguardingExpiry, setSafeguardingExpiry] = useState('');
     const [passportDoc, setPassportDoc] = useState(null);
     const [safeguardingDoc, setSafeguardingDoc] = useState(null);
@@ -275,8 +275,8 @@ const AddNewPA = () => {
             pushToast('warning', 'Please fill in all required fields before adding a passenger assistant.');
             return false;
         }
-        if (passportDoc?.file && !passportExpiry?.trim()) {
-            pushToast('warning', 'Passport expiry is required when a passport document is uploaded.');
+        if (form.passportNumber?.trim() && !passportDoc?.file) {
+            pushToast('warning', 'Passport document is required when a passport number is provided.');
             return false;
         }
         if (safeguardingDoc?.file && !safeguardingExpiry?.trim()) {
@@ -331,9 +331,9 @@ const AddNewPA = () => {
                     nationality: form.nationality,
                     rightToWork: form.isBritish ? '' : form.rightToWork,
                     isBritish: form.isBritish,
+                    passportNumber: form.passportNumber,
                 },
                 expiry: {
-                    passport: passportExpiry,
                     safeguarding: safeguardingExpiry,
                 },
                 avatarFile: avatarFile || null,
@@ -361,7 +361,7 @@ const AddNewPA = () => {
     const dateInputClassError =
         'w-full px-3 py-2.5 border border-red-400 rounded-lg text-sm text-red-700 focus:outline-none focus:border-red-500 focus:ring-1 focus:ring-red-500 transition-colors bg-white';
     const showRequired = (value) => submitAttempted && !String(value || '').trim();
-    const showPassportExpiryError = submitAttempted && passportDoc?.file && !passportExpiry?.trim();
+    const showPassportDocError = submitAttempted && form.passportNumber?.trim() && !passportDoc?.file;
     const showSafeguardingExpiryError = submitAttempted && safeguardingDoc?.file && !safeguardingExpiry?.trim();
 
     return (
@@ -497,39 +497,35 @@ const AddNewPA = () => {
             <Section title="Documents &amp; Certifications">
                 <div className="space-y-4">
                     <p className="text-sm text-gray-500">
-                        Upload documents as needed. Accepted: PDF, JPG, PNG, WebP — preview opens in a new tab. Passport and safeguarding require an expiry date when a file is uploaded. Files are stored in your company storage when you submit.
+                        Upload documents as needed. Accepted: PDF, JPG, PNG, WebP — preview opens in a new tab. Safeguarding requires an expiry date when a file is uploaded. If you enter a passport number, upload a passport copy (no expiry date). Files are stored in your company storage when you submit.
                     </p>
 
-                    {/* Passport number — document + manual expiry */}
+                    {/* Passport — optional number + document (no expiry) */}
                     <div className="rounded-xl border border-gray-200 p-4 space-y-3 bg-white">
-                        <p className="text-sm font-semibold text-gray-800">Passport number</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4 md:items-start">
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-gray-600">Document</label>
-                                <LocalDocumentSlot
-                                    label="Passport copy"
-                                    hint="PDF or image"
-                                    value={passportDoc}
-                                    onFile={(f) => setLocalDoc(setPassportDoc, f)}
-                                    onRemove={() => clearLocalDoc(setPassportDoc)}
-                                />
-                            </div>
-                            <div className="space-y-1.5">
-                                <label className="text-xs font-medium text-gray-600">Expiry date</label>
-                                <input
-                                    type="date"
-                                    value={passportExpiry}
-                                    onChange={(e) => setPassportExpiry(e.target.value)}
-                                    className={showPassportExpiryError ? dateInputClassError : dateInputClass}
-                                />
-                                <p className="text-[11px] text-gray-400 flex items-center gap-1 mt-0.5">
-                                    <MdInfoOutline size={12} className="shrink-0 opacity-70" />
-                                    Enter expiry manually; it is not read from the file.
-                                </p>
-                                {showPassportExpiryError && (
-                                    <p className="text-xs text-red-600 font-medium">Expiry date is required when a passport file is uploaded.</p>
-                                )}
-                            </div>
+                        <p className="text-sm font-semibold text-gray-800">Passport (optional)</p>
+                        <p className="text-xs text-gray-500">If you enter a passport number, you must also upload a copy of the passport.</p>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-gray-600">Passport number</label>
+                            <input
+                                type="text"
+                                value={form.passportNumber}
+                                onChange={set('passportNumber')}
+                                placeholder="e.g. AB1234567"
+                                className={dateInputClass}
+                            />
+                        </div>
+                        <div className="space-y-1.5">
+                            <label className="text-xs font-medium text-gray-600">Document</label>
+                            <LocalDocumentSlot
+                                label="Passport copy"
+                                hint="PDF or image"
+                                value={passportDoc}
+                                onFile={(f) => setLocalDoc(setPassportDoc, f)}
+                                onRemove={() => clearLocalDoc(setPassportDoc)}
+                            />
+                            {showPassportDocError && (
+                                <p className="text-xs text-red-600 font-medium">Passport document is required when a passport number is provided.</p>
+                            )}
                         </div>
                     </div>
 
