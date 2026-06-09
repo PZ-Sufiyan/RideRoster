@@ -17,6 +17,8 @@ import 'routes/app_routes.dart';
 import 'services/connectivity_service.dart';
 import 'providers/connectivity_provider.dart';
 import 'services/location_service.dart';
+import 'services/fcm_service.dart';
+import 'services/navigation_service.dart';
 import 'services/notification_service.dart';
 import 'services/sos_location_service.dart';
 import 'services/sync_engine.dart';
@@ -67,6 +69,9 @@ Future<void> main() async {
   // ── Device services ───────────────────────────────────────────────────────
   await LocationService().ensurePermission();
   await NotificationService().init();
+  await FcmService().init(
+    onMessageOpened: (_) => NavigationService.openDriverDashboard(),
+  );
 
   // Warm cache only when we can actually reach Supabase (not just link-up).
   if (ConnectivityService().canReachServer) {
@@ -122,6 +127,7 @@ class RideRosterApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => PaLeaveProvider()),
       ],
       child: MaterialApp(
+        navigatorKey: NavigationService.navigatorKey,
         title: 'RideRoster',
         debugShowCheckedModeBanner: false,
         theme: ThemeData(

@@ -1,4 +1,9 @@
+import 'dart:ui' show Color;
+
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+
+import 'navigation_service.dart';
+import '../routes/app_routes.dart';
 
 /// Singleton local notification service.
 /// Call [init] once in main() before runApp().
@@ -12,12 +17,13 @@ class NotificationService {
 
   static const _channelId = 'ride_roster_channel';
   static const _channelName = 'RideRoster Notifications';
+  static const _jobAssignmentNotificationId = 1001;
 
   static const AndroidNotificationChannel _androidChannel =
       AndroidNotificationChannel(
         _channelId,
         _channelName,
-        description: 'Arrival alerts and job status notifications',
+        description: 'Arrival alerts and job assignment notifications',
         importance: Importance.high,
       );
 
@@ -33,7 +39,10 @@ class NotificationService {
       iOS: iosInit,
     );
 
-    await _plugin.initialize(initSettings);
+    await _plugin.initialize(
+      initSettings,
+      onDidReceiveNotificationResponse: _onNotificationTapped,
+    );
 
     await _plugin
         .resolvePlatformSpecificImplementation<
@@ -84,5 +93,47 @@ class NotificationService {
     final notifId = isPickup ? 1 : 2;
 
     await _plugin.show(notifId, title, body, details);
+  }
+
+  /// Shows a push notification while the app is in the foreground.
+  Future<void> showPushNotification({
+    required String title,
+    required String body,
+    String? payload,
+  }) async {
+    final androidDetails = AndroidNotificationDetails(
+      _channelId,
+      _channelName,
+      channelDescription: 'Job assignment and status notifications',
+      importance: Importance.high,
+      priority: Priority.high,
+      styleInformation: BigTextStyleInformation(body),
+      color: const Color(0xFF4A90D9),
+    );
+    const iosDetails = DarwinNotificationDetails();
+    final details = NotificationDetails(
+      android: androidDetails,
+      iOS: iosDetails,
+    );
+
+    await _plugin.show(
+      _jobAssignmentNotificationId,
+      title,
+      body,
+      details,
+      payload: payload,
+    );
+  }
+
+  void _onNotificationTapped(NotificationResponse response) {
+    final payload = response.payload;
+    if (payload == null || payload.isEmpty) {
+      NavigationService.openDriverDashboard();
+      return;
+    }
+
+    NavigationService.navigatorKey.currentState?.pushNamed(
+      AppRoutes.driverDashboard,
+    );
   }
 }

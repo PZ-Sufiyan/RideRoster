@@ -265,8 +265,15 @@ const ActiveJobs = () => {
         setAssigningDriverId(driverRow.id);
         try {
             await validateDriverAssignment(jobId, driverRow.id, companyId);
-            await updateJobAssignedDriver(jobId, driverRow.id);
+            const { pushResult } = await updateJobAssignedDriver(jobId, driverRow.id);
             pushToast('success', `Driver assigned to ${formatShortJobLabel(jobId)}.`);
+            if (pushResult?.skipped === 'no_device_tokens') {
+                pushToast('error', 'Driver assigned, but no mobile device token found. Ask the driver to log into the app and allow notifications.');
+            } else if (pushResult?.error) {
+                pushToast('error', `Driver assigned, but push failed: ${pushResult.error}`);
+            } else if (pushResult?.sent > 0) {
+                pushToast('success', 'Push notification sent to driver.');
+            }
             setShowAssignDriver(false);
             await reloadData();
         } catch (e) {

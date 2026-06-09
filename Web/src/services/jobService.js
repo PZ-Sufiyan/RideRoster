@@ -916,6 +916,49 @@ export async function validateDriverAssignment(jobId, driverId, companyId) {
   }
 }
 
+async function sendJobAssignmentNotification(jobId) {
+  try {
+    const pushApiUrl = (import.meta.env.VITE_PUSH_API_URL || '').replace(/\/$/, '')
+    const { data: { session } } = await supabase.auth.getSession()
+    const accessToken = session?.access_token
+
+    if (!accessToken) {
+      console.warn('Push notification skipped: admin session not available.')
+      return { ok: false, skipped: 'no_admin_session' }
+    }
+
+    if (!pushApiUrl) {
+      console.warn('Push notification skipped: VITE_PUSH_API_URL is not set.')
+      return { ok: false, skipped: 'push_api_url_missing' }
+    }
+
+    const res = await fetch(`${pushApiUrl}/notify/job-assignment`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ job_id: jobId }),
+    })
+
+    const body = await res.json().catch(async () => {
+      const text = await res.text()
+      return { error: text || res.statusText }
+    })
+
+    if (!res.ok) {
+      console.warn('Push notification failed:', body)
+      return { ok: false, error: body?.error || res.statusText, details: body }
+    }
+
+    console.info('Push notification result:', body)
+    return { ok: true, ...body }
+  } catch (err) {
+    console.warn('Push notification failed:', err?.message || err)
+    return { ok: false, error: err?.message || String(err) }
+  }
+}
+
 export async function updateJobAssignedDriver(jobId, driverId) {
   const { data, error } = await supabase
     .from('jobs').update({
@@ -926,7 +969,9 @@ export async function updateJobAssignedDriver(jobId, driverId) {
     })
     .eq('id', jobId).select().single()
   if (error) throw error
-  return data
+
+  const pushResult = await sendJobAssignmentNotification(jobId)
+  return { job: data, pushResult }
 }
 
 export async function removeJobAssignedDriver(jobId) {

@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import '../services/auth_service.dart';
+import '../services/fcm_service.dart';
 import '../services/realtime_service.dart';
 
 enum AuthStatus { idle, loading, authenticated, unauthenticated, error }
@@ -59,6 +60,7 @@ class AuthProvider extends ChangeNotifier {
       // internally, but calling it here after result.success ensures the
       // auth token is valid before we open channels.
       await _subscribeRealtime();
+      await _registerPushTokenIfDriver();
     } else {
       _token = null;
       _userId = null;
@@ -94,6 +96,7 @@ class AuthProvider extends ChangeNotifier {
       _setStatus(AuthStatus.authenticated);
       // Subscribe after successful login — userId is now set
       await _subscribeRealtime();
+      await _registerPushTokenIfDriver();
       return true;
     } else {
       _errorMessage = result.error;
@@ -119,6 +122,9 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     // Tear down realtime channels before clearing auth state
     await RealtimeService().unsubscribe();
+    if (isDriver) {
+      await FcmService().unregisterCurrentToken();
+    }
     await _authService.driverLogout();
     _token = null;
     _userId = null;
@@ -149,5 +155,16 @@ class AuthProvider extends ChangeNotifier {
         ? RealtimeAudience.passengerAssistant
         : RealtimeAudience.driver;
     await RealtimeService().subscribe(audience: audience);
+  }
+
+  Future<void> _registerPushTokenIfDriver() async {
+    if (!isDriver) return;
+    final id = _userId;
+    if (id == null || id.isEmpty) return;
+    try {
+      await FcmService().registerForUser(id);
+    } catch (error) {
+      debugPrint('FCM token registration failed: $error');
+    }
   }
 }
