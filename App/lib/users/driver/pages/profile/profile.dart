@@ -1,14 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../../../components/app_button.dart';
 import '../../../../components/offline_banner.dart';
+import '../../../../model/driver_profile_model.dart';
 import '../../../../providers/auth_provider.dart';
 import '../../../../providers/driver_profile_provider.dart';
 import '../../../../routes/app_routes.dart';
-import '../../../../model/driver_profile_model.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
+
+/// Profile palette — matches PA profile layout (green header / accents).
+class _ProfileColors {
+  static const Color header = Color(0xFF1B5E20);
+  static const Color action = Color(0xFF2ECC71);
+  static const Color onDutyDot = Color(0xFF7CFC00);
+  static const Color docGreen = Color(0xFF2ECC71);
+  static const Color docGreenBg = Color(0xFFE8F8EF);
+  static const Color docYellow = Color(0xFFF1C40F);
+  static const Color docYellowBg = Color(0xFFFFF9E6);
+}
 
 class DriverProfilePage extends StatefulWidget {
   const DriverProfilePage({super.key});
@@ -31,213 +43,195 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
     SizeConfig.init(context);
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Consumer<DriverProfileProvider>(
-          builder: (context, provider, _) {
-            if (provider.isLoading && !provider.hasProfile) {
-              return const _ProfilePageShimmer();
-            }
+      body: Consumer<DriverProfileProvider>(
+        builder: (context, provider, _) {
+          if (provider.isLoading && !provider.hasProfile) {
+            return const _ProfileLoadingBody();
+          }
 
-            if (provider.error != null && !provider.hasProfile) {
-              return _ProfileErrorState(
-                onRetry: () => context
-                    .read<DriverProfileProvider>()
-                    .loadProfile(forceRefresh: true),
-              );
-            }
+          if (provider.error != null && !provider.hasProfile) {
+            return _ProfileErrorBody(
+              onRetry: () => context.read<DriverProfileProvider>().loadProfile(
+                forceRefresh: true,
+              ),
+            );
+          }
 
-            final profile = provider.profile;
-            if (profile == null) {
-              return _ProfileErrorState(
-                onRetry: () => context
-                    .read<DriverProfileProvider>()
-                    .loadProfile(forceRefresh: true),
-              );
-            }
+          final profile = provider.profile;
+          if (profile == null) {
+            return _ProfileErrorBody(
+              onRetry: () => context.read<DriverProfileProvider>().loadProfile(
+                forceRefresh: true,
+              ),
+            );
+          }
 
-            return RefreshIndicator(
-              onRefresh: () => context
-                  .read<DriverProfileProvider>()
-                  .loadProfile(forceRefresh: true),
+          return RefreshIndicator(
+            onRefresh: () => context.read<DriverProfileProvider>().loadProfile(
+              forceRefresh: true,
+            ),
+            child: Column(
+              children: [
+                const OfflineBanner(),
+                _ProfileHeader(profile: profile),
+                Expanded(
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _PersonalInformationSection(profile: profile),
+                        SizedBox(height: SizeConfig.r(24)),
+                        _ProfessionalDetailsSection(profile: profile),
+                        SizedBox(height: SizeConfig.r(24)),
+                        _DocumentsSection(profile: profile),
+                        SizedBox(height: SizeConfig.r(24)),
+                        _QuickActionsSection(
+                          onChecklist: () => Navigator.pushNamed(
+                            context,
+                            AppRoutes.vehicleChecklist,
+                          ),
+                          onSos: () => Navigator.pushNamed(
+                            context,
+                            AppRoutes.sos,
+                          ),
+                          onRefresh: () => context
+                              .read<DriverProfileProvider>()
+                              .loadProfile(forceRefresh: true),
+                        ),
+                        SizedBox(height: SizeConfig.r(24)),
+                        _SettingsSection(onLogout: () => _logout(context)),
+                        SizedBox(height: SizeConfig.r(28)),
+                      ],
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  static Future<void> _logout(BuildContext context) async {
+    await context.read<AuthProvider>().logout();
+    if (!context.mounted) return;
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      AppRoutes.login,
+      (route) => false,
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Loading / error
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ProfileLoadingBody extends StatelessWidget {
+  const _ProfileLoadingBody();
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      children: [
+        _ProfileHeaderShimmer(onBack: () => Navigator.maybePop(context)),
+        Expanded(
+          child: Shimmer(
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const OfflineBanner(),
-                  _buildAppBar(context),
+                  _shimmerSection(titleWidth: 180, rowCount: 6),
+                  SizedBox(height: SizeConfig.r(24)),
+                  _shimmerSection(titleWidth: 160, rowCount: 4),
+                  SizedBox(height: SizeConfig.r(24)),
+                  _shimmerDocSection(cardCount: 4),
+                  SizedBox(height: SizeConfig.r(24)),
+                  _shimmerQuickActions(),
+                  SizedBox(height: SizeConfig.r(24)),
+                  _shimmerSettings(rowCount: 4),
+                  SizedBox(height: SizeConfig.r(28)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Widget _shimmerSection({
+    required double titleWidth,
+    required int rowCount,
+  }) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        SizeConfig.hPad,
+        SizeConfig.r(22),
+        SizeConfig.hPad,
+        0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShimmerBox(
+            width: SizeConfig.r(titleWidth),
+            height: SizeConfig.r(16),
+            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+          ),
+          SizedBox(height: SizeConfig.r(16)),
+          ...List.generate(rowCount, (i) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: i < rowCount - 1 ? SizeConfig.r(12) : 0),
+              child: Row(
+                children: [
                   Expanded(
-                    child: SingleChildScrollView(
-                      physics: const AlwaysScrollableScrollPhysics(),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          _buildProfileHeader(profile),
-                          _buildDivider(),
-                          _buildPersonalInfo(profile),
-                          _buildDivider(),
-                          _buildProfessionalDetails(profile),
-                          _buildDivider(),
-                          _buildRequiredDocuments(profile),
-                          _buildDivider(),
-                          _buildQuickActions(context),
-                          _buildDivider(),
-                          _buildSettingsList(context),
-                        ],
-                      ),
+                    flex: 2,
+                    child: ShimmerBox(
+                      height: SizeConfig.r(13),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                  ),
+                  SizedBox(width: SizeConfig.r(16)),
+                  Expanded(
+                    flex: 3,
+                    child: ShimmerBox(
+                      height: SizeConfig.r(13),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
                     ),
                   ),
                 ],
               ),
             );
-          },
-        ),
-      ),
-    );
-  }
-
-  Widget _buildAppBar(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.r(4),
-        vertical: SizeConfig.r(8),
-      ),
-      child: Row(
-        children: [
-          IconButton(
-            onPressed: () => Navigator.maybePop(context),
-            icon: Icon(
-              Icons.arrow_back,
-              color: AppColors.textDark,
-              size: SizeConfig.r(22),
-            ),
-          ),
-          Expanded(
-            child: Text(
-              'Driver Profile',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(17),
-                fontWeight: FontWeight.w700,
-                color: AppColors.textDark,
-              ),
-            ),
-          ),
-          SizedBox(width: SizeConfig.r(48)),
+          }),
         ],
       ),
     );
   }
 
-  Widget _buildProfileHeader(DriverProfileModel profile) {
+  static Widget _shimmerDocSection({required int cardCount}) {
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: SizeConfig.r(20)),
-      child: Center(
-        child: Column(
-          children: [
-            CircleAvatar(
-              radius: SizeConfig.r(44),
-              backgroundColor: AppColors.primaryLight,
-              child: Icon(
-                Icons.person,
-                size: SizeConfig.r(48),
-                color: AppColors.primary,
-              ),
-            ),
-            SizedBox(height: SizeConfig.r(12)),
-            Text(
-              profile.fullName,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(18),
-                fontWeight: FontWeight.w700,
-                color: AppColors.textDark,
-              ),
-            ),
-            SizedBox(height: SizeConfig.r(8)),
-            _StatusBadge(
-              label: profile.statusLabel,
-              color: profile.isActive ? AppColors.success : AppColors.warning,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildPersonalInfo(DriverProfileModel profile) {
-    final rows = [
-      _InfoRow('Full Name', profile.fullName),
-      _InfoRow('Phone Number', profile.phone),
-      _InfoRow('Email', profile.email),
-      _InfoRow('Address', profile.residentialAddress),
-      _InfoRow(
-        'Passport Number',
-        profile.passportNumber == null || profile.passportNumber!.isEmpty
-            ? 'Not provided'
-            : profile.passportNumber!,
-      ),
-      _InfoRow(
-        'Emergency Contact',
-        '${profile.emergencyContactName} (${profile.emergencyContactPhone})',
-      ),
-      _InfoRow(
-        'Right To Work Code',
-        profile.rightToWorkCode == null || profile.rightToWorkCode!.isEmpty
-            ? 'Not provided'
-            : profile.rightToWorkCode!,
-      ),
-    ];
-    return _Section(
-      title: 'Personal Information',
-      child: _InfoTable(rows: rows),
-    );
-  }
-
-  Widget _buildProfessionalDetails(DriverProfileModel profile) {
-    final vehicle = profile.vehicle;
-    return _Section(
-      title: 'Professional Details',
+      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _InfoRowWidget(
-            label: 'License Number',
-            valueWidget: Text(
-              profile.licenseNo.isEmpty ? '-' : profile.licenseNo,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textDark,
-              ),
-            ),
+          ShimmerBox(
+            width: SizeConfig.r(200),
+            height: SizeConfig.r(16),
+            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
           ),
-          _dividerLine(),
-          _InfoRowWidget(
-            label: 'Vehicle Assigned',
-            valueWidget: Text(
-              vehicle?.displayName ?? 'Not assigned',
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textDark,
-              ),
-            ),
-          ),
-          _dividerLine(),
-          _InfoRowWidget(
-            label: 'Plate Number',
-            valueWidget: Text(
-              vehicle?.taxiLicensePlateNumber.isNotEmpty == true
-                  ? vehicle!.taxiLicensePlateNumber
-                  : 'Not assigned',
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textDark,
-              ),
-            ),
-          ),
-          _dividerLine(),
-          _InfoRowWidget(
-            label: 'Registration #',
-            valueWidget: Text(
-              vehicle?.registrationNumber ?? 'Not provided',
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textDark,
+          SizedBox(height: SizeConfig.r(14)),
+          ...List.generate(
+            cardCount,
+            (i) => Padding(
+              padding: EdgeInsets.only(bottom: i < cardCount - 1 ? SizeConfig.r(10) : 0),
+              child: ShimmerBox(
+                width: double.infinity,
+                height: SizeConfig.r(72),
+                borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
               ),
             ),
           ),
@@ -246,201 +240,165 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
     );
   }
 
-  Widget _buildRequiredDocuments(DriverProfileModel profile) {
-    final driverTypes = profile.driverDocuments
-        .map((d) => d.documentType.toLowerCase())
-        .toSet();
-    final vehicleTypes = profile.vehicleDocuments
-        .map((d) => d.documentType.toLowerCase())
-        .toSet();
-
-    bool hasAny(Iterable<String> keys, Set<String> available) {
-      for (final key in keys) {
-        if (available.contains(key.toLowerCase())) return true;
-      }
-      return false;
-    }
-
-    final docs = [
-      _DocData(
-        icon: Icons.credit_card,
-        label: 'Passport / ID',
-        status: hasAny(const ['passport', 'passport_number'], driverTypes)
-            ? 'Uploaded'
-            : 'Missing',
-      ),
-      _DocData(
-        icon: Icons.description_outlined,
-        label: 'Driver License',
-        status:
-            hasAny(const [
-              'driving_license_front',
-              'driving_license_back',
-            ], driverTypes)
-            ? 'Uploaded'
-            : 'Missing',
-      ),
-      _DocData(
-        icon: Icons.shield_outlined,
-        label: 'DBS Certificate',
-        status:
-            hasAny(const [
-              'dbs_certificate_front',
-              'dbs_certificate_back',
-            ], driverTypes)
-            ? 'Uploaded'
-            : 'Missing',
-      ),
-      _DocData(
-        icon: Icons.directions_car_outlined,
-        label: 'Vehicle Documents',
-        status: vehicleTypes.isNotEmpty ? 'Uploaded' : 'Missing',
-      ),
-    ];
-
-    return _Section(
-      title: 'Required Documents',
-      child: Column(children: docs.map((d) => _DocRow(data: d)).toList()),
-    );
-  }
-
-  Widget _buildQuickActions(BuildContext context) {
-    final actions = [
-      _QuickAction(
-        icon: Icons.description_outlined,
-        label: 'Doc',
-        color: AppColors.success,
-      ),
-      _QuickAction(
-        icon: Icons.checklist,
-        label: 'Checklist',
-        color: const Color(0xFF7C3AED),
-      ),
-      _QuickAction(
-        icon: Icons.warning_amber_rounded,
-        label: 'SOS',
-        color: AppColors.error,
-      ),
-    ];
-    return _Section(
-      title: 'Quick Actions',
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: actions
-            .map(
-              (a) => GestureDetector(
-                onTap: () {
-                  if (a.label == 'Checklist') {
-                    Navigator.pushNamed(context, AppRoutes.vehicleChecklist);
-                    return;
-                  }
-                  if (a.label == 'SOS') {
-                    Navigator.pushNamed(context, AppRoutes.sos);
-                    return;
-                  }
-                  if (a.label == 'Refresh') {
-                    context.read<DriverProfileProvider>().loadProfile(
-                      forceRefresh: true,
-                    );
-                  }
-                },
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: SizeConfig.r(44),
-                      height: SizeConfig.r(44),
-                      decoration: BoxDecoration(
-                        color: a.color.withValues(alpha: 0.12),
-                        shape: BoxShape.circle,
-                      ),
-                      child: Icon(
-                        a.icon,
-                        color: a.color,
-                        size: SizeConfig.r(22),
-                      ),
-                    ),
-                    SizedBox(height: SizeConfig.r(6)),
-                    Text(
-                      a.label,
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(11),
-                        fontWeight: FontWeight.w500,
-                        color: AppColors.textMedium,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            )
-            .toList(),
-      ),
-    );
-  }
-
-  Widget _buildSettingsList(BuildContext context) {
+  static Widget _shimmerQuickActions() {
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.hPad,
-        vertical: SizeConfig.r(4),
-      ),
+      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _SettingsRow(
-            icon: Icons.notifications_outlined,
-            label: 'Notification Settings',
-            iconColor: AppColors.textMedium,
-            onTap: () {},
+          ShimmerBox(
+            width: SizeConfig.r(120),
+            height: SizeConfig.r(16),
+            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
           ),
-          _dividerLine(),
-          _SettingsRow(
-            icon: Icons.language,
-            label: 'Language',
-            iconColor: AppColors.textMedium,
-            onTap: () {},
+          SizedBox(height: SizeConfig.r(16)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: List.generate(
+              3,
+              (_) => Column(
+                children: [
+                  ShimmerBox(
+                    width: SizeConfig.r(52),
+                    height: SizeConfig.r(52),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(26)),
+                  ),
+                  SizedBox(height: SizeConfig.r(8)),
+                  ShimmerBox(
+                    width: SizeConfig.r(48),
+                    height: SizeConfig.r(12),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                ],
+              ),
+            ),
           ),
-          _dividerLine(),
-          _SettingsRow(
-            icon: Icons.headset_mic_outlined,
-            label: 'Support',
-            iconColor: AppColors.textMedium,
-            onTap: () {},
-          ),
-          _dividerLine(),
-          _SettingsRow(
-            icon: Icons.logout,
-            label: 'Logout',
-            iconColor: AppColors.error,
-            labelColor: AppColors.error,
-            onTap: () async {
-              await context.read<AuthProvider>().logout();
-              if (!context.mounted) return;
-              Navigator.pushNamedAndRemoveUntil(
-                context,
-                AppRoutes.login,
-                (route) => false,
-              );
-            },
-          ),
-          SizedBox(height: SizeConfig.r(24)),
         ],
       ),
     );
   }
 
-  Widget _buildDivider() {
-    return Divider(height: 1, thickness: 1, color: AppColors.surfaceGray);
-  }
-
-  Widget _dividerLine() {
-    return Divider(height: 1, thickness: 1, color: AppColors.inputBorder);
+  static Widget _shimmerSettings({required int rowCount}) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShimmerBox(
+            width: SizeConfig.r(80),
+            height: SizeConfig.r(16),
+            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+          ),
+          SizedBox(height: SizeConfig.r(8)),
+          ...List.generate(
+            rowCount,
+            (i) => Padding(
+              padding: EdgeInsets.symmetric(vertical: SizeConfig.r(14)),
+              child: Row(
+                children: [
+                  ShimmerBox(
+                    width: SizeConfig.r(22),
+                    height: SizeConfig.r(22),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                  SizedBox(width: SizeConfig.r(14)),
+                  Expanded(
+                    child: ShimmerBox(
+                      height: SizeConfig.r(14),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                  ),
+                  SizedBox(width: SizeConfig.r(12)),
+                  ShimmerBox(
+                    width: SizeConfig.r(22),
+                    height: SizeConfig.r(22),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }
 
-class _ProfileErrorState extends StatelessWidget {
+class _ProfileHeaderShimmer extends StatelessWidget {
+  final VoidCallback onBack;
+  const _ProfileHeaderShimmer({required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: _ProfileColors.header,
+      child: SafeArea(
+        bottom: false,
+        child: Shimmer(
+          child: Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.r(4),
+                  vertical: SizeConfig.r(4),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: onBack,
+                      icon: Icon(
+                        Icons.arrow_back,
+                        color: Colors.white,
+                        size: SizeConfig.r(22),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Profile',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: SizeConfig.sp(17),
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: SizeConfig.r(48)),
+                  ],
+                ),
+              ),
+              SizedBox(height: SizeConfig.r(8)),
+              ShimmerBox(
+                width: SizeConfig.r(104),
+                height: SizeConfig.r(104),
+                borderRadius: BorderRadius.circular(SizeConfig.r(52)),
+              ),
+              SizedBox(height: SizeConfig.r(14)),
+              ShimmerBox(
+                width: SizeConfig.r(72),
+                height: SizeConfig.r(26),
+                borderRadius: BorderRadius.circular(SizeConfig.r(20)),
+              ),
+              SizedBox(height: SizeConfig.r(8)),
+              ShimmerBox(
+                width: SizeConfig.r(72),
+                height: SizeConfig.r(14),
+                borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+              ),
+              SizedBox(height: SizeConfig.r(24)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ProfileErrorBody extends StatelessWidget {
   final VoidCallback onRetry;
 
-  const _ProfileErrorState({required this.onRetry});
+  const _ProfileErrorBody({required this.onRetry});
 
   @override
   Widget build(BuildContext context) {
@@ -514,410 +472,487 @@ class _ProfileErrorState extends StatelessWidget {
   }
 }
 
-class _ProfilePageShimmer extends StatelessWidget {
-  const _ProfilePageShimmer();
+// ─────────────────────────────────────────────────────────────────────────────
+// Header
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _ProfileHeader extends StatelessWidget {
+  final DriverProfileModel profile;
+  const _ProfileHeader({required this.profile});
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      children: [
-        Padding(
-          padding: EdgeInsets.symmetric(
-            horizontal: SizeConfig.r(4),
-            vertical: SizeConfig.r(8),
-          ),
-          child: Row(
-            children: [
-              IconButton(
-                onPressed: null,
-                icon: Icon(
-                  Icons.arrow_back,
-                  color: AppColors.textLight,
-                  size: SizeConfig.r(22),
-                ),
+    return Container(
+      width: double.infinity,
+      color: _ProfileColors.header,
+      child: SafeArea(
+        bottom: false,
+        child: Column(
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(
+                horizontal: SizeConfig.r(4),
+                vertical: SizeConfig.r(4),
               ),
-              Expanded(
-                child: Text(
-                  'Driver Profile',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(17),
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textDark,
-                  ),
-                ),
-              ),
-              SizedBox(width: SizeConfig.r(48)),
-            ],
-          ),
-        ),
-        Expanded(
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            child: Shimmer(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+              child: Row(
                 children: [
-                  Padding(
-                    padding: EdgeInsets.symmetric(vertical: SizeConfig.r(20)),
-                    child: Center(
-                      child: Column(
-                        children: [
-                          ShimmerBox(
-                            width: SizeConfig.r(88),
-                            height: SizeConfig.r(88),
-                            borderRadius: BorderRadius.circular(
-                              SizeConfig.r(44),
-                            ),
-                          ),
-                          SizedBox(height: SizeConfig.r(12)),
-                          ShimmerBox(
-                            width: SizeConfig.r(180),
-                            height: SizeConfig.r(18),
-                            borderRadius: BorderRadius.circular(
-                              SizeConfig.r(6),
-                            ),
-                          ),
-                          SizedBox(height: SizeConfig.r(8)),
-                          ShimmerBox(
-                            width: SizeConfig.r(86),
-                            height: SizeConfig.r(22),
-                            borderRadius: BorderRadius.circular(
-                              SizeConfig.r(4),
-                            ),
-                          ),
-                        ],
+                  IconButton(
+                    onPressed: () => Navigator.maybePop(context),
+                    icon: Icon(
+                      Icons.arrow_back,
+                      color: Colors.white,
+                      size: SizeConfig.r(22),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      'Profile',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(17),
+                        fontWeight: FontWeight.w700,
+                        color: Colors.white,
                       ),
                     ),
                   ),
-                  _shimmerDivider(),
-                  _buildShimmerSection(rowCount: 6),
-                  _shimmerDivider(),
-                  _buildShimmerSection(rowCount: 4),
-                  _shimmerDivider(),
-                  _buildShimmerSection(rowCount: 4),
-                  _shimmerDivider(),
-                  _buildShimmerQuickActions(),
-                  _shimmerDivider(),
-                  _buildShimmerSettings(),
+                  SizedBox(width: SizeConfig.r(48)),
                 ],
               ),
+            ),
+            SizedBox(height: SizeConfig.r(8)),
+            Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Container(
+                  padding: EdgeInsets.all(SizeConfig.r(4)),
+                  decoration: const BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                  ),
+                  child: CircleAvatar(
+                    radius: SizeConfig.r(48),
+                    backgroundColor: const Color(0xFFE8E8E8),
+                    child: Icon(
+                      Icons.person,
+                      size: SizeConfig.r(48),
+                      color: AppColors.textLight,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  right: SizeConfig.r(2),
+                  bottom: SizeConfig.r(2),
+                  child: Container(
+                    width: SizeConfig.r(28),
+                    height: SizeConfig.r(28),
+                    decoration: const BoxDecoration(
+                      color: Colors.white,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      Icons.edit_outlined,
+                      color: _ProfileColors.header,
+                      size: SizeConfig.r(14),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: SizeConfig.r(14)),
+            Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: SizeConfig.r(14),
+                vertical: SizeConfig.r(6),
+              ),
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.2),
+                borderRadius: BorderRadius.circular(SizeConfig.r(20)),
+              ),
+              child: Text(
+                'Driver',
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(12),
+                  fontWeight: FontWeight.w600,
+                  color: Colors.white,
+                ),
+              ),
+            ),
+            SizedBox(height: SizeConfig.r(8)),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Container(
+                  width: SizeConfig.r(8),
+                  height: SizeConfig.r(8),
+                  decoration: BoxDecoration(
+                    color: profile.isActive
+                        ? _ProfileColors.onDutyDot
+                        : Colors.white54,
+                    shape: BoxShape.circle,
+                  ),
+                ),
+                SizedBox(width: SizeConfig.r(6)),
+                Text(
+                  profile.isActive ? 'On Duty' : profile.statusLabel,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(13),
+                    fontWeight: FontWeight.w500,
+                    color: Colors.white,
+                  ),
+                ),
+              ],
+            ),
+            SizedBox(height: SizeConfig.r(24)),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Personal Information
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _PersonalInformationSection extends StatelessWidget {
+  final DriverProfileModel profile;
+  const _PersonalInformationSection({required this.profile});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        SizeConfig.hPad,
+        SizeConfig.r(22),
+        SizeConfig.hPad,
+        0,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Personal Information',
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(16),
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
+              ),
+              Icon(
+                Icons.edit_outlined,
+                color: _ProfileColors.action,
+                size: SizeConfig.r(20),
+              ),
+            ],
+          ),
+          SizedBox(height: SizeConfig.r(16)),
+          _InfoRow(label: 'Full Name', value: profile.fullName),
+          SizedBox(height: SizeConfig.r(12)),
+          _InfoRow(
+            label: 'Phone Number',
+            value: profile.phone.isEmpty ? '-' : profile.phone,
+          ),
+          SizedBox(height: SizeConfig.r(12)),
+          _InfoRow(
+            label: 'Email',
+            value: profile.email.isEmpty ? '-' : profile.email,
+          ),
+          SizedBox(height: SizeConfig.r(12)),
+          _InfoRow(
+            label: 'Passport number',
+            value: (profile.passportNumber ?? '').isEmpty
+                ? '-'
+                : profile.passportNumber!,
+          ),
+          if (profile.rightToWorkCode != null &&
+              profile.rightToWorkCode!.isNotEmpty) ...[
+            SizedBox(height: SizeConfig.r(12)),
+            _InfoRow(
+              label: 'Right to work code',
+              value: profile.rightToWorkCode!,
+            ),
+          ],
+          SizedBox(height: SizeConfig.r(12)),
+          _InfoRow(
+            label: 'Emergency Contact',
+            value: _emergencyDisplay(profile),
+          ),
+          if (profile.residentialAddress.isNotEmpty) ...[
+            SizedBox(height: SizeConfig.r(12)),
+            _InfoRow(label: 'Address', value: profile.residentialAddress),
+          ],
+        ],
+      ),
+    );
+  }
+
+  String _emergencyDisplay(DriverProfileModel profile) {
+    final name = profile.emergencyContactName.trim();
+    final phone = profile.emergencyContactPhone.trim();
+    if (name.isEmpty && phone.isEmpty) return '-';
+    if (name.isEmpty) return phone;
+    if (phone.isEmpty) return name;
+    return '$name · $phone';
+  }
+}
+
+class _InfoRow extends StatelessWidget {
+  final String label;
+  final String value;
+  const _InfoRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          flex: 2,
+          child: Text(
+            label,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(13),
+              color: AppColors.textLight,
+              fontWeight: FontWeight.w400,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 3,
+          child: Text(
+            value,
+            textAlign: TextAlign.right,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(13),
+              color: AppColors.textDark,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
       ],
     );
   }
-
-  Widget _buildShimmerSection({
-    required int rowCount,
-    bool includeButton = false,
-  }) {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.hPad,
-        vertical: SizeConfig.r(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ShimmerBox(
-            width: SizeConfig.r(160),
-            height: SizeConfig.r(16),
-            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
-          ),
-          SizedBox(height: SizeConfig.r(12)),
-          ...List.generate(
-            rowCount,
-            (index) => Padding(
-              padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: ShimmerBox(
-                      height: SizeConfig.r(13),
-                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
-                    ),
-                  ),
-                  SizedBox(width: SizeConfig.r(16)),
-                  Expanded(
-                    child: ShimmerBox(
-                      height: SizeConfig.r(13),
-                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          if (includeButton) ...[
-            SizedBox(height: SizeConfig.r(8)),
-            ShimmerBox(
-              height: SizeConfig.r(46),
-              borderRadius: BorderRadius.circular(SizeConfig.radius),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-
-  Widget _buildShimmerQuickActions() {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.hPad,
-        vertical: SizeConfig.r(16),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          ShimmerBox(
-            width: SizeConfig.r(140),
-            height: SizeConfig.r(16),
-            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
-          ),
-          SizedBox(height: SizeConfig.r(12)),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: List.generate(
-              3,
-              (_) => Column(
-                children: [
-                  ShimmerBox(
-                    width: SizeConfig.r(44),
-                    height: SizeConfig.r(44),
-                    borderRadius: BorderRadius.circular(SizeConfig.r(22)),
-                  ),
-                  SizedBox(height: SizeConfig.r(6)),
-                  ShimmerBox(
-                    width: SizeConfig.r(52),
-                    height: SizeConfig.r(11),
-                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildShimmerSettings() {
-    return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.hPad,
-        vertical: SizeConfig.r(4),
-      ),
-      child: Column(
-        children: [
-          ...List.generate(
-            4,
-            (index) => Padding(
-              padding: EdgeInsets.symmetric(vertical: SizeConfig.r(14)),
-              child: Row(
-                children: [
-                  ShimmerBox(
-                    width: SizeConfig.r(20),
-                    height: SizeConfig.r(20),
-                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
-                  ),
-                  SizedBox(width: SizeConfig.r(14)),
-                  Expanded(
-                    child: ShimmerBox(
-                      height: SizeConfig.r(14),
-                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
-                    ),
-                  ),
-                  SizedBox(width: SizeConfig.r(12)),
-                  ShimmerBox(
-                    width: SizeConfig.r(18),
-                    height: SizeConfig.r(18),
-                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          SizedBox(height: SizeConfig.r(24)),
-        ],
-      ),
-    );
-  }
-
-  Widget _shimmerDivider() {
-    return Divider(height: 1, thickness: 1, color: AppColors.surfaceGray);
-  }
 }
 
-class _Section extends StatelessWidget {
-  final String title;
-  final Widget child;
+// ─────────────────────────────────────────────────────────────────────────────
+// Professional Details
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const _Section({required this.title, required this.child});
+class _ProfessionalDetailsSection extends StatelessWidget {
+  final DriverProfileModel profile;
+  const _ProfessionalDetailsSection({required this.profile});
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
+    final vehicle = profile.vehicle;
     return Padding(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.hPad,
-        vertical: SizeConfig.r(16),
-      ),
+      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            title,
+            'Professional Details',
             style: TextStyle(
-              fontSize: SizeConfig.sp(15),
+              fontSize: SizeConfig.sp(16),
               fontWeight: FontWeight.w700,
               color: AppColors.textDark,
             ),
           ),
+          SizedBox(height: SizeConfig.r(16)),
+          _InfoRow(
+            label: 'License Number',
+            value: profile.licenseNo.isEmpty ? '-' : profile.licenseNo,
+          ),
           SizedBox(height: SizeConfig.r(12)),
-          child,
+          _InfoRow(
+            label: 'Vehicle Assigned',
+            value: vehicle?.displayName ?? 'Not assigned',
+          ),
+          SizedBox(height: SizeConfig.r(12)),
+          _InfoRow(
+            label: 'Plate Number',
+            value: vehicle?.taxiLicensePlateNumber.isNotEmpty == true
+                ? vehicle!.taxiLicensePlateNumber
+                : 'Not assigned',
+          ),
+          SizedBox(height: SizeConfig.r(12)),
+          _InfoRow(
+            label: 'Registration #',
+            value: vehicle?.registrationNumber ?? 'Not provided',
+          ),
+          if (profile.dbsServiceUpdateId != null &&
+              profile.dbsServiceUpdateId!.isNotEmpty) ...[
+            SizedBox(height: SizeConfig.r(12)),
+            _InfoRow(
+              label: 'DBS Service ID',
+              value: profile.dbsServiceUpdateId!,
+            ),
+          ],
         ],
       ),
     );
   }
 }
 
-class _InfoRow {
-  final String label;
-  final String value;
-  const _InfoRow(this.label, this.value);
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Documents
+// ─────────────────────────────────────────────────────────────────────────────
 
-class _InfoTable extends StatelessWidget {
-  final List<_InfoRow> rows;
-  const _InfoTable({required this.rows});
+class _DocumentsSection extends StatelessWidget {
+  final DriverProfileModel profile;
+  const _DocumentsSection({required this.profile});
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
-    return Column(
-      children: rows.asMap().entries.map((entry) {
-        final i = entry.key;
-        final row = entry.value;
-        return Column(
-          children: [
-            Padding(
-              padding: EdgeInsets.symmetric(vertical: SizeConfig.r(10)),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Expanded(
-                    child: Text(
-                      row.label,
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(13),
-                        color: AppColors.textLight,
-                      ),
-                    ),
-                  ),
-                  SizedBox(width: SizeConfig.r(8)),
-                  Expanded(
-                    child: Text(
-                      row.value,
-                      textAlign: TextAlign.right,
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(13),
-                        color: AppColors.textDark,
-                        fontWeight: FontWeight.w500,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            if (i < rows.length - 1)
-              Divider(height: 1, thickness: 1, color: AppColors.inputBorder),
-          ],
-        );
-      }).toList(),
-    );
-  }
-}
+    final driverTypes = profile.driverDocuments
+        .map((d) => d.documentType.toLowerCase())
+        .toSet();
+    final vehicleTypes = profile.vehicleDocuments
+        .map((d) => d.documentType.toLowerCase())
+        .toSet();
 
-class _InfoRowWidget extends StatelessWidget {
-  final String label;
-  final Widget valueWidget;
+    bool hasAny(Iterable<String> keys, Set<String> available) {
+      for (final key in keys) {
+        if (available.contains(key.toLowerCase())) return true;
+      }
+      return false;
+    }
 
-  const _InfoRowWidget({required this.label, required this.valueWidget});
+    final docs = [
+      _DriverDocItem(
+        icon: Icons.badge_outlined,
+        title: 'Passport / ID',
+        uploaded: hasAny(const ['passport', 'passport_number'], driverTypes),
+      ),
+      _DriverDocItem(
+        icon: Icons.credit_card_outlined,
+        title: 'Driver License',
+        uploaded: hasAny(const [
+          'driving_license_front',
+          'driving_license_back',
+        ], driverTypes),
+      ),
+      _DriverDocItem(
+        icon: Icons.verified_user_outlined,
+        title: 'DBS Certificate',
+        uploaded: hasAny(const [
+          'dbs_certificate_front',
+          'dbs_certificate_back',
+        ], driverTypes),
+      ),
+      _DriverDocItem(
+        icon: Icons.directions_car_outlined,
+        title: 'Vehicle Documents',
+        uploaded: vehicleTypes.isNotEmpty,
+      ),
+    ];
 
-  @override
-  Widget build(BuildContext context) {
-    SizeConfig.init(context);
     return Padding(
-      padding: EdgeInsets.symmetric(vertical: SizeConfig.r(10)),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            label,
+            'Certificates & Documents',
             style: TextStyle(
-              fontSize: SizeConfig.sp(13),
-              color: AppColors.textLight,
+              fontSize: SizeConfig.sp(16),
+              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
             ),
           ),
-          Flexible(child: valueWidget),
+          SizedBox(height: SizeConfig.r(14)),
+          ...docs.map(
+            (doc) => Padding(
+              padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+              child: _DocumentCard(item: doc),
+            ),
+          ),
         ],
       ),
     );
   }
 }
 
-class _DocData {
+class _DriverDocItem {
   final IconData icon;
-  final String label;
-  final String status;
-  const _DocData({
+  final String title;
+  final bool uploaded;
+  const _DriverDocItem({
     required this.icon,
-    required this.label,
-    required this.status,
+    required this.title,
+    required this.uploaded,
   });
 }
 
-class _DocRow extends StatelessWidget {
-  final _DocData data;
-  const _DocRow({required this.data});
+class _DocumentCard extends StatelessWidget {
+  final _DriverDocItem item;
+  const _DocumentCard({required this.item});
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
-    final isMissing = data.status == 'Missing';
-    return Padding(
-      padding: EdgeInsets.symmetric(vertical: SizeConfig.r(8)),
+    final accent = item.uploaded
+        ? _ProfileColors.docGreen
+        : _ProfileColors.docYellow;
+    final bg = item.uploaded
+        ? _ProfileColors.docGreenBg
+        : _ProfileColors.docYellowBg;
+    final statusLabel = item.uploaded ? 'Uploaded' : 'Missing';
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.r(14),
+        vertical: SizeConfig.r(14),
+      ),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+        border: Border.all(color: accent.withValues(alpha: 0.35)),
+      ),
       child: Row(
         children: [
-          Container(
-            width: SizeConfig.r(36),
-            height: SizeConfig.r(36),
-            decoration: BoxDecoration(
-              color: AppColors.surfaceGray,
-              borderRadius: BorderRadius.circular(SizeConfig.r(8)),
-            ),
-            child: Icon(
-              data.icon,
-              size: SizeConfig.r(18),
-              color: AppColors.textMedium,
-            ),
-          ),
+          Icon(item.icon, color: accent, size: SizeConfig.r(26)),
           SizedBox(width: SizeConfig.r(12)),
           Expanded(
-            child: Text(
-              data.label,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textDark,
-                fontWeight: FontWeight.w500,
-              ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  item.title,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(14),
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.r(6)),
+                Container(
+                  padding: EdgeInsets.symmetric(
+                    horizontal: SizeConfig.r(10),
+                    vertical: SizeConfig.r(4),
+                  ),
+                  decoration: BoxDecoration(
+                    color: accent,
+                    borderRadius: BorderRadius.circular(SizeConfig.r(12)),
+                  ),
+                  child: Text(
+                    statusLabel,
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(10),
+                      fontWeight: FontWeight.w600,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ],
             ),
           ),
-          _StatusBadge(
-            label: data.status,
-            color: isMissing ? AppColors.warning : AppColors.success,
+          Icon(
+            Icons.chevron_right,
+            color: AppColors.textLight,
+            size: SizeConfig.r(22),
           ),
         ],
       ),
@@ -925,31 +960,96 @@ class _DocRow extends StatelessWidget {
   }
 }
 
-class _StatusBadge extends StatelessWidget {
-  final String label;
-  final Color color;
+// ─────────────────────────────────────────────────────────────────────────────
+// Quick Actions (driver-only)
+// ─────────────────────────────────────────────────────────────────────────────
 
-  const _StatusBadge({required this.label, required this.color});
+class _QuickActionsSection extends StatelessWidget {
+  final VoidCallback onChecklist;
+  final VoidCallback onSos;
+  final VoidCallback onRefresh;
+
+  const _QuickActionsSection({
+    required this.onChecklist,
+    required this.onSos,
+    required this.onRefresh,
+  });
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.r(8),
-        vertical: SizeConfig.r(3),
+    final actions = [
+      _QuickAction(
+        icon: Icons.description_outlined,
+        label: 'Doc',
+        color: AppColors.success,
+        onTap: onRefresh,
       ),
-      decoration: BoxDecoration(
-        color: color,
-        borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+      _QuickAction(
+        icon: Icons.checklist,
+        label: 'Checklist',
+        color: const Color(0xFF7C3AED),
+        onTap: onChecklist,
       ),
-      child: Text(
-        label,
-        style: TextStyle(
-          fontSize: SizeConfig.sp(11),
-          fontWeight: FontWeight.w600,
-          color: Colors.white,
-        ),
+      _QuickAction(
+        icon: Icons.warning_amber_rounded,
+        label: 'SOS',
+        color: AppColors.error,
+        onTap: onSos,
+      ),
+    ];
+
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Quick Actions',
+            style: TextStyle(
+              fontSize: SizeConfig.sp(16),
+              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
+            ),
+          ),
+          SizedBox(height: SizeConfig.r(16)),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: actions
+                .map(
+                  (a) => GestureDetector(
+                    onTap: a.onTap,
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: SizeConfig.r(52),
+                          height: SizeConfig.r(52),
+                          decoration: BoxDecoration(
+                            color: a.color.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            a.icon,
+                            color: a.color,
+                            size: SizeConfig.r(24),
+                          ),
+                        ),
+                        SizedBox(height: SizeConfig.r(8)),
+                        Text(
+                          a.label,
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(12),
+                            fontWeight: FontWeight.w500,
+                            color: AppColors.textMedium,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                )
+                .toList(),
+          ),
+        ],
       ),
     );
   }
@@ -959,38 +1059,100 @@ class _QuickAction {
   final IconData icon;
   final String label;
   final Color color;
+  final VoidCallback onTap;
   const _QuickAction({
     required this.icon,
     required this.label,
     required this.color,
+    required this.onTap,
   });
 }
 
-class _SettingsRow extends StatelessWidget {
+// ─────────────────────────────────────────────────────────────────────────────
+// Settings
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _SettingsSection extends StatelessWidget {
+  final VoidCallback onLogout;
+  const _SettingsSection({required this.onLogout});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            'Settings',
+            style: TextStyle(
+              fontSize: SizeConfig.sp(16),
+              fontWeight: FontWeight.w700,
+              color: AppColors.textDark,
+            ),
+          ),
+          SizedBox(height: SizeConfig.r(8)),
+          _SettingsTile(
+            icon: Icons.notifications_outlined,
+            label: 'Notification Settings',
+            iconColor: AppColors.textMedium,
+            labelColor: AppColors.textDark,
+            onTap: () {},
+          ),
+          Divider(height: 1, thickness: 1, color: AppColors.inputBorder),
+          _SettingsTile(
+            icon: Icons.language,
+            label: 'Language',
+            iconColor: AppColors.textMedium,
+            labelColor: AppColors.textDark,
+            onTap: () {},
+          ),
+          Divider(height: 1, thickness: 1, color: AppColors.inputBorder),
+          _SettingsTile(
+            icon: Icons.headset_mic_outlined,
+            label: 'Support',
+            iconColor: AppColors.textMedium,
+            labelColor: AppColors.textDark,
+            onTap: () {},
+          ),
+          Divider(height: 1, thickness: 1, color: AppColors.inputBorder),
+          _SettingsTile(
+            icon: Icons.logout,
+            label: 'Logout',
+            iconColor: AppColors.error,
+            labelColor: AppColors.error,
+            onTap: onLogout,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SettingsTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final Color iconColor;
-  final Color? labelColor;
+  final Color labelColor;
   final VoidCallback onTap;
 
-  const _SettingsRow({
+  const _SettingsTile({
     required this.icon,
     required this.label,
     required this.iconColor,
-    this.labelColor,
+    required this.labelColor,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    SizeConfig.init(context);
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
       child: Padding(
         padding: EdgeInsets.symmetric(vertical: SizeConfig.r(14)),
         child: Row(
           children: [
-            Icon(icon, color: iconColor, size: SizeConfig.r(20)),
+            Icon(icon, color: iconColor, size: SizeConfig.r(22)),
             SizedBox(width: SizeConfig.r(14)),
             Expanded(
               child: Text(
@@ -998,14 +1160,14 @@ class _SettingsRow extends StatelessWidget {
                 style: TextStyle(
                   fontSize: SizeConfig.sp(14),
                   fontWeight: FontWeight.w500,
-                  color: labelColor ?? AppColors.textDark,
+                  color: labelColor,
                 ),
               ),
             ),
             Icon(
               Icons.chevron_right,
               color: AppColors.textLight,
-              size: SizeConfig.r(20),
+              size: SizeConfig.r(22),
             ),
           ],
         ),

@@ -120,30 +120,220 @@ class _ProfileLoadingBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Shimmer(
+    return Column(
+      children: [
+        _ProfileHeaderShimmer(onBack: () => Navigator.maybePop(context)),
+        Expanded(
+          child: Shimmer(
+            child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _shimmerSection(titleWidth: 180, rowCount: 6),
+                  SizedBox(height: SizeConfig.r(24)),
+                  _shimmerDocSection(cardCount: 3),
+                  SizedBox(height: SizeConfig.r(24)),
+                  _shimmerSettings(rowCount: 2),
+                  SizedBox(height: SizeConfig.r(28)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  static Widget _shimmerSection({
+    required double titleWidth,
+    required int rowCount,
+  }) {
+    return Padding(
+      padding: EdgeInsets.fromLTRB(
+        SizeConfig.hPad,
+        SizeConfig.r(22),
+        SizeConfig.hPad,
+        0,
+      ),
       child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           ShimmerBox(
-            width: double.infinity,
-            height: SizeConfig.r(220),
-            borderRadius: BorderRadius.zero,
+            width: SizeConfig.r(titleWidth),
+            height: SizeConfig.r(16),
+            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
           ),
-          Expanded(
-            child: ListView(
-              padding: EdgeInsets.all(SizeConfig.hPad),
-              children: List.generate(
-                6,
-                (_) => Padding(
-                  padding: EdgeInsets.only(bottom: SizeConfig.r(12)),
-                  child: ShimmerBox(
-                    width: double.infinity,
-                    height: SizeConfig.r(18),
+          SizedBox(height: SizeConfig.r(16)),
+          ...List.generate(rowCount, (i) {
+            return Padding(
+              padding: EdgeInsets.only(bottom: i < rowCount - 1 ? SizeConfig.r(12) : 0),
+              child: Row(
+                children: [
+                  Expanded(
+                    flex: 2,
+                    child: ShimmerBox(
+                      height: SizeConfig.r(13),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
                   ),
-                ),
+                  SizedBox(width: SizeConfig.r(16)),
+                  Expanded(
+                    flex: 3,
+                    child: ShimmerBox(
+                      height: SizeConfig.r(13),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          }),
+        ],
+      ),
+    );
+  }
+
+  static Widget _shimmerDocSection({required int cardCount}) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShimmerBox(
+            width: SizeConfig.r(200),
+            height: SizeConfig.r(16),
+            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+          ),
+          SizedBox(height: SizeConfig.r(14)),
+          ...List.generate(
+            cardCount,
+            (i) => Padding(
+              padding: EdgeInsets.only(bottom: i < cardCount - 1 ? SizeConfig.r(10) : 0),
+              child: ShimmerBox(
+                width: double.infinity,
+                height: SizeConfig.r(72),
+                borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
               ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  static Widget _shimmerSettings({required int rowCount}) {
+    return Padding(
+      padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ShimmerBox(
+            width: SizeConfig.r(80),
+            height: SizeConfig.r(16),
+            borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+          ),
+          SizedBox(height: SizeConfig.r(8)),
+          ...List.generate(
+            rowCount,
+            (i) => Padding(
+              padding: EdgeInsets.symmetric(vertical: SizeConfig.r(14)),
+              child: Row(
+                children: [
+                  ShimmerBox(
+                    width: SizeConfig.r(22),
+                    height: SizeConfig.r(22),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                  SizedBox(width: SizeConfig.r(14)),
+                  Expanded(
+                    child: ShimmerBox(
+                      height: SizeConfig.r(14),
+                      borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                    ),
+                  ),
+                  SizedBox(width: SizeConfig.r(12)),
+                  ShimmerBox(
+                    width: SizeConfig.r(22),
+                    height: SizeConfig.r(22),
+                    borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _ProfileHeaderShimmer extends StatelessWidget {
+  final VoidCallback onBack;
+  const _ProfileHeaderShimmer({required this.onBack});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      color: _PaProfileColors.header,
+      child: SafeArea(
+        bottom: false,
+        child: Shimmer(
+          child: Column(
+            children: [
+              Padding(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.r(4),
+                  vertical: SizeConfig.r(4),
+                ),
+                child: Row(
+                  children: [
+                    IconButton(
+                      onPressed: onBack,
+                      icon: Icon(
+                        Icons.arrow_back,
+                        color: Colors.white,
+                        size: SizeConfig.r(22),
+                      ),
+                    ),
+                    Expanded(
+                      child: Text(
+                        'Profile',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: SizeConfig.sp(17),
+                          fontWeight: FontWeight.w700,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                    SizedBox(width: SizeConfig.r(48)),
+                  ],
+                ),
+              ),
+              SizedBox(height: SizeConfig.r(8)),
+              ShimmerBox(
+                width: SizeConfig.r(104),
+                height: SizeConfig.r(104),
+                borderRadius: BorderRadius.circular(SizeConfig.r(52)),
+              ),
+              SizedBox(height: SizeConfig.r(14)),
+              ShimmerBox(
+                width: SizeConfig.r(72),
+                height: SizeConfig.r(26),
+                borderRadius: BorderRadius.circular(SizeConfig.r(20)),
+              ),
+              SizedBox(height: SizeConfig.r(8)),
+              ShimmerBox(
+                width: SizeConfig.r(72),
+                height: SizeConfig.r(14),
+                borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+              ),
+              SizedBox(height: SizeConfig.r(24)),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -271,14 +461,7 @@ class _ProfileHeader extends StatelessWidget {
                       ),
                     ),
                   ),
-                  IconButton(
-                    onPressed: () {},
-                    icon: Icon(
-                      Icons.more_vert,
-                      color: Colors.white,
-                      size: SizeConfig.r(22),
-                    ),
-                  ),
+                  SizedBox(width: SizeConfig.r(48)),
                 ],
               ),
             ),
