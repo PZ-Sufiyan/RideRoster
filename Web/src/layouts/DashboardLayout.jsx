@@ -4,13 +4,16 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { SubAdminPermissionsProvider } from '../context/subAdminPermissionsContext';
+import { useAdminNotificationToasts } from '../hooks/useAdminNotificationToasts';
+import { ToastStack } from '../utils/Toast';
 
 const DashboardLayout = () => {
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const location = useLocation();
     const isSubAdmin = location.pathname.startsWith('/team');
+    const isAdmin = location.pathname.startsWith('/portal');
+    const { toasts, dismissToast } = useAdminNotificationToasts(isAdmin);
 
-    // Close sidebar on route change (mobile)
     useEffect(() => {
         setSidebarOpen(false);
     }, [location.pathname]);
@@ -32,6 +35,7 @@ const DashboardLayout = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 flex">
+            <ToastStack toasts={toasts} onClose={dismissToast} />
             {isSubAdmin ? <SubAdminPermissionsProvider>{shell}</SubAdminPermissionsProvider> : shell}
         </div>
     );

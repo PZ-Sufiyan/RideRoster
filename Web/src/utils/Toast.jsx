@@ -79,7 +79,7 @@ export const ToastStack = ({ toasts = [], onClose }) => {
     if (!toasts.length) return null;
 
     return (
-        <div className="fixed top-4 right-4 z-[1000] w-[min(420px,calc(100vw-2rem))] space-y-2">
+        <div className="fixed top-4 right-4 z-[9999] w-[min(420px,calc(100vw-2rem))] space-y-2">
             {toasts.map((toast) => (
                 <Toast
                     key={toast.id}

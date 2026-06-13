@@ -1,0 +1,185 @@
+import { supabase } from '../lib/supabaseClient'
+import { getCompanyAdminById } from './companyService'
+
+const POLL_MS = 12000
+
+/** @typedef {'sos' | 'leave' | 'job' | 'poll' | 'system'} AdminNotificationRealtimeSource */
+
+/** @typedef {Object} AdminNotificationRealtimeEvent
+ * @property {AdminNotificationRealtimeSource} source
+ * @property {import('@supabase/supabase-js').RealtimePostgresChangesPayload} [payload]
+ * @property {{ type: string }} [meta]
+ */
+
+/** @type {Map<string, Set<(event: AdminNotificationRealtimeEvent) => void>>} */
+const listenersByCompany = new Map()
+
+/** @type {Map<string, import('@supabase/supabase-js').RealtimeChannel>} */
+const channelsByCompany = new Map()
+
+/** @type {Map<string, ReturnType<typeof setInterval>>} */
+const pollTimersByCompany = new Map()
+
+export async function getAdminCompanyContext() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const uid = session?.user?.id
+  if (!uid) {
+    const err = new Error('Not authenticated')
+    err.code = 'AUTH'
+    throw err
+  }
+  const admin = await getCompanyAdminById(uid)
+  if (!admin?.company_id) {
+    const err = new Error('No company linked to your account')
+    err.code = 'NO_COMPANY'
+    throw err
+  }
+  return { userId: uid, companyId: admin.company_id }
+}
+
+function emit(companyId, event) {
+  const callbacks = listenersByCompany.get(companyId)
+  if (!callbacks?.size) return
+  callbacks.forEach((callback) => {
+    try {
+      callback(event)
+    } catch {
+      // listener errors must not break the channel
+    }
+  })
+}
+
+function teardownChannel(companyId) {
+  const channel = channelsByCompany.get(companyId)
+  if (channel) {
+    supabase.removeChannel(channel)
+    channelsByCompany.delete(companyId)
+  }
+
+  const timer = pollTimersByCompany.get(companyId)
+  if (timer) {
+    clearInterval(timer)
+    pollTimersByCompany.delete(companyId)
+  }
+}
+
+function ensureChannel(companyId) {
+  if (channelsByCompany.has(companyId)) return
+
+  const channel = supabase.channel(`admin-notifications-rt-${companyId}`)
+
+  const forward =
+    (source) =>
+    (payload) => {
+      emit(companyId, { source, payload })
+    }
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'sos',
+      filter: `company_id=eq.${companyId}`,
+    },
+    forward('sos'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'sos',
+      filter: `company_id=eq.${companyId}`,
+    },
+    forward('sos'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'leave_requests',
+    },
+    forward('leave'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'leave_requests',
+    },
+    forward('leave'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'jobs',
+      filter: `company_id=eq.${companyId}`,
+    },
+    forward('job'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'jobs',
+      filter: `company_id=eq.${companyId}`,
+    },
+    forward('job'),
+  )
+
+  channel.subscribe((status) => {
+    if (status === 'SUBSCRIBED') {
+      emit(companyId, { source: 'system', meta: { type: 'SUBSCRIBED' } })
+    }
+  })
+
+  channelsByCompany.set(companyId, channel)
+
+  const pollTimer = setInterval(() => {
+    emit(companyId, { source: 'poll', meta: { type: 'POLL' } })
+  }, POLL_MS)
+  pollTimersByCompany.set(companyId, pollTimer)
+}
+
+/**
+ * Subscribe to admin notification realtime events for a company.
+ * Uses one shared Supabase channel + polling fallback per company.
+ *
+ * @param {string} companyId
+ * @param {(event: AdminNotificationRealtimeEvent) => void} onEvent
+ * @returns {() => void}
+ */
+export function subscribeAdminNotificationRealtime(companyId, onEvent) {
+  if (!companyId || typeof onEvent !== 'function') {
+    return () => {}
+  }
+
+  if (!listenersByCompany.has(companyId)) {
+    listenersByCompany.set(companyId, new Set())
+  }
+  listenersByCompany.get(companyId).add(onEvent)
+  ensureChannel(companyId)
+
+  return () => {
+    const callbacks = listenersByCompany.get(companyId)
+    if (!callbacks) return
+    callbacks.delete(onEvent)
+    if (callbacks.size === 0) {
+      listenersByCompany.delete(companyId)
+      teardownChannel(companyId)
+    }
+  }
+}
