@@ -130,6 +130,7 @@ class FcmService {
       title: notification.title ?? 'RideRoster',
       body: notification.body ?? '',
       payload: message.data['job_id']?.toString(),
+      data: message.data,
     );
   }
 

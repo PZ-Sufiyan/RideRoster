@@ -17,7 +17,9 @@ class NotificationService {
 
   static const _channelId = 'ride_roster_channel';
   static const _channelName = 'RideRoster Notifications';
-  static const _jobAssignmentNotificationId = 1001;
+  static const _pushNotificationIdBase = 1000;
+
+  int _nextPushNotificationId = _pushNotificationIdBase;
 
   static const AndroidNotificationChannel _androidChannel =
       AndroidNotificationChannel(
@@ -95,12 +97,31 @@ class NotificationService {
     await _plugin.show(notifId, title, body, details);
   }
 
+  /// Each push gets a unique ID so new alerts do not replace earlier ones.
+  int _uniquePushNotificationId({Map<String, dynamic>? data}) {
+    final type = data?['type']?.toString() ?? '';
+    final jobId = data?['job_id']?.toString() ?? '';
+    final direction = data?['direction']?.toString() ?? '';
+    if (type.isNotEmpty || jobId.isNotEmpty) {
+      final key = '$type|$jobId|$direction|${DateTime.now().millisecondsSinceEpoch}';
+      return key.hashCode.remainder(2147483646).abs() + 1;
+    }
+
+    _nextPushNotificationId = (_nextPushNotificationId + 1) % 2147483647;
+    if (_nextPushNotificationId < _pushNotificationIdBase) {
+      _nextPushNotificationId = _pushNotificationIdBase;
+    }
+    return _nextPushNotificationId;
+  }
+
   /// Shows a push notification while the app is in the foreground.
   Future<void> showPushNotification({
     required String title,
     required String body,
     String? payload,
+    Map<String, dynamic>? data,
   }) async {
+    final notificationId = _uniquePushNotificationId(data: data);
     final androidDetails = AndroidNotificationDetails(
       _channelId,
       _channelName,
@@ -117,7 +138,7 @@ class NotificationService {
     );
 
     await _plugin.show(
-      _jobAssignmentNotificationId,
+      notificationId,
       title,
       body,
       details,

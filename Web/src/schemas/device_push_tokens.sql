@@ -6,6 +6,7 @@ create table if not exists public.device_push_tokens (
   user_id     uuid not null references auth.users (id) on delete cascade,
   fcm_token   text not null,
   platform    text not null check (platform in ('android', 'ios')),
+  timezone    text null,
   created_at  timestamptz not null default now(),
   updated_at  timestamptz not null default now(),
   constraint device_push_tokens_user_token_key unique (user_id, fcm_token)
