@@ -1,7 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../repositories/local_job_repository.dart';
-import 'job_service.dart';
 
 class DashboardStats {
   final int jobsToday;
@@ -24,7 +23,6 @@ class DashboardStats {
 class DashboardStatsService {
   final LocalJobRepository _localRepo;
   SupabaseClient get _supabase => Supabase.instance.client;
-  final JobService _jobService = JobService();
 
   DashboardStatsService(this._localRepo);
 
@@ -32,9 +30,12 @@ class DashboardStatsService {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return DashboardStats.empty;
 
+    // Same local schedule cache as Current Job card — avoids split-brain when
+    // passenger_schedules change but jobs_cache is still "fresh".
+    final jobsToday = await _localRepo.countScheduledDirectionsToday();
+
     try {
       final results = await Future.wait<dynamic>([
-        _jobService.countScheduledDirectionsToday(),
         _supabase
             .from('jobs')
             .select('id')
@@ -48,12 +49,11 @@ class DashboardStatsService {
       ]).timeout(const Duration(seconds: 3));
 
       return DashboardStats(
-        jobsToday: results[0] as int,
-        pendingRequests: (results[1] as List).length,
-        completedJobs: (results[2] as List).length,
+        jobsToday: jobsToday,
+        pendingRequests: (results[0] as List).length,
+        completedJobs: (results[1] as List).length,
       );
     } catch (_) {
-      final jobsToday = await _localRepo.countScheduledDirectionsToday();
       return DashboardStats(
         jobsToday: jobsToday,
         pendingRequests: 0,

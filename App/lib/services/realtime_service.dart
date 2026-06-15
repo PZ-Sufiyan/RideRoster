@@ -242,6 +242,17 @@ class RealtimeService {
               _jobChanges.add(Map<String, dynamic>.from(payload.newRecord));
             }
           },
+        )
+        .onPostgresChanges(
+          event: PostgresChangeEvent.delete,
+          schema: 'public',
+          table: 'passenger_schedules',
+          callback: (payload) {
+            // Weekday OFF removes base rows — reload so local cache drops them.
+            if (!_jobChanges.isClosed) {
+              _jobChanges.add(Map<String, dynamic>.from(payload.oldRecord));
+            }
+          },
         );
 
     _schedulesChannel!.subscribe();

@@ -7,8 +7,11 @@ import '../database/app_database.dart';
 /// Call [ensureFresh] on app launch (when online).
 /// All reads during a run go through [AppDatabase] — never directly to Supabase.
 ///
-/// Freshness rule: re-fetch if the oldest cache row is > [_maxAgeHours] old,
-/// or if the cache is empty.
+/// Job/vehicle freshness: re-fetch if the oldest jobs_cache row is >
+/// [_maxAgeHours] old, or if the cache is empty.
+///
+/// [passenger_schedules] are always refreshed on [ensureFresh] when online —
+/// they change independently of job metadata (e.g. weekday toggles).
 class CacheRepository {
   final AppDatabase _db;
   SupabaseClient get _supabase => Supabase.instance.client;
@@ -17,15 +20,14 @@ class CacheRepository {
 
   CacheRepository(this._db);
 
-  /// Entry point. Call once on launch when ConnectivityService.isOnline == true.
-  /// Safe to call multiple times — checks freshness before fetching.
+  /// Entry point. Call on launch and before each job load when online.
+  /// Job metadata is fetched only when stale; schedules are always refreshed.
   Future<void> ensureFresh() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return;
 
     final stale = await _isCacheStale();
     final vehicleMissing = await _isVehicleCacheEmpty();
-    if (!stale && !vehicleMissing) return;
 
     if (stale) {
       // Fetch as both driver and PA — one will return empty rows if user
@@ -35,10 +37,13 @@ class CacheRepository {
         _refreshPaJobs(userId),
         _refreshVehicle(userId),
       ]);
-      await _refreshSchedulesAndPassengers(userId);
     } else if (vehicleMissing) {
       await _refreshVehicle(userId);
     }
+
+    // Weekday toggles and exceptions update passenger_schedules without
+    // touching jobs_cache — keep the local schedule cache in sync.
+    await _refreshSchedulesAndPassengers(userId);
   }
 
   /// Force-refresh regardless of age. Call after SyncEngine drains the queue
