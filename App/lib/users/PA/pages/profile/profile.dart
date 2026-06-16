@@ -5,23 +5,20 @@ import '../../../../components/app_button.dart';
 import '../../../../components/offline_banner.dart';
 import '../../../../model/pa_profile_model.dart';
 import '../../../../providers/auth_provider.dart';
+import '../../../../providers/connectivity_provider.dart';
 import '../../../../providers/pa_profile_provider.dart';
 import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
+import 'edit_profile.dart';
+import 'pa_document_catalog.dart';
 
 /// PA profile palette — matches the design screenshot (green header / accents).
 class _PaProfileColors {
   static const Color header = Color(0xFF1B5E20);
   static const Color action = Color(0xFF2ECC71);
   static const Color onDutyDot = Color(0xFF7CFC00);
-  static const Color docGreen = Color(0xFF2ECC71);
-  static const Color docGreenBg = Color(0xFFE8F8EF);
-  static const Color docYellow = Color(0xFFF1C40F);
-  static const Color docYellowBg = Color(0xFFFFF9E6);
-  static const Color docRed = Color(0xFFE74C3C);
-  static const Color docRedBg = Color(0xFFFDECEA);
 }
 
 class PaProfilePage extends StatefulWidget {
@@ -75,16 +72,38 @@ class _PaProfilePageState extends State<PaProfilePage> {
             child: Column(
               children: [
                 const OfflineBanner(),
-                _ProfileHeader(profile: profile),
+                _ProfileHeader(
+                  profile: profile,
+                  onEditPhoto: () => _openEdit(
+                    context,
+                    const PaEditProfileArgs(
+                      section: PaProfileEditSection.profilePhoto,
+                    ),
+                  ),
+                ),
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _PersonalInformationSection(profile: profile),
+                        _PersonalInformationSection(
+                          profile: profile,
+                          onEdit: () => _openEdit(
+                            context,
+                            const PaEditProfileArgs(
+                              section: PaProfileEditSection.personalInfo,
+                            ),
+                          ),
+                        ),
                         SizedBox(height: SizeConfig.r(24)),
-                        _CertificatesSection(documents: profile.documents),
+                        _DocumentsSection(
+                          profile: profile,
+                          onDocumentTap: (section) => _openEdit(
+                            context,
+                            PaEditProfileArgs(section: section),
+                          ),
+                        ),
                         SizedBox(height: SizeConfig.r(24)),
                         _SettingsSection(onLogout: () => _logout(context)),
                         SizedBox(height: SizeConfig.r(28)),
@@ -97,6 +116,21 @@ class _PaProfilePageState extends State<PaProfilePage> {
           );
         },
       ),
+    );
+  }
+
+  static Future<void> _openEdit(
+    BuildContext context,
+    PaEditProfileArgs args,
+  ) async {
+    if (!context.read<ConnectivityProvider>().isOnline) {
+      showPaEditProfileRequiresInternetMessage(context);
+      return;
+    }
+    await Navigator.pushNamed(
+      context,
+      AppRoutes.paEditProfile,
+      arguments: args,
     );
   }
 
@@ -422,7 +456,12 @@ class _ProfileErrorBody extends StatelessWidget {
 
 class _ProfileHeader extends StatelessWidget {
   final PaProfileModel profile;
-  const _ProfileHeader({required this.profile});
+  final VoidCallback onEditPhoto;
+
+  const _ProfileHeader({
+    required this.profile,
+    required this.onEditPhoto,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -490,17 +529,20 @@ class _ProfileHeader extends StatelessWidget {
                 Positioned(
                   right: SizeConfig.r(2),
                   bottom: SizeConfig.r(2),
-                  child: Container(
-                    width: SizeConfig.r(28),
-                    height: SizeConfig.r(28),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.edit_outlined,
-                      color: _PaProfileColors.header,
-                      size: SizeConfig.r(14),
+                  child: GestureDetector(
+                    onTap: onEditPhoto,
+                    child: Container(
+                      width: SizeConfig.r(28),
+                      height: SizeConfig.r(28),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.edit_outlined,
+                        color: _PaProfileColors.header,
+                        size: SizeConfig.r(14),
+                      ),
                     ),
                   ),
                 ),
@@ -577,7 +619,12 @@ class _ProfileHeader extends StatelessWidget {
 
 class _PersonalInformationSection extends StatelessWidget {
   final PaProfileModel profile;
-  const _PersonalInformationSection({required this.profile});
+  final VoidCallback onEdit;
+
+  const _PersonalInformationSection({
+    required this.profile,
+    required this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -602,10 +649,13 @@ class _PersonalInformationSection extends StatelessWidget {
                   color: AppColors.textDark,
                 ),
               ),
-              Icon(
-                Icons.edit_outlined,
-                color: _PaProfileColors.action,
-                size: SizeConfig.r(20),
+              GestureDetector(
+                onTap: onEdit,
+                child: Icon(
+                  Icons.edit_outlined,
+                  color: _PaProfileColors.action,
+                  size: SizeConfig.r(20),
+                ),
               ),
             ],
           ),
@@ -692,12 +742,19 @@ class _InfoRow extends StatelessWidget {
 // Certificates & Documents
 // ─────────────────────────────────────────────────────────────────────────────
 
-class _CertificatesSection extends StatelessWidget {
-  final List<PaDocumentModel> documents;
-  const _CertificatesSection({required this.documents});
+class _DocumentsSection extends StatelessWidget {
+  final PaProfileModel profile;
+  final void Function(PaProfileEditSection section) onDocumentTap;
+
+  const _DocumentsSection({
+    required this.profile,
+    required this.onDocumentTap,
+  });
 
   @override
   Widget build(BuildContext context) {
+    final cards = PaDocumentCatalog.buildCards(profile);
+
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
       child: Column(
@@ -711,185 +768,109 @@ class _CertificatesSection extends StatelessWidget {
               color: AppColors.textDark,
             ),
           ),
+          SizedBox(height: SizeConfig.r(8)),
+          Text(
+            'Yellow = missing · Red = expired · Green = valid',
+            style: TextStyle(
+              fontSize: SizeConfig.sp(12),
+              color: AppColors.textLight,
+            ),
+          ),
           SizedBox(height: SizeConfig.r(14)),
-          if (documents.isEmpty)
-            Text(
-              'No documents uploaded yet.',
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                color: AppColors.textLight,
-              ),
-            )
-          else
-            ...documents.map(
-              (doc) => Padding(
-                padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
-                child: _DocumentCard(document: doc),
+          ...cards.map(
+            (card) => Padding(
+              padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
+              child: _CatalogDocumentCard(
+                card: card,
+                onTap: () => onDocumentTap(card.section),
               ),
             ),
+          ),
         ],
       ),
     );
   }
 }
 
-enum _DocStatusType { verified, pending, expiring, expired }
+class _CatalogDocumentCard extends StatelessWidget {
+  final PaDocumentCardViewModel card;
+  final VoidCallback onTap;
 
-class _DocumentCard extends StatelessWidget {
-  final PaDocumentModel document;
-  const _DocumentCard({required this.document});
-
-  _DocStatusType get _statusType {
-    if (document.isExpiryDateMissing) return _DocStatusType.expired;
-    switch (document.expiryState) {
-      case PaDocumentExpiryState.expired:
-        return _DocStatusType.expired;
-      case PaDocumentExpiryState.expiringSoon:
-        return _DocStatusType.expiring;
-      case PaDocumentExpiryState.missing:
-        return _DocStatusType.expired;
-      case PaDocumentExpiryState.ok:
-        if (document.verified) return _DocStatusType.verified;
-        return _DocStatusType.pending;
-    }
-  }
-
-  String get _statusLabel {
-    if (document.isExpiryDateMissing) return 'Date required';
-    switch (_statusType) {
-      case _DocStatusType.expired:
-        return 'Expired';
-      case _DocStatusType.expiring:
-        return 'Expiring soon';
-      case _DocStatusType.verified:
-        return 'Verified';
-      case _DocStatusType.pending:
-        return 'Pending';
-    }
-  }
-
-  IconData get _icon {
-    switch (document.documentType) {
-      case 'passport':
-        return Icons.badge_outlined;
-      case 'safeguarding_certificate':
-        return Icons.workspace_premium_outlined;
-      case 'background_check':
-        return Icons.verified_user_outlined;
-      case 'first_aid_certificate':
-        return Icons.monitor_heart_outlined;
-      default:
-        return Icons.description_outlined;
-    }
-  }
+  const _CatalogDocumentCard({required this.card, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    late final Color accent;
-    late final Color bg;
-    switch (_statusType) {
-      case _DocStatusType.verified:
-        accent = _PaProfileColors.docGreen;
-        bg = _PaProfileColors.docGreenBg;
-        break;
-      case _DocStatusType.pending:
-      case _DocStatusType.expiring:
-        accent = _PaProfileColors.docYellow;
-        bg = _PaProfileColors.docYellowBg;
-        break;
-      case _DocStatusType.expired:
-        accent = _PaProfileColors.docRed;
-        bg = _PaProfileColors.docRedBg;
-        break;
-    }
+    final accent = card.accentColor;
+    final bg = card.backgroundColor;
 
-    final showExpiryRow = document.hasExpiryIssue;
-    final expiryColor = document.isExpiryDateMissing ||
-            document.expiryState == PaDocumentExpiryState.expired
-        ? _PaProfileColors.docRed
-        : _PaProfileColors.docYellow;
-    final showExpiryAlert = document.isExpiryDateMissing ||
-        document.expiryState == PaDocumentExpiryState.expiringSoon ||
-        document.expiryState == PaDocumentExpiryState.expired;
-
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.r(14),
-        vertical: SizeConfig.r(14),
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
-        border: Border.all(color: accent.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          Icon(_icon, color: accent, size: SizeConfig.r(26)),
-          SizedBox(width: SizeConfig.r(12)),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  document.displayTitle,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(14),
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                SizedBox(height: SizeConfig.r(6)),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SizeConfig.r(10),
-                    vertical: SizeConfig.r(4),
-                  ),
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(SizeConfig.r(12)),
-                  ),
-                  child: Text(
-                    _statusLabel,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: SizeConfig.r(14),
+          vertical: SizeConfig.r(14),
+        ),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+          border: Border.all(color: accent.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            Icon(card.icon, color: accent, size: SizeConfig.r(26)),
+            SizedBox(width: SizeConfig.r(12)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    card.title,
                     style: TextStyle(
-                      fontSize: SizeConfig.sp(10),
+                      fontSize: SizeConfig.sp(14),
                       fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                      color: AppColors.textDark,
                     ),
                   ),
-                ),
-                if (showExpiryRow) ...[
-                  SizedBox(height: SizeConfig.r(8)),
-                  Row(
-                    children: [
-                      if (showExpiryAlert)
-                        Padding(
-                          padding: EdgeInsets.only(right: SizeConfig.r(4)),
-                          child: Icon(
-                            Icons.warning_amber_rounded,
-                            color: expiryColor,
-                            size: SizeConfig.r(16),
-                          ),
-                        ),
-                      Text(
-                        document.expiryDisplayText,
-                        style: TextStyle(
-                          fontSize: SizeConfig.sp(12),
-                          fontWeight: FontWeight.w600,
-                          color: expiryColor,
-                        ),
+                  if (card.subtitle != null) ...[
+                    SizedBox(height: SizeConfig.r(4)),
+                    Text(
+                      card.subtitle!,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(12),
+                        color: AppColors.textMedium,
                       ),
-                    ],
+                    ),
+                  ],
+                  SizedBox(height: SizeConfig.r(6)),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SizeConfig.r(10),
+                      vertical: SizeConfig.r(4),
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(SizeConfig.r(12)),
+                    ),
+                    child: Text(
+                      card.statusLabel,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(10),
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
+                    ),
                   ),
                 ],
-              ],
+              ),
             ),
-          ),
-          Icon(
-            Icons.chevron_right,
-            color: AppColors.textLight,
-            size: SizeConfig.r(22),
-          ),
-        ],
+            Icon(
+              Icons.chevron_right,
+              color: AppColors.textLight,
+              size: SizeConfig.r(22),
+            ),
+          ],
+        ),
       ),
     );
   }

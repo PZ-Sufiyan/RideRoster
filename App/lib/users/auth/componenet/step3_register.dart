@@ -56,29 +56,6 @@ class _Step3RegisterState extends State<Step3Register> {
     }
   }
 
-  // ── Date picker ────────────────────────────────────────────────────────────
-
-  Future<void> _pickDate(
-    DateTime? current,
-    void Function(DateTime d) onPicked,
-  ) async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: current ?? now,
-      firstDate: now,
-      lastDate: DateTime(now.year + 20),
-      helpText: 'Select Expiry Date',
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: AppColors.primary),
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) setState(() => onPicked(picked));
-  }
-
   String _fmt(DateTime d) {
     const m = [
       '',
@@ -384,8 +361,7 @@ class _Step3RegisterState extends State<Step3Register> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.passportExpiry,
-            onTap: () =>
-                _pickDate(d.passportExpiry, (dt) => d.passportExpiry = dt),
+            onDatePicked: (dt) => setState(() => d.passportExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(6)),
@@ -418,10 +394,7 @@ class _Step3RegisterState extends State<Step3Register> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.drivingLicenseExpiry,
-            onTap: () => _pickDate(
-              d.drivingLicenseExpiry,
-              (dt) => d.drivingLicenseExpiry = dt,
-            ),
+            onDatePicked: (dt) => setState(() => d.drivingLicenseExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(20)),
@@ -443,8 +416,7 @@ class _Step3RegisterState extends State<Step3Register> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.taxiBadgeExpiry,
-            onTap: () =>
-                _pickDate(d.taxiBadgeExpiry, (dt) => d.taxiBadgeExpiry = dt),
+            onDatePicked: (dt) => setState(() => d.taxiBadgeExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(20)),
@@ -466,8 +438,7 @@ class _Step3RegisterState extends State<Step3Register> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.dbsCertExpiry,
-            onTap: () =>
-                _pickDate(d.dbsCertExpiry, (dt) => d.dbsCertExpiry = dt),
+            onDatePicked: (dt) => setState(() => d.dbsCertExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(20)),
@@ -688,10 +659,7 @@ class _Step3RegisterState extends State<Step3Register> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.motCertificateExpiry,
-            onTap: () => _pickDate(
-              d.motCertificateExpiry,
-              (dt) => d.motCertificateExpiry = dt,
-            ),
+            onDatePicked: (dt) => setState(() => d.motCertificateExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(18)),
@@ -705,10 +673,8 @@ class _Step3RegisterState extends State<Step3Register> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.taxiLicensePlateExpiry,
-            onTap: () => _pickDate(
-              d.taxiLicensePlateExpiry,
-              (dt) => d.taxiLicensePlateExpiry = dt,
-            ),
+            onDatePicked: (dt) =>
+                setState(() => d.taxiLicensePlateExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(18)),
@@ -722,10 +688,8 @@ class _Step3RegisterState extends State<Step3Register> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.insuranceCertificateExpiry,
-            onTap: () => _pickDate(
-              d.insuranceCertificateExpiry,
-              (dt) => d.insuranceCertificateExpiry = dt,
-            ),
+            onDatePicked: (dt) =>
+                setState(() => d.insuranceCertificateExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(18)),

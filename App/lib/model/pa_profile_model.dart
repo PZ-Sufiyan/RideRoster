@@ -50,6 +50,14 @@ class PaProfileModel {
 
   bool get isOnDuty => (status ?? '').trim().toLowerCase() == 'active';
 
+  PaDocumentModel? documentByType(String type) {
+    final key = type.toLowerCase();
+    for (final doc in documents) {
+      if (doc.documentType.toLowerCase() == key) return doc;
+    }
+    return null;
+  }
+
   String get statusLabel {
     final normalized = (status ?? '').trim().toLowerCase();
     if (normalized.isEmpty) return 'Unknown';

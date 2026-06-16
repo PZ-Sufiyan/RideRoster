@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../../../components/app_button.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/expiry_date_picker.dart';
 import '../../../../utils/size_confg.dart';
 
 /// Shared widgets used across all 3 registration step components.
@@ -198,19 +199,30 @@ class ExpiryButton extends StatelessWidget {
   const ExpiryButton({
     super.key,
     required this.date,
-    required this.onTap,
+    required this.onDatePicked,
     required this.formatDate,
+    this.yearsAhead = 20,
   });
 
   final DateTime? date;
-  final VoidCallback onTap;
+  final ValueChanged<DateTime> onDatePicked;
   final String Function(DateTime) formatDate;
+  final int yearsAhead;
+
+  Future<void> _openPicker(BuildContext context) async {
+    final picked = await pickExpiryDate(
+      context,
+      initial: date,
+      yearsAhead: yearsAhead,
+    );
+    if (picked != null) onDatePicked(picked);
+  }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig.init(context);
     return GestureDetector(
-      onTap: onTap,
+      onTap: () => _openPicker(context),
       child: Container(
         padding: EdgeInsets.symmetric(
           horizontal: SizeConfig.r(14),

@@ -13,6 +13,7 @@ import '../users/driver/pages/job/requested_jobs.dart';
 import '../users/driver/pages/job/route_detail.dart';
 import '../users/PA/pages/dashboard/dashboard.dart';
 import '../users/PA/pages/profile/profile.dart';
+import '../users/PA/pages/profile/edit_profile.dart';
 import '../users/PA/pages/notification/notification.dart';
 import '../users/PA/pages/job/assigned_job.dart';
 import '../users/PA/pages/job/current_job.dart';
@@ -45,6 +46,7 @@ class AppRoutes {
   static const String driverLeaveRequest = '/driver/leave-request';
   static const String paDashboard = '/pa/dashboard';
   static const String paProfile = '/pa/profile';
+  static const String paEditProfile = '/pa/profile/edit';
   static const String paNotifications = '/pa/notifications';
   static const String paCurrentJob = '/pa/current-job';
   static const String paAssignedJobs = '/pa/assigned-jobs';
@@ -122,6 +124,15 @@ class AppRoutes {
 
       case paProfile:
         return MaterialPageRoute(builder: (_) => const PaProfilePage());
+
+      case paEditProfile:
+        final paArgs = settings.arguments;
+        if (paArgs is! PaEditProfileArgs) {
+          return MaterialPageRoute(builder: (_) => const PaProfilePage());
+        }
+        return MaterialPageRoute(
+          builder: (_) => PaEditProfilePage(args: paArgs),
+        );
 
       case paNotifications:
         return MaterialPageRoute(builder: (_) => const PaNotificationsPage());

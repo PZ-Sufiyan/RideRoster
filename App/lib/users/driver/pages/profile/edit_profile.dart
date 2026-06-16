@@ -579,26 +579,6 @@ Future<PlatformFile?> pickDocumentFile() async {
   return result.files.first;
 }
 
-Future<DateTime?> pickExpiryDate(
-  BuildContext context, {
-  DateTime? initial,
-}) async {
-  final now = DateTime.now();
-  return showDatePicker(
-    context: context,
-    initialDate: initial ?? now,
-    firstDate: now,
-    lastDate: DateTime(now.year + 20),
-    helpText: 'Select Expiry Date',
-    builder: (context, child) => Theme(
-      data: Theme.of(context).copyWith(
-        colorScheme: const ColorScheme.light(primary: AppColors.primary),
-      ),
-      child: child!,
-    ),
-  );
-}
-
 String formatEditDate(DateTime d) {
   const months = [
     '',
@@ -1144,10 +1124,7 @@ class _PassportDocumentSectionState extends State<_PassportDocumentSection> {
         SizedBox(height: SizeConfig.r(10)),
         ExpiryButton(
           date: _expiry,
-          onTap: () async {
-            final picked = await pickExpiryDate(context, initial: _expiry);
-            if (picked != null) setState(() => _expiry = picked);
-          },
+          onDatePicked: (picked) => setState(() => _expiry = picked),
           formatDate: formatEditDate,
         ),
         SizedBox(height: SizeConfig.r(6)),
@@ -1273,10 +1250,7 @@ class _PairedDocumentSectionState extends State<_PairedDocumentSection> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: _expiry,
-            onTap: () async {
-              final picked = await pickExpiryDate(context, initial: _expiry);
-              if (picked != null) setState(() => _expiry = picked);
-            },
+            onDatePicked: (picked) => setState(() => _expiry = picked),
             formatDate: formatEditDate,
           ),
           SizedBox(height: SizeConfig.r(6)),
@@ -1401,10 +1375,7 @@ class _DrivingLicenseSectionState extends State<_DrivingLicenseSection> {
         SizedBox(height: SizeConfig.r(10)),
         ExpiryButton(
           date: _expiry,
-          onTap: () async {
-            final picked = await pickExpiryDate(context, initial: _expiry);
-            if (picked != null) setState(() => _expiry = picked);
-          },
+          onDatePicked: (picked) => setState(() => _expiry = picked),
           formatDate: formatEditDate,
         ),
         SizedBox(height: SizeConfig.r(6)),
@@ -1525,10 +1496,7 @@ class _DbsDocumentSectionState extends State<_DbsDocumentSection> {
         SizedBox(height: SizeConfig.r(10)),
         ExpiryButton(
           date: _expiry,
-          onTap: () async {
-            final picked = await pickExpiryDate(context, initial: _expiry);
-            if (picked != null) setState(() => _expiry = picked);
-          },
+          onDatePicked: (picked) => setState(() => _expiry = picked),
           formatDate: formatEditDate,
         ),
         SizedBox(height: SizeConfig.r(6)),
@@ -1621,10 +1589,7 @@ class _SingleDriverDocumentSectionState
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: _expiry,
-            onTap: () async {
-              final picked = await pickExpiryDate(context, initial: _expiry);
-              if (picked != null) setState(() => _expiry = picked);
-            },
+            onDatePicked: (picked) => setState(() => _expiry = picked),
             formatDate: formatEditDate,
           ),
           SizedBox(height: SizeConfig.r(6)),
@@ -1841,10 +1806,7 @@ class _SingleVehicleDocumentSectionState
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: _expiry,
-            onTap: () async {
-              final picked = await pickExpiryDate(context, initial: _expiry);
-              if (picked != null) setState(() => _expiry = picked);
-            },
+            onDatePicked: (picked) => setState(() => _expiry = picked),
             formatDate: formatEditDate,
           ),
           SizedBox(height: SizeConfig.r(6)),
@@ -1951,10 +1913,7 @@ class _TaxiLicensePlateSectionState extends State<_TaxiLicensePlateSection> {
         SizedBox(height: SizeConfig.r(10)),
         ExpiryButton(
           date: _expiry,
-          onTap: () async {
-            final picked = await pickExpiryDate(context, initial: _expiry);
-            if (picked != null) setState(() => _expiry = picked);
-          },
+          onDatePicked: (picked) => setState(() => _expiry = picked),
           formatDate: formatEditDate,
         ),
         SizedBox(height: SizeConfig.r(6)),

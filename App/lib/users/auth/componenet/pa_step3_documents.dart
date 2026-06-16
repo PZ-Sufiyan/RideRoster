@@ -2,7 +2,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../../model/passenger_assistant_register_data.dart';
 import 'register_widgets.dart';
-import 'step3_register.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 
@@ -27,27 +26,6 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
     if (result != null && result.files.isNotEmpty) {
       setState(() => onPicked(result.files.first));
     }
-  }
-
-  Future<void> _pickDate(
-    DateTime? current,
-    void Function(DateTime d) onPicked,
-  ) async {
-    final now = DateTime.now();
-    final picked = await showDatePicker(
-      context: context,
-      initialDate: current ?? now,
-      firstDate: now,
-      lastDate: DateTime(now.year + 30),
-      helpText: 'Expiry date',
-      builder: (context, child) => Theme(
-        data: Theme.of(context).copyWith(
-          colorScheme: const ColorScheme.light(primary: AppColors.primary),
-        ),
-        child: child!,
-      ),
-    );
-    if (picked != null) setState(() => onPicked(picked));
   }
 
   String _fmt(DateTime d) {
@@ -122,8 +100,7 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.passportExpiry,
-            onTap: () =>
-                _pickDate(d.passportExpiry, (dt) => d.passportExpiry = dt),
+            onDatePicked: (dt) => setState(() => d.passportExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(6)),
@@ -165,10 +142,7 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
           SizedBox(height: SizeConfig.r(10)),
           ExpiryButton(
             date: d.safeguardingExpiry,
-            onTap: () => _pickDate(
-              d.safeguardingExpiry,
-              (dt) => d.safeguardingExpiry = dt,
-            ),
+            onDatePicked: (dt) => setState(() => d.safeguardingExpiry = dt),
             formatDate: _fmt,
           ),
           SizedBox(height: SizeConfig.r(6)),
