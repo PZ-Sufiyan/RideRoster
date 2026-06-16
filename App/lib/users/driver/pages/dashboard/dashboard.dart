@@ -186,10 +186,15 @@ class _DashboardAppBar extends StatelessWidget {
             ),
           ),
           SizedBox(width: SizeConfig.r(14)),
-          _BadgeIcon(
-            icon: Icons.notifications_outlined,
-            badgeColor: AppColors.warning,
-            badgeLabel: '2',
+          GestureDetector(
+            onTap: () =>
+                Navigator.pushNamed(context, AppRoutes.driverNotifications),
+            behavior: HitTestBehavior.opaque,
+            child: _BadgeIcon(
+              icon: Icons.notifications_outlined,
+              badgeColor: AppColors.warning,
+              badgeLabel: '2',
+            ),
           ),
         ],
       ),
