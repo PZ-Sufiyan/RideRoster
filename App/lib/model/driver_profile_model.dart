@@ -10,6 +10,8 @@ class DriverProfileModel {
   final String emergencyContactPhone;
   final String? passportNumber;
   final String? rightToWorkCode;
+  final String? nationality;
+  final String? profilePictureUrl;
   final String licenseNo;
   final String? status;
   final String? dbsServiceUpdateId;
@@ -29,6 +31,8 @@ class DriverProfileModel {
     required this.emergencyContactPhone,
     required this.passportNumber,
     required this.rightToWorkCode,
+    required this.nationality,
+    required this.profilePictureUrl,
     required this.licenseNo,
     required this.status,
     required this.dbsServiceUpdateId,
@@ -50,6 +54,22 @@ class DriverProfileModel {
 
   bool get isActive => (status ?? '').trim().toLowerCase() == 'active';
 
+  DriverDocumentModel? driverDocumentByType(String type) {
+    final key = type.toLowerCase();
+    for (final doc in driverDocuments) {
+      if (doc.documentType.toLowerCase() == key) return doc;
+    }
+    return null;
+  }
+
+  VehicleDocumentModel? vehicleDocumentByType(String type) {
+    final key = type.toLowerCase();
+    for (final doc in vehicleDocuments) {
+      if (doc.documentType.toLowerCase() == key) return doc;
+    }
+    return null;
+  }
+
   Map<String, dynamic> toJson() => {
     'id': id,
     'company_id': companyId,
@@ -62,6 +82,8 @@ class DriverProfileModel {
     'emergency_contact_phone': emergencyContactPhone,
     'passport_number': passportNumber,
     'right_to_work_code': rightToWorkCode,
+    'nationality': nationality,
+    'profile_picture_url': profilePictureUrl,
     'license_no': licenseNo,
     'status': status,
     'dbs_service_update_id': dbsServiceUpdateId,
@@ -84,6 +106,8 @@ class DriverProfileModel {
       emergencyContactPhone: (json['emergency_contact_phone'] ?? '').toString(),
       passportNumber: json['passport_number']?.toString(),
       rightToWorkCode: json['right_to_work_code']?.toString(),
+      nationality: json['nationality']?.toString(),
+      profilePictureUrl: json['profile_picture_url']?.toString(),
       licenseNo: (json['license_no'] ?? '').toString(),
       status: json['status']?.toString(),
       dbsServiceUpdateId: json['dbs_service_update_id']?.toString(),
@@ -121,6 +145,8 @@ class DriverProfileModel {
       emergencyContactPhone: (row['emergency_contact_phone'] ?? '').toString().trim(),
       passportNumber: _toNullableText(row['passport_number']),
       rightToWorkCode: _toNullableText(row['right_to_work_code']),
+      nationality: _toNullableText(row['nationality']),
+      profilePictureUrl: _toNullableText(row['profile_picture_url']),
       licenseNo: (row['license_no'] ?? '').toString().trim(),
       status: _toNullableText(row['status']),
       dbsServiceUpdateId: _toNullableText(row['dbs_service_update_id']),
@@ -143,6 +169,7 @@ class DriverVehicleModel {
   final String? model;
   final String taxiLicensePlateNumber;
   final String? registrationNumber;
+  final String? vehiclePhotoUrl;
   final String? vehicleColour;
   final int? seatingCapacity;
   final bool wheelchairAccessible;
@@ -154,6 +181,7 @@ class DriverVehicleModel {
     required this.model,
     required this.taxiLicensePlateNumber,
     required this.registrationNumber,
+    required this.vehiclePhotoUrl,
     required this.vehicleColour,
     required this.seatingCapacity,
     required this.wheelchairAccessible,
@@ -172,6 +200,7 @@ class DriverVehicleModel {
     'model': model,
     'taxi_license_plate_number': taxiLicensePlateNumber,
     'registration_number': registrationNumber,
+    'vehicle_photo_url': vehiclePhotoUrl,
     'vehicle_colour': vehicleColour,
     'seating_capacity': seatingCapacity,
     'wheelchair_accessible': wheelchairAccessible,
@@ -186,6 +215,7 @@ class DriverVehicleModel {
       taxiLicensePlateNumber: (json['taxi_license_plate_number'] ?? '')
           .toString(),
       registrationNumber: _toNullableText(json['registration_number']),
+      vehiclePhotoUrl: _toNullableText(json['vehicle_photo_url']),
       vehicleColour: _toNullableText(json['vehicle_colour']),
       seatingCapacity: _toNullableInt(json['seating_capacity']),
       wheelchairAccessible: json['wheelchair_accessible'] == true,
@@ -202,6 +232,7 @@ class DriverVehicleModel {
           .toString()
           .trim(),
       registrationNumber: _toNullableText(row['registration_number']),
+      vehiclePhotoUrl: _toNullableText(row['vehicle_photo_url']),
       vehicleColour: _toNullableText(row['vehicle_colour']),
       seatingCapacity: _toNullableInt(row['seating_capacity']),
       wheelchairAccessible: row['wheelchair_accessible'] == true,

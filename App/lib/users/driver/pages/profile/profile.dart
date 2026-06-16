@@ -5,8 +5,11 @@ import '../../../../components/app_button.dart';
 import '../../../../components/offline_banner.dart';
 import '../../../../model/driver_profile_model.dart';
 import '../../../../providers/auth_provider.dart';
+import '../../../../providers/connectivity_provider.dart';
 import '../../../../providers/driver_profile_provider.dart';
 import '../../../../routes/app_routes.dart';
+import 'driver_document_catalog.dart';
+import 'edit_profile.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
@@ -16,10 +19,6 @@ class _ProfileColors {
   static const Color header = Color(0xFF1B5E20);
   static const Color action = Color(0xFF2ECC71);
   static const Color onDutyDot = Color(0xFF7CFC00);
-  static const Color docGreen = Color(0xFF2ECC71);
-  static const Color docGreenBg = Color(0xFFE8F8EF);
-  static const Color docYellow = Color(0xFFF1C40F);
-  static const Color docYellowBg = Color(0xFFFFF9E6);
 }
 
 class DriverProfilePage extends StatefulWidget {
@@ -73,28 +72,57 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
             child: Column(
               children: [
                 const OfflineBanner(),
-                _ProfileHeader(profile: profile),
+                _ProfileHeader(
+                  profile: profile,
+                  onEditPhoto: () => _openEdit(
+                    context,
+                    const DriverEditProfileArgs(
+                      section: DriverProfileEditSection.profilePhoto,
+                    ),
+                  ),
+                ),
                 Expanded(
                   child: SingleChildScrollView(
                     physics: const AlwaysScrollableScrollPhysics(),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        _PersonalInformationSection(profile: profile),
+                        _PersonalInformationSection(
+                          profile: profile,
+                          onEdit: () => _openEdit(
+                            context,
+                            const DriverEditProfileArgs(
+                              section: DriverProfileEditSection.personalInfo,
+                            ),
+                          ),
+                        ),
                         SizedBox(height: SizeConfig.r(24)),
-                        _ProfessionalDetailsSection(profile: profile),
+                        _ProfessionalDetailsSection(
+                          profile: profile,
+                          onEdit: () => _openEdit(
+                            context,
+                            const DriverEditProfileArgs(
+                              section:
+                                  DriverProfileEditSection.professionalDetails,
+                            ),
+                          ),
+                        ),
                         SizedBox(height: SizeConfig.r(24)),
-                        _DocumentsSection(profile: profile),
+                        _DocumentsSection(
+                          profile: profile,
+                          onDocumentTap: (section) => _openEdit(
+                            context,
+                            DriverEditProfileArgs(section: section),
+                          ),
+                        ),
                         SizedBox(height: SizeConfig.r(24)),
                         _QuickActionsSection(
                           onChecklist: () => Navigator.pushNamed(
                             context,
                             AppRoutes.vehicleChecklist,
                           ),
-                          onSos: () => Navigator.pushNamed(
-                            context,
-                            AppRoutes.sos,
-                          ),
+                          onSos: () =>
+                              Navigator.pushNamed(context, AppRoutes.sos),
                           onRefresh: () => context
                               .read<DriverProfileProvider>()
                               .loadProfile(forceRefresh: true),
@@ -111,6 +139,21 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
           );
         },
       ),
+    );
+  }
+
+  static Future<void> _openEdit(
+    BuildContext context,
+    DriverEditProfileArgs args,
+  ) async {
+    if (!context.read<ConnectivityProvider>().isOnline) {
+      showEditProfileRequiresInternetMessage(context);
+      return;
+    }
+    await Navigator.pushNamed(
+      context,
+      AppRoutes.driverEditProfile,
+      arguments: args,
     );
   }
 
@@ -185,7 +228,9 @@ class _ProfileLoadingBody extends StatelessWidget {
           SizedBox(height: SizeConfig.r(16)),
           ...List.generate(rowCount, (i) {
             return Padding(
-              padding: EdgeInsets.only(bottom: i < rowCount - 1 ? SizeConfig.r(12) : 0),
+              padding: EdgeInsets.only(
+                bottom: i < rowCount - 1 ? SizeConfig.r(12) : 0,
+              ),
               child: Row(
                 children: [
                   Expanded(
@@ -227,7 +272,9 @@ class _ProfileLoadingBody extends StatelessWidget {
           ...List.generate(
             cardCount,
             (i) => Padding(
-              padding: EdgeInsets.only(bottom: i < cardCount - 1 ? SizeConfig.r(10) : 0),
+              padding: EdgeInsets.only(
+                bottom: i < cardCount - 1 ? SizeConfig.r(10) : 0,
+              ),
               child: ShimmerBox(
                 width: double.infinity,
                 height: SizeConfig.r(72),
@@ -478,7 +525,9 @@ class _ProfileErrorBody extends StatelessWidget {
 
 class _ProfileHeader extends StatelessWidget {
   final DriverProfileModel profile;
-  const _ProfileHeader({required this.profile});
+  final VoidCallback onEditPhoto;
+
+  const _ProfileHeader({required this.profile, required this.onEditPhoto});
 
   @override
   Widget build(BuildContext context) {
@@ -532,27 +581,36 @@ class _ProfileHeader extends StatelessWidget {
                   child: CircleAvatar(
                     radius: SizeConfig.r(48),
                     backgroundColor: const Color(0xFFE8E8E8),
-                    child: Icon(
-                      Icons.person,
-                      size: SizeConfig.r(48),
-                      color: AppColors.textLight,
-                    ),
+                    backgroundImage:
+                        (profile.profilePictureUrl ?? '').isNotEmpty
+                        ? NetworkImage(profile.profilePictureUrl!)
+                        : null,
+                    child: (profile.profilePictureUrl ?? '').isEmpty
+                        ? Icon(
+                            Icons.person,
+                            size: SizeConfig.r(48),
+                            color: AppColors.textLight,
+                          )
+                        : null,
                   ),
                 ),
                 Positioned(
                   right: SizeConfig.r(2),
                   bottom: SizeConfig.r(2),
-                  child: Container(
-                    width: SizeConfig.r(28),
-                    height: SizeConfig.r(28),
-                    decoration: const BoxDecoration(
-                      color: Colors.white,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      Icons.edit_outlined,
-                      color: _ProfileColors.header,
-                      size: SizeConfig.r(14),
+                  child: GestureDetector(
+                    onTap: onEditPhoto,
+                    child: Container(
+                      width: SizeConfig.r(28),
+                      height: SizeConfig.r(28),
+                      decoration: const BoxDecoration(
+                        color: Colors.white,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.edit_outlined,
+                        color: _ProfileColors.header,
+                        size: SizeConfig.r(14),
+                      ),
                     ),
                   ),
                 ),
@@ -616,7 +674,12 @@ class _ProfileHeader extends StatelessWidget {
 
 class _PersonalInformationSection extends StatelessWidget {
   final DriverProfileModel profile;
-  const _PersonalInformationSection({required this.profile});
+  final VoidCallback onEdit;
+
+  const _PersonalInformationSection({
+    required this.profile,
+    required this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -641,10 +704,15 @@ class _PersonalInformationSection extends StatelessWidget {
                   color: AppColors.textDark,
                 ),
               ),
-              Icon(
-                Icons.edit_outlined,
-                color: _ProfileColors.action,
-                size: SizeConfig.r(20),
+              IconButton(
+                onPressed: onEdit,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: Icon(
+                  Icons.edit_outlined,
+                  color: _ProfileColors.action,
+                  size: SizeConfig.r(20),
+                ),
               ),
             ],
           ),
@@ -743,7 +811,12 @@ class _InfoRow extends StatelessWidget {
 
 class _ProfessionalDetailsSection extends StatelessWidget {
   final DriverProfileModel profile;
-  const _ProfessionalDetailsSection({required this.profile});
+  final VoidCallback onEdit;
+
+  const _ProfessionalDetailsSection({
+    required this.profile,
+    required this.onEdit,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -753,13 +826,28 @@ class _ProfessionalDetailsSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(
-            'Professional Details',
-            style: TextStyle(
-              fontSize: SizeConfig.sp(16),
-              fontWeight: FontWeight.w700,
-              color: AppColors.textDark,
-            ),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                'Professional Details',
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(16),
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.textDark,
+                ),
+              ),
+              IconButton(
+                onPressed: onEdit,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+                icon: Icon(
+                  Icons.edit_outlined,
+                  color: _ProfileColors.action,
+                  size: SizeConfig.r(20),
+                ),
+              ),
+            ],
           ),
           SizedBox(height: SizeConfig.r(16)),
           _InfoRow(
@@ -803,52 +891,13 @@ class _ProfessionalDetailsSection extends StatelessWidget {
 
 class _DocumentsSection extends StatelessWidget {
   final DriverProfileModel profile;
-  const _DocumentsSection({required this.profile});
+  final void Function(DriverProfileEditSection section) onDocumentTap;
+
+  const _DocumentsSection({required this.profile, required this.onDocumentTap});
 
   @override
   Widget build(BuildContext context) {
-    final driverTypes = profile.driverDocuments
-        .map((d) => d.documentType.toLowerCase())
-        .toSet();
-    final vehicleTypes = profile.vehicleDocuments
-        .map((d) => d.documentType.toLowerCase())
-        .toSet();
-
-    bool hasAny(Iterable<String> keys, Set<String> available) {
-      for (final key in keys) {
-        if (available.contains(key.toLowerCase())) return true;
-      }
-      return false;
-    }
-
-    final docs = [
-      _DriverDocItem(
-        icon: Icons.badge_outlined,
-        title: 'Passport / ID',
-        uploaded: hasAny(const ['passport', 'passport_number'], driverTypes),
-      ),
-      _DriverDocItem(
-        icon: Icons.credit_card_outlined,
-        title: 'Driver License',
-        uploaded: hasAny(const [
-          'driving_license_front',
-          'driving_license_back',
-        ], driverTypes),
-      ),
-      _DriverDocItem(
-        icon: Icons.verified_user_outlined,
-        title: 'DBS Certificate',
-        uploaded: hasAny(const [
-          'dbs_certificate_front',
-          'dbs_certificate_back',
-        ], driverTypes),
-      ),
-      _DriverDocItem(
-        icon: Icons.directions_car_outlined,
-        title: 'Vehicle Documents',
-        uploaded: vehicleTypes.isNotEmpty,
-      ),
-    ];
+    final cards = DriverDocumentCatalog.buildCards(profile);
 
     return Padding(
       padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
@@ -863,11 +912,22 @@ class _DocumentsSection extends StatelessWidget {
               color: AppColors.textDark,
             ),
           ),
+          SizedBox(height: SizeConfig.r(8)),
+          Text(
+            'Yellow = missing · Red = expired · Green = valid',
+            style: TextStyle(
+              fontSize: SizeConfig.sp(12),
+              color: AppColors.textLight,
+            ),
+          ),
           SizedBox(height: SizeConfig.r(14)),
-          ...docs.map(
-            (doc) => Padding(
+          ...cards.map(
+            (card) => Padding(
               padding: EdgeInsets.only(bottom: SizeConfig.r(10)),
-              child: _DocumentCard(item: doc),
+              child: _DocumentCard(
+                card: card,
+                onTap: () => onDocumentTap(card.section),
+              ),
             ),
           ),
         ],
@@ -876,85 +936,99 @@ class _DocumentsSection extends StatelessWidget {
   }
 }
 
-class _DriverDocItem {
-  final IconData icon;
-  final String title;
-  final bool uploaded;
-  const _DriverDocItem({
-    required this.icon,
-    required this.title,
-    required this.uploaded,
-  });
-}
-
 class _DocumentCard extends StatelessWidget {
-  final _DriverDocItem item;
-  const _DocumentCard({required this.item});
+  final DriverDocumentCardViewModel card;
+  final VoidCallback onTap;
+
+  const _DocumentCard({required this.card, required this.onTap});
 
   @override
   Widget build(BuildContext context) {
-    final accent = item.uploaded
-        ? _ProfileColors.docGreen
-        : _ProfileColors.docYellow;
-    final bg = item.uploaded
-        ? _ProfileColors.docGreenBg
-        : _ProfileColors.docYellowBg;
-    final statusLabel = item.uploaded ? 'Uploaded' : 'Missing';
+    final accent = card.accentColor;
+    final bg = card.backgroundColor;
 
-    return Container(
-      padding: EdgeInsets.symmetric(
-        horizontal: SizeConfig.r(14),
-        vertical: SizeConfig.r(14),
-      ),
-      decoration: BoxDecoration(
-        color: bg,
-        borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
-        border: Border.all(color: accent.withValues(alpha: 0.35)),
-      ),
-      child: Row(
-        children: [
-          Icon(item.icon, color: accent, size: SizeConfig.r(26)),
-          SizedBox(width: SizeConfig.r(12)),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  item.title,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(14),
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textDark,
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+      child: Container(
+        padding: EdgeInsets.symmetric(
+          horizontal: SizeConfig.r(14),
+          vertical: SizeConfig.r(14),
+        ),
+        decoration: BoxDecoration(
+          color: bg,
+          borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+          border: Border.all(color: accent.withValues(alpha: 0.35)),
+        ),
+        child: Row(
+          children: [
+            Icon(card.icon, color: accent, size: SizeConfig.r(26)),
+            SizedBox(width: SizeConfig.r(12)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          card.title,
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(14),
+                            fontWeight: FontWeight.w600,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                      if (card.optional)
+                        Text(
+                          'Optional',
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(10),
+                            color: AppColors.textLight,
+                          ),
+                        ),
+                    ],
                   ),
-                ),
-                SizedBox(height: SizeConfig.r(6)),
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: SizeConfig.r(10),
-                    vertical: SizeConfig.r(4),
-                  ),
-                  decoration: BoxDecoration(
-                    color: accent,
-                    borderRadius: BorderRadius.circular(SizeConfig.r(12)),
-                  ),
-                  child: Text(
-                    statusLabel,
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(10),
-                      fontWeight: FontWeight.w600,
-                      color: Colors.white,
+                  if (card.subtitle != null) ...[
+                    SizedBox(height: SizeConfig.r(4)),
+                    Text(
+                      card.subtitle!,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(12),
+                        color: AppColors.textMedium,
+                      ),
+                    ),
+                  ],
+                  SizedBox(height: SizeConfig.r(6)),
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: SizeConfig.r(10),
+                      vertical: SizeConfig.r(4),
+                    ),
+                    decoration: BoxDecoration(
+                      color: accent,
+                      borderRadius: BorderRadius.circular(SizeConfig.r(12)),
+                    ),
+                    child: Text(
+                      card.statusLabel,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(10),
+                        fontWeight: FontWeight.w600,
+                        color: Colors.white,
+                      ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
-          ),
-          Icon(
-            Icons.chevron_right,
-            color: AppColors.textLight,
-            size: SizeConfig.r(22),
-          ),
-        ],
+            Icon(
+              Icons.chevron_right,
+              color: AppColors.textLight,
+              size: SizeConfig.r(22),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -978,12 +1052,6 @@ class _QuickActionsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final actions = [
-      _QuickAction(
-        icon: Icons.description_outlined,
-        label: 'Doc',
-        color: AppColors.success,
-        onTap: onRefresh,
-      ),
       _QuickAction(
         icon: Icons.checklist,
         label: 'Checklist',

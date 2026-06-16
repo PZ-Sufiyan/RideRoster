@@ -40,7 +40,8 @@ class DriverProfileService {
         .select(
           'id, company_id, first_name, last_name, email, phone, '
           'residential_address, emergency_contact_name, emergency_contact_phone, '
-          'passport_number, right_to_work_code, license_no, status, dbs_service_update_id',
+          'passport_number, right_to_work_code, nationality, profile_picture_url, '
+          'license_no, status, dbs_service_update_id',
         )
         .eq('id', userId)
         .maybeSingle()
@@ -56,7 +57,7 @@ class DriverProfileService {
         .from('vehicles')
         .select(
           'id, name, make, model, taxi_license_plate_number, registration_number, '
-          'vehicle_colour, seating_capacity, wheelchair_accessible',
+          'vehicle_photo_url, vehicle_colour, seating_capacity, wheelchair_accessible',
         )
         .eq('driver_id', userId)
         .order('created_at', ascending: false)

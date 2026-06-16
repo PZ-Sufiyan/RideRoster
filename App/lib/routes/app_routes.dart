@@ -21,6 +21,7 @@ import '../users/driver/pages/leave/leave_request_form.dart';
 import '../users/PA/pages/leave/pa_leave_page.dart';
 import '../users/PA/pages/leave/pa_leave_request_form_page.dart';
 import '../users/driver/pages/profile/profile.dart';
+import '../users/driver/pages/profile/edit_profile.dart';
 import '../users/driver/pages/sos/sos.dart';
 
 class AppRoutes {
@@ -34,6 +35,7 @@ class AppRoutes {
   static const String vehicleChecklist = '/driver/vehicle-checklist';
   static const String sos = '/driver/sos';
   static const String driverProfile = '/driver/profile';
+  static const String driverEditProfile = '/driver/profile/edit';
   static const String requestedJobs = '/driver/requested-jobs';
   static const String routeDetail = '/driver/route-detail';
   static const String pickupQueue = '/driver/pickup-queue';
@@ -81,6 +83,15 @@ class AppRoutes {
 
       case driverProfile:
         return MaterialPageRoute(builder: (_) => const DriverProfilePage());
+
+      case driverEditProfile:
+        final args = settings.arguments;
+        if (args is! DriverEditProfileArgs) {
+          return MaterialPageRoute(builder: (_) => const DriverProfilePage());
+        }
+        return MaterialPageRoute(
+          builder: (_) => DriverEditProfilePage(args: args),
+        );
 
       case requestedJobs:
         return MaterialPageRoute(
