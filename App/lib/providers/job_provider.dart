@@ -44,6 +44,8 @@ class JobProvider extends ChangeNotifier {
   StreamSubscription<Map<String, dynamic>>? _jobSub;
   StreamSubscription<Map<String, dynamic>>? _sessionSub;
   StreamSubscription<Map<String, dynamic>>? _passengerSub;
+  StreamSubscription<void>? _reconnectSub;
+  StreamSubscription<AuthState>? _authSub;
   Timer? _reloadDebounce;
 
   JobProvider({
@@ -52,6 +54,15 @@ class JobProvider extends ChangeNotifier {
   }) : _localRepo = localRepo,
        _cacheRepo = cacheRepo {
     _listenToRealtime();
+    _reconnectSub = ConnectivityService().onReconnect.listen((_) {
+      loadJob(silent: true);
+    });
+    _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
+      if (event.session?.user.id == null) return;
+      if (!_hasLoadedOnce) {
+        loadJob();
+      }
+    });
   }
 
   // ── Public getters ────────────────────────────────────────────────────────
@@ -94,7 +105,10 @@ class JobProvider extends ChangeNotifier {
   // which is cheap because it reads from drift, not Supabase.
 
   void _listenToRealtime() {
-    _jobSub = _realtimeService.onJobChange.listen((_) => _scheduleReload());
+    _jobSub = _realtimeService.onJobChange.listen((record) {
+      _handleJobTableChange(record);
+      _scheduleReload();
+    });
     _sessionSub = _realtimeService.onSessionChange.listen(
       (_) => _scheduleReload(),
     );
@@ -105,6 +119,31 @@ class JobProvider extends ChangeNotifier {
         _scheduleReload();
       }
     });
+  }
+
+  /// Jobs-table updates include assignment changes. Clear the current job
+  /// immediately when this driver is removed so schedule sync cannot flash
+  /// stale UI before [ensureFresh] finishes.
+  void _handleJobTableChange(Map<String, dynamic> record) {
+    if (!record.containsKey('assigned_driver_id') &&
+        !record.containsKey('driver_approval_status')) {
+      return;
+    }
+
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) return;
+
+    final recordJobId = record['id']?.toString();
+    if (recordJobId == null || recordJobId.isEmpty) return;
+    if (_job == null || _job!.jobDbId != recordJobId) return;
+
+    final assignedDriverId = record['assigned_driver_id']?.toString();
+    final approval = record['driver_approval_status']?.toString();
+    if (assignedDriverId != userId || approval != 'accepted') {
+      _job = null;
+      _activePickupIndex = 0;
+      notifyListeners();
+    }
   }
 
   void _scheduleReload() {
@@ -120,10 +159,34 @@ class JobProvider extends ChangeNotifier {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return;
 
-    // Warm cache when Supabase is reachable (main() may run before auth restore).
-    if (ConnectivityService().canReachServer) {
+    String? assignmentRevokedMessage;
+
+    // Warm cache when online — on first load always try if a link exists so
+    // fresh install/login is not blocked waiting for a background probe.
+    final shouldRefreshCache =
+        ConnectivityService().canReachServer ||
+        (!_hasLoadedOnce && ConnectivityService().hasNetworkLink);
+    if (shouldRefreshCache) {
       try {
-        await _cacheRepo.ensureFresh().timeout(const Duration(seconds: 3));
+        final refresh = _cacheRepo.ensureFresh();
+        // Fresh install / first login must finish cache warm-up — a 3s cap
+        // caused empty current job + stats until a later reconnect reload.
+        if (silent && _hasLoadedOnce) {
+          await refresh.timeout(const Duration(seconds: 8));
+        } else {
+          await refresh;
+        }
+      } catch (_) {}
+      assignmentRevokedMessage = await _localRepo.discardStaleLocalWork(userId);
+      if (assignmentRevokedMessage != null) {
+        _job = null;
+        _activePickupIndex = 0;
+      }
+    }
+
+    if (shouldRefreshCache) {
+      try {
+        await _localRepo.ensureChecklistCachedFromServer(userId);
       } catch (_) {}
     }
 
@@ -176,7 +239,11 @@ class JobProvider extends ChangeNotifier {
       } else {
         _activePickupIndex = 0;
       }
-      _error = null;
+      if (assignmentRevokedMessage != null && _job == null) {
+        _error = assignmentRevokedMessage;
+      } else {
+        _error = null;
+      }
     } catch (e) {
       if (blockUiWithLoading) _error = e.toString();
     } finally {
@@ -408,7 +475,8 @@ class JobProvider extends ChangeNotifier {
         comments: comments,
       );
       _error = null;
-      notifyListeners();
+      // Reload so outbound completion transitions to evening/inbound run.
+      await loadJob(silent: true);
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -503,6 +571,8 @@ class JobProvider extends ChangeNotifier {
   @override
   void dispose() {
     _reloadDebounce?.cancel();
+    _reconnectSub?.cancel();
+    _authSub?.cancel();
     _jobSub?.cancel();
     _sessionSub?.cancel();
     _passengerSub?.cancel();

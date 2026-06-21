@@ -4,12 +4,16 @@ import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
 import '../../model/job_model.dart';
 import '../../model/pa_job_model.dart';
+import '../services/sync_scheduler.dart';
+import '../services/connectivity_service.dart';
+import '../services/vehicle_safety_check_service.dart';
 
 /// Replaces the network calls in [JobService] with local drift reads/writes.
 ///
 /// READS  → always from drift (cache + write tables).
 /// WRITES → write to local tables first, then enqueue a sync_queue op.
-///          SyncEngine replays the queue when connectivity returns.
+///          When online, [SyncScheduler] flushes the queue immediately;
+///          otherwise [SyncEngine] replays on reconnect.
 ///
 /// [JobProvider] should call these methods instead of [JobService] directly.
 /// The only time [JobService] is still called directly is inside [SyncEngine]
@@ -406,8 +410,8 @@ class LocalJobRepository {
             );
       }
 
-      // Enqueue sync op
-      await _enqueue(
+      // Enqueue sync op (flush after transaction commits).
+      await _insertSyncOp(
         opType: 'start_session',
         payload: {
           'local_session_id': localSessionId,
@@ -419,6 +423,8 @@ class LocalJobRepository {
         },
       );
     });
+
+    await SyncScheduler.flushIfOnline();
 
     return localSessionId;
   }
@@ -656,6 +662,77 @@ class LocalJobRepository {
     return row?.isLocked ?? false;
   }
 
+  /// After logout the local checklist row is wiped — pull today's row from
+  /// Supabase when online so the dashboard reflects server truth.
+  Future<void> ensureChecklistCachedFromServer(String driverId) async {
+    if (driverId.trim().isEmpty) return;
+    if (await fetchChecklistForToday(driverId) != null) return;
+    if (!ConnectivityService().canReachServer) return;
+
+    final service = VehicleSafetyCheckService();
+    String? vehicleId;
+    String? vehicleCompanyId;
+
+    final cachedVehicle =
+        await (_db.select(_db.vehiclesCache)..limit(1)).getSingleOrNull();
+    if (cachedVehicle != null) {
+      vehicleId = cachedVehicle.id;
+      vehicleCompanyId = cachedVehicle.companyId;
+    } else {
+      final vehicle = await service.fetchDriverVehicle();
+      if (vehicle == null) return;
+      vehicleId = vehicle.id;
+      vehicleCompanyId = vehicle.companyId;
+    }
+
+    final serverRow = await service.fetchCheckForLocalDay(
+      driverId: driverId,
+      vehicleId: vehicleId,
+      localDay: DateTime.now(),
+    );
+    if (serverRow == null) return;
+
+    await hydrateChecklistFromServer(
+      driverId: driverId,
+      vehicleId: vehicleId,
+      vehicleCompanyId: vehicleCompanyId,
+      serverRow: serverRow,
+    );
+  }
+
+  /// Inserts a checklist row from Supabase without enqueueing sync.
+  Future<void> hydrateChecklistFromServer({
+    required String driverId,
+    required String vehicleId,
+    required String vehicleCompanyId,
+    required VehicleSafetyCheckToday serverRow,
+  }) async {
+    final checks = <String, String>{};
+    for (final entry in serverRow.checksByColumn.entries) {
+      final value = entry.value;
+      if (value != null && value.isNotEmpty) {
+        checks[entry.key] = value;
+      }
+    }
+
+    final todayDate = _dateString(DateTime.now());
+    await _db.into(_db.checklistLocal).insertOnConflictUpdate(
+          ChecklistLocalCompanion.insert(
+            id: _uuid.v4(),
+            driverId: driverId,
+            vehicleId: vehicleId,
+            vehicleCompanyId: vehicleCompanyId,
+            sessionDate: todayDate,
+            checksJson: jsonEncode(checks),
+            status: serverRow.status.trim().toLowerCase(),
+            isLocked: Value(serverRow.isReadOnlyLocked),
+            serverId: Value(serverRow.id),
+            isSynced: const Value(true),
+            updatedAt: Value(serverRow.updatedAt),
+          ),
+        );
+  }
+
   /// True if the driver has at least one session_local row for today.
   /// Used by VehicleCheckListPage to show the job banner without a network call.
   Future<bool> hasSessionToday(String driverId) async {
@@ -762,7 +839,76 @@ class LocalJobRepository {
     });
   }
 
-  /// DEV ONLY — wipes all local tables. Use during debugging to reset state.
+  /// Drops today's local sessions and pending sync ops for jobs this driver
+  /// no longer owns according to [jobsCache]. Returns a user-facing message
+  /// when anything was cleared, otherwise null.
+  Future<String?> discardStaleLocalWork(String userId) async {
+    if (userId.trim().isEmpty) return null;
+
+    final todayDate = _dateString(DateTime.now());
+    final assignedJobIds = (await (_db.select(_db.jobsCache)..where(
+          (t) => t.assignedDriverId.equals(userId),
+        ))
+        .get())
+        .map((j) => j.id)
+        .toSet();
+
+    final localSessions =
+        await (_db.select(_db.sessionsLocal)..where(
+              (t) =>
+                  t.driverId.equals(userId) &
+                  t.sessionDate.equals(todayDate),
+            ))
+            .get();
+
+    final orphanedJobIds = localSessions
+        .map((s) => s.jobId)
+        .where((id) => !assignedJobIds.contains(id))
+        .toSet();
+
+    if (orphanedJobIds.isEmpty) return null;
+
+    final orphanedSessionLocalIds = localSessions
+        .where((s) => orphanedJobIds.contains(s.jobId))
+        .map((s) => s.localId)
+        .toList();
+
+    await _db.transaction(() async {
+      for (final localSessionId in orphanedSessionLocalIds) {
+        await (_db.delete(
+          _db.passengersLocal,
+        )..where((t) => t.localSessionId.equals(localSessionId))).go();
+      }
+
+      for (final jobId in orphanedJobIds) {
+        await (_db.delete(_db.sessionsLocal)..where(
+              (t) =>
+                  t.jobId.equals(jobId) &
+                  t.driverId.equals(userId) &
+                  t.sessionDate.equals(todayDate),
+            ))
+            .go();
+      }
+
+      final pendingOps = await getPendingOps();
+      for (final op in pendingOps) {
+        final payload = jsonDecode(op.payloadJson) as Map<String, dynamic>;
+        final jobId = payload['job_id']?.toString();
+        final localSessionId = payload['local_session_id']?.toString();
+        final isOrphaned =
+            (jobId != null && orphanedJobIds.contains(jobId)) ||
+            (localSessionId != null &&
+                orphanedSessionLocalIds.contains(localSessionId));
+        if (isOrphaned) {
+          await markOpDone(op.id);
+        }
+      }
+    });
+
+    return 'This job was removed while you were offline. Local session data was cleared.';
+  }
+
+  /// Wipes all local tables. Called on logout and from debug tooling.
   Future<void> clearAllLocalData() async {
     await _db.transaction(() async {
       await _db.delete(_db.syncQueue).go();
@@ -1316,7 +1462,7 @@ class LocalJobRepository {
 
   // ── Private helpers ────────────────────────────────────────────────────────
 
-  Future<void> _enqueue({
+  Future<void> _insertSyncOp({
     required String opType,
     required Map<String, dynamic> payload,
   }) async {
@@ -1329,6 +1475,14 @@ class LocalJobRepository {
             payloadJson: jsonEncode(payload),
           ),
         );
+  }
+
+  Future<void> _enqueue({
+    required String opType,
+    required Map<String, dynamic> payload,
+  }) async {
+    await _insertSyncOp(opType: opType, payload: payload);
+    await SyncScheduler.flushIfOnline();
   }
 
   Future<List<SchedulesCacheData>> _resolvedScheduleForDay({

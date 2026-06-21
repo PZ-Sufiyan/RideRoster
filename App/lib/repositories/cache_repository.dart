@@ -1,14 +1,18 @@
 import 'package:drift/drift.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../database/app_database.dart';
+import '../services/connectivity_service.dart';
 
 /// Populates and refreshes the 4 read-only cache tables.
 ///
 /// Call [ensureFresh] on app launch (when online).
 /// All reads during a run go through [AppDatabase] — never directly to Supabase.
 ///
-/// Job/vehicle freshness: re-fetch if the oldest jobs_cache row is >
+/// Vehicle freshness: re-fetch if the oldest jobs_cache row is >
 /// [_maxAgeHours] old, or if the cache is empty.
+///
+/// Job assignment metadata is always refreshed when online — accept/reject/remove
+/// can happen at any time, not only when the cache is stale.
 ///
 /// [passenger_schedules] are always refreshed on [ensureFresh] when online —
 /// they change independently of job metadata (e.g. weekday toggles).
@@ -21,7 +25,7 @@ class CacheRepository {
   CacheRepository(this._db);
 
   /// Entry point. Call on launch and before each job load when online.
-  /// Job metadata is fetched only when stale; schedules are always refreshed.
+  /// Job assignment is always synced; schedules are always refreshed.
   Future<void> ensureFresh() async {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return;
@@ -29,21 +33,18 @@ class CacheRepository {
     final stale = await _isCacheStale();
     final vehicleMissing = await _isVehicleCacheEmpty();
 
-    if (stale) {
-      // Fetch as both driver and PA — one will return empty rows if user
-      // doesn't have that role, which is harmless (insertOnConflictUpdate).
-      await Future.wait([
-        _refreshJobs(userId),
-        _refreshPaJobs(userId),
-        _refreshVehicle(userId),
-      ]);
-    } else if (vehicleMissing) {
-      await _refreshVehicle(userId);
-    }
+    // Jobs + vehicle in parallel — schedules need job ids from jobs_cache next.
+    await Future.wait([
+      _refreshJobs(userId),
+      _refreshPaJobs(userId),
+      if (stale || vehicleMissing)
+        _refreshVehicle(userId)
+      else
+        Future<void>.value(),
+    ]);
 
-    // Weekday toggles and exceptions update passenger_schedules without
-    // touching jobs_cache — keep the local schedule cache in sync.
     await _refreshSchedulesAndPassengers(userId);
+    ConnectivityService().noteSuccessfulRequest();
   }
 
   /// Force-refresh regardless of age. Call after SyncEngine drains the queue
@@ -57,6 +58,7 @@ class CacheRepository {
       _refreshVehicle(userId),
     ]);
     await _refreshSchedulesAndPassengers(userId);
+    ConnectivityService().noteSuccessfulRequest();
   }
 
   // ── Staleness check ────────────────────────────────────────────────────────
@@ -291,7 +293,13 @@ class CacheRepository {
 
   Future<void> _refreshSchedulesAndPassengers(String userId) async {
     final jobs = await _db.select(_db.jobsCache).get();
-    if (jobs.isEmpty) return;
+    if (jobs.isEmpty) {
+      await _db.transaction(() async {
+        await _db.delete(_db.schedulesCache).go();
+        await _db.delete(_db.passengersCache).go();
+      });
+      return;
+    }
 
     final jobIds = jobs.map((j) => j.id).toList();
 

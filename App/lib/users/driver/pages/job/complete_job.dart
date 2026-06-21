@@ -927,7 +927,6 @@ class _BottomBar extends StatelessWidget {
       );
       return;
     }
-    provider.reset();
     if (!context.mounted) return;
     Navigator.pushNamedAndRemoveUntil(
       context,

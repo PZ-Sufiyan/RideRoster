@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:firebase_core/firebase_core.dart';
@@ -24,10 +25,16 @@ class FcmService {
   factory FcmService() => _instance;
 
   final PushTokenService _pushTokenService = PushTokenService();
+  final StreamController<void> _jobAssignmentPushController =
+      StreamController<void>.broadcast();
   FirebaseMessaging? _messaging;
   bool _initialized = false;
   String? _activeToken;
   String? _activeUserId;
+
+  /// Fires when a job-assignment push arrives in the foreground so the
+  /// dashboard can refresh job requests without waiting for cache/realtime.
+  Stream<void> get onJobAssignmentPush => _jobAssignmentPushController.stream;
 
   Future<void> init({required PushMessageHandler onMessageOpened}) async {
     if (!isFirebaseConfigured) {
@@ -132,6 +139,11 @@ class FcmService {
       payload: message.data['job_id']?.toString(),
       data: message.data,
     );
+
+    if (message.data.containsKey('job_id') &&
+        !_jobAssignmentPushController.isClosed) {
+      _jobAssignmentPushController.add(null);
+    }
   }
 
   String get _platform {

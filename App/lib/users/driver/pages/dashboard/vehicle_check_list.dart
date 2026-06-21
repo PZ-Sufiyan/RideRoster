@@ -405,23 +405,16 @@ class _VehicleCheckListPageState extends State<VehicleCheckListPage>
             localDay: today,
           );
           if (serverRow != null) {
-            // Hydrate into local DB so future loads work offline.
-            final checks = <String, String>{};
-            for (final entry in serverRow.checksByColumn.entries) {
-              if (entry.value != null) checks[entry.key] = entry.value!;
-            }
-            _localCheckId = await widget.localRepo.saveChecklistLocally(
+            await widget.localRepo.hydrateChecklistFromServer(
               driverId: driverId,
               vehicleId: vehicle.id,
               vehicleCompanyId: vehicle.companyId,
-              checksPassFail: checks,
-              existingLocalId: null,
+              serverRow: serverRow,
             );
-            // Mark it as already synced since it came from server.
-            await widget.localRepo.patchChecklistServerId(
-              localId: _localCheckId!,
-              serverId: serverRow.id,
-            );
+            _localCheckId = (await widget.localRepo.fetchChecklistForToday(
+              driverId,
+            ))
+                ?.id;
             _applySafetyRow(serverRow);
             locked = serverRow.isReadOnlyLocked;
           } else {

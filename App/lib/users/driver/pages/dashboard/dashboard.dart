@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
@@ -6,13 +8,21 @@ import '../../../../providers/auth_provider.dart';
 import '../../../../providers/job_provider.dart';
 import '../../../../repositories/local_job_repository.dart';
 import '../../../../routes/app_routes.dart';
+import '../../../../services/connectivity_service.dart';
 import '../../../../services/dashboard_stats_service.dart';
 import '../../../../services/driver_job_request_service.dart';
+import '../../../../services/fcm_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../model/job_request_model.dart';
 import 'vehicle_check_list.dart';
+
+/// Clears dashboard static caches so the next login does not flash prior user data.
+void clearDriverDashboardSessionCaches() {
+  _StatsGridState.clearSessionCache();
+  _JobRequestsSectionState.clearSessionCache();
+}
 
 Future<void> _pushVehicleChecklist(BuildContext context) {
   final localRepo = context.read<LocalJobRepository>();
@@ -590,6 +600,11 @@ class _StatsGridState extends State<_StatsGrid> {
   static DashboardStats? _cachedStats;
   static bool _cachedStatsLoaded = false;
 
+  static void clearSessionCache() {
+    _cachedStats = null;
+    _cachedStatsLoaded = false;
+  }
+
   late final DashboardStatsService _statsService;
   DashboardStats? _stats = _cachedStats;
   bool _statsFirstLoadDone = _cachedStatsLoaded;
@@ -603,15 +618,19 @@ class _StatsGridState extends State<_StatsGrid> {
     _statsService = DashboardStatsService(context.read<LocalJobRepository>());
     _jobProvider = context.read<JobProvider>();
     _lastSyncedJobDataEpoch = _jobProvider.jobDataEpoch;
-    _fetchStats();
     _onJobDataEpochChanged = () {
       final epoch = _jobProvider.jobDataEpoch;
       if (epoch == _lastSyncedJobDataEpoch) return;
       _lastSyncedJobDataEpoch = epoch;
       if (!mounted) return;
-      _fetchStats(isBackground: true);
+      _fetchStats(isBackground: _statsFirstLoadDone);
     };
     _jobProvider.addListener(_onJobDataEpochChanged);
+    // Wait for JobProvider to warm the local cache before reading stats —
+    // otherwise jobsToday shows 0 on fresh install until a later reload.
+    if (_jobProvider.hasLoadedOnce) {
+      _fetchStats();
+    }
   }
 
   @override
@@ -788,6 +807,11 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
   static List<DriverJobRequest>? _cachedRequests;
   static bool _cachedRequestsLoaded = false;
 
+  static void clearSessionCache() {
+    _cachedRequests = null;
+    _cachedRequestsLoaded = false;
+  }
+
   final DriverJobRequestService _service = DriverJobRequestService();
   List<DriverJobRequest>? _requests = _cachedRequests;
   bool _requestsFirstLoadDone = _cachedRequestsLoaded;
@@ -795,6 +819,8 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
   late final JobProvider _jobProvider;
   late final VoidCallback _onJobDataEpochChanged;
   int _lastSyncedJobDataEpoch = -1;
+  StreamSubscription<void>? _reconnectSub;
+  StreamSubscription<void>? _jobAssignmentPushSub;
 
   @override
   void initState() {
@@ -810,10 +836,20 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
       _fetchRequests(isBackground: true);
     };
     _jobProvider.addListener(_onJobDataEpochChanged);
+    _reconnectSub = ConnectivityService().onReconnect.listen((_) {
+      if (!mounted) return;
+      _fetchRequests(isBackground: _requestsFirstLoadDone);
+    });
+    _jobAssignmentPushSub = FcmService().onJobAssignmentPush.listen((_) {
+      if (!mounted) return;
+      _fetchRequests(isBackground: _requestsFirstLoadDone);
+    });
   }
 
   @override
   void dispose() {
+    _reconnectSub?.cancel();
+    _jobAssignmentPushSub?.cancel();
     _jobProvider.removeListener(_onJobDataEpochChanged);
     super.dispose();
   }

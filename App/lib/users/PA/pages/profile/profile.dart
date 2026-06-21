@@ -201,7 +201,9 @@ class _ProfileLoadingBody extends StatelessWidget {
           SizedBox(height: SizeConfig.r(16)),
           ...List.generate(rowCount, (i) {
             return Padding(
-              padding: EdgeInsets.only(bottom: i < rowCount - 1 ? SizeConfig.r(12) : 0),
+              padding: EdgeInsets.only(
+                bottom: i < rowCount - 1 ? SizeConfig.r(12) : 0,
+              ),
               child: Row(
                 children: [
                   Expanded(
@@ -243,7 +245,9 @@ class _ProfileLoadingBody extends StatelessWidget {
           ...List.generate(
             cardCount,
             (i) => Padding(
-              padding: EdgeInsets.only(bottom: i < cardCount - 1 ? SizeConfig.r(10) : 0),
+              padding: EdgeInsets.only(
+                bottom: i < cardCount - 1 ? SizeConfig.r(10) : 0,
+              ),
               child: ShimmerBox(
                 width: double.infinity,
                 height: SizeConfig.r(72),
@@ -458,10 +462,7 @@ class _ProfileHeader extends StatelessWidget {
   final PaProfileModel profile;
   final VoidCallback onEditPhoto;
 
-  const _ProfileHeader({
-    required this.profile,
-    required this.onEditPhoto,
-  });
+  const _ProfileHeader({required this.profile, required this.onEditPhoto});
 
   @override
   Widget build(BuildContext context) {
@@ -746,10 +747,7 @@ class _DocumentsSection extends StatelessWidget {
   final PaProfileModel profile;
   final void Function(PaProfileEditSection section) onDocumentTap;
 
-  const _DocumentsSection({
-    required this.profile,
-    required this.onDocumentTap,
-  });
+  const _DocumentsSection({required this.profile, required this.onDocumentTap});
 
   @override
   Widget build(BuildContext context) {

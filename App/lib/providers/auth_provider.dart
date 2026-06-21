@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import '../services/auth_service.dart';
 import '../services/fcm_service.dart';
 import '../services/realtime_service.dart';
+import '../services/session_cleanup.dart';
 
 enum AuthStatus { idle, loading, authenticated, unauthenticated, error }
 
@@ -21,6 +24,7 @@ class AuthProvider extends ChangeNotifier {
   String? _userEmail;
   String? _userRole;
   String? _errorMessage;
+  Future<void>? _logoutCleanup;
 
   AuthProvider() {
     restoreSession();
@@ -45,6 +49,7 @@ class AuthProvider extends ChangeNotifier {
   // Restore session
   // ---------------------------------------------------------------------------
   Future<void> restoreSession() async {
+    await _awaitLogoutCleanup();
     _setStatus(AuthStatus.loading);
     final result = await _authService.restoreSession();
     if (result.success) {
@@ -79,6 +84,7 @@ class AuthProvider extends ChangeNotifier {
     required String email,
     required String password,
   }) async {
+    await _awaitLogoutCleanup();
     _setStatus(AuthStatus.loading);
 
     final result = await _authService.driverLogin(
@@ -120,12 +126,11 @@ class AuthProvider extends ChangeNotifier {
   // Logout
   // ---------------------------------------------------------------------------
   Future<void> logout() async {
-    // Tear down realtime channels before clearing auth state
-    await RealtimeService().unsubscribe();
-    if (isDriver) {
-      await FcmService().unregisterCurrentToken();
-    }
-    await _authService.driverLogout();
+    await _awaitLogoutCleanup();
+
+    final wasDriver = isDriver;
+
+    // Navigate to login immediately — cleanup runs in the background.
     _token = null;
     _userId = null;
     _userName = null;
@@ -133,6 +138,34 @@ class AuthProvider extends ChangeNotifier {
     _userRole = null;
     _errorMessage = null;
     _setStatus(AuthStatus.unauthenticated);
+
+    final cleanup = _runLogoutCleanup(wasDriver);
+    _logoutCleanup = cleanup;
+    unawaited(
+      cleanup.whenComplete(() {
+        if (identical(_logoutCleanup, cleanup)) {
+          _logoutCleanup = null;
+        }
+      }),
+    );
+  }
+
+  Future<void> _runLogoutCleanup(bool wasDriver) async {
+    try {
+      await RealtimeService().unsubscribe();
+      if (wasDriver) {
+        await FcmService().unregisterCurrentToken();
+      }
+      await SessionCleanup.clearOnLogout();
+      await _authService.driverLogout();
+    } catch (error, stack) {
+      debugPrint('Logout cleanup failed: $error\n$stack');
+    }
+  }
+
+  Future<void> _awaitLogoutCleanup() async {
+    final task = _logoutCleanup;
+    if (task != null) await task;
   }
 
   // ---------------------------------------------------------------------------

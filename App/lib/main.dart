@@ -22,6 +22,8 @@ import 'services/navigation_service.dart';
 import 'services/notification_service.dart';
 import 'services/sos_location_service.dart';
 import 'services/sync_engine.dart';
+import 'services/sync_scheduler.dart';
+import 'services/session_cleanup.dart';
 import 'users/auth/pages/login.dart';
 import 'users/driver/pages/dashboard/dashboard.dart';
 import 'users/PA/pages/dashboard/dashboard.dart';
@@ -59,12 +61,16 @@ Future<void> main() async {
   final localRepo = LocalJobRepository(db);
   final cacheRepo = CacheRepository(db);
 
-  // Init connectivity FIRST — probes Supabase to establish canReachServer.
-  // Everything downstream reads from canReachServer, not just link state.
-  await ConnectivityService().init();
+  // Init connectivity — pass the same Supabase URL/key the client uses for probes.
+  await ConnectivityService().init(
+    probeBaseUrl: normalizedUrl,
+    probeAnonKey: normalizedAnonKey,
+  );
 
   SyncEngine.init(localRepo);
-  SyncEngine.instance.listenForReconnect();
+  SyncScheduler.register(() => SyncEngine.instance.processQueue());
+  SessionCleanup.init(localRepo);
+  // Reconnect sync is handled below (cache refresh must run before the queue).
 
   // ── Device services ───────────────────────────────────────────────────────
   await LocationService().ensurePermission();
@@ -83,12 +89,12 @@ Future<void> main() async {
   }
 
   // onReconnect fires when canReachServer transitions false→true (real internet,
-  // not just link restored). Safe to sync + refresh here.
+  // not just link restored). Refresh server truth first, then replay the queue.
   ConnectivityService().onReconnect.listen((_) async {
-    await SyncEngine.instance.processQueue();
     try {
       await cacheRepo.forceRefresh();
     } catch (_) {}
+    await SyncEngine.instance.processQueue();
   });
 
   runApp(RideRosterApp(localRepo: localRepo, cacheRepo: cacheRepo));
@@ -126,25 +132,55 @@ class RideRosterApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => DriverLeaveProvider()),
         ChangeNotifierProvider(create: (_) => PaLeaveProvider()),
       ],
-      child: MaterialApp(
-        navigatorKey: NavigationService.navigatorKey,
-        title: 'RideRoster',
-        debugShowCheckedModeBanner: false,
-        theme: ThemeData(
-          colorScheme: ColorScheme.fromSeed(
-            seedColor: const Color(0xFF4A90D9),
-            brightness: Brightness.light,
+      child: _SessionBindings(
+        child: MaterialApp(
+          navigatorKey: NavigationService.navigatorKey,
+          title: 'RideRoster',
+          debugShowCheckedModeBanner: false,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: const Color(0xFF4A90D9),
+              brightness: Brightness.light,
+            ),
+            scaffoldBackgroundColor: Colors.white,
+            textTheme: GoogleFonts.manropeTextTheme(),
+            primaryTextTheme: GoogleFonts.manropeTextTheme(),
           ),
-          scaffoldBackgroundColor: Colors.white,
-          textTheme: GoogleFonts.manropeTextTheme(),
-          primaryTextTheme: GoogleFonts.manropeTextTheme(),
+          home: const _AppRuntimeGuard(),
+          onGenerateRoute: (settings) =>
+              AppRoutes.generateRoute(settings, localRepo: localRepo),
         ),
-        home: const _AppRuntimeGuard(),
-        onGenerateRoute: (settings) =>
-            AppRoutes.generateRoute(settings, localRepo: localRepo),
       ),
     );
   }
+}
+
+/// Registers in-memory resets that run when [AuthProvider.logout] clears data.
+class _SessionBindings extends StatefulWidget {
+  final Widget child;
+  const _SessionBindings({required this.child});
+
+  @override
+  State<_SessionBindings> createState() => _SessionBindingsState();
+}
+
+class _SessionBindingsState extends State<_SessionBindings> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      SessionCleanup.registerMemoryReset(() {
+        context.read<JobProvider>().reset();
+        context.read<PaJobProvider>().reset();
+        context.read<PaAssignedJobsProvider>().reset();
+        clearDriverDashboardSessionCaches();
+      });
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
 
 // ─── Everything below is unchanged from your original main.dart ───────────────

@@ -6,6 +6,14 @@ import '../repositories/local_job_repository.dart';
 import 'connectivity_service.dart';
 import 'package:drift/drift.dart';
 
+/// Thrown when queued offline work no longer matches server assignment.
+class SyncAssignmentException implements Exception {
+  final String message;
+  SyncAssignmentException(this.message);
+  @override
+  String toString() => message;
+}
+
 /// Processes the [sync_queue] table in order, replaying offline mutations
 /// against Supabase when connectivity returns.
 ///
@@ -29,6 +37,7 @@ class SyncEngine {
   SupabaseClient get _supabase => Supabase.instance.client;
 
   bool _isProcessing = false;
+  bool _pendingPass = false;
   StreamSubscription<void>? _reconnectSub;
 
   SyncEngine._(this._local);
@@ -42,38 +51,59 @@ class SyncEngine {
   static SyncEngine get instance => _initialized;
 
   /// Start listening for reconnect events. Call once in main().
-  void listenForReconnect() {
-    _reconnectSub?.cancel();
-    _reconnectSub = ConnectivityService().onReconnect.listen((_) {
-      processQueue();
-    });
-  }
+  /// Reconnect handling (cache refresh → queue drain) lives in [main.dart].
+  void listenForReconnect() {}
 
   /// Process all pending ops in created_at order.
   /// Safe to call even if already processing — guards with [_isProcessing].
+  /// Call only after [CacheRepository.forceRefresh] / [ensureFresh] when online
+  /// so assignment validation sees current server state.
   Future<void> processQueue() async {
-    if (_isProcessing) return;
+    if (_isProcessing) {
+      _pendingPass = true;
+      return;
+    }
     _isProcessing = true;
 
     try {
-      final ops = await _local.getPendingOps();
-      if (ops.isEmpty) return;
+      do {
+        _pendingPass = false;
 
-      // Build a local→server session ID map as we process start_session ops.
-      // Used to rewrite subsequent ops in the same queue pass.
-      final sessionIdMap = <String, String>{}; // localId → serverId
-
-      for (final op in ops) {
-        await _local.markOpSyncing(op.id);
-        try {
-          await _processOp(op, sessionIdMap);
-          await _local.markOpDone(op.id);
-        } catch (e) {
-          await _local.incrementRetryCount(op.id);
-          await _local.markOpFailed(op.id, e.toString());
-          // Do not break — continue processing independent ops (e.g. checklist).
+        final userId = _supabase.auth.currentUser?.id;
+        if (userId != null && userId.isNotEmpty) {
+          await _local.discardStaleLocalWork(userId);
         }
-      }
+
+        final ops = await _local.getPendingOps();
+        if (ops.isEmpty) break;
+
+        // Build a local→server session ID map as we process start_session ops.
+        // Used to rewrite subsequent ops in the same queue pass.
+        final sessionIdMap = <String, String>{}; // localId → serverId
+        var syncedAny = false;
+
+        for (final op in ops) {
+          await _local.markOpSyncing(op.id);
+          try {
+            await _processOp(op, sessionIdMap);
+            await _local.markOpDone(op.id);
+            syncedAny = true;
+          } on SyncAssignmentException {
+            await _local.markOpDone(op.id);
+            if (userId != null && userId.isNotEmpty) {
+              await _local.discardStaleLocalWork(userId);
+            }
+          } catch (e) {
+            await _local.incrementRetryCount(op.id);
+            await _local.markOpFailed(op.id, e.toString());
+            // Do not break — continue processing independent ops (e.g. checklist).
+          }
+        }
+
+        if (syncedAny) {
+          ConnectivityService().noteSuccessfulRequest();
+        }
+      } while (_pendingPass || (await _local.getPendingOps()).isNotEmpty);
     } finally {
       _isProcessing = false;
     }
@@ -135,6 +165,8 @@ class SyncEngine {
     final sessionDate = payload['session_date'] as String;
     final driverId = payload['driver_id'] as String;
     final startedAt = payload['started_at'] as String;
+
+    await _assertDriverStillAssigned(jobId: jobId, driverId: driverId);
 
     // Upsert session row — matches JobService.startSession behaviour
     final sessionResult = await _supabase
@@ -429,6 +461,29 @@ class SyncEngine {
     }
 
     await _local.patchChecklistServerId(localId: localId, serverId: serverId);
+  }
+
+  Future<void> _assertDriverStillAssigned({
+    required String jobId,
+    required String driverId,
+  }) async {
+    final row = await _supabase
+        .from('jobs')
+        .select('assigned_driver_id, driver_approval_status')
+        .eq('id', jobId)
+        .maybeSingle();
+
+    if (row == null) {
+      throw SyncAssignmentException('Job no longer exists on the server.');
+    }
+
+    final assigned = row['assigned_driver_id']?.toString();
+    final approval = row['driver_approval_status']?.toString();
+    if (assigned != driverId || approval != 'accepted') {
+      throw SyncAssignmentException(
+        'You are no longer assigned to this job.',
+      );
+    }
   }
 
   void dispose() {
