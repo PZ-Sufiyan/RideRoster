@@ -186,8 +186,9 @@ class ChecklistLocal extends Table {
 /// Ordered log of pending Supabase mutations.
 ///
 /// SyncEngine reads these in [createdAt] ASC order and replays them.
-/// [opType] values: start_session | pickup_status | dropoff_status |
-///                  dropoff_status_bulk | complete_job | save_checklist
+/// [opType] values: start_session | pickup_status | extended_wait |
+///                  dropoff_status | dropoff_status_bulk | complete_job |
+///                  save_checklist
 /// [payloadJson] is a JSON blob whose shape depends on opType — see
 /// SyncEngine for each payload contract.
 /// [retryCount] is incremented on transient failure; op is abandoned at 5.

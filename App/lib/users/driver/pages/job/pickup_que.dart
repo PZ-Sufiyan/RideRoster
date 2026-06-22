@@ -593,7 +593,7 @@ class _ActionBtn extends StatelessWidget {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Extended Wait Dialog — UI only
+// Extended Wait Dialog
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ExtendedWaitDialog extends StatefulWidget {
@@ -776,7 +776,17 @@ class _ExtendedWaitDialogState extends State<_ExtendedWaitDialog> {
             AppButton(
               label: 'OK',
               borderRadius: SizeConfig.radiusLG,
-              onPressed: () => Navigator.pop(context),
+              onPressed: () async {
+                final minutes = int.tryParse(_timeController.text.trim()) ?? 0;
+                if (minutes <= 0) {
+                  if (context.mounted) Navigator.pop(context);
+                  return;
+                }
+                await context.read<JobProvider>().saveExtendedWait(
+                  minutes: minutes,
+                );
+                if (context.mounted) Navigator.pop(context);
+              },
             ),
           ],
         ),

@@ -75,6 +75,42 @@ class LocalJobRepository {
     return row?.localId;
   }
 
+  /// Resolves a stop id (local row id, server row id, or passenger id) to
+  /// [PassengersLocal.localId] for write operations.
+  Future<String?> resolvePassengerLocalIdFromStopId({
+    required String localSessionId,
+    required String stopId,
+  }) async {
+    if (stopId.isEmpty) return null;
+
+    final byLocal =
+        await (_db.select(_db.passengersLocal)..where(
+              (t) =>
+                  t.localId.equals(stopId) &
+                  t.localSessionId.equals(localSessionId),
+            ))
+            .getSingleOrNull();
+    if (byLocal != null) return byLocal.localId;
+
+    final byServer =
+        await (_db.select(_db.passengersLocal)..where(
+              (t) =>
+                  t.serverId.equals(stopId) &
+                  t.localSessionId.equals(localSessionId),
+            ))
+            .getSingleOrNull();
+    if (byServer != null) return byServer.localId;
+
+    final byPassenger =
+        await (_db.select(_db.passengersLocal)..where(
+              (t) =>
+                  t.passengerId.equals(stopId) &
+                  t.localSessionId.equals(localSessionId),
+            ))
+            .getSingleOrNull();
+    return byPassenger?.localId;
+  }
+
   // ── Fetch current job (from local cache) ──────────────────────────────────
   //
   // Mirrors JobService.fetchCurrentJob() but reads entirely from drift.
@@ -172,7 +208,7 @@ class LocalJobRepository {
 
         pickups.add(
           PickupStop(
-            id: lp.serverId ?? lp.localId, // use server ID for mutations
+            id: lp.localId,
             stopNumber: lp.stopOrder,
             passengerName: fullName.isEmpty ? 'Student' : fullName,
             passengerPhone: phone,
@@ -245,7 +281,7 @@ class LocalJobRepository {
         final pIds = rows.map((r) => r.passengerId).toList();
         dropoffs.add(
           DropoffStop(
-            id: rows.first.serverId ?? rows.first.localId,
+            id: rows.first.localId,
             dropoffOrder: order++,
             address: addr,
             scheduledTime: _formatTime(meta['dropoff_time']),
@@ -268,7 +304,7 @@ class LocalJobRepository {
         final homeAddress = lp.dropoffAddress;
         dropoffs.add(
           DropoffStop(
-            id: lp.serverId ?? lp.localId,
+            id: lp.localId,
             dropoffOrder: i + 1,
             address: homeAddress.isNotEmpty ? homeAddress : 'Home address',
             scheduledTime: _formatTime(schedule?.dropoffTime),
@@ -349,7 +385,29 @@ class LocalJobRepository {
                   t.direction.equals(direction),
             ))
             .getSingleOrNull();
-    if (existing != null) return existing.localId;
+    if (existing != null) {
+      final unlinkedPassengers =
+          await (_db.select(_db.passengersLocal)..where(
+                (t) =>
+                    t.localSessionId.equals(existing.localId) &
+                    t.serverId.isNull(),
+              ))
+              .get();
+      if (!existing.isSynced || unlinkedPassengers.isNotEmpty) {
+        await _enqueue(
+          opType: 'start_session',
+          payload: {
+            'local_session_id': existing.localId,
+            'job_id': jobId,
+            'direction': direction,
+            'session_date': todayDate,
+            'driver_id': driverId,
+            'started_at': (existing.startedAt ?? now).toIso8601String(),
+          },
+        );
+      }
+      return existing.localId;
+    }
 
     // Resolve today's schedule
     final scheduleRows = await _resolvedScheduleForDay(
@@ -436,13 +494,22 @@ class LocalJobRepository {
   Future<void> updatePickupStatusLocally({
     required String passengerLocalId,
     required PickupStatus status,
+    String? localSessionId,
   }) async {
+    final resolvedId = localSessionId != null
+        ? await resolvePassengerLocalIdFromStopId(
+            localSessionId: localSessionId,
+            stopId: passengerLocalId,
+          )
+        : await _resolvePassengerLocalIdByAnyKey(passengerLocalId);
+    if (resolvedId == null || resolvedId.isEmpty) return;
+
     final now = DateTime.now();
     final dbStatus = _dbPickupStatus(status);
 
     await (_db.update(
       _db.passengersLocal,
-    )..where((t) => t.localId.equals(passengerLocalId))).write(
+    )..where((t) => t.localId.equals(resolvedId))).write(
       PassengersLocalCompanion(
         status: Value(dbStatus),
         pickedUpAt: status == PickupStatus.completed
@@ -455,19 +522,71 @@ class LocalJobRepository {
 
     final row = await (_db.select(
       _db.passengersLocal,
-    )..where((t) => t.localId.equals(passengerLocalId))).getSingleOrNull();
+    )..where((t) => t.localId.equals(resolvedId))).getSingleOrNull();
     if (row == null) return;
 
     await _enqueue(
       opType: 'pickup_status',
       payload: {
-        'passenger_local_id': passengerLocalId,
+        'passenger_local_id': resolvedId,
         'passenger_server_id': row.serverId,
+        'passenger_id': row.passengerId,
         'local_session_id': row.localSessionId,
         'status': dbStatus,
         'picked_up_at': status == PickupStatus.completed
             ? now.toIso8601String()
             : null,
+        if (row.notes != null && row.notes!.trim().isNotEmpty)
+          'notes': row.notes,
+        if (status == PickupStatus.notPicked)
+          'missed_reason': 'Driver marked no pickup',
+      },
+    );
+  }
+
+  /// Records extended wait minutes on the passenger row (status stays pending).
+  Future<void> saveExtendedWaitLocally({
+    required String passengerLocalId,
+    required int minutes,
+    String? localSessionId,
+  }) async {
+    if (minutes <= 0) return;
+
+    final resolvedId = localSessionId != null
+        ? await resolvePassengerLocalIdFromStopId(
+            localSessionId: localSessionId,
+            stopId: passengerLocalId,
+          )
+        : await _resolvePassengerLocalIdByAnyKey(passengerLocalId);
+    if (resolvedId == null || resolvedId.isEmpty) return;
+
+    final row = await (_db.select(
+      _db.passengersLocal,
+    )..where((t) => t.localId.equals(resolvedId))).getSingleOrNull();
+    if (row == null) return;
+
+    final noteLine = 'Extended wait: $minutes min';
+    final mergedNotes = _mergePassengerNotes(row.notes, noteLine);
+    final now = DateTime.now();
+
+    await (_db.update(
+      _db.passengersLocal,
+    )..where((t) => t.localId.equals(resolvedId))).write(
+      PassengersLocalCompanion(
+        notes: Value(mergedNotes),
+        updatedAt: Value(now),
+        isSynced: const Value(false),
+      ),
+    );
+
+    await _enqueue(
+      opType: 'extended_wait',
+      payload: {
+        'passenger_local_id': resolvedId,
+        'passenger_server_id': row.serverId,
+        'passenger_id': row.passengerId,
+        'local_session_id': row.localSessionId,
+        'notes': mergedNotes,
       },
     );
   }
@@ -476,12 +595,21 @@ class LocalJobRepository {
 
   Future<void> updateDropoffStatusLocally({
     required String passengerLocalId,
+    String? localSessionId,
   }) async {
+    final resolvedId = localSessionId != null
+        ? await resolvePassengerLocalIdFromStopId(
+            localSessionId: localSessionId,
+            stopId: passengerLocalId,
+          )
+        : await _resolvePassengerLocalIdByAnyKey(passengerLocalId);
+    if (resolvedId == null || resolvedId.isEmpty) return;
+
     final now = DateTime.now();
 
     await (_db.update(
       _db.passengersLocal,
-    )..where((t) => t.localId.equals(passengerLocalId))).write(
+    )..where((t) => t.localId.equals(resolvedId))).write(
       PassengersLocalCompanion(
         status: const Value('dropped_off'),
         droppedOffAt: Value(now),
@@ -492,13 +620,13 @@ class LocalJobRepository {
 
     final row = await (_db.select(
       _db.passengersLocal,
-    )..where((t) => t.localId.equals(passengerLocalId))).getSingleOrNull();
+    )..where((t) => t.localId.equals(resolvedId))).getSingleOrNull();
     if (row == null) return;
 
     await _enqueue(
       opType: 'dropoff_status',
       payload: {
-        'passenger_local_id': passengerLocalId,
+        'passenger_local_id': resolvedId,
         'passenger_server_id': row.serverId,
         'local_session_id': row.localSessionId,
         'dropped_off_at': now.toIso8601String(),
@@ -1587,6 +1715,31 @@ class LocalJobRepository {
     return raw == 'dropped_off'
         ? DropoffStatus.completed
         : DropoffStatus.pending;
+  }
+
+  String _mergePassengerNotes(String? existing, String line) {
+    final trimmed = line.trim();
+    if (trimmed.isEmpty) return existing?.trim() ?? '';
+    final base = existing?.trim() ?? '';
+    if (base.isEmpty) return trimmed;
+    if (base.contains(trimmed)) return base;
+    return '$base\n$trimmed';
+  }
+
+  Future<String?> _resolvePassengerLocalIdByAnyKey(String id) async {
+    if (id.isEmpty) return null;
+
+    final byLocal =
+        await (_db.select(_db.passengersLocal)
+              ..where((t) => t.localId.equals(id)))
+            .getSingleOrNull();
+    if (byLocal != null) return byLocal.localId;
+
+    final byServer =
+        await (_db.select(_db.passengersLocal)
+              ..where((t) => t.serverId.equals(id)))
+            .getSingleOrNull();
+    return byServer?.localId;
   }
 
   String _dbPickupStatus(PickupStatus status) {

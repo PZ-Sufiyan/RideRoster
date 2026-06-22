@@ -18,8 +18,8 @@ class SyncAssignmentException implements Exception {
 /// against Supabase when connectivity returns.
 ///
 /// Guaranteed ordering:
-///   start_session → pickup_status / dropoff_status / dropoff_status_bulk
-///                 → complete_job
+///   start_session → pickup_status / extended_wait / dropoff_status /
+///                   dropoff_status_bulk → complete_job
 ///   save_checklist is independent and can run in any relative order.
 ///
 /// Provisional ID resolution:
@@ -124,6 +124,10 @@ class SyncEngine {
         await _handlePickupStatus(payload, sessionIdMap);
         break;
 
+      case 'extended_wait':
+        await _handleExtendedWait(payload, sessionIdMap);
+        break;
+
       case 'dropoff_status':
         await _handleDropoffStatus(payload, sessionIdMap);
         break;
@@ -196,50 +200,81 @@ class SyncEngine {
       serverId: serverSessionId,
     );
 
-    // Insert job_session_passengers rows that don't exist on server yet
+    // Upsert session passengers and link local rows to server IDs.
     final localPassengers =
         await (_local.appDb.select(_local.appDb.passengersLocal)..where(
-              (t) =>
-                  t.localSessionId.equals(localSessionId) & t.serverId.isNull(),
+              (t) => t.localSessionId.equals(localSessionId),
             ))
             .get();
 
-    if (localPassengers.isEmpty) return;
-
-    final insertRows = localPassengers
-        .map(
-          (lp) => {
-            'session_id': serverSessionId,
-            'passenger_id': lp.passengerId,
-            'stop_order': lp.stopOrder,
-            'status': lp.status,
-            'pickup_address': lp.pickupAddress,
-            'pickup_postcode': lp.pickupPostcode,
-            'pickup_latitude': lp.pickupLatitude,
-            'pickup_longitude': lp.pickupLongitude,
-            'dropoff_address': lp.dropoffAddress,
-            'dropoff_postcode': lp.dropoffPostcode,
-            'notes': lp.notes,
-          },
-        )
+    final passengersNeedingServerId = localPassengers
+        .where((lp) => lp.serverId == null || lp.serverId!.isEmpty)
         .toList();
 
-    // Insert and get back IDs so we can patch serverId
-    final inserted = await _supabase
-        .from('job_session_passengers')
-        .insert(insertRows)
-        .select('id, passenger_id');
+    if (passengersNeedingServerId.isNotEmpty) {
+      final insertRows = passengersNeedingServerId
+          .map(
+            (lp) => {
+              'session_id': serverSessionId,
+              'passenger_id': lp.passengerId,
+              'stop_order': lp.stopOrder,
+              'status': lp.status,
+              'pickup_address': lp.pickupAddress,
+              'pickup_postcode': lp.pickupPostcode,
+              'pickup_latitude': lp.pickupLatitude,
+              'pickup_longitude': lp.pickupLongitude,
+              'dropoff_address': lp.dropoffAddress,
+              'dropoff_postcode': lp.dropoffPostcode,
+              'notes': lp.notes,
+            },
+          )
+          .toList();
 
-    // Patch each passengersLocal row with its server ID
-    for (final row in inserted) {
-      final serverId = (row['id'] ?? '').toString();
-      final passengerId = (row['passenger_id'] ?? '').toString();
-      final localRow = localPassengers.firstWhere(
-        (lp) => lp.passengerId == passengerId,
-        orElse: () => localPassengers.first,
-      );
+      try {
+        await _supabase
+            .from('job_session_passengers')
+            .upsert(insertRows, onConflict: 'session_id,passenger_id');
+      } catch (_) {
+        // Rows may already exist from a prior partial sync — patch IDs below.
+      }
+    }
+
+    await _patchPassengerServerIds(
+      localPassengers: localPassengers,
+      serverSessionId: serverSessionId,
+    );
+  }
+
+  /// Links [passengersLocal] rows to server [job_session_passengers.id] values
+  /// by fetching the session's passengers from Supabase (reliable even when
+  /// insert/upsert .select() is blocked or returns empty).
+  Future<void> _patchPassengerServerIds({
+    required List<PassengersLocalData> localPassengers,
+    required String serverSessionId,
+  }) async {
+    if (localPassengers.isEmpty) return;
+
+    final serverRows = await _supabase
+        .from('job_session_passengers')
+        .select('id, passenger_id')
+        .eq('session_id', serverSessionId);
+
+    final byPassengerId = <String, String>{};
+    for (final row in serverRows as List<dynamic>) {
+      final map = Map<String, dynamic>.from(row as Map);
+      final passengerId = (map['passenger_id'] ?? '').toString();
+      final serverId = (map['id'] ?? '').toString();
+      if (passengerId.isNotEmpty && serverId.isNotEmpty) {
+        byPassengerId[passengerId] = serverId;
+      }
+    }
+
+    for (final lp in localPassengers) {
+      final serverId = byPassengerId[lp.passengerId];
+      if (serverId == null || serverId.isEmpty) continue;
+      if (lp.serverId == serverId) continue;
       await _local.patchPassengerServerId(
-        localId: localRow.localId,
+        localId: lp.localId,
         serverId: serverId,
       );
     }
@@ -247,8 +282,8 @@ class SyncEngine {
 
   // ── pickup_status ─────────────────────────────────────────────────────────
   //
-  // Payload: { passenger_local_id, passenger_server_id, local_session_id,
-  //            status, picked_up_at }
+  // Payload: { passenger_local_id, passenger_server_id, passenger_id,
+  //            local_session_id, status, picked_up_at }
   //
   // Uses passenger_server_id if available; otherwise looks it up from local DB
   // (it may have been patched by a start_session op earlier in this pass).
@@ -257,24 +292,6 @@ class SyncEngine {
     Map<String, dynamic> payload,
     Map<String, String> sessionIdMap,
   ) async {
-    final passengerLocalId = payload['passenger_local_id'] as String;
-    String? serverPassengerId = payload['passenger_server_id'] as String?;
-
-    // If server ID wasn't in payload, look it up — may have been patched now
-    if (serverPassengerId == null || serverPassengerId.isEmpty) {
-      final row = await (_local.appDb.select(
-        _local.appDb.passengersLocal,
-      )..where((t) => t.localId.equals(passengerLocalId))).getSingleOrNull();
-      serverPassengerId = row?.serverId;
-    }
-
-    if (serverPassengerId == null || serverPassengerId.isEmpty) {
-      throw Exception(
-        'pickup_status: no server ID for passenger $passengerLocalId — '
-        'start_session may not have synced yet',
-      );
-    }
-
     final update = <String, dynamic>{
       'status': payload['status'],
       'updated_at': DateTime.now().toIso8601String(),
@@ -282,13 +299,129 @@ class SyncEngine {
     if (payload['picked_up_at'] != null) {
       update['picked_up_at'] = payload['picked_up_at'];
     }
+    if (payload['missed_reason'] != null) {
+      update['missed_reason'] = payload['missed_reason'];
+    }
+    if (payload['notes'] != null &&
+        (payload['notes'] as String).trim().isNotEmpty) {
+      update['notes'] = payload['notes'];
+    }
 
-    await _supabase
-        .from('job_session_passengers')
-        .update(update)
-        .eq('id', serverPassengerId);
+    await _applyJobSessionPassengerUpdate(
+      payload: payload,
+      sessionIdMap: sessionIdMap,
+      update: update,
+      opLabel: 'pickup_status',
+    );
+  }
 
-    // Mark passenger as synced
+  // ── extended_wait ─────────────────────────────────────────────────────────
+  //
+  // Payload: { passenger_local_id, passenger_server_id, passenger_id,
+  //            local_session_id, notes }
+  //
+  // Updates notes only — status stays pending until pick / no-pick.
+
+  Future<void> _handleExtendedWait(
+    Map<String, dynamic> payload,
+    Map<String, String> sessionIdMap,
+  ) async {
+    final notes = (payload['notes'] as String?)?.trim() ?? '';
+    if (notes.isEmpty) return;
+
+    await _applyJobSessionPassengerUpdate(
+      payload: payload,
+      sessionIdMap: sessionIdMap,
+      update: {
+        'notes': notes,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      opLabel: 'extended_wait',
+    );
+  }
+
+  Future<void> _applyJobSessionPassengerUpdate({
+    required Map<String, dynamic> payload,
+    required Map<String, String> sessionIdMap,
+    required Map<String, dynamic> update,
+    required String opLabel,
+  }) async {
+    final passengerLocalId = payload['passenger_local_id'] as String;
+    final localRow = await (_local.appDb.select(
+      _local.appDb.passengersLocal,
+    )..where((t) => t.localId.equals(passengerLocalId))).getSingleOrNull();
+
+    if (localRow == null) {
+      throw Exception('$opLabel: local passenger row not found');
+    }
+
+    final localSessionId =
+        (payload['local_session_id'] as String?) ?? localRow.localSessionId;
+    final passengerId =
+        (payload['passenger_id'] as String?) ?? localRow.passengerId;
+
+    String? serverPassengerId = payload['passenger_server_id'] as String?;
+    if (serverPassengerId == null || serverPassengerId.isEmpty) {
+      serverPassengerId = localRow.serverId;
+    }
+
+    String? serverSessionId = sessionIdMap[localSessionId];
+    if (serverSessionId == null || serverSessionId.isEmpty) {
+      final session = await (_local.appDb.select(
+        _local.appDb.sessionsLocal,
+      )..where((t) => t.localId.equals(localSessionId))).getSingleOrNull();
+      serverSessionId = session?.serverId;
+    }
+
+    if ((serverPassengerId == null || serverPassengerId.isEmpty) &&
+        serverSessionId != null &&
+        serverSessionId.isNotEmpty) {
+      await _patchPassengerServerIds(
+        localPassengers: [localRow],
+        serverSessionId: serverSessionId,
+      );
+      final refreshed = await (_local.appDb.select(
+        _local.appDb.passengersLocal,
+      )..where((t) => t.localId.equals(passengerLocalId))).getSingleOrNull();
+      serverPassengerId = refreshed?.serverId;
+    }
+
+    List<dynamic> updated = [];
+    if (serverPassengerId != null && serverPassengerId.isNotEmpty) {
+      updated = await _supabase
+          .from('job_session_passengers')
+          .update(update)
+          .eq('id', serverPassengerId)
+          .select('id');
+    }
+
+    if (updated.isEmpty &&
+        serverSessionId != null &&
+        serverSessionId.isNotEmpty &&
+        passengerId.isNotEmpty) {
+      updated = await _supabase
+          .from('job_session_passengers')
+          .update(update)
+          .eq('session_id', serverSessionId)
+          .eq('passenger_id', passengerId)
+          .select('id');
+    }
+
+    if (updated.isEmpty) {
+      throw Exception(
+        '$opLabel: server update matched 0 rows for passenger $passengerId',
+      );
+    }
+
+    final patchedServerId = (updated.first['id'] ?? '').toString();
+    if (patchedServerId.isNotEmpty &&
+        (localRow.serverId == null || localRow.serverId!.isEmpty)) {
+      await _local.patchPassengerServerId(
+        localId: passengerLocalId,
+        serverId: patchedServerId,
+      );
+    }
+
     await (_local.appDb.update(_local.appDb.passengersLocal)
           ..where((t) => t.localId.equals(passengerLocalId)))
         .write(PassengersLocalCompanion(isSynced: Value(true)));

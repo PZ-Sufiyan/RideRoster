@@ -262,7 +262,6 @@ class JobProvider extends ChangeNotifier {
   Future<void> ensureSessionStarted() async {
     final job = _job;
     if (job == null) return;
-    if (job.sessionId.isNotEmpty) return;
 
     final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
     if (userId.isEmpty) return;
@@ -272,6 +271,8 @@ class JobProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      // Idempotent — creates session if missing, or re-enqueues sync when
+      // passengers still lack server IDs.
       await _localRepo.startSessionLocally(
         jobId: job.jobDbId,
         direction: job.direction,
@@ -354,10 +355,9 @@ class JobProvider extends ChangeNotifier {
         _job!.sessionId,
       );
       final localId =
-          await _localRepo.resolvePassengerLocalId(
+          await _localRepo.resolvePassengerLocalIdFromStopId(
             localSessionId: localSessionId,
-            passengerId: stop
-                .id, // stop.id is set to localId or serverId by fetchCurrentJob
+            stopId: stop.id,
           ) ??
           stop.id;
 
@@ -369,6 +369,7 @@ class JobProvider extends ChangeNotifier {
       await _localRepo.updatePickupStatusLocally(
         passengerLocalId: localId,
         status: PickupStatus.completed,
+        localSessionId: localSessionId,
       );
       _job!.pickups[_activePickupIndex].status = PickupStatus.completed;
       _hasArrivedAtPickup = false;
@@ -386,7 +387,15 @@ class JobProvider extends ChangeNotifier {
 
     try {
       final stop = _job!.pickups[_activePickupIndex];
-      final localId = stop.id;
+      final localSessionId = await _localRepo.resolveLocalSessionIdAsync(
+        _job!.sessionId,
+      );
+      final localId =
+          await _localRepo.resolvePassengerLocalIdFromStopId(
+            localSessionId: localSessionId,
+            stopId: stop.id,
+          ) ??
+          stop.id;
       if (localId.isEmpty) {
         _error = 'Session not ready. Please try again.';
         notifyListeners();
@@ -395,9 +404,44 @@ class JobProvider extends ChangeNotifier {
       await _localRepo.updatePickupStatusLocally(
         passengerLocalId: localId,
         status: PickupStatus.notPicked,
+        localSessionId: localSessionId,
       );
       _job!.pickups[_activePickupIndex].status = PickupStatus.notPicked;
       _hasArrivedAtPickup = false;
+      _error = null;
+      notifyListeners();
+    } catch (e) {
+      _error = e.toString();
+      notifyListeners();
+    }
+  }
+
+  /// Saves extended wait minutes for the active pickup (status stays pending).
+  Future<void> saveExtendedWait({required int minutes}) async {
+    if (_job == null || minutes <= 0) return;
+    await ensureSessionStarted();
+
+    try {
+      final stop = _job!.pickups[_activePickupIndex];
+      final localSessionId = await _localRepo.resolveLocalSessionIdAsync(
+        _job!.sessionId,
+      );
+      final localId =
+          await _localRepo.resolvePassengerLocalIdFromStopId(
+            localSessionId: localSessionId,
+            stopId: stop.id,
+          ) ??
+          stop.id;
+      if (localId.isEmpty) {
+        _error = 'Session not ready. Please try again.';
+        notifyListeners();
+        return;
+      }
+      await _localRepo.saveExtendedWaitLocally(
+        passengerLocalId: localId,
+        minutes: minutes,
+        localSessionId: localSessionId,
+      );
       _error = null;
       notifyListeners();
     } catch (e) {
@@ -418,6 +462,7 @@ class JobProvider extends ChangeNotifier {
       if (_job!.isInbound) {
         await _localRepo.updateDropoffStatusLocally(
           passengerLocalId: dropoff.id,
+          localSessionId: localSessionId,
         );
       } else {
         await _localRepo.updateDropoffStatusForSchoolLocally(
