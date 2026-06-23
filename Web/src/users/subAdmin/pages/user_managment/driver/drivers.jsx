@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useCallback } from 'react';
+﻿import React, { useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import {
@@ -12,10 +12,10 @@ import {
     MdKeyboardArrowDown,
 } from 'react-icons/md';
 import {
-    getDriversForCurrentAdmin,
     updateDriver,
     driverStatusFromAction,
 } from '../../../../../services/driverVehicleService';
+import { useDriversList } from '../../../../../hooks/useDriversList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
 import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
@@ -86,17 +86,10 @@ function avatarUrlForDriver(d) {
 const DriversPage = () => {
     const navigate = useNavigate();
     const { can } = useSubAdminPermissions();
+    const { drivers, loading, error: loadError, reload, setDrivers } = useDriversList();
     const canViewUsers = can('view_users');
     const canAddUsers = can('add_users');
     const canManageUsers = can('edit_profiles') || can('deactivate_users');
-    if (!canViewUsers) {
-        return (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                You do not have permission to view users.
-            </div>
-        );
-    }
-    const [drivers, setDrivers] = useState([]);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
     const [selectedRows, setSelectedRows] = useState([]);
@@ -105,32 +98,13 @@ const DriversPage = () => {
     const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
     const [isBulkOpen, setIsBulkOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
-    const [loading, setLoading] = useState(true);
-    const [loadError, setLoadError] = useState(null);
+    const [actionError, setActionError] = useState(null);
     const [actionBusyId, setActionBusyId] = useState(null);
     const menuRef = useRef(null);
     const statusRef = useRef(null);
     const bulkRef = useRef(null);
 
     const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended'];
-
-    const loadDrivers = useCallback(async () => {
-        setLoading(true);
-        setLoadError(null);
-        try {
-            const rows = await getDriversForCurrentAdmin();
-            setDrivers(rows || []);
-        } catch (e) {
-            setLoadError(e?.message || 'Could not load drivers.');
-            setDrivers([]);
-        } finally {
-            setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        loadDrivers();
-    }, [loadDrivers]);
 
     // Close menus on outside click (portal menu is outside the table DOM)
     useEffect(() => {
@@ -209,7 +183,7 @@ const DriversPage = () => {
             const updated = await updateDriver(driverId, { status: nextStatus });
             setDrivers((prev) => prev.map((row) => (row.id === driverId ? { ...row, ...updated } : row)));
         } catch (e) {
-            setLoadError(e?.message || 'Could not update status.');
+            setActionError(e?.message || 'Could not update status.');
         } finally {
             setActionBusyId(null);
             setOpenMenu(null);
@@ -234,7 +208,7 @@ const DriversPage = () => {
             setSelectedRows([]);
             setIsBulkOpen(false);
         } catch (e) {
-            setLoadError(e?.message || 'Could not update selected drivers.');
+            setActionError(e?.message || 'Could not update selected drivers.');
         } finally {
             setActionBusyId(null);
         }
@@ -285,14 +259,22 @@ const DriversPage = () => {
     const driverMenuActions = menuDriver ? getDriverRowActions(menuDriver.status) : [];
     const shimmerRows = Array.from({ length: 5 });
 
+    if (!canViewUsers) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to view users.
+            </div>
+        );
+    }
+
     return (
         <div className="space-y-5">
-            {loadError && (
+            {(loadError || actionError) && (
                 <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-800 flex items-center justify-between gap-3">
-                    <span>{loadError}</span>
+                    <span>{loadError || actionError}</span>
                     <button
                         type="button"
-                        onClick={() => { setLoadError(null); loadDrivers(); }}
+                        onClick={() => { setActionError(null); reload(); }}
                         className="shrink-0 text-red-700 font-medium hover:underline"
                     >
                         Retry

@@ -1,4 +1,4 @@
-﻿import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+﻿import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate, Link } from 'react-router-dom';
 import {
@@ -20,10 +20,7 @@ import {
     MdPersonRemove,
 } from 'react-icons/md';
 import { ToastStack } from '../../../../utils/Toast';
-import { supabase } from '../../../../lib/supabaseClient';
-import { getCompanyAdminById } from '../../../../services/companyService';
 import {
-    fetchJobsListPageData,
     driversAvailableForAssignment,
     passengerAssistantsAvailableForAssignment,
     validateDriverAssignment,
@@ -34,6 +31,7 @@ import {
 } from '../../../../services/jobService';
 import { ShimmerBlock } from '../../../../utils/Shimmer';
 import { useJobsListRealtimeSync } from '../../../../hooks/useJobsListRealtimeSync';
+import { useJobsList } from '../../../../hooks/useJobsList';
 
 // ── Confirmation dialog ───────────────────────────────────────────────────────
 
@@ -76,7 +74,19 @@ const ConfirmDialog = ({ open, title, message, confirmLabel = 'Remove', onConfir
 
 const ActiveJobs = () => {
     const navigate = useNavigate();
-    const [companyId, setCompanyId] = useState(null);
+    const {
+        companyId,
+        jobs,
+        jobsMinimal,
+        driversCatalog,
+        pasCatalog,
+        loading,
+        refreshing,
+        error: loadError,
+        reload: reloadData,
+        setJobs,
+        setJobsMinimal,
+    } = useJobsList();
     const [selectedRows, setSelectedRows] = useState([]);
     const [activeMenu, setActiveMenu] = useState(null);
     const [showAssignDriver, setShowAssignDriver] = useState(false);
@@ -90,13 +100,6 @@ const ActiveJobs = () => {
 
     // Confirmation dialog state
     const [confirmDialog, setConfirmDialog] = useState({ open: false, type: null, job: null });
-
-    const [loading, setLoading] = useState(true);
-    const [refreshing, setRefreshing] = useState(false);
-    const [jobs, setJobs] = useState([]);
-    const [jobsMinimal, setJobsMinimal] = useState([]);
-    const [driversCatalog, setDriversCatalog] = useState([]);
-    const [pasCatalog, setPasCatalog] = useState([]);
 
     const menuRef = useRef(null);
     const [actionMenuAnchor, setActionMenuAnchor] = useState(null);
@@ -130,42 +133,8 @@ const ActiveJobs = () => {
     const companyIdRef = useRef(null);
 
     useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            setLoading(true);
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                const uid = session?.user?.id;
-                if (!uid) throw new Error('Not authenticated.');
-                const admin = await getCompanyAdminById(uid);
-                const cid = admin?.company_id;
-                if (!cid) throw new Error('No company linked to your account.');
-                companyIdRef.current = cid;
-                setCompanyId(cid);
-                const data = await fetchJobsListPageData(cid);
-                if (cancelled) return;
-                setJobs(data.jobs);
-                setJobsMinimal(data.jobsMinimal);
-                setDriversCatalog(data.drivers);
-                setPasCatalog(data.passengerAssistants);
-            } catch (e) {
-                if (!cancelled) pushToast('error', e?.message || 'Could not load jobs.');
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
-        })();
-        return () => { cancelled = true; };
-    }, []);
-
-    const reloadData = useCallback(async () => {
-        const cid = companyIdRef.current;
-        if (!cid) return;
-        const data = await fetchJobsListPageData(cid);
-        setJobs(data.jobs);
-        setJobsMinimal(data.jobsMinimal);
-        setDriversCatalog(data.drivers);
-        setPasCatalog(data.passengerAssistants);
-    }, []);
+        companyIdRef.current = companyId;
+    }, [companyId]);
 
     const reloadDataRef = useRef(reloadData);
     useEffect(() => { reloadDataRef.current = reloadData; }, [reloadData]);
@@ -185,13 +154,10 @@ const ActiveJobs = () => {
     });
 
     const handleRefresh = async () => {
-        setRefreshing(true);
         try {
             await reloadData();
         } catch (e) {
             pushToast('error', e?.message || 'Could not refresh.');
-        } finally {
-            setRefreshing(false);
         }
     };
 
@@ -201,6 +167,12 @@ const ActiveJobs = () => {
             { id: `${Date.now()}-${Math.random()}`, type, message, autoClose: true, duration: 5000 },
         ]);
     };
+
+    useEffect(() => {
+        if (loadError) {
+            pushToast('error', loadError);
+        }
+    }, [loadError]);
 
     const toggleRow = (id) => {
         setSelectedRows((prev) =>

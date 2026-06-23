@@ -1,6 +1,12 @@
 import React, { useMemo, useState } from 'react';
 import { NavLink, useNavigate, useLocation } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
+import { clearDriversListCache } from '../hooks/useDriversList';
+import { clearPAListCache } from '../hooks/usePAList';
+import { clearPassengersListCache } from '../hooks/usePassengersList';
+import { clearSubAdminsListCache } from '../hooks/useSubAdminsList';
+import { clearLeaveRequestsListCache } from '../hooks/useLeaveRequestsList';
+import { clearJobsListCache } from '../hooks/useJobsList';
 import { useSubAdminPermissions } from '../context/subAdminPermissionsContext';
 import { SIDEBAR_MENU_CONFIGS } from './sidebarMenuConfig';
 import {
@@ -163,6 +169,12 @@ const Sidebar = ({ isOpen, onClose }) => {
                         <button
                             type="button"
                             onClick={async () => {
+                                clearDriversListCache();
+                                clearPAListCache();
+                                clearPassengersListCache();
+                                clearSubAdminsListCache();
+                                clearLeaveRequestsListCache();
+                                clearJobsListCache();
                                 await supabase.auth.signOut();
                                 localStorage.clear();
                                 navigate('/home');

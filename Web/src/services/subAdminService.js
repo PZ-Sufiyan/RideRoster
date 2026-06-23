@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
+import { getCompanyAdminById } from './companyService'
 
 /** Matches `sub_admins` boolean columns and labels in `permissionsConstants.js`. */
 const SUB_ADMIN_PERM_FIELDS = [
@@ -103,6 +104,29 @@ export const deleteSubAdmin = async (subAdminId) => {
 }
 
 // Bulk helpers (optional): get by company and email uniqueness check
+
+/**
+ * Sub-admins for the logged-in company admin (company_admins.company_id).
+ */
+export const getSubAdminsForCurrentAdmin = async () => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const uid = session?.user?.id
+  if (!uid) {
+    const err = new Error('Not authenticated')
+    err.code = 'AUTH'
+    throw err
+  }
+  const admin = await getCompanyAdminById(uid)
+  if (!admin?.company_id) {
+    const err = new Error('No company linked to your account')
+    err.code = 'NO_COMPANY'
+    throw err
+  }
+  return getSubAdminsByCompany(admin.company_id)
+}
+
 export const getSubAdminsByCompany = async (companyId) => {
   const { data, error } = await supabase
     .from('sub_admins')

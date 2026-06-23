@@ -11,12 +11,10 @@ import {
     MdCheckBox,
     MdKeyboardArrowDown,
 } from 'react-icons/md';
-import { supabase } from '../../../../../lib/supabaseClient';
-import { getCompanyAdminById } from '../../../../../services/companyService';
 import {
-    getPassengerAssistants,
     updatePassengerAssistant,
 } from '../../../../../services/passengerAsssistantService';
+import { usePAList } from '../../../../../hooks/usePAList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
 
 /** DB `passenger_assistant.status` values (lowercase) */
@@ -74,7 +72,7 @@ function actionToDbStatus(action) {
 // ─── Component ────────────────────────────────────────────────
 const PAListPage = () => {
     const navigate = useNavigate();
-    const [pas, setPas] = useState([]);
+    const { pas, loading: isLoading, error: loadError, reload, setPas } = usePAList();
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('All Statuses');
     const [selectedRows, setSelectedRows] = useState([]);
@@ -82,8 +80,6 @@ const PAListPage = () => {
     const [isStatusOpen, setIsStatusOpen] = useState(false);
     const [isBulkOpen, setIsBulkOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
-    const [isLoading, setIsLoading] = useState(true);
-    const [loadError, setLoadError] = useState('');
     const [statusUpdateError, setStatusUpdateError] = useState('');
     const [isSavingStatus, setIsSavingStatus] = useState(false);
 
@@ -92,46 +88,6 @@ const PAListPage = () => {
     const bulkRef = useRef(null);
 
     const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended'];
-
-    useEffect(() => {
-        const loadPassengerAssistants = async () => {
-            setIsLoading(true);
-            setLoadError('');
-            setStatusUpdateError('');
-            try {
-                const {
-                    data: { session },
-                } = await supabase.auth.getSession();
-                const userId = session?.user?.id;
-                if (!userId) throw new Error('Not authenticated.');
-
-                const admin = await getCompanyAdminById(userId);
-                if (!admin?.company_id) throw new Error('No company linked to your account.');
-
-                const rows = await getPassengerAssistants({ companyId: admin.company_id });
-                const mapped = (rows || []).map((row) => ({
-                    id: row.id,
-                    paId: row.id,
-                    name: `${row.first_name || ''} ${row.surname || ''}`.trim() || 'N/A',
-                    avatar: row.profile_picture_url || `https://i.pravatar.cc/64?u=${row.id}`,
-                    email: row.email || '-',
-                    phone: row.phone || '-',
-                    assignedJobs: 0,
-                    statusDb: normalizePaStatus(row.status),
-                    dateAdded: row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : '-',
-                }));
-                setPas(mapped);
-            } catch (err) {
-                console.error('Failed loading passenger assistants:', err);
-                setLoadError(err?.message || 'Failed to load passenger assistants.');
-                setPas([]);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        loadPassengerAssistants();
-    }, []);
 
     useEffect(() => {
         const handler = (e) => {

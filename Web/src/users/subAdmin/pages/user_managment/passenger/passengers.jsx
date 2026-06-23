@@ -12,9 +12,8 @@ import {
     MdCheckBox,
     MdAccessible,
 } from 'react-icons/md';
-import { supabase } from '../../../../../lib/supabaseClient';
-import { getCompanyAdminById } from '../../../../../services/companyService';
-import { getPassengers, updatePassenger } from '../../../../../services/passengerService';
+import { updatePassenger } from '../../../../../services/passengerService';
+import { usePassengersList } from '../../../../../hooks/usePassengersList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
 import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
@@ -41,16 +40,6 @@ function passengerStatusLabel(dbStatus) {
 
 function actionToPassengerDbStatus(action) {
     return { Inactive: 'inactive', Active: 'active' }[action] ?? null;
-}
-
-function formatTime12h(timeValue) {
-    if (!timeValue) return '-';
-    const [h, m] = String(timeValue).split(':');
-    const hourNum = Number(h);
-    if (Number.isNaN(hourNum)) return String(timeValue);
-    const meridian = hourNum >= 12 ? 'PM' : 'AM';
-    const hour12 = hourNum % 12 || 12;
-    return `${String(hour12).padStart(2, '0')}:${m ?? '00'} ${meridian}`;
 }
 
 /* ── Dropdown — only one open at a time via `openKey` ── */
@@ -89,19 +78,11 @@ const Dropdown = ({ label, options, value, dropdownKey, openKey, setOpenKey, onC
 const PassengersPage = () => {
     const navigate = useNavigate();
     const { can } = useSubAdminPermissions();
+    const { passengers, loading: isLoading, error: loadError, setPassengers } = usePassengersList();
     const canViewUsers = can('view_users');
     const canAddUsers = can('add_users');
     const canManageUsers = can('edit_profiles') || can('deactivate_users');
 
-    if (!canViewUsers) {
-        return (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                You do not have permission to view users.
-            </div>
-        );
-    }
-
-    const [passengers,       setPassengers]       = useState([]);
     const [search,           setSearch]           = useState('');
     const [wcFilter,         setWcFilter]         = useState('All');
     const [statusFilter,     setStatusFilter]     = useState('All');
@@ -113,49 +94,10 @@ const PassengersPage = () => {
     // Single key controls which dropdown is open — null = all closed
     const [openDropdownKey,  setOpenDropdownKey]  = useState(null);
 
-    const [isLoading,        setIsLoading]        = useState(true);
-    const [loadError,        setLoadError]        = useState('');
     const [statusUpdateError,setStatusUpdateError]= useState('');
     const [isSavingStatus,   setIsSavingStatus]   = useState(false);
 
     const menuRef = useRef(null);
-
-    /* ── Load passengers ── */
-    useEffect(() => {
-        const loadPassengers = async () => {
-            setIsLoading(true);
-            setLoadError('');
-            setStatusUpdateError('');
-            try {
-                const { data: { session } } = await supabase.auth.getSession();
-                const userId = session?.user?.id;
-                if (!userId) throw new Error('Not authenticated.');
-                const admin = await getCompanyAdminById(userId);
-                if (!admin?.company_id) throw new Error('No company linked to your account.');
-                const rows = await getPassengers({ companyId: admin.company_id });
-                setPassengers((rows || []).map((row) => ({
-                    id:              row.id,
-                    passengerId:     row.id,
-                    name:            `${row.first_name || ''} ${row.surname || ''}`.trim() || 'N/A',
-                    avatar:          `https://i.pravatar.cc/150?u=${row.id}`,
-                    contact:         row.contact_number_1 || '-',
-                    pickupPostcode:  row.primary_pickup_postcode ?? row.pickup_postal_code  ?? '-',
-                    pickupAddress:   row.primary_pickup_address  ?? row.pickup_address       ?? '-',
-                    dropoffPostcode: row.educational_site_postcode ?? row.dropoff_postal_code ?? '-',
-                    dropoffAddress:  row.educational_site_address  ?? row.dropoff_address     ?? '-',
-                    time:            formatTime12h(row.primary_pickup_time ?? row.pickup_time),
-                    wheelchair:      Boolean(row.wheelchair_required),
-                    statusDb:        normalizePassengerStatus(row.status),
-                })));
-            } catch (err) {
-                setLoadError(err?.message || 'Failed to load passengers.');
-                setPassengers([]);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-        loadPassengers();
-    }, []);
 
     /* ── Close action menu on outside click / scroll / resize ── */
     useEffect(() => {
@@ -285,6 +227,14 @@ const PassengersPage = () => {
         setOpenKey:  setOpenDropdownKey,
         onChange,
     });
+
+    if (!canViewUsers) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to view users.
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-5" data-dropdown-root>

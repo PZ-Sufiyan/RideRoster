@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { getCompanyAdminById } from './companyService'
 
 function cleanString(v) {
   if (v === null || v === undefined) return ''
@@ -18,6 +19,28 @@ function toNullableNumeric(v) {
 }
 
 // ── Read ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Passengers for the logged-in company admin (company_admins.company_id).
+ */
+export const getPassengersForCurrentAdmin = async () => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const uid = session?.user?.id
+  if (!uid) {
+    const err = new Error('Not authenticated')
+    err.code = 'AUTH'
+    throw err
+  }
+  const admin = await getCompanyAdminById(uid)
+  if (!admin?.company_id) {
+    const err = new Error('No company linked to your account')
+    err.code = 'NO_COMPANY'
+    throw err
+  }
+  return getPassengers({ companyId: admin.company_id })
+}
 
 export const getPassengers = async ({ companyId = null } = {}) => {
   let query = supabase

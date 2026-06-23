@@ -11,12 +11,10 @@ import {
     MdCheckBox,
     MdKeyboardArrowDown,
 } from 'react-icons/md';
-import { supabase } from '../../../../../lib/supabaseClient';
-import { getCompanyAdminById } from '../../../../../services/companyService';
 import {
-    getPassengerAssistants,
     updatePassengerAssistant,
 } from '../../../../../services/passengerAsssistantService';
+import { usePAList } from '../../../../../hooks/usePAList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
 import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
@@ -76,17 +74,10 @@ function actionToDbStatus(action) {
 const PAListPage = () => {
     const navigate = useNavigate();
     const { can } = useSubAdminPermissions();
+    const { pas, loading: isLoading, error: loadError, reload, setPas } = usePAList();
     const canViewUsers = can('view_users');
     const canAddUsers = can('add_users');
     const canManageUsers = can('edit_profiles') || can('deactivate_users');
-    if (!canViewUsers) {
-        return (
-            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                You do not have permission to view users.
-            </div>
-        );
-    }
-    const [pas, setPas] = useState([]);
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
     const [selectedRows, setSelectedRows] = useState([]);
@@ -94,8 +85,6 @@ const PAListPage = () => {
     const [isStatusOpen, setIsStatusOpen] = useState(false);
     const [isBulkOpen, setIsBulkOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
-    const [isLoading, setIsLoading] = useState(true);
-    const [loadError, setLoadError] = useState('');
     const [statusUpdateError, setStatusUpdateError] = useState('');
     const [isSavingStatus, setIsSavingStatus] = useState(false);
 
@@ -104,46 +93,6 @@ const PAListPage = () => {
     const bulkRef = useRef(null);
 
     const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended'];
-
-    useEffect(() => {
-        const loadPassengerAssistants = async () => {
-            setIsLoading(true);
-            setLoadError('');
-            setStatusUpdateError('');
-            try {
-                const {
-                    data: { session },
-                } = await supabase.auth.getSession();
-                const userId = session?.user?.id;
-                if (!userId) throw new Error('Not authenticated.');
-
-                const admin = await getCompanyAdminById(userId);
-                if (!admin?.company_id) throw new Error('No company linked to your account.');
-
-                const rows = await getPassengerAssistants({ companyId: admin.company_id });
-                const mapped = (rows || []).map((row) => ({
-                    id: row.id,
-                    paId: row.id,
-                    name: `${row.first_name || ''} ${row.surname || ''}`.trim() || 'N/A',
-                    avatar: row.profile_picture_url || `https://i.pravatar.cc/64?u=${row.id}`,
-                    email: row.email || '-',
-                    phone: row.phone || '-',
-                    assignedJobs: 0,
-                    statusDb: normalizePaStatus(row.status),
-                    dateAdded: row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : '-',
-                }));
-                setPas(mapped);
-            } catch (err) {
-                console.error('Failed loading passenger assistants:', err);
-                setLoadError(err?.message || 'Failed to load passenger assistants.');
-                setPas([]);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        loadPassengerAssistants();
-    }, []);
 
     useEffect(() => {
         const handler = (e) => {
@@ -265,6 +214,14 @@ const PAListPage = () => {
 
     const startItem = filtered.length === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
     const endItem = Math.min(currentPage * ITEMS_PER_PAGE, filtered.length);
+
+    if (!canViewUsers) {
+        return (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+                You do not have permission to view users.
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-5">

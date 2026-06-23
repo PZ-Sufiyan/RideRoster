@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
+import { getCompanyAdminById } from './companyService'
 
 /* Passenger info CRUD */
 
@@ -171,6 +172,28 @@ export const deletePassengerDocumentByPassengerAndType = async (passengerId, doc
 }
 
 /* Passenger Assistant list helpers */
+
+/**
+ * Passenger assistants for the logged-in company admin (company_admins.company_id).
+ */
+export const getPassengerAssistantsForCurrentAdmin = async () => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const uid = session?.user?.id
+  if (!uid) {
+    const err = new Error('Not authenticated')
+    err.code = 'AUTH'
+    throw err
+  }
+  const admin = await getCompanyAdminById(uid)
+  if (!admin?.company_id) {
+    const err = new Error('No company linked to your account')
+    err.code = 'NO_COMPANY'
+    throw err
+  }
+  return getPassengerAssistants({ companyId: admin.company_id })
+}
 
 export const getPassengerAssistants = async ({ companyId = null } = {}) => {
   let query = supabase

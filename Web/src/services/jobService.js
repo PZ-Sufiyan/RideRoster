@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
+import { getCompanyAdminById } from './companyService'
 
 export const JOB_DRAFT_STORAGE_KEY = 'rideRoster_adminJobDraft_v1'
 
@@ -1256,6 +1257,29 @@ export async function fetchJobsListPageData(companyId) {
   )
 
   return { jobs, jobsMinimal, drivers, passengerAssistants: pas }
+}
+
+/**
+ * Jobs list page payload for the logged-in company admin / sub-admin.
+ */
+export async function fetchJobsListPageDataForCurrentAdmin() {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const uid = session?.user?.id
+  if (!uid) {
+    const err = new Error('Not authenticated')
+    err.code = 'AUTH'
+    throw err
+  }
+  const admin = await getCompanyAdminById(uid)
+  if (!admin?.company_id) {
+    const err = new Error('No company linked to your account')
+    err.code = 'NO_COMPANY'
+    throw err
+  }
+  const data = await fetchJobsListPageData(admin.company_id)
+  return { companyId: admin.company_id, ...data }
 }
 
 export function driversAvailableForAssignment(allDrivers, jobsMinimal, forJobId) {

@@ -12,16 +12,13 @@ import {
     MdKeyboardArrowDown,
     MdFilterList,
 } from 'react-icons/md';
-import { supabase } from '../../../../../lib/supabaseClient';
-import { getCompanyAdminById } from '../../../../../services/companyService';
 import {
-    getSubAdminsByCompany,
     updateSubAdmin,
-    formatSubAdminPermissionsSummary,
     normalizeSubAdminStatus,
     subAdminStatusLabel,
     actionToSubAdminDbStatus,
 } from '../../../../../services/subAdminService';
+import { useSubAdminsList } from '../../../../../hooks/useSubAdminsList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
 
 const STATUS_COLORS = {
@@ -53,7 +50,7 @@ function getSubAdminRowActions(statusLabel) {
 // ─── Component ────────────────────────────────────────────────
 const SubAdminList = () => {
     const navigate = useNavigate();
-    const [subAdmins, setSubAdmins] = useState([]);
+    const { subAdmins, loading: isLoading, error: loadError, setSubAdmins } = useSubAdminsList();
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('Status: All');
     const [selectedRows, setSelectedRows] = useState([]);
@@ -61,8 +58,6 @@ const SubAdminList = () => {
     const [isStatusOpen, setIsStatusOpen] = useState(false);
     const [isBulkOpen, setIsBulkOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
-    const [isLoading, setIsLoading] = useState(true);
-    const [loadError, setLoadError] = useState('');
     const [statusUpdateError, setStatusUpdateError] = useState('');
     const [isSavingStatus, setIsSavingStatus] = useState(false);
 
@@ -71,45 +66,6 @@ const SubAdminList = () => {
     const bulkRef = useRef(null);
 
     const statuses = ['Status: All', 'Active', 'Suspended'];
-
-    useEffect(() => {
-        const loadSubAdmins = async () => {
-            setIsLoading(true);
-            setLoadError('');
-            setStatusUpdateError('');
-            try {
-                const {
-                    data: { session },
-                } = await supabase.auth.getSession();
-                const userId = session?.user?.id;
-                if (!userId) throw new Error('Not authenticated.');
-
-                const admin = await getCompanyAdminById(userId);
-                if (!admin?.company_id) throw new Error('No company linked to your account.');
-
-                const rows = await getSubAdminsByCompany(admin.company_id);
-                const mapped = (rows || []).map((row) => ({
-                    id: row.id,
-                    name: row.name?.trim() || '—',
-                    email: row.email != null && String(row.email).trim() !== '' ? String(row.email).trim() : '',
-                    phone: row.phone != null && String(row.phone).trim() !== '' ? String(row.phone).trim() : '',
-                    avatar: `https://i.pravatar.cc/64?u=${row.id}`,
-                    permissions: formatSubAdminPermissionsSummary(row),
-                    statusDb: normalizeSubAdminStatus(row.status),
-                    updatedAt: row.updated_at,
-                }));
-                setSubAdmins(mapped);
-            } catch (err) {
-                console.error('Failed loading sub-admins:', err);
-                setLoadError(err?.message || 'Failed to load sub-admins.');
-                setSubAdmins([]);
-            } finally {
-                setIsLoading(false);
-            }
-        };
-
-        loadSubAdmins();
-    }, []);
 
     useEffect(() => {
         const handler = (e) => {
