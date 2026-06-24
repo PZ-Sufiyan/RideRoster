@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/firebase_app_config.dart';
 import '../firebase_options.dart';
@@ -153,7 +154,11 @@ class FcmService {
 
   String? _pushPayloadFor(Map<String, dynamic> data) {
     final type = data['type']?.toString() ?? '';
-    if (type == 'message' || type == 'leave_status') {
+    if (type == 'message' || type == 'leave_status' || type == 'job_assignment') {
+      final user = Supabase.instance.client.auth.currentUser;
+      final meta = user?.userMetadata ?? user?.appMetadata;
+      final role = meta?['role']?.toString();
+      if (role == 'passenger_assistant') return 'pa_notifications';
       return 'driver_notifications';
     }
     return data['job_id']?.toString();

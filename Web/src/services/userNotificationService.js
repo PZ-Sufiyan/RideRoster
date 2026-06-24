@@ -4,6 +4,7 @@ import { getSubAdminById } from './subAdminService'
 
 export const NOTIFICATION_TYPE_MESSAGE = 'message'
 export const NOTIFICATION_TYPE_LEAVE_STATUS = 'leave_status'
+export const NOTIFICATION_TYPE_JOB_ASSIGNMENT = 'job_assignment'
 
 const MAX_PREVIEW_LEN = 160
 
@@ -185,6 +186,89 @@ export async function notifyLeaveRequestDecision(leaveRow) {
       reason: leaveRow.reason ?? null,
     },
   })
+}
+
+/**
+ * Notify a PA when admin assigns them to a job.
+ * @param {object} job — updated jobs row (must include assigned_pa_id)
+ */
+export async function notifyPaJobAssignment(job) {
+  const paId = job?.assigned_pa_id
+  if (!paId) return null
+
+  const jobName = job.job_name?.trim() || 'New job'
+  const school = job.client_school_name?.trim() || ''
+  const title = 'You are Assigned to New Job'
+  const body = school
+    ? `You have been assigned to ${jobName} at ${school}.`
+    : `You have been assigned to ${jobName}.`
+
+  return createUserNotification({
+    userId: paId,
+    companyId: job.company_id ?? null,
+    notificationType: NOTIFICATION_TYPE_JOB_ASSIGNMENT,
+    title,
+    body: truncatePreview(body),
+    referenceId: job.id,
+    payload: {
+      job_id: job.id,
+      job_name: jobName,
+      client_school_name: school || null,
+      internal_job_id: job.internal_job_id ?? null,
+    },
+  })
+}
+
+export async function sendPaMessage({ paId, message }) {
+  const text = String(message || '').trim()
+  if (!text) throw new Error('Message cannot be empty.')
+
+  const { adminUserId, companyId, senderName } = await getAdminContext()
+
+  const { data: pa, error: paErr } = await supabase
+    .from('passenger_assistant')
+    .select('id, company_id, first_name, surname')
+    .eq('id', paId)
+    .maybeSingle()
+
+  if (paErr) throw paErr
+  if (!pa?.id) throw new Error('Passenger assistant not found.')
+  if (pa.company_id !== companyId) {
+    throw new Error('Passenger assistant not found or access denied.')
+  }
+
+  const { data: msgRow, error: msgErr } = await supabase
+    .from('admin_pa_messages')
+    .insert({
+      company_id: companyId,
+      pa_id: paId,
+      sender_admin_id: adminUserId,
+      message: text,
+    })
+    .select()
+    .single()
+
+  if (msgErr) throw msgErr
+
+  const title = 'New Message from Admin'
+  const body = truncatePreview(text)
+
+  const notification = await createUserNotification({
+    userId: paId,
+    companyId,
+    notificationType: NOTIFICATION_TYPE_MESSAGE,
+    title,
+    body,
+    referenceId: msgRow.id,
+    payload: {
+      message_id: msgRow.id,
+      full_message: text,
+      sender_admin_id: adminUserId,
+      sender_name: senderName,
+    },
+  })
+
+  return { message: msgRow, notification }
 }
 
 /**

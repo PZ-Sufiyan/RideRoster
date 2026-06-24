@@ -1,25 +1,35 @@
 import React, { useEffect, useState } from 'react'
 import { MdClose, MdSend } from 'react-icons/md'
-import { sendDriverMessage } from '../services/userNotificationService'
+import { sendDriverMessage, sendPaMessage } from '../services/userNotificationService'
 
 const MAX_MESSAGE_LEN = 1000
 
 /**
  * @param {{
  *   open: boolean,
- *   driverId: string|null,
- *   driverName?: string,
+ *   recipientId: string|null,
+ *   recipientName?: string,
+ *   userType?: 'driver' | 'pa',
  *   onClose: () => void,
  *   onSent?: () => void,
+ *   driverId?: string|null,
+ *   driverName?: string,
  * }} props
  */
-export default function SendDriverMessageModal({
+export default function SendUserMessageModal({
   open,
-  driverId,
-  driverName = 'Driver',
+  recipientId,
+  recipientName,
+  userType = 'driver',
   onClose,
   onSent,
+  driverId = null,
+  driverName,
 }) {
+  const resolvedId = recipientId ?? driverId
+  const resolvedName =
+    recipientName ?? driverName ?? (userType === 'pa' ? 'Passenger assistant' : 'Driver')
+
   const [message, setMessage] = useState('')
   const [sending, setSending] = useState(false)
   const [error, setError] = useState(null)
@@ -36,12 +46,16 @@ export default function SendDriverMessageModal({
 
   const handleSend = async () => {
     const text = message.trim()
-    if (!text || !driverId) return
+    if (!text || !resolvedId) return
 
     setSending(true)
     setError(null)
     try {
-      await sendDriverMessage({ driverId, message: text })
+      if (userType === 'pa') {
+        await sendPaMessage({ paId: resolvedId, message: text })
+      } else {
+        await sendDriverMessage({ driverId: resolvedId, message: text })
+      }
       setMessage('')
       onSent?.()
       onClose()
@@ -63,15 +77,15 @@ export default function SendDriverMessageModal({
       <div
         role="dialog"
         aria-modal="true"
-        aria-labelledby="send-driver-message-title"
+        aria-labelledby="send-user-message-title"
         className="relative z-10 w-full max-w-md rounded-xl border border-gray-200 bg-white shadow-xl"
       >
         <div className="flex items-center justify-between border-b border-gray-100 px-4 py-3">
           <div>
-            <h2 id="send-driver-message-title" className="text-sm font-semibold text-gray-900">
+            <h2 id="send-user-message-title" className="text-sm font-semibold text-gray-900">
               Send message
             </h2>
-            <p className="text-xs text-gray-500">To {driverName}</p>
+            <p className="text-xs text-gray-500">To {resolvedName}</p>
           </div>
           <button
             type="button"

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../model/job_model.dart';
@@ -21,14 +22,35 @@ class NavigationService {
     navigatorKey.currentState?.pushNamed(AppRoutes.driverNotifications);
   }
 
+  static void openPaNotifications() {
+    navigatorKey.currentState?.pushNamed(AppRoutes.paNotifications);
+  }
+
   /// Routes push taps: message/leave → notifications, otherwise dashboard.
   static void handlePushOpened(Map<String, dynamic> data) {
     final type = data['type']?.toString() ?? '';
-    if (type == 'message' || type == 'leave_status') {
-      openDriverNotifications();
+    if (type == 'message' || type == 'leave_status' || type == 'job_assignment') {
+      final user = Supabase.instance.client.auth.currentUser;
+      final meta = user?.userMetadata ?? user?.appMetadata;
+      final role = meta?['role']?.toString();
+      if (role == 'passenger_assistant') {
+        openPaNotifications();
+      } else {
+        openDriverNotifications();
+      }
       return;
     }
-    openDriverDashboard();
+    final user = Supabase.instance.client.auth.currentUser;
+    final meta = user?.userMetadata ?? user?.appMetadata;
+    final role = meta?['role']?.toString();
+    if (role == 'passenger_assistant') {
+      navigatorKey.currentState?.pushNamedAndRemoveUntil(
+        AppRoutes.paDashboard,
+        (route) => false,
+      );
+    } else {
+      openDriverDashboard();
+    }
   }
 
   /// Opens Google Maps showing current location, all pickups, and dropoff.

@@ -47,7 +47,7 @@ class _DriverNotificationsPageState extends State<DriverNotificationsPage> {
 
   @override
   void dispose() {
-    _service.unsubscribeRealtime();
+    _service.unsubscribeRealtime(_loadSilent);
     super.dispose();
   }
 

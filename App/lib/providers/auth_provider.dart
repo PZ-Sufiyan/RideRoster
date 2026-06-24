@@ -65,7 +65,7 @@ class AuthProvider extends ChangeNotifier {
       // internally, but calling it here after result.success ensures the
       // auth token is valid before we open channels.
       await _subscribeRealtime();
-      await _registerPushTokenIfDriver();
+      await _registerPushTokenIfNeeded();
     } else {
       _token = null;
       _userId = null;
@@ -102,7 +102,7 @@ class AuthProvider extends ChangeNotifier {
       _setStatus(AuthStatus.authenticated);
       // Subscribe after successful login — userId is now set
       await _subscribeRealtime();
-      await _registerPushTokenIfDriver();
+      await _registerPushTokenIfNeeded();
       return true;
     } else {
       _errorMessage = result.error;
@@ -190,8 +190,8 @@ class AuthProvider extends ChangeNotifier {
     await RealtimeService().subscribe(audience: audience);
   }
 
-  Future<void> _registerPushTokenIfDriver() async {
-    if (!isDriver) return;
+  Future<void> _registerPushTokenIfNeeded() async {
+    if (!isDriver && !isPassengerAssistant) return;
     final id = _userId;
     if (id == null || id.isEmpty) return;
     try {

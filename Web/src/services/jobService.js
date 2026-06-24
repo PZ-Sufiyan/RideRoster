@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient'
 import { getCompanyAdminById } from './companyService'
+import { notifyPaJobAssignment } from './userNotificationService'
 
 export const JOB_DRAFT_STORAGE_KEY = 'rideRoster_adminJobDraft_v1'
 
@@ -994,6 +995,13 @@ export async function updateJobAssignedPa(jobId, paId) {
     .from('jobs').update({ assigned_pa_id: paId, updated_at: new Date().toISOString() })
     .eq('id', jobId).select().single()
   if (error) throw error
+
+  try {
+    await notifyPaJobAssignment(data)
+  } catch (notifyErr) {
+    console.warn('PA job assignment notification failed:', notifyErr?.message || notifyErr)
+  }
+
   return data
 }
 

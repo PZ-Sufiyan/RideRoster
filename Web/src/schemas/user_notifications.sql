@@ -25,7 +25,7 @@ create table if not exists public.user_notifications (
   user_id           uuid not null references auth.users (id) on delete cascade,
   company_id        uuid null references public.companies (id) on delete set null,
   notification_type text not null check (
-    notification_type in ('message', 'leave_status')
+    notification_type in ('message', 'leave_status', 'job_assignment')
   ),
   title             text not null,
   body              text not null,

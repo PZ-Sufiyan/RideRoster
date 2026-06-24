@@ -17,7 +17,7 @@ import {
     getJobsByAssignedDriver,
     getJobSessionsByDriver,
 } from '../../../../../services/driverVehicleService';
-import SendDriverMessageModal from '../../../../../components/SendDriverMessageModal';
+import SendUserMessageModal from '../../../../../components/SendDriverMessageModal';
 
 /** Labels aligned with `add_new_driver.jsx` / DB document_type enums */
 const DRIVER_DOCUMENT_LABELS = {
@@ -612,10 +612,11 @@ const DriverDetail = () => {
                     </table>
                 </div>
             </div>
-            <SendDriverMessageModal
+            <SendUserMessageModal
                 open={showMessageModal}
-                driverId={driver.id}
-                driverName={displayName}
+                recipientId={driver.id}
+                recipientName={displayName}
+                userType="driver"
                 onClose={() => setShowMessageModal(false)}
             />
         </div>

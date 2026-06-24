@@ -152,6 +152,10 @@ class NotificationService {
       NavigationService.openDriverNotifications();
       return;
     }
+    if (payload == 'pa_notifications') {
+      NavigationService.openPaNotifications();
+      return;
+    }
     if (payload == null || payload.isEmpty) {
       NavigationService.openDriverDashboard();
       return;

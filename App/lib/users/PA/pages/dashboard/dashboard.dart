@@ -6,6 +6,7 @@ import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
+import '../../../../widgets/notification_bell_button.dart';
 import '../../../../providers/pa_job_provider.dart';
 import '../../../../model/pa_job_model.dart';
 
@@ -172,15 +173,10 @@ class _PaAppBar extends StatelessWidget {
             ),
           ),
           SizedBox(width: SizeConfig.r(14)),
-          GestureDetector(
+          NotificationBellButton(
+            iconSize: 26,
             onTap: () =>
                 Navigator.pushNamed(context, AppRoutes.paNotifications),
-            behavior: HitTestBehavior.opaque,
-            child: Icon(
-              Icons.notifications_outlined,
-              color: AppColors.textDark,
-              size: SizeConfig.r(26),
-            ),
           ),
         ],
       ),

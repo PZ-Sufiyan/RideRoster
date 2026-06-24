@@ -4,6 +4,7 @@ import {
     MdArrowBack,
     MdEdit,
     MdAdd,
+    MdMessage,
     MdEmail,
     MdPhone,
     MdDateRange,
@@ -24,6 +25,7 @@ import {
     getJobsByAssignedPassengerAssistant,
     PA_DOCUMENT_TYPES,
 } from '../../../../../services/passengerAsssistantService';
+import SendUserMessageModal from '../../../../../components/SendDriverMessageModal';
 import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
 
 const ITEMS_PER_PAGE = 5;
@@ -160,6 +162,7 @@ const PADetail = () => {
     const [pa, setPa] = useState(null);
     const [documents, setDocuments] = useState([]);
     const [jobs, setJobs] = useState([]);
+    const [showMessageModal, setShowMessageModal] = useState(false);
 
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -315,6 +318,14 @@ const PADetail = () => {
                     <p className="text-sm text-gray-500 mt-0.5">Passenger Assistant Profile &amp; Activity</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
+                    <button
+                        type="button"
+                        onClick={() => setShowMessageModal(true)}
+                        className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors"
+                    >
+                        <MdMessage size={16} />
+                        Send Message
+                    </button>
                     <button
                         type="button"
                         onClick={() => navigate(`/portal/users/pa/${id}/edit`)}
@@ -567,6 +578,13 @@ const PADetail = () => {
                     ) : null}
                 </div>
             </div>
+            <SendUserMessageModal
+                open={showMessageModal}
+                recipientId={pa.id}
+                recipientName={displayName}
+                userType="pa"
+                onClose={() => setShowMessageModal(false)}
+            />
         </div>
     );
 };

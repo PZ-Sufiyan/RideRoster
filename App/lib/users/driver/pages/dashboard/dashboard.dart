@@ -15,6 +15,7 @@ import '../../../../services/fcm_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
+import '../../../../widgets/notification_bell_button.dart';
 import '../../../../model/job_request_model.dart';
 import 'vehicle_check_list.dart';
 
@@ -196,63 +197,12 @@ class _DashboardAppBar extends StatelessWidget {
             ),
           ),
           SizedBox(width: SizeConfig.r(14)),
-          GestureDetector(
+          NotificationBellButton(
             onTap: () =>
                 Navigator.pushNamed(context, AppRoutes.driverNotifications),
-            behavior: HitTestBehavior.opaque,
-            child: _BadgeIcon(
-              icon: Icons.notifications_outlined,
-              badgeColor: AppColors.warning,
-              badgeLabel: '2',
-            ),
           ),
         ],
       ),
-    );
-  }
-}
-
-class _BadgeIcon extends StatelessWidget {
-  final IconData icon;
-  final Color badgeColor;
-  final String badgeLabel;
-
-  const _BadgeIcon({
-    required this.icon,
-    required this.badgeColor,
-    required this.badgeLabel,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        Icon(icon, color: AppColors.textDark, size: SizeConfig.r(24)),
-        Positioned(
-          right: 0,
-          top: 0,
-          child: Container(
-            padding: EdgeInsets.all(SizeConfig.r(2)),
-            decoration: BoxDecoration(
-              color: badgeColor,
-              shape: BoxShape.circle,
-            ),
-            constraints: BoxConstraints(
-              minWidth: SizeConfig.r(16),
-              minHeight: SizeConfig.r(16),
-            ),
-            child: Text(
-              badgeLabel,
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: SizeConfig.sp(9),
-                fontWeight: FontWeight.w700,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
-        ),
-      ],
     );
   }
 }
