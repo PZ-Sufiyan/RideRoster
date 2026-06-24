@@ -17,6 +17,7 @@ import {
     getJobsByAssignedDriver,
     getJobSessionsByDriver,
 } from '../../../../../services/driverVehicleService';
+import SendDriverMessageModal from '../../../../../components/SendDriverMessageModal';
 
 /** Labels aligned with `add_new_driver.jsx` / DB document_type enums */
 const DRIVER_DOCUMENT_LABELS = {
@@ -162,6 +163,7 @@ const DriverDetail = () => {
     const [vehicleDocs, setVehicleDocs] = useState([]);
     const [jobs, setJobs] = useState([]);
     const [jobSessions, setJobSessions] = useState([]);
+    const [showMessageModal, setShowMessageModal] = useState(false);
 
     const load = useCallback(async () => {
         if (!id) {
@@ -351,6 +353,7 @@ const DriverDetail = () => {
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
+                        onClick={() => setShowMessageModal(true)}
                         className="flex items-center gap-2 px-4 py-2 border border-gray-200 rounded-lg text-xs font-semibold text-gray-700 hover:bg-gray-50"
                     >
                         <MdMessage size={14} />
@@ -609,6 +612,12 @@ const DriverDetail = () => {
                     </table>
                 </div>
             </div>
+            <SendDriverMessageModal
+                open={showMessageModal}
+                driverId={driver.id}
+                driverName={displayName}
+                onClose={() => setShowMessageModal(false)}
+            />
         </div>
     );
 };

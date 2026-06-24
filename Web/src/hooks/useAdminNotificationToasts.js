@@ -9,11 +9,13 @@ import {
   detectSessionPassengerEventType,
   enrichSessionContext,
   enrichSessionPassengerContext,
-  fetchAdminNotifications,
+  fetchCompanyNotifications,
   isSessionStartEvent,
+  NOTIFICATION_ROLES,
+  setNotificationRole,
 } from '../services/adminNotificationService'
 import {
-  getAdminCompanyContext,
+  getCompanyNotificationContext,
   subscribeAdminNotificationRealtime,
 } from '../services/adminNotificationRealtimeService'
 
@@ -29,7 +31,7 @@ function notificationEventKey(notification) {
   return `${notification.key}:${notification.createdAt || ''}`
 }
 
-export function useAdminNotificationToasts(enabled) {
+export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.ADMIN) {
   const [toasts, setToasts] = useState([])
   const seenEventKeysRef = useRef(new Set())
   const companyUserIdsRef = useRef(new Set())
@@ -185,9 +187,11 @@ export function useAdminNotificationToasts(enabled) {
 
   const handleRealtimeEvent = useCallback(
     async (event) => {
+      setNotificationRole(role)
+
       if (event.source === 'poll') {
         try {
-          const { notifications } = await fetchAdminNotifications()
+          const { notifications } = await fetchCompanyNotifications(role)
           toastNewFromFetch(notifications)
         } catch {
           // ignore poll errors
@@ -229,6 +233,7 @@ export function useAdminNotificationToasts(enabled) {
       enrichAndToastSessionPassenger,
       enrichAndToastSos,
       toastNewFromFetch,
+      role,
     ],
   )
 
@@ -246,13 +251,14 @@ export function useAdminNotificationToasts(enabled) {
 
     const init = async () => {
       try {
-        const { companyId } = await getAdminCompanyContext()
+        setNotificationRole(role)
+        const { companyId } = await getCompanyNotificationContext(role)
         if (cancelled) return
 
         companyIdRef.current = companyId
 
         try {
-          const fetched = await fetchAdminNotifications()
+          const fetched = await fetchCompanyNotifications(role)
           if (!cancelled) {
             companyUserIdsRef.current = new Set(fetched.companyUserIds)
             seedSeenKeys(fetched.notifications)
@@ -277,7 +283,7 @@ export function useAdminNotificationToasts(enabled) {
       readyRef.current = false
       unsubscribe()
     }
-  }, [enabled, handleRealtimeEvent, seedSeenKeys])
+  }, [enabled, role, handleRealtimeEvent, seedSeenKeys])
 
   return { toasts, dismissToast }
 }

@@ -1,5 +1,8 @@
 import { supabase } from '../lib/supabaseClient'
-import { getCompanyAdminById } from './companyService'
+import {
+  NOTIFICATION_ROLES,
+  getCompanyContextForRole as resolveCompanyNotificationContext,
+} from './adminNotificationService'
 
 const POLL_MS = 12000
 
@@ -20,23 +23,14 @@ const channelsByCompany = new Map()
 /** @type {Map<string, ReturnType<typeof setInterval>>} */
 const pollTimersByCompany = new Map()
 
+export async function getCompanyNotificationContext(role = NOTIFICATION_ROLES.ADMIN) {
+  const { userId, companyId } = await resolveCompanyNotificationContext(role)
+  return { userId, companyId, role }
+}
+
+/** @deprecated use getCompanyNotificationContext('admin') */
 export async function getAdminCompanyContext() {
-  const {
-    data: { session },
-  } = await supabase.auth.getSession()
-  const uid = session?.user?.id
-  if (!uid) {
-    const err = new Error('Not authenticated')
-    err.code = 'AUTH'
-    throw err
-  }
-  const admin = await getCompanyAdminById(uid)
-  if (!admin?.company_id) {
-    const err = new Error('No company linked to your account')
-    err.code = 'NO_COMPANY'
-    throw err
-  }
-  return { userId: uid, companyId: admin.company_id }
+  return getCompanyNotificationContext(NOTIFICATION_ROLES.ADMIN)
 }
 
 function emit(companyId, event) {

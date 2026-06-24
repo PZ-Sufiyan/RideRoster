@@ -12,7 +12,8 @@ const DashboardLayout = () => {
     const location = useLocation();
     const isSubAdmin = location.pathname.startsWith('/team');
     const isAdmin = location.pathname.startsWith('/portal');
-    const { toasts, dismissToast } = useAdminNotificationToasts(isAdmin);
+    const notificationRole = isSubAdmin ? 'subadmin' : 'admin';
+    const { toasts, dismissToast } = useAdminNotificationToasts(isAdmin || isSubAdmin, notificationRole);
 
     useEffect(() => {
         setSidebarOpen(false);

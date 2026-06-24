@@ -1,7 +1,7 @@
 import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
-import { sendJobAssignmentPush } from './fcm.js'
+import { sendJobAssignmentPush, sendUserNotificationPush } from './fcm.js'
 import { startJobScheduler } from './jobScheduler.js'
 import {
   createSupabaseAdminClient,
@@ -128,6 +128,57 @@ app.post('/notify/job-assignment', async (req, res) => {
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
     console.error('job-assignment notification failed:', message)
+    res.status(500).json({ error: message })
+  }
+})
+
+app.post('/notify/user-notification', async (req, res) => {
+  try {
+    const user = await requireAdmin(req, res)
+    if (!user) return
+
+    const userId = req.body?.user_id
+    const title = String(req.body?.title || '').trim()
+    const body = String(req.body?.body || '').trim()
+    const data = req.body?.data ?? {}
+
+    if (!userId) {
+      res.status(400).json({ error: 'user_id is required' })
+      return
+    }
+    if (!title || !body) {
+      res.status(400).json({ error: 'title and body are required' })
+      return
+    }
+
+    const supabaseAdmin = createSupabaseAdminClient()
+
+    const { data: tokens, error: tokenError } = await supabaseAdmin
+      .from('device_push_tokens')
+      .select('fcm_token')
+      .eq('user_id', userId)
+
+    if (tokenError) throw tokenError
+
+    const result = await sendUserNotificationPush({
+      userId,
+      title,
+      body,
+      data,
+      tokens,
+      supabaseAdmin,
+    })
+
+    console.info('user-notification push', {
+      userId,
+      tokenCount: tokens?.length ?? 0,
+      result,
+    })
+
+    res.json(result)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('user-notification push failed:', message)
     res.status(500).json({ error: message })
   }
 })

@@ -17,6 +17,20 @@ class NavigationService {
     );
   }
 
+  static void openDriverNotifications() {
+    navigatorKey.currentState?.pushNamed(AppRoutes.driverNotifications);
+  }
+
+  /// Routes push taps: message/leave → notifications, otherwise dashboard.
+  static void handlePushOpened(Map<String, dynamic> data) {
+    final type = data['type']?.toString() ?? '';
+    if (type == 'message' || type == 'leave_status') {
+      openDriverNotifications();
+      return;
+    }
+    openDriverDashboard();
+  }
+
   /// Opens Google Maps showing current location, all pickups, and dropoff.
   Future<void> openFullRoute({
     required List<PickupStop> pickups,

@@ -14,6 +14,7 @@ import {
 import { subscribeAdminNotificationRealtime } from '../../../../services/adminNotificationRealtimeService';
 import {
     NOTIFICATION_TABS,
+    NOTIFICATION_ROLES,
     fetchAdminNotifications,
     filterNotificationsByTab,
     groupNotificationsByDate,
@@ -24,6 +25,7 @@ import { ToastStack } from '../../../../utils/Toast';
 
 const TABS = Object.values(NOTIFICATION_TABS);
 const ITEMS_PER_PAGE = 5;
+const ROLE = NOTIFICATION_ROLES.ADMIN;
 
 const ICON_MAP = {
     MdWarning,
@@ -157,9 +159,9 @@ const NotificationPage = () => {
         if (page >= 1 && page <= totalPages) setCurrentPage(page);
     };
 
-    const handleOpenNotification = (item) => {
+    const handleOpenNotification = async (item) => {
         if (userId) {
-            markNotificationsRead(userId, [item.key]);
+            await markNotificationsRead(userId, [item.key], ROLE);
             setNotifications((prev) =>
                 prev.map((n) => (n.key === item.key ? { ...n, isNew: false } : n)),
             );
@@ -167,10 +169,10 @@ const NotificationPage = () => {
         if (item.linkTo) navigate(item.linkTo);
     };
 
-    const handleMarkAllRead = () => {
+    const handleMarkAllRead = async () => {
         if (!userId) return;
         const keys = notifications.map((n) => n.key);
-        markAllNotificationsRead(userId, keys);
+        await markAllNotificationsRead(userId, keys, ROLE);
         setNotifications((prev) => prev.map((n) => ({ ...n, isNew: false })));
         pushToast('success', 'All notifications marked as read.');
     };

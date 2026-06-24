@@ -1,5 +1,6 @@
 import { supabase } from '../lib/supabaseClient'
 import { getCompanyAdminById } from './companyService'
+import { notifyLeaveRequestDecision } from './userNotificationService'
 
 const WEEKDAY_KEYS = ['mon', 'tue', 'wed', 'thu', 'fri', 'sat', 'sun']
 
@@ -113,6 +114,13 @@ export async function updateLeaveRequestStatus(requestId, { status, adminNotes =
     .select()
     .single()
   if (error) throw error
+
+  try {
+    await notifyLeaveRequestDecision(data)
+  } catch (notifyErr) {
+    console.warn('Leave decision notification failed:', notifyErr?.message || notifyErr)
+  }
+
   return data
 }
 

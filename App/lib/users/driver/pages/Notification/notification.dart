@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
+import '../../../../services/driver_notification_service.dart';
 
 /// Notification screen palette — matches the design screenshot.
 class _DriverNotificationColors {
@@ -12,8 +13,11 @@ class _DriverNotificationColors {
   static const Color iconOrangeBg = Color(0xFFFFF4E5);
   static const Color iconGreen = Color(0xFF10B981);
   static const Color iconGreenBg = Color(0xFFE8F8EF);
-  static const Color declineBg = Color(0xFFF3F4F6);
+  static const Color iconRed = Color(0xFFEF4444);
+  static const Color iconRedBg = Color(0xFFFEE2E2);
 }
+
+enum _NotificationFilter { all, leaveStatus, message, unread }
 
 class DriverNotificationsPage extends StatefulWidget {
   const DriverNotificationsPage({super.key});
@@ -24,71 +28,212 @@ class DriverNotificationsPage extends StatefulWidget {
 }
 
 class _DriverNotificationsPageState extends State<DriverNotificationsPage> {
-  static const int _unreadCount = 3;
-  int _selectedFilter = 0;
+  final DriverNotificationService _service = DriverNotificationService();
+
+  _NotificationFilter _selectedFilter = _NotificationFilter.all;
+  List<DriverNotificationItem> _items = [];
+  final Set<String> _selectedIds = {};
+  bool _selectionMode = false;
+  bool _loading = true;
+  String? _error;
+  bool _markingRead = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+    _service.subscribeRealtime(_loadSilent);
+  }
+
+  @override
+  void dispose() {
+    _service.unsubscribeRealtime();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final rows = await _service.fetchNotifications();
+      if (!mounted) return;
+      setState(() {
+        _items = rows;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = 'Could not load notifications.';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _loadSilent() async {
+    try {
+      final rows = await _service.fetchNotifications();
+      if (!mounted) return;
+      setState(() => _items = rows);
+    } catch (_) {}
+  }
+
+  int get _unreadCount => _items.where((n) => n.isUnread).length;
+
+  List<DriverNotificationItem> get _filteredItems {
+    switch (_selectedFilter) {
+      case _NotificationFilter.leaveStatus:
+        return _items.where((n) => n.notificationType == 'leave_status').toList();
+      case _NotificationFilter.message:
+        return _items.where((n) => n.notificationType == 'message').toList();
+      case _NotificationFilter.unread:
+        return _items.where((n) => n.isUnread).toList();
+      case _NotificationFilter.all:
+        return _items;
+    }
+  }
+
+  void _exitSelectionMode() {
+    setState(() {
+      _selectionMode = false;
+      _selectedIds.clear();
+    });
+  }
+
+  Future<void> _markSelectedRead() async {
+    if (_selectedIds.isEmpty) return;
+    setState(() => _markingRead = true);
+    try {
+      await _service.markAsRead(_selectedIds);
+      await _loadSilent();
+      _exitSelectionMode();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not mark notifications as read.')),
+      );
+    } finally {
+      if (mounted) setState(() => _markingRead = false);
+    }
+  }
+
+  Future<void> _markAllRead() async {
+    setState(() => _markingRead = true);
+    try {
+      await _service.markAllAsRead();
+      await _loadSilent();
+      _exitSelectionMode();
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Could not mark all as read.')),
+      );
+    } finally {
+      if (mounted) setState(() => _markingRead = false);
+    }
+  }
+
+  Future<void> _openNotification(DriverNotificationItem item) async {
+    if (_selectionMode) {
+      setState(() {
+        if (_selectedIds.contains(item.id)) {
+          _selectedIds.remove(item.id);
+          if (_selectedIds.isEmpty) _selectionMode = false;
+        } else {
+          _selectedIds.add(item.id);
+        }
+      });
+      return;
+    }
+
+    if (item.isUnread) {
+      try {
+        await _service.markAsRead([item.id]);
+        await _loadSilent();
+      } catch (_) {}
+    }
+
+    if (!mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => _NotificationDetailDialog(item: item),
+    );
+  }
+
+  void _toggleSelect(DriverNotificationItem item) {
+    setState(() {
+      _selectionMode = true;
+      if (_selectedIds.contains(item.id)) {
+        _selectedIds.remove(item.id);
+        if (_selectedIds.isEmpty) _selectionMode = false;
+      } else {
+        _selectedIds.add(item.id);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     SizeConfig.init(context);
+    final filtered = _filteredItems;
+
     return Scaffold(
       backgroundColor: _DriverNotificationColors.pageBg,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _NotificationsHeader(unreadCount: _unreadCount),
+            _NotificationsHeader(
+              unreadCount: _unreadCount,
+              selectionMode: _selectionMode,
+              selectedCount: _selectedIds.length,
+              markingRead: _markingRead,
+              onMarkAllRead: _unreadCount > 0 ? _markAllRead : null,
+              onMarkSelectedRead:
+                  _selectionMode && _selectedIds.isNotEmpty ? _markSelectedRead : null,
+              onCancelSelection: _selectionMode ? _exitSelectionMode : null,
+            ),
             SizedBox(height: SizeConfig.r(16)),
             _FilterChips(
-              selectedIndex: _selectedFilter,
-              onSelected: (i) => setState(() => _selectedFilter = i),
+              selectedFilter: _selectedFilter,
+              unreadCount: _unreadCount,
+              messageCount:
+                  _items.where((n) => n.notificationType == 'message').length,
+              leaveCount: _items
+                  .where((n) => n.notificationType == 'leave_status')
+                  .length,
+              onSelected: (f) => setState(() => _selectedFilter = f),
             ),
             SizedBox(height: SizeConfig.r(16)),
             Expanded(
-              child: ListView(
-                padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
-                children: const [
-                  _NotificationCard(
-                    icon: Icons.chat_bubble_outline,
-                    iconColor: _DriverNotificationColors.primary,
-                    iconBg: _DriverNotificationColors.iconBlueBg,
-                    title: 'New Message from Admin',
-                    time: 'Just now',
-                    timeIsPrimary: true,
-                    showUnreadDot: true,
-                    body:
-                        'Please remember to sanitize your vehicle before the next shift starts.',
-                  ),
-                  _NotificationCard(
-                    icon: Icons.route_outlined,
-                    iconColor: _DriverNotificationColors.primary,
-                    iconBg: _DriverNotificationColors.iconBlueBg,
-                    title: 'New Job Request',
-                    time: '2m ago',
-                    showUnreadDot: true,
-                    body: 'Pickup at . 12 miles trip. Terminal 4, JFK Airport',
-                    showActions: true,
-                  ),
-                  _NotificationCard(
-                    icon: Icons.warning_amber_rounded,
-                    iconColor: _DriverNotificationColors.iconOrange,
-                    iconBg: _DriverNotificationColors.iconOrangeBg,
-                    title: 'Document Expiry Warning',
-                    time: '1h ago',
-                    showUnreadDot: true,
-                    body:
-                        'Your vehicle insurance expires in 3 days. Please update it to avoid service interruption.',
-                  ),
-                  _NotificationCard(
-                    icon: Icons.check_circle_outline,
-                    iconColor: _DriverNotificationColors.iconGreen,
-                    iconBg: _DriverNotificationColors.iconGreenBg,
-                    title: 'Payment Received',
-                    time: 'Yesterday',
-                    body: 'Weekly payout of has been \$1,240.50 processed.',
-                  ),
-                  SizedBox(height: 24),
-                ],
-              ),
+              child: _loading
+                  ? const Center(child: CircularProgressIndicator())
+                  : _error != null
+                  ? _ErrorState(message: _error!, onRetry: _load)
+                  : filtered.isEmpty
+                  ? _EmptyState(filter: _selectedFilter)
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.builder(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: SizeConfig.hPad,
+                        ),
+                        itemCount: filtered.length,
+                        itemBuilder: (context, index) {
+                          final item = filtered[index];
+                          final selected = _selectedIds.contains(item.id);
+                          return _NotificationCard(
+                            item: item,
+                            selected: selected,
+                            selectionMode: _selectionMode,
+                            onTap: () => _openNotification(item),
+                            onLongPress: () => _toggleSelect(item),
+                          );
+                        },
+                      ),
+                    ),
             ),
           ],
         ),
@@ -99,7 +244,22 @@ class _DriverNotificationsPageState extends State<DriverNotificationsPage> {
 
 class _NotificationsHeader extends StatelessWidget {
   final int unreadCount;
-  const _NotificationsHeader({required this.unreadCount});
+  final bool selectionMode;
+  final int selectedCount;
+  final bool markingRead;
+  final VoidCallback? onMarkAllRead;
+  final VoidCallback? onMarkSelectedRead;
+  final VoidCallback? onCancelSelection;
+
+  const _NotificationsHeader({
+    required this.unreadCount,
+    required this.selectionMode,
+    required this.selectedCount,
+    required this.markingRead,
+    this.onMarkAllRead,
+    this.onMarkSelectedRead,
+    this.onCancelSelection,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -118,52 +278,67 @@ class _NotificationsHeader extends StatelessWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  'Notifications',
+                  selectionMode ? '$selectedCount selected' : 'Notifications',
                   style: TextStyle(
                     fontSize: SizeConfig.sp(24),
                     fontWeight: FontWeight.w700,
                     color: AppColors.textDark,
                   ),
                 ),
-                SizedBox(height: SizeConfig.r(4)),
-                RichText(
-                  text: TextSpan(
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(13),
-                      color: AppColors.textLight,
-                      fontWeight: FontWeight.w400,
-                    ),
-                    children: [
-                      const TextSpan(text: 'You have unread alerts '),
-                      TextSpan(
-                        text: '$unreadCount',
-                        style: const TextStyle(
-                          color: _DriverNotificationColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
+                if (!selectionMode) ...[
+                  SizedBox(height: SizeConfig.r(4)),
+                  RichText(
+                    text: TextSpan(
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(13),
+                        color: AppColors.textLight,
+                        fontWeight: FontWeight.w400,
                       ),
-                    ],
+                      children: [
+                        const TextSpan(text: 'You have unread alerts '),
+                        TextSpan(
+                          text: '$unreadCount',
+                          style: const TextStyle(
+                            color: _DriverNotificationColors.primary,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
+                ],
               ],
             ),
           ),
-          GestureDetector(
-            onTap: () {},
-            child: Container(
-              width: SizeConfig.r(40),
-              height: SizeConfig.r(40),
-              decoration: const BoxDecoration(
-                color: Color(0xFFF3F4F6),
-                shape: BoxShape.circle,
+          if (selectionMode) ...[
+            TextButton(
+              onPressed: markingRead ? null : onCancelSelection,
+              child: const Text('Cancel'),
+            ),
+            if (onMarkSelectedRead != null)
+              TextButton(
+                onPressed: markingRead ? null : onMarkSelectedRead,
+                child: Text(markingRead ? '…' : 'Mark read'),
               ),
-              child: Icon(
-                Icons.done_all,
-                color: AppColors.textMedium,
-                size: SizeConfig.r(20),
+          ] else if (onMarkAllRead != null)
+            GestureDetector(
+              onTap: markingRead ? null : onMarkAllRead,
+              child: Container(
+                width: SizeConfig.r(40),
+                height: SizeConfig.r(40),
+                decoration: const BoxDecoration(
+                  color: Color(0xFFF3F4F6),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.done_all,
+                  color: markingRead
+                      ? AppColors.textLight
+                      : AppColors.textMedium,
+                  size: SizeConfig.r(20),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -171,34 +346,52 @@ class _NotificationsHeader extends StatelessWidget {
 }
 
 class _FilterChips extends StatelessWidget {
-  final int selectedIndex;
-  final ValueChanged<int> onSelected;
+  final _NotificationFilter selectedFilter;
+  final int unreadCount;
+  final int messageCount;
+  final int leaveCount;
+  final ValueChanged<_NotificationFilter> onSelected;
 
-  const _FilterChips({required this.selectedIndex, required this.onSelected});
+  const _FilterChips({
+    required this.selectedFilter,
+    required this.unreadCount,
+    required this.messageCount,
+    required this.leaveCount,
+    required this.onSelected,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
       padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
       child: Row(
         children: [
           _FilterChip(
             label: 'All',
-            isSelected: selectedIndex == 0,
-            onTap: () => onSelected(0),
+            isSelected: selectedFilter == _NotificationFilter.all,
+            onTap: () => onSelected(_NotificationFilter.all),
           ),
           SizedBox(width: SizeConfig.r(10)),
           _FilterChip(
-            label: 'Jobs',
-            badge: '1',
-            isSelected: selectedIndex == 1,
-            onTap: () => onSelected(1),
+            label: 'Leave Status',
+            badge: leaveCount > 0 ? '$leaveCount' : null,
+            isSelected: selectedFilter == _NotificationFilter.leaveStatus,
+            onTap: () => onSelected(_NotificationFilter.leaveStatus),
           ),
           SizedBox(width: SizeConfig.r(10)),
           _FilterChip(
-            label: 'System',
-            isSelected: selectedIndex == 2,
-            onTap: () => onSelected(2),
+            label: 'Message',
+            badge: messageCount > 0 ? '$messageCount' : null,
+            isSelected: selectedFilter == _NotificationFilter.message,
+            onTap: () => onSelected(_NotificationFilter.message),
+          ),
+          SizedBox(width: SizeConfig.r(10)),
+          _FilterChip(
+            label: 'Unread',
+            badge: unreadCount > 0 ? '$unreadCount' : null,
+            isSelected: selectedFilter == _NotificationFilter.unread,
+            onTap: () => onSelected(_NotificationFilter.unread),
           ),
         ],
       ),
@@ -276,171 +469,331 @@ class _FilterChip extends StatelessWidget {
 }
 
 class _NotificationCard extends StatelessWidget {
-  final IconData icon;
-  final Color iconColor;
-  final Color iconBg;
-  final String title;
-  final String time;
-  final bool timeIsPrimary;
-  final bool showUnreadDot;
-  final String body;
-  final bool showActions;
+  final DriverNotificationItem item;
+  final bool selected;
+  final bool selectionMode;
+  final VoidCallback onTap;
+  final VoidCallback onLongPress;
 
   const _NotificationCard({
-    required this.icon,
-    required this.iconColor,
-    required this.iconBg,
-    required this.title,
-    required this.time,
-    this.timeIsPrimary = false,
-    this.showUnreadDot = false,
-    required this.body,
-    this.showActions = false,
+    required this.item,
+    required this.selected,
+    required this.selectionMode,
+    required this.onTap,
+    required this.onLongPress,
   });
+
+  ({IconData icon, Color iconColor, Color iconBg}) get _style {
+    if (item.notificationType == 'message') {
+      return (
+        icon: Icons.chat_bubble_outline,
+        iconColor: _DriverNotificationColors.primary,
+        iconBg: _DriverNotificationColors.iconBlueBg,
+      );
+    }
+    final status = (item.leaveStatus ?? '').toLowerCase();
+    if (status == 'approved') {
+      return (
+        icon: Icons.check_circle_outline,
+        iconColor: _DriverNotificationColors.iconGreen,
+        iconBg: _DriverNotificationColors.iconGreenBg,
+      );
+    }
+    if (status == 'rejected') {
+      return (
+        icon: Icons.cancel_outlined,
+        iconColor: _DriverNotificationColors.iconRed,
+        iconBg: _DriverNotificationColors.iconRedBg,
+      );
+    }
+    return (
+      icon: Icons.event_busy_outlined,
+      iconColor: _DriverNotificationColors.iconOrange,
+      iconBg: _DriverNotificationColors.iconOrangeBg,
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      margin: EdgeInsets.only(bottom: SizeConfig.r(12)),
-      padding: EdgeInsets.all(SizeConfig.r(16)),
-      decoration: BoxDecoration(
-        color: AppColors.background,
-        borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.04),
-            blurRadius: SizeConfig.r(8),
-            offset: Offset(0, SizeConfig.r(2)),
-          ),
-        ],
+    final style = _style;
+    final time = formatNotificationRelativeTime(item.createdAt);
+
+    return GestureDetector(
+      onTap: onTap,
+      onLongPress: onLongPress,
+      child: Container(
+        margin: EdgeInsets.only(bottom: SizeConfig.r(12)),
+        padding: EdgeInsets.all(SizeConfig.r(16)),
+        decoration: BoxDecoration(
+          color: selected
+              ? _DriverNotificationColors.iconBlueBg.withValues(alpha: 0.35)
+              : AppColors.background,
+          borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+          border: selected
+              ? Border.all(color: _DriverNotificationColors.primary, width: 1.5)
+              : null,
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: SizeConfig.r(8),
+              offset: Offset(0, SizeConfig.r(2)),
+            ),
+          ],
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (selectionMode) ...[
+              Icon(
+                selected ? Icons.check_circle : Icons.circle_outlined,
+                color: selected
+                    ? _DriverNotificationColors.primary
+                    : AppColors.textLight,
+                size: SizeConfig.r(22),
+              ),
+              SizedBox(width: SizeConfig.r(10)),
+            ],
+            Container(
+              width: SizeConfig.r(44),
+              height: SizeConfig.r(44),
+              decoration: BoxDecoration(color: style.iconBg, shape: BoxShape.circle),
+              child: Icon(style.icon, color: style.iconColor, size: SizeConfig.r(22)),
+            ),
+            SizedBox(width: SizeConfig.r(12)),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          item.title,
+                          style: TextStyle(
+                            fontSize: SizeConfig.sp(14),
+                            fontWeight: FontWeight.w700,
+                            color: AppColors.textDark,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: SizeConfig.r(8)),
+                      Text(
+                        time,
+                        style: TextStyle(
+                          fontSize: SizeConfig.sp(11),
+                          fontWeight: FontWeight.w500,
+                          color: item.isUnread
+                              ? _DriverNotificationColors.primary
+                              : AppColors.textLight,
+                        ),
+                      ),
+                      if (item.isUnread) ...[
+                        SizedBox(width: SizeConfig.r(6)),
+                        Container(
+                          width: SizeConfig.r(8),
+                          height: SizeConfig.r(8),
+                          margin: EdgeInsets.only(top: SizeConfig.r(4)),
+                          decoration: const BoxDecoration(
+                            color: _DriverNotificationColors.primary,
+                            shape: BoxShape.circle,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                  SizedBox(height: SizeConfig.r(6)),
+                  Text(
+                    item.body,
+                    style: TextStyle(
+                      fontSize: SizeConfig.sp(12),
+                      color: AppColors.textMedium,
+                      fontWeight: FontWeight.w400,
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
+    );
+  }
+}
+
+class _NotificationDetailDialog extends StatelessWidget {
+  final DriverNotificationItem item;
+
+  const _NotificationDetailDialog({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final isMessage = item.notificationType == 'message';
+    final isLeave = item.notificationType == 'leave_status';
+
+    return AlertDialog(
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+      ),
+      title: Text(
+        item.title,
+        style: TextStyle(
+          fontSize: SizeConfig.sp(16),
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+      content: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (isMessage) ...[
+              Text(
+                item.fullMessage,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(14),
+                  color: AppColors.textMedium,
+                  height: 1.5,
+                ),
+              ),
+            ],
+            if (isLeave) ...[
+              if (item.leaveType != null)
+                _DetailRow(label: 'Leave type', value: item.leaveType!),
+              if (item.leaveStatus != null)
+                _DetailRow(
+                  label: 'Status',
+                  value: item.leaveStatus!.toUpperCase(),
+                ),
+              Text(
+                item.body,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(14),
+                  color: AppColors.textMedium,
+                  height: 1.5,
+                ),
+              ),
+              if (item.adminNotes != null) ...[
+                SizedBox(height: SizeConfig.r(12)),
+                Text(
+                  'Admin note',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(11),
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textLight,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.r(4)),
+                Text(
+                  item.adminNotes!,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(14),
+                    color: AppColors.textDark,
+                    height: 1.5,
+                  ),
+                ),
+              ],
+            ],
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Close'),
+        ),
+      ],
+    );
+  }
+}
+
+class _DetailRow extends StatelessWidget {
+  final String label;
+  final String value;
+
+  const _DetailRow({required this.label, required this.value});
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: EdgeInsets.only(bottom: SizeConfig.r(8)),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: SizeConfig.r(44),
-            height: SizeConfig.r(44),
-            decoration: BoxDecoration(color: iconBg, shape: BoxShape.circle),
-            child: Icon(icon, color: iconColor, size: SizeConfig.r(22)),
-          ),
-          SizedBox(width: SizeConfig.r(12)),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: Text(
-                        title,
-                        style: TextStyle(
-                          fontSize: SizeConfig.sp(14),
-                          fontWeight: FontWeight.w700,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                    ),
-                    SizedBox(width: SizeConfig.r(8)),
-                    Text(
-                      time,
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(11),
-                        fontWeight: FontWeight.w500,
-                        color: timeIsPrimary
-                            ? _DriverNotificationColors.primary
-                            : AppColors.textLight,
-                      ),
-                    ),
-                    if (showUnreadDot) ...[
-                      SizedBox(width: SizeConfig.r(6)),
-                      Container(
-                        width: SizeConfig.r(8),
-                        height: SizeConfig.r(8),
-                        margin: EdgeInsets.only(top: SizeConfig.r(4)),
-                        decoration: const BoxDecoration(
-                          color: _DriverNotificationColors.primary,
-                          shape: BoxShape.circle,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-                SizedBox(height: SizeConfig.r(6)),
-                Text(
-                  body,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(12),
-                    color: AppColors.textMedium,
-                    fontWeight: FontWeight.w400,
-                    height: 1.4,
-                  ),
-                ),
-                if (showActions) ...[
-                  SizedBox(height: SizeConfig.r(14)),
-                  Row(
-                    children: [
-                      Expanded(
-                        flex: 7,
-                        child: SizedBox(
-                          height: SizeConfig.r(40),
-                          child: ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  _DriverNotificationColors.primary,
-                              foregroundColor: Colors.white,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  SizeConfig.radius,
-                                ),
-                              ),
-                            ),
-                            child: Text(
-                              'Accept',
-                              style: TextStyle(
-                                fontSize: SizeConfig.sp(13),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: SizeConfig.r(10)),
-                      Expanded(
-                        flex: 3,
-                        child: SizedBox(
-                          height: SizeConfig.r(40),
-                          child: ElevatedButton(
-                            onPressed: () {},
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor:
-                                  _DriverNotificationColors.declineBg,
-                              foregroundColor: AppColors.textMedium,
-                              elevation: 0,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  SizeConfig.radius,
-                                ),
-                              ),
-                            ),
-                            child: Text(
-                              'Decline',
-                              style: TextStyle(
-                                fontSize: SizeConfig.sp(13),
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ],
+          SizedBox(
+            width: SizeConfig.r(88),
+            child: Text(
+              label,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.textLight,
+              ),
             ),
           ),
+          Expanded(
+            child: Text(
+              value,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(13),
+                fontWeight: FontWeight.w600,
+                color: AppColors.textDark,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  final _NotificationFilter filter;
+
+  const _EmptyState({required this.filter});
+
+  @override
+  Widget build(BuildContext context) {
+    String message = 'No notifications yet.';
+    if (filter == _NotificationFilter.unread) {
+      message = 'No unread notifications.';
+    } else if (filter == _NotificationFilter.message) {
+      message = 'No messages yet.';
+    } else if (filter == _NotificationFilter.leaveStatus) {
+      message = 'No leave status updates yet.';
+    }
+
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(SizeConfig.r(24)),
+        child: Text(
+          message,
+          style: TextStyle(
+            fontSize: SizeConfig.sp(14),
+            color: AppColors.textLight,
+          ),
+          textAlign: TextAlign.center,
+        ),
+      ),
+    );
+  }
+}
+
+class _ErrorState extends StatelessWidget {
+  final String message;
+  final VoidCallback onRetry;
+
+  const _ErrorState({required this.message, required this.onRetry});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(message, style: TextStyle(color: AppColors.textMedium)),
+          SizedBox(height: SizeConfig.r(12)),
+          TextButton(onPressed: onRetry, child: const Text('Retry')),
         ],
       ),
     );

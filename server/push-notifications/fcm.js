@@ -134,6 +134,28 @@ async function sendToTokens({ tokens, title, body, data, driverId, supabaseAdmin
   return { ok: true, sent, failed, total: fcmTokens.length }
 }
 
+export async function sendUserNotificationPush({
+  userId,
+  title,
+  body,
+  data,
+  tokens,
+  supabaseAdmin,
+}) {
+  return sendToTokens({
+    tokens,
+    title,
+    body,
+    data: {
+      type: data?.type ?? 'user_notification',
+      notification_id: String(data?.notification_id ?? ''),
+      reference_id: String(data?.reference_id ?? ''),
+    },
+    driverId: userId,
+    supabaseAdmin,
+  })
+}
+
 export async function sendJobAssignmentPush({ job, tokens, supabaseAdmin }) {
   if (!job?.assigned_driver_id) {
     return { ok: true, skipped: 'no_assigned_driver' }

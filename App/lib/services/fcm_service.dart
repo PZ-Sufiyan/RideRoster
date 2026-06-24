@@ -136,7 +136,7 @@ class FcmService {
     await NotificationService().showPushNotification(
       title: notification.title ?? 'RideRoster',
       body: notification.body ?? '',
-      payload: message.data['job_id']?.toString(),
+      payload: _pushPayloadFor(message.data),
       data: message.data,
     );
 
@@ -149,5 +149,13 @@ class FcmService {
   String get _platform {
     if (kIsWeb) return 'android';
     return Platform.isIOS ? 'ios' : 'android';
+  }
+
+  String? _pushPayloadFor(Map<String, dynamic> data) {
+    final type = data['type']?.toString() ?? '';
+    if (type == 'message' || type == 'leave_status') {
+      return 'driver_notifications';
+    }
+    return data['job_id']?.toString();
   }
 }

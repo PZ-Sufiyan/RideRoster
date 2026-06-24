@@ -76,7 +76,8 @@ Future<void> main() async {
   await LocationService().ensurePermission();
   await NotificationService().init();
   await FcmService().init(
-    onMessageOpened: (_) => NavigationService.openDriverDashboard(),
+    onMessageOpened: (message) =>
+        NavigationService.handlePushOpened(message.data),
   );
 
   // Warm cache only when we can actually reach Supabase (not just link-up).

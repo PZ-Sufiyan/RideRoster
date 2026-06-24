@@ -1,6 +1,12 @@
 import { supabase } from '../lib/supabaseClient'
 import { getCompanyAdminById } from './companyService'
+import { getSubAdminById } from './subAdminService'
 import { formatRelativeTime } from './dashboardService'
+
+export const NOTIFICATION_ROLES = {
+  ADMIN: 'admin',
+  SUBADMIN: 'subadmin',
+}
 
 export const NOTIFICATION_TABS = {
   ALL: 'All Notifications',
@@ -18,41 +24,77 @@ export const NOTIFICATION_CATEGORIES = {
 
 const JOB_RESPONSE_STATUSES = new Set(['accepted', 'rejected', 'counter request', 'counter requested'])
 const COUNTER_STATUSES = new Set(['counter request', 'counter requested'])
-const READ_STORAGE_PREFIX = 'rideRoster_admin_notif_reads_'
 
-function readStorageKey(userId) {
-  return `${READ_STORAGE_PREFIX}${userId}`
+const READ_UPSERT_BATCH_SIZE = 100
+
+const NOTIFICATION_ROUTES = {
+  [NOTIFICATION_ROLES.ADMIN]: {
+    leaveRequests: '/portal/users/off-day-requests',
+    job: (id) => `/portal/jobs/${id}`,
+    counterOffer: (id) => `/portal/jobs/${id}/counter-offer`,
+    sos: (id) => `/portal/sos/${id}`,
+  },
+  [NOTIFICATION_ROLES.SUBADMIN]: {
+    leaveRequests: '/team/approvals',
+    job: (id) => `/team/jobs/${id}`,
+    counterOffer: (id) => `/team/jobs/${id}/counter-offer`,
+    sos: (id) => `/team/sos/${id}`,
+  },
 }
 
-export function getReadNotificationIds(userId) {
-  if (!userId) return new Set()
-  try {
-    const raw = localStorage.getItem(readStorageKey(userId))
-    if (!raw) return new Set()
-    const parsed = JSON.parse(raw)
-    return new Set(Array.isArray(parsed) ? parsed : [])
-  } catch {
-    return new Set()
+let activeNotificationRoutes = NOTIFICATION_ROUTES[NOTIFICATION_ROLES.ADMIN]
+
+export function setNotificationRole(role = NOTIFICATION_ROLES.ADMIN) {
+  activeNotificationRoutes = NOTIFICATION_ROUTES[role] || NOTIFICATION_ROUTES[NOTIFICATION_ROLES.ADMIN]
+}
+
+async function upsertReadNotificationKeys(userId, role, notificationKeys) {
+  const keys = [...new Set((notificationKeys || []).filter(Boolean))]
+  if (!userId || !keys.length) return
+
+  const readAt = new Date().toISOString()
+  for (let i = 0; i < keys.length; i += READ_UPSERT_BATCH_SIZE) {
+    const chunk = keys.slice(i, i + READ_UPSERT_BATCH_SIZE)
+    const rows = chunk.map((notification_key) => ({
+      user_id: userId,
+      viewer_role: role,
+      notification_key,
+      read_at: readAt,
+    }))
+    const { error } = await supabase
+      .from('portal_notification_reads')
+      .upsert(rows, { onConflict: 'user_id,viewer_role,notification_key' })
+    if (error) throw error
   }
 }
 
-export function persistReadNotificationIds(userId, ids) {
-  if (!userId) return
-  localStorage.setItem(readStorageKey(userId), JSON.stringify([...ids]))
+export async function getReadNotificationIds(userId, role = NOTIFICATION_ROLES.ADMIN) {
+  if (!userId) return new Set()
+
+  const { data, error } = await supabase
+    .from('portal_notification_reads')
+    .select('notification_key')
+    .eq('user_id', userId)
+    .eq('viewer_role', role)
+
+  if (error) {
+    console.warn('Failed to load notification read state:', error.message)
+    return new Set()
+  }
+
+  return new Set((data || []).map((row) => row.notification_key).filter(Boolean))
 }
 
-export function markNotificationsRead(userId, notificationKeys) {
-  const next = getReadNotificationIds(userId)
-  for (const key of notificationKeys) next.add(key)
-  persistReadNotificationIds(userId, next)
-  return next
+export async function markNotificationsRead(userId, notificationKeys, role = NOTIFICATION_ROLES.ADMIN) {
+  await upsertReadNotificationKeys(userId, role, notificationKeys)
+  return getReadNotificationIds(userId, role)
 }
 
-export function markAllNotificationsRead(userId, notificationKeys) {
-  return markNotificationsRead(userId, notificationKeys)
+export async function markAllNotificationsRead(userId, notificationKeys, role = NOTIFICATION_ROLES.ADMIN) {
+  return markNotificationsRead(userId, notificationKeys, role)
 }
 
-async function getCompanyIdForCurrentAdmin() {
+export async function getCompanyContextForRole(role = NOTIFICATION_ROLES.ADMIN) {
   const {
     data: { session },
   } = await supabase.auth.getSession()
@@ -62,13 +104,24 @@ async function getCompanyIdForCurrentAdmin() {
     err.code = 'AUTH'
     throw err
   }
+
+  if (role === NOTIFICATION_ROLES.SUBADMIN) {
+    const subAdmin = await getSubAdminById(uid)
+    if (!subAdmin?.company_id) {
+      const err = new Error('No company linked to your account')
+      err.code = 'NO_COMPANY'
+      throw err
+    }
+    return { companyId: subAdmin.company_id, userId: uid, role }
+  }
+
   const admin = await getCompanyAdminById(uid)
   if (!admin?.company_id) {
     const err = new Error('No company linked to your account')
     err.code = 'NO_COMPANY'
     throw err
   }
-  return { companyId: admin.company_id, userId: uid }
+  return { companyId: admin.company_id, userId: uid, role: NOTIFICATION_ROLES.ADMIN }
 }
 
 function formatPersonName(first, last) {
@@ -149,7 +202,7 @@ function buildSessionStartNotification({ session, job, driver }) {
     title: 'Run Started:',
     content: `Driver ${driverName} started the ${directionLabel} for ${jobLabel} (${school}). Scheduled run time: ${runTime}. Started at ${startedAt}.`,
     linkText: 'View Job',
-    linkTo: `/portal/jobs/${job.id}`,
+    linkTo: activeNotificationRoutes.job(job.id),
     toastType: 'info',
     toastTitle: 'Run Started',
   }
@@ -174,7 +227,7 @@ function buildPassengerPickupNotification({ row, job, driver, passenger }) {
     title: 'Passenger Picked Up:',
     content: `Driver ${driverName} picked up ${passengerName} from ${location} at ${atTime}.`,
     linkText: 'View Job',
-    linkTo: `/portal/jobs/${job.id}`,
+    linkTo: activeNotificationRoutes.job(job.id),
     toastType: 'success',
     toastTitle: 'Passenger Picked Up',
   }
@@ -199,7 +252,7 @@ function buildPassengerMissedNotification({ row, job, driver, passenger }) {
     title: 'Passenger Not Picked Up:',
     content: `Driver ${driverName} did not pick up ${passengerName} from ${location} at ${atTime}.`,
     linkText: 'View Job',
-    linkTo: `/portal/jobs/${job.id}`,
+    linkTo: activeNotificationRoutes.job(job.id),
     toastType: 'warning',
     toastTitle: 'No Pickup',
   }
@@ -225,7 +278,7 @@ function buildExtendedWaitNotification({ row, job, driver, passenger, minutes })
     title: 'Extended Wait:',
     content: `Driver ${driverName} extended the pickup time by ${waitLabel} for ${passengerName} at ${location}. Recorded at ${atTime}.`,
     linkText: 'View Job',
-    linkTo: `/portal/jobs/${job.id}`,
+    linkTo: activeNotificationRoutes.job(job.id),
     toastType: 'warning',
     toastTitle: 'Extended Wait',
   }
@@ -532,7 +585,7 @@ function buildJobNotification(job, driverById) {
         ? `Driver ${driverName} submitted a counter-offer of £${counterPay} for ${jobLabel} (${school}).`
         : `A counter-offer has been received for ${jobLabel} (${school}).`,
       linkText: 'Review Now',
-      linkTo: `/portal/jobs/${job.id}/counter-offer`,
+      linkTo: activeNotificationRoutes.counterOffer(job.id),
       toastType: 'warning',
       toastTitle: 'Counter-Offer Received',
     }
@@ -550,7 +603,7 @@ function buildJobNotification(job, driverById) {
       title: `${jobLabel} Accepted:`,
       content: `Driver ${driverName} accepted the job request for "${school}".`,
       linkText: 'View Job',
-      linkTo: `/portal/jobs/${job.id}`,
+      linkTo: activeNotificationRoutes.job(job.id),
       toastType: 'success',
       toastTitle: 'Job Accepted',
     }
@@ -568,7 +621,7 @@ function buildJobNotification(job, driverById) {
       title: `${jobLabel} Rejected:`,
       content: `Driver ${driverName} rejected the job request for "${school}".`,
       linkText: 'View Job',
-      linkTo: `/portal/jobs/${job.id}`,
+      linkTo: activeNotificationRoutes.job(job.id),
       toastType: 'error',
       toastTitle: 'Job Rejected',
     }
@@ -596,7 +649,7 @@ function buildSosNotification(alert) {
     title: 'SOS Alert Triggered:',
     content: `${plate}${driverPart} has triggered an SOS alert.`,
     linkText: 'View Details',
-    linkTo: `/portal/sos/${alert.id}`,
+    linkTo: activeNotificationRoutes.sos(alert.id),
     toastType: 'error',
     toastTitle: 'SOS Alert',
   }
@@ -620,7 +673,7 @@ function buildLeaveNotification(row) {
     title: 'Staff Day-off Request:',
     content: `${roleLabel} ${name} requested ${row.leave_type} (${range}). Status: ${row.status}.`,
     linkText: 'Review Request',
-    linkTo: '/portal/users/off-day-requests',
+    linkTo: activeNotificationRoutes.leaveRequests,
     toastType: 'info',
     toastTitle: 'Day-off Request',
   }
@@ -770,10 +823,11 @@ async function fetchJobNotifications(companyId) {
 }
 
 /**
- * Fetch all admin notifications for the signed-in company admin.
+ * Fetch company-scoped notifications for admin or sub-admin.
  */
-export async function fetchAdminNotifications() {
-  const { companyId, userId } = await getCompanyIdForCurrentAdmin()
+export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN) {
+  setNotificationRole(role)
+  const { companyId, userId } = await getCompanyContextForRole(role)
   const { profileByUserId, companyUserIds } = await fetchCompanyUserProfiles(companyId)
 
   const [sosItems, leaveItems, jobItems, sessionItems, sessionPassengerItems] = await Promise.all([
@@ -784,7 +838,7 @@ export async function fetchAdminNotifications() {
     fetchJobSessionPassengerNotifications(companyId),
   ])
 
-  const readIds = getReadNotificationIds(userId)
+  const readIds = await getReadNotificationIds(userId, role)
   const merged = [...sosItems, ...leaveItems, ...jobItems, ...sessionItems, ...sessionPassengerItems]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .map((n) => ({
@@ -795,9 +849,24 @@ export async function fetchAdminNotifications() {
   return {
     companyId,
     userId,
+    role,
     notifications: applyReadState(merged, readIds),
     companyUserIds,
   }
+}
+
+/**
+ * Fetch all admin notifications for the signed-in company admin.
+ */
+export async function fetchAdminNotifications() {
+  return fetchCompanyNotifications(NOTIFICATION_ROLES.ADMIN)
+}
+
+/**
+ * Fetch all notifications for the signed-in sub-admin.
+ */
+export async function fetchSubAdminNotifications() {
+  return fetchCompanyNotifications(NOTIFICATION_ROLES.SUBADMIN)
 }
 
 export function filterNotificationsByTab(notifications, activeTab) {

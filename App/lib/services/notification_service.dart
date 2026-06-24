@@ -148,6 +148,10 @@ class NotificationService {
 
   void _onNotificationTapped(NotificationResponse response) {
     final payload = response.payload;
+    if (payload == 'driver_notifications') {
+      NavigationService.openDriverNotifications();
+      return;
+    }
     if (payload == null || payload.isEmpty) {
       NavigationService.openDriverDashboard();
       return;
