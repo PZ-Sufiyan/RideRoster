@@ -3,7 +3,7 @@ import { getCompanyAdminById } from './companyService'
 
 const POLL_MS = 12000
 
-/** @typedef {'sos' | 'leave' | 'job' | 'poll' | 'system'} AdminNotificationRealtimeSource */
+/** @typedef {'sos' | 'leave' | 'job' | 'job_session' | 'job_session_passenger' | 'poll' | 'system'} AdminNotificationRealtimeSource */
 
 /** @typedef {Object} AdminNotificationRealtimeEvent
  * @property {AdminNotificationRealtimeSource} source
@@ -138,6 +138,46 @@ function ensureChannel(companyId) {
       filter: `company_id=eq.${companyId}`,
     },
     forward('job'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'job_sessions',
+    },
+    forward('job_session'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'job_sessions',
+    },
+    forward('job_session'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'job_session_passengers',
+    },
+    forward('job_session_passenger'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'UPDATE',
+      schema: 'public',
+      table: 'job_session_passengers',
+    },
+    forward('job_session_passenger'),
   )
 
   channel.subscribe((status) => {

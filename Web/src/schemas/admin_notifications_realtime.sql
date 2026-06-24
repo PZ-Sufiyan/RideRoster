@@ -1,9 +1,11 @@
 -- Run in Supabase SQL Editor so admin notifications update in real time.
--- Enables Realtime + full UPDATE payloads for sos, leave_requests, and jobs.
+-- Enables Realtime + full UPDATE payloads for notification source tables.
 
 ALTER TABLE public.sos REPLICA IDENTITY FULL;
 ALTER TABLE public.leave_requests REPLICA IDENTITY FULL;
 ALTER TABLE public.jobs REPLICA IDENTITY FULL;
+ALTER TABLE public.job_sessions REPLICA IDENTITY FULL;
+ALTER TABLE public.job_session_passengers REPLICA IDENTITY FULL;
 
 DO $$
 BEGIN
@@ -22,6 +24,20 @@ END $$;
 DO $$
 BEGIN
   ALTER PUBLICATION supabase_realtime ADD TABLE public.jobs;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.job_sessions;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+DO $$
+BEGIN
+  ALTER PUBLICATION supabase_realtime ADD TABLE public.job_session_passengers;
 EXCEPTION
   WHEN duplicate_object THEN NULL;
 END $$;

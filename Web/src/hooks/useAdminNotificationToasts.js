@@ -3,8 +3,14 @@ import { supabase } from '../lib/supabaseClient'
 import {
   buildNotificationFromJobRow,
   buildNotificationFromLeaveRow,
+  buildNotificationFromSessionPassengerRow,
+  buildNotificationFromSessionRow,
   buildNotificationFromSosRow,
+  detectSessionPassengerEventType,
+  enrichSessionContext,
+  enrichSessionPassengerContext,
   fetchAdminNotifications,
+  isSessionStartEvent,
 } from '../services/adminNotificationService'
 import {
   getAdminCompanyContext,
@@ -148,6 +154,35 @@ export function useAdminNotificationToasts(enabled) {
     [maybeToast],
   )
 
+  const enrichAndToastSession = useCallback(
+    async (newRow, oldRow) => {
+      if (!newRow?.id || !isSessionStartEvent(oldRow, newRow)) return
+
+      const enrich = await enrichSessionContext(newRow, companyIdRef.current)
+      if (!enrich) return
+
+      const notification = buildNotificationFromSessionRow(newRow, enrich)
+      if (notification) maybeToast(notification)
+    },
+    [maybeToast],
+  )
+
+  const enrichAndToastSessionPassenger = useCallback(
+    async (newRow, oldRow) => {
+      if (!newRow?.id) return
+
+      const eventType = detectSessionPassengerEventType(oldRow, newRow)
+      if (!eventType) return
+
+      const enrich = await enrichSessionPassengerContext(newRow, companyIdRef.current)
+      if (!enrich) return
+
+      const notification = buildNotificationFromSessionPassengerRow(newRow, eventType, enrich)
+      if (notification) maybeToast(notification)
+    },
+    [maybeToast],
+  )
+
   const handleRealtimeEvent = useCallback(
     async (event) => {
       if (event.source === 'poll') {
@@ -175,9 +210,26 @@ export function useAdminNotificationToasts(enabled) {
 
       if (event.source === 'job' && payload.new) {
         await enrichAndToastJob(payload.new, payload.old?.driver_approval_status)
+        return
+      }
+
+      if (event.source === 'job_session' && payload.new) {
+        await enrichAndToastSession(payload.new, payload.old ?? null)
+        return
+      }
+
+      if (event.source === 'job_session_passenger' && payload.new) {
+        await enrichAndToastSessionPassenger(payload.new, payload.old ?? null)
       }
     },
-    [enrichAndToastJob, enrichAndToastLeave, enrichAndToastSos, toastNewFromFetch],
+    [
+      enrichAndToastJob,
+      enrichAndToastLeave,
+      enrichAndToastSession,
+      enrichAndToastSessionPassenger,
+      enrichAndToastSos,
+      toastNewFromFetch,
+    ],
   )
 
   useEffect(() => {

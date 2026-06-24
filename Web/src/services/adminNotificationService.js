@@ -81,6 +81,431 @@ function formatJobLabel(job) {
   return 'Job'
 }
 
+function formatTimeOfDay(timeValue) {
+  if (!timeValue) return null
+  const raw = String(timeValue).trim()
+  if (!raw) return null
+  const parts = raw.split(':').map(Number)
+  const h = parts[0]
+  const m = parts[1] ?? 0
+  if (!Number.isFinite(h)) return raw
+  const d = new Date()
+  d.setHours(h, m, 0, 0)
+  return d.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' })
+}
+
+function getDirectionLabel(direction) {
+  return String(direction || '').toLowerCase() === 'inbound' ? 'Evening Run' : 'Morning Run'
+}
+
+function getRunTimeLabel(job, direction) {
+  const isInbound = String(direction || '').toLowerCase() === 'inbound'
+  const start = formatTimeOfDay(isInbound ? job?.evening_start_time : job?.morning_start_time)
+  const end = formatTimeOfDay(isInbound ? null : job?.morning_end_time)
+  if (start && end) return `${start} – ${end}`
+  if (start) return start
+  return 'Not scheduled'
+}
+
+function formatAbsoluteDateTime(iso) {
+  if (!iso) return '—'
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return '—'
+  return d.toLocaleString(undefined, {
+    dateStyle: 'medium',
+    timeStyle: 'short',
+  })
+}
+
+function countExtendedWaitLines(notes) {
+  return ((notes || '').match(/Extended wait: \d+ min/g) || []).length
+}
+
+function latestExtendedWaitMinutes(notes) {
+  const matches = (notes || '').match(/Extended wait: (\d+) min/g) || []
+  if (!matches.length) return null
+  const last = matches[matches.length - 1]
+  return last.match(/(\d+)/)?.[1] ?? null
+}
+
+function buildSessionStartNotification({ session, job, driver }) {
+  if (!session?.id || !session?.started_at || !job?.id) return null
+
+  const jobLabel = formatJobLabel(job)
+  const driverName = formatPersonName(driver?.first_name, driver?.last_name) || 'Driver'
+  const directionLabel = getDirectionLabel(session.direction)
+  const runTime = getRunTimeLabel(job, session.direction)
+  const startedAt = formatAbsoluteDateTime(session.started_at)
+  const school = job.client_school_name || job.job_name || 'the route'
+
+  return {
+    key: `session-start:${session.id}`,
+    category: NOTIFICATION_CATEGORIES.JOB,
+    tab: NOTIFICATION_TABS.JOBS,
+    createdAt: session.started_at,
+    isNew: false,
+    IconName: 'MdDirectionsBus',
+    iconColor: 'text-[#005580] bg-blue-50',
+    title: 'Run Started:',
+    content: `Driver ${driverName} started the ${directionLabel} for ${jobLabel} (${school}). Scheduled run time: ${runTime}. Started at ${startedAt}.`,
+    linkText: 'View Job',
+    linkTo: `/portal/jobs/${job.id}`,
+    toastType: 'info',
+    toastTitle: 'Run Started',
+  }
+}
+
+function buildPassengerPickupNotification({ row, job, driver, passenger }) {
+  if (!row?.id || !job?.id) return null
+
+  const driverName = formatPersonName(driver?.first_name, driver?.last_name) || 'Driver'
+  const passengerName = formatPersonName(passenger?.first_name, passenger?.surname) || 'Passenger'
+  const location = row.pickup_address || 'the pickup location'
+  const atTime = formatAbsoluteDateTime(row.picked_up_at || row.updated_at)
+
+  return {
+    key: `session-passenger-pickup:${row.id}`,
+    category: NOTIFICATION_CATEGORIES.JOB,
+    tab: NOTIFICATION_TABS.JOBS,
+    createdAt: row.picked_up_at || row.updated_at,
+    isNew: false,
+    IconName: 'MdCheckCircle',
+    iconColor: 'text-green-500 bg-green-50',
+    title: 'Passenger Picked Up:',
+    content: `Driver ${driverName} picked up ${passengerName} from ${location} at ${atTime}.`,
+    linkText: 'View Job',
+    linkTo: `/portal/jobs/${job.id}`,
+    toastType: 'success',
+    toastTitle: 'Passenger Picked Up',
+  }
+}
+
+function buildPassengerMissedNotification({ row, job, driver, passenger }) {
+  if (!row?.id || !job?.id) return null
+
+  const driverName = formatPersonName(driver?.first_name, driver?.last_name) || 'Driver'
+  const passengerName = formatPersonName(passenger?.first_name, passenger?.surname) || 'Passenger'
+  const location = row.pickup_address || 'the pickup location'
+  const atTime = formatAbsoluteDateTime(row.updated_at)
+
+  return {
+    key: `session-passenger-missed:${row.id}`,
+    category: NOTIFICATION_CATEGORIES.JOB,
+    tab: NOTIFICATION_TABS.JOBS,
+    createdAt: row.updated_at,
+    isNew: false,
+    IconName: 'MdPersonOff',
+    iconColor: 'text-red-500 bg-red-50',
+    title: 'Passenger Not Picked Up:',
+    content: `Driver ${driverName} did not pick up ${passengerName} from ${location} at ${atTime}.`,
+    linkText: 'View Job',
+    linkTo: `/portal/jobs/${job.id}`,
+    toastType: 'warning',
+    toastTitle: 'No Pickup',
+  }
+}
+
+function buildExtendedWaitNotification({ row, job, driver, passenger, minutes }) {
+  if (!row?.id || !job?.id) return null
+
+  const driverName = formatPersonName(driver?.first_name, driver?.last_name) || 'Driver'
+  const passengerName = formatPersonName(passenger?.first_name, passenger?.surname) || 'Passenger'
+  const location = row.pickup_address || 'the pickup location'
+  const atTime = formatAbsoluteDateTime(row.updated_at)
+  const waitLabel = minutes ? `${minutes} min` : 'additional time'
+
+  return {
+    key: `session-passenger-extended:${row.id}:${row.updated_at}`,
+    category: NOTIFICATION_CATEGORIES.JOB,
+    tab: NOTIFICATION_TABS.JOBS,
+    createdAt: row.updated_at,
+    isNew: false,
+    IconName: 'MdTimer',
+    iconColor: 'text-amber-600 bg-amber-50',
+    title: 'Extended Wait:',
+    content: `Driver ${driverName} extended the pickup time by ${waitLabel} for ${passengerName} at ${location}. Recorded at ${atTime}.`,
+    linkText: 'View Job',
+    linkTo: `/portal/jobs/${job.id}`,
+    toastType: 'warning',
+    toastTitle: 'Extended Wait',
+  }
+}
+
+export function isSessionStartEvent(oldRow, newRow) {
+  if (!newRow?.started_at) return false
+  if (!oldRow) return true
+  return !oldRow.started_at && Boolean(newRow.started_at)
+}
+
+export function detectSessionPassengerEventType(oldRow, newRow) {
+  if (!newRow) return null
+
+  const oldStatus = oldRow?.status
+  const newStatus = newRow?.status
+
+  if (newStatus === 'picked_up' && oldStatus !== 'picked_up') return 'pickup'
+  if (newStatus === 'missed' && oldStatus !== 'missed') return 'missed'
+
+  const oldNotes = oldRow?.notes || ''
+  const newNotes = newRow?.notes || ''
+  if (
+    newRow.status === 'pending'
+    && countExtendedWaitLines(newNotes) > countExtendedWaitLines(oldNotes)
+  ) {
+    return 'extended_wait'
+  }
+
+  return null
+}
+
+async function fetchCompanyJobsForSessions(companyId) {
+  const { data: jobs, error } = await supabase
+    .from('jobs')
+    .select(
+      'id, internal_job_id, job_name, client_school_name, morning_start_time, morning_end_time, evening_start_time, assigned_driver_id',
+    )
+    .eq('company_id', companyId)
+
+  if (error) throw error
+  return jobs || []
+}
+
+async function fetchDriversByIds(driverIds) {
+  if (!driverIds.length) return new Map()
+  const { data, error } = await supabase
+    .from('drivers')
+    .select('id, first_name, last_name')
+    .in('id', driverIds)
+  if (error) throw error
+  return new Map((data || []).map((d) => [d.id, d]))
+}
+
+async function fetchPassengersByIds(passengerIds) {
+  if (!passengerIds.length) return new Map()
+  const { data, error } = await supabase
+    .from('passenger')
+    .select('id, first_name, surname')
+    .in('id', passengerIds)
+  if (error) throw error
+  return new Map((data || []).map((p) => [p.id, p]))
+}
+
+async function fetchJobSessionNotifications(companyId) {
+  const jobs = await fetchCompanyJobsForSessions(companyId)
+  const jobById = new Map(jobs.map((j) => [j.id, j]))
+  const jobIds = jobs.map((j) => j.id)
+  if (!jobIds.length) return []
+
+  const { data: sessions, error } = await supabase
+    .from('job_sessions')
+    .select('id, job_id, session_date, direction, status, started_at, driver_id, created_at')
+    .in('job_id', jobIds)
+    .not('started_at', 'is', null)
+    .order('started_at', { ascending: false })
+
+  if (error) throw error
+  if (!sessions?.length) return []
+
+  const driverIds = [
+    ...new Set(
+      sessions
+        .map((s) => s.driver_id || jobById.get(s.job_id)?.assigned_driver_id)
+        .filter(Boolean),
+    ),
+  ]
+  const driverById = await fetchDriversByIds(driverIds)
+
+  return sessions
+    .map((session) => {
+      const job = jobById.get(session.job_id)
+      if (!job) return null
+      const driverId = session.driver_id || job.assigned_driver_id
+      const driver = driverById.get(driverId)
+      return buildSessionStartNotification({ session, job, driver })
+    })
+    .filter(Boolean)
+}
+
+async function fetchJobSessionPassengerNotifications(companyId) {
+  const jobs = await fetchCompanyJobsForSessions(companyId)
+  const jobById = new Map(jobs.map((j) => [j.id, j]))
+  const jobIds = jobs.map((j) => j.id)
+  if (!jobIds.length) return []
+
+  const { data: sessions, error: sessionErr } = await supabase
+    .from('job_sessions')
+    .select('id, job_id, driver_id')
+    .in('job_id', jobIds)
+
+  if (sessionErr) throw sessionErr
+  if (!sessions?.length) return []
+
+  const sessionById = new Map(sessions.map((s) => [s.id, s]))
+  const sessionIds = sessions.map((s) => s.id)
+
+  const { data: rows, error } = await supabase
+    .from('job_session_passengers')
+    .select('*')
+    .in('session_id', sessionIds)
+    .order('updated_at', { ascending: false })
+
+  if (error) throw error
+  if (!rows?.length) return []
+
+  const driverIds = [
+    ...new Set(
+      sessions
+        .map((s) => s.driver_id || jobById.get(s.job_id)?.assigned_driver_id)
+        .filter(Boolean),
+    ),
+  ]
+  const passengerIds = [...new Set(rows.map((r) => r.passenger_id).filter(Boolean))]
+
+  const [driverById, passengerById] = await Promise.all([
+    fetchDriversByIds(driverIds),
+    fetchPassengersByIds(passengerIds),
+  ])
+
+  const notifications = []
+
+  for (const row of rows) {
+    const session = sessionById.get(row.session_id)
+    if (!session) continue
+    const job = jobById.get(session.job_id)
+    if (!job) continue
+
+    const driverId = session.driver_id || job.assigned_driver_id
+    const driver = driverById.get(driverId)
+    const passenger = passengerById.get(row.passenger_id)
+
+    if (row.status === 'picked_up' || (row.picked_up_at && row.status !== 'missed')) {
+      const pickup = buildPassengerPickupNotification({ row, job, driver, passenger })
+      if (pickup) notifications.push(pickup)
+    }
+
+    if (row.status === 'missed') {
+      const missed = buildPassengerMissedNotification({ row, job, driver, passenger })
+      if (missed) notifications.push(missed)
+    }
+
+    if (countExtendedWaitLines(row.notes) > 0) {
+      const minutes = latestExtendedWaitMinutes(row.notes)
+      const extended = buildExtendedWaitNotification({
+        row,
+        job,
+        driver,
+        passenger,
+        minutes,
+      })
+      if (extended) notifications.push(extended)
+    }
+  }
+
+  return notifications
+}
+
+/**
+ * Load job, driver, and passenger context for a session passenger row.
+ */
+export async function enrichSessionPassengerContext(row, companyId) {
+  if (!row?.session_id) return null
+
+  const { data: session, error: sessionErr } = await supabase
+    .from('job_sessions')
+    .select('id, job_id, driver_id')
+    .eq('id', row.session_id)
+    .maybeSingle()
+
+  if (sessionErr) throw sessionErr
+  if (!session) return null
+
+  const { data: job, error: jobErr } = await supabase
+    .from('jobs')
+    .select(
+      'id, company_id, internal_job_id, job_name, client_school_name, morning_start_time, morning_end_time, evening_start_time, assigned_driver_id',
+    )
+    .eq('id', session.job_id)
+    .maybeSingle()
+
+  if (jobErr) throw jobErr
+  if (!job || job.company_id !== companyId) return null
+
+  const driverId = session.driver_id || job.assigned_driver_id
+  const [driverRes, passengerRes] = await Promise.all([
+    driverId
+      ? supabase.from('drivers').select('id, first_name, last_name').eq('id', driverId).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+    row.passenger_id
+      ? supabase.from('passenger').select('id, first_name, surname').eq('id', row.passenger_id).maybeSingle()
+      : Promise.resolve({ data: null, error: null }),
+  ])
+
+  if (driverRes.error) throw driverRes.error
+  if (passengerRes.error) throw passengerRes.error
+
+  return {
+    session,
+    job,
+    driver: driverRes.data,
+    passenger: passengerRes.data,
+  }
+}
+
+/**
+ * Load job and driver context for a job session row.
+ */
+export async function enrichSessionContext(sessionRow, companyId) {
+  if (!sessionRow?.job_id) return null
+
+  const { data: job, error: jobErr } = await supabase
+    .from('jobs')
+    .select(
+      'id, company_id, internal_job_id, job_name, client_school_name, morning_start_time, morning_end_time, evening_start_time, assigned_driver_id',
+    )
+    .eq('id', sessionRow.job_id)
+    .maybeSingle()
+
+  if (jobErr) throw jobErr
+  if (!job || job.company_id !== companyId) return null
+
+  const driverId = sessionRow.driver_id || job.assigned_driver_id
+  let driver = null
+  if (driverId) {
+    const { data, error } = await supabase
+      .from('drivers')
+      .select('id, first_name, last_name')
+      .eq('id', driverId)
+      .maybeSingle()
+    if (error) throw error
+    driver = data
+  }
+
+  return { session: sessionRow, job, driver }
+}
+
+export function buildNotificationFromSessionRow(sessionRow, enrich = {}) {
+  return buildSessionStartNotification({
+    session: sessionRow,
+    job: enrich.job,
+    driver: enrich.driver,
+  })
+}
+
+export function buildNotificationFromSessionPassengerRow(row, eventType, enrich = {}) {
+  const ctx = { row, job: enrich.job, driver: enrich.driver, passenger: enrich.passenger }
+
+  if (eventType === 'pickup') return buildPassengerPickupNotification(ctx)
+  if (eventType === 'missed') return buildPassengerMissedNotification(ctx)
+  if (eventType === 'extended_wait') {
+    return buildExtendedWaitNotification({
+      ...ctx,
+      minutes: latestExtendedWaitMinutes(row?.notes),
+    })
+  }
+
+  return null
+}
+
 function buildJobNotification(job, driverById) {
   const status = String(job.driver_approval_status || '').trim().toLowerCase()
   if (!JOB_RESPONSE_STATUSES.has(status)) return null
@@ -351,14 +776,16 @@ export async function fetchAdminNotifications() {
   const { companyId, userId } = await getCompanyIdForCurrentAdmin()
   const { profileByUserId, companyUserIds } = await fetchCompanyUserProfiles(companyId)
 
-  const [sosItems, leaveItems, jobItems] = await Promise.all([
+  const [sosItems, leaveItems, jobItems, sessionItems, sessionPassengerItems] = await Promise.all([
     fetchSosNotifications(companyId),
     fetchLeaveNotifications(companyId, profileByUserId, companyUserIds),
     fetchJobNotifications(companyId),
+    fetchJobSessionNotifications(companyId),
+    fetchJobSessionPassengerNotifications(companyId),
   ])
 
   const readIds = getReadNotificationIds(userId)
-  const merged = [...sosItems, ...leaveItems, ...jobItems]
+  const merged = [...sosItems, ...leaveItems, ...jobItems, ...sessionItems, ...sessionPassengerItems]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .map((n) => ({
       ...n,
