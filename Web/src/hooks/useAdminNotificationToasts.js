@@ -10,8 +10,10 @@ import {
   enrichSessionContext,
   enrichSessionPassengerContext,
   fetchCompanyNotifications,
+  isNewPendingLeaveRequest,
   isSessionStartEvent,
   NOTIFICATION_ROLES,
+  resolveLeaveRequestProfile,
   setNotificationRole,
 } from '../services/adminNotificationService'
 import {
@@ -109,27 +111,11 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
   )
 
   const enrichAndToastLeave = useCallback(
-    async (row) => {
-      if (!row?.user_id || !companyUserIdsRef.current.has(row.user_id)) return
+    async (row, eventType) => {
+      if (!row?.user_id || !isNewPendingLeaveRequest(eventType, row)) return
 
-      const role = String(row.user_role || '').toLowerCase()
-      let profile = {}
-
-      if (role === 'driver') {
-        const { data } = await supabaseLookupDriver(row.user_id)
-        profile = {
-          first_name: data?.first_name ?? '',
-          last_name: data?.last_name ?? '',
-          user_role: 'driver',
-        }
-      } else if (role === 'passenger_assistant') {
-        const { data } = await supabaseLookupPa(row.user_id)
-        profile = {
-          first_name: data?.first_name ?? '',
-          last_name: data?.surname ?? '',
-          user_role: 'passenger_assistant',
-        }
-      }
+      const profile = await resolveLeaveRequestProfile(row, companyIdRef.current)
+      if (!profile) return
 
       maybeToast(buildNotificationFromLeaveRow(row, profile))
     },
@@ -208,7 +194,7 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
       }
 
       if (event.source === 'leave' && payload.new) {
-        await enrichAndToastLeave(payload.new)
+        await enrichAndToastLeave(payload.new, payload.eventType)
         return
       }
 

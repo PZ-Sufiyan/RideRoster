@@ -657,7 +657,8 @@ function buildSosNotification(alert) {
 
 function buildLeaveNotification(row) {
   const name = formatPersonName(row.requester_first_name, row.requester_last_name) || 'Staff member'
-  const roleLabel = row.user_role === 'passenger_assistant' ? 'Passenger assistant' : 'Driver'
+  const role = String(row.user_role || '').toLowerCase()
+  const roleLabel = role === 'passenger_assistant' ? 'Passenger assistant' : 'Driver'
   const range = row.start_date === row.end_date
     ? row.start_date
     : `${row.start_date} – ${row.end_date}`
@@ -669,14 +670,63 @@ function buildLeaveNotification(row) {
     createdAt: row.created_at,
     isNew: false,
     IconName: 'MdPersonAdd',
-    iconColor: 'text-[#005580] bg-blue-50',
+    iconColor: role === 'passenger_assistant' ? 'text-violet-600 bg-violet-50' : 'text-[#005580] bg-blue-50',
     title: 'Staff Day-off Request:',
     content: `${roleLabel} ${name} requested ${row.leave_type} (${range}). Status: ${row.status}.`,
     linkText: 'Review Request',
     linkTo: activeNotificationRoutes.leaveRequests,
     toastType: 'info',
-    toastTitle: 'Day-off Request',
+    toastTitle: role === 'passenger_assistant' ? 'PA Day-off Request' : 'Driver Day-off Request',
   }
+}
+
+/**
+ * Resolve leave requester profile and verify they belong to [companyId].
+ */
+export async function resolveLeaveRequestProfile(row, companyId) {
+  if (!row?.user_id || !companyId) return null
+
+  const role = String(row.user_role || '').toLowerCase()
+
+  if (role === 'passenger_assistant') {
+    const { data, error } = await supabase
+      .from('passenger_assistant')
+      .select('id, first_name, surname, company_id')
+      .eq('id', row.user_id)
+      .eq('company_id', companyId)
+      .maybeSingle()
+
+    if (error) throw error
+    if (!data) return null
+
+    return {
+      first_name: data.first_name ?? '',
+      last_name: data.surname ?? '',
+      user_role: 'passenger_assistant',
+    }
+  }
+
+  const { data, error } = await supabase
+    .from('drivers')
+    .select('id, first_name, last_name, company_id')
+    .eq('id', row.user_id)
+    .eq('company_id', companyId)
+    .maybeSingle()
+
+  if (error) throw error
+  if (!data) return null
+
+  return {
+    first_name: data.first_name ?? '',
+    last_name: data.last_name ?? '',
+    user_role: 'driver',
+  }
+}
+
+export function isNewPendingLeaveRequest(eventType, row) {
+  if (!row) return false
+  if (String(eventType || '').toUpperCase() !== 'INSERT') return false
+  return String(row.status || 'pending').toLowerCase() === 'pending'
 }
 
 function applyReadState(notifications, readIds) {
@@ -782,15 +832,29 @@ async function fetchLeaveNotifications(companyId, profileByUserId, companyUserId
 
   if (error) throw error
 
-  return (rows || []).map((row) => {
-    const profile = profileByUserId.get(row.user_id) || {}
-    return buildLeaveNotification({
+  const notifications = []
+
+  for (const row of rows || []) {
+    let profile = profileByUserId.get(row.user_id)
+    if (!profile?.first_name && !profile?.last_name) {
+      try {
+        profile = await resolveLeaveRequestProfile(row, companyId)
+      } catch {
+        profile = null
+      }
+    }
+    if (!profile) continue
+
+    const notification = buildLeaveNotification({
       ...row,
       requester_first_name: profile.first_name ?? '',
       requester_last_name: profile.last_name ?? '',
       user_role: row.user_role || profile.user_role,
     })
-  })
+    if (notification) notifications.push(notification)
+  }
+
+  return notifications
 }
 
 async function fetchJobNotifications(companyId) {
