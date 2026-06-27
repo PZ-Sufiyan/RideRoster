@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'api_service.dart';
 import 'auth_result.dart';
+import 'connectivity_service.dart';
 import 'passenger_assistant_registration_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -9,6 +10,7 @@ export 'auth_result.dart';
 
 class AuthService extends ApiService {
   SupabaseClient get _supabase => Supabase.instance.client;
+  static const Duration _profileLookupTimeout = Duration(seconds: 3);
   static const String _companyDocsBucket = 'company-documents';
 
   static const Set<String> _allowedRoles = {'driver', 'passenger_assistant'};
@@ -98,24 +100,27 @@ class AuthService extends ApiService {
   }) async {
     final metaName = _extractDisplayName(user);
 
-    if (role == 'driver') {
-      try {
-        final row = await _supabase
-            .from('drivers')
-            .select('first_name, last_name')
-            .eq('id', user.id)
-            .maybeSingle();
+    if (role != 'driver' || !ConnectivityService().canReachServer) {
+      return metaName;
+    }
 
-        if (row is Map<String, dynamic>) {
-          final tableName = _buildName(
-            row['first_name']?.toString(),
-            row['last_name']?.toString(),
-          );
-          if (tableName != null) return tableName;
-        }
-      } catch (_) {
-        // Fall back to auth metadata when profile lookup is unavailable.
+    try {
+      final row = await _supabase
+          .from('drivers')
+          .select('first_name, last_name')
+          .eq('id', user.id)
+          .maybeSingle()
+          .timeout(_profileLookupTimeout);
+
+      if (row is Map<String, dynamic>) {
+        final tableName = _buildName(
+          row['first_name']?.toString(),
+          row['last_name']?.toString(),
+        );
+        if (tableName != null) return tableName;
       }
+    } catch (_) {
+      // Fall back to auth metadata when profile lookup is unavailable.
     }
 
     return metaName;
@@ -647,6 +652,9 @@ class AuthService extends ApiService {
   }
 
   /// Restore current auth session if one exists.
+  ///
+  /// Uses auth metadata for the display name so cold start never waits on
+  /// Supabase. Call [refreshDisplayNameForSession] in the background when online.
   Future<AuthResult> restoreSession() async {
     try {
       final session = _supabase.auth.currentSession;
@@ -663,17 +671,22 @@ class AuthService extends ApiService {
         );
       }
 
-      final resolvedName = await _resolveDisplayName(user: user, role: role);
-
       return AuthResult.success(
         token: session.accessToken,
         userId: user.id,
-        name: resolvedName,
+        name: _extractDisplayName(user),
         email: user.email,
         role: role,
       );
     } catch (_) {
       return AuthResult.failure('Could not restore session.');
     }
+  }
+
+  /// Fetches the profile display name when online. Safe to call in background.
+  Future<String?> refreshDisplayNameForSession() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return null;
+    return _resolveDisplayName(user: user, role: _extractRole(user));
   }
 }

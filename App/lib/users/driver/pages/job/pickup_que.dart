@@ -19,8 +19,11 @@ class _PickupQuePageState extends State<PickupQuePage> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<JobProvider>().ensureSessionStarted();
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      final provider = context.read<JobProvider>();
+      await provider.ensureSessionStarted();
+      if (!mounted) return;
+      await provider.startTrackingCurrentPickup();
     });
   }
 

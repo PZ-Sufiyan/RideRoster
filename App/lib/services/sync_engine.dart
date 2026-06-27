@@ -519,6 +519,12 @@ class SyncEngine {
       throw Exception('complete_job: no server session ID for $localSessionId');
     }
 
+    final rawNote =
+        payload['note'] as String? ?? payload['comments'] as String?;
+    final noteValue = (rawNote == null || rawNote.trim().isEmpty)
+        ? null
+        : rawNote.trim();
+
     // Mirrors JobService.completeJob exactly
     await _supabase
         .from('job_session_passengers')
@@ -535,6 +541,7 @@ class SyncEngine {
         .update({
           'status': 'completed',
           'completed_at': payload['completed_at'],
+          if (noteValue != null) 'note': noteValue,
           'updated_at': DateTime.now().toIso8601String(),
         })
         .eq('id', serverSessionId);

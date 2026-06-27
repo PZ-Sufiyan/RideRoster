@@ -60,12 +60,8 @@ class AuthProvider extends ChangeNotifier {
       _userRole = result.role;
       _errorMessage = null;
       _setStatus(AuthStatus.authenticated);
-      // Subscribe AFTER status is set and userId is populated.
-      // RealtimeService.subscribe() will also wait for the Supabase session
-      // internally, but calling it here after result.success ensures the
-      // auth token is valid before we open channels.
-      await _subscribeRealtime();
-      await _registerPushTokenIfNeeded();
+      // Realtime + FCM + profile name refresh must not block cold start offline.
+      unawaited(_completeAuthenticatedSetup());
     } else {
       _token = null;
       _userId = null;
@@ -188,6 +184,21 @@ class AuthProvider extends ChangeNotifier {
         ? RealtimeAudience.passengerAssistant
         : RealtimeAudience.driver;
     await RealtimeService().subscribe(audience: audience);
+  }
+
+  Future<void> _completeAuthenticatedSetup() async {
+    await _subscribeRealtime();
+    await _registerPushTokenIfNeeded();
+    await _refreshDisplayNameWhenOnline();
+  }
+
+  Future<void> _refreshDisplayNameWhenOnline() async {
+    try {
+      final name = await _authService.refreshDisplayNameForSession();
+      if (name == null || name.isEmpty || name == _userName) return;
+      _userName = name;
+      notifyListeners();
+    } catch (_) {}
   }
 
   Future<void> _registerPushTokenIfNeeded() async {

@@ -3597,6 +3597,15 @@ class $SessionsLocalTable extends SessionsLocal
     type: DriftSqlType.dateTime,
     requiredDuringInsert: false,
   );
+  static const VerificationMeta _noteMeta = const VerificationMeta('note');
+  @override
+  late final GeneratedColumn<String> note = GeneratedColumn<String>(
+    'note',
+    aliasedName,
+    true,
+    type: DriftSqlType.string,
+    requiredDuringInsert: false,
+  );
   static const VerificationMeta _isSyncedMeta = const VerificationMeta(
     'isSynced',
   );
@@ -3647,6 +3656,7 @@ class $SessionsLocalTable extends SessionsLocal
     driverId,
     startedAt,
     completedAt,
+    note,
     isSynced,
     createdAt,
     updatedAt,
@@ -3733,6 +3743,12 @@ class $SessionsLocalTable extends SessionsLocal
         ),
       );
     }
+    if (data.containsKey('note')) {
+      context.handle(
+        _noteMeta,
+        note.isAcceptableOrUnknown(data['note']!, _noteMeta),
+      );
+    }
     if (data.containsKey('is_synced')) {
       context.handle(
         _isSyncedMeta,
@@ -3796,6 +3812,10 @@ class $SessionsLocalTable extends SessionsLocal
         DriftSqlType.dateTime,
         data['${effectivePrefix}completed_at'],
       ),
+      note: attachedDatabase.typeMapping.read(
+        DriftSqlType.string,
+        data['${effectivePrefix}note'],
+      ),
       isSynced: attachedDatabase.typeMapping.read(
         DriftSqlType.bool,
         data['${effectivePrefix}is_synced'],
@@ -3828,6 +3848,7 @@ class SessionsLocalData extends DataClass
   final String driverId;
   final DateTime startedAt;
   final DateTime? completedAt;
+  final String? note;
   final bool isSynced;
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -3841,6 +3862,7 @@ class SessionsLocalData extends DataClass
     required this.driverId,
     required this.startedAt,
     this.completedAt,
+    this.note,
     required this.isSynced,
     required this.createdAt,
     required this.updatedAt,
@@ -3860,6 +3882,9 @@ class SessionsLocalData extends DataClass
     map['started_at'] = Variable<DateTime>(startedAt);
     if (!nullToAbsent || completedAt != null) {
       map['completed_at'] = Variable<DateTime>(completedAt);
+    }
+    if (!nullToAbsent || note != null) {
+      map['note'] = Variable<String>(note);
     }
     map['is_synced'] = Variable<bool>(isSynced);
     map['created_at'] = Variable<DateTime>(createdAt);
@@ -3882,6 +3907,7 @@ class SessionsLocalData extends DataClass
       completedAt: completedAt == null && nullToAbsent
           ? const Value.absent()
           : Value(completedAt),
+      note: note == null && nullToAbsent ? const Value.absent() : Value(note),
       isSynced: Value(isSynced),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
@@ -3903,6 +3929,7 @@ class SessionsLocalData extends DataClass
       driverId: serializer.fromJson<String>(json['driverId']),
       startedAt: serializer.fromJson<DateTime>(json['startedAt']),
       completedAt: serializer.fromJson<DateTime?>(json['completedAt']),
+      note: serializer.fromJson<String?>(json['note']),
       isSynced: serializer.fromJson<bool>(json['isSynced']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
@@ -3921,6 +3948,7 @@ class SessionsLocalData extends DataClass
       'driverId': serializer.toJson<String>(driverId),
       'startedAt': serializer.toJson<DateTime>(startedAt),
       'completedAt': serializer.toJson<DateTime?>(completedAt),
+      'note': serializer.toJson<String?>(note),
       'isSynced': serializer.toJson<bool>(isSynced),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
@@ -3937,6 +3965,7 @@ class SessionsLocalData extends DataClass
     String? driverId,
     DateTime? startedAt,
     Value<DateTime?> completedAt = const Value.absent(),
+    Value<String?> note = const Value.absent(),
     bool? isSynced,
     DateTime? createdAt,
     DateTime? updatedAt,
@@ -3950,6 +3979,7 @@ class SessionsLocalData extends DataClass
     driverId: driverId ?? this.driverId,
     startedAt: startedAt ?? this.startedAt,
     completedAt: completedAt.present ? completedAt.value : this.completedAt,
+    note: note.present ? note.value : this.note,
     isSynced: isSynced ?? this.isSynced,
     createdAt: createdAt ?? this.createdAt,
     updatedAt: updatedAt ?? this.updatedAt,
@@ -3969,6 +3999,7 @@ class SessionsLocalData extends DataClass
       completedAt: data.completedAt.present
           ? data.completedAt.value
           : this.completedAt,
+      note: data.note.present ? data.note.value : this.note,
       isSynced: data.isSynced.present ? data.isSynced.value : this.isSynced,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
@@ -3987,6 +4018,7 @@ class SessionsLocalData extends DataClass
           ..write('driverId: $driverId, ')
           ..write('startedAt: $startedAt, ')
           ..write('completedAt: $completedAt, ')
+          ..write('note: $note, ')
           ..write('isSynced: $isSynced, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
@@ -4005,6 +4037,7 @@ class SessionsLocalData extends DataClass
     driverId,
     startedAt,
     completedAt,
+    note,
     isSynced,
     createdAt,
     updatedAt,
@@ -4022,6 +4055,7 @@ class SessionsLocalData extends DataClass
           other.driverId == this.driverId &&
           other.startedAt == this.startedAt &&
           other.completedAt == this.completedAt &&
+          other.note == this.note &&
           other.isSynced == this.isSynced &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
@@ -4037,6 +4071,7 @@ class SessionsLocalCompanion extends UpdateCompanion<SessionsLocalData> {
   final Value<String> driverId;
   final Value<DateTime> startedAt;
   final Value<DateTime?> completedAt;
+  final Value<String?> note;
   final Value<bool> isSynced;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
@@ -4051,6 +4086,7 @@ class SessionsLocalCompanion extends UpdateCompanion<SessionsLocalData> {
     this.driverId = const Value.absent(),
     this.startedAt = const Value.absent(),
     this.completedAt = const Value.absent(),
+    this.note = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -4066,6 +4102,7 @@ class SessionsLocalCompanion extends UpdateCompanion<SessionsLocalData> {
     required String driverId,
     this.startedAt = const Value.absent(),
     this.completedAt = const Value.absent(),
+    this.note = const Value.absent(),
     this.isSynced = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
@@ -4085,6 +4122,7 @@ class SessionsLocalCompanion extends UpdateCompanion<SessionsLocalData> {
     Expression<String>? driverId,
     Expression<DateTime>? startedAt,
     Expression<DateTime>? completedAt,
+    Expression<String>? note,
     Expression<bool>? isSynced,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
@@ -4100,6 +4138,7 @@ class SessionsLocalCompanion extends UpdateCompanion<SessionsLocalData> {
       if (driverId != null) 'driver_id': driverId,
       if (startedAt != null) 'started_at': startedAt,
       if (completedAt != null) 'completed_at': completedAt,
+      if (note != null) 'note': note,
       if (isSynced != null) 'is_synced': isSynced,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
@@ -4117,6 +4156,7 @@ class SessionsLocalCompanion extends UpdateCompanion<SessionsLocalData> {
     Value<String>? driverId,
     Value<DateTime>? startedAt,
     Value<DateTime?>? completedAt,
+    Value<String?>? note,
     Value<bool>? isSynced,
     Value<DateTime>? createdAt,
     Value<DateTime>? updatedAt,
@@ -4132,6 +4172,7 @@ class SessionsLocalCompanion extends UpdateCompanion<SessionsLocalData> {
       driverId: driverId ?? this.driverId,
       startedAt: startedAt ?? this.startedAt,
       completedAt: completedAt ?? this.completedAt,
+      note: note ?? this.note,
       isSynced: isSynced ?? this.isSynced,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
@@ -4169,6 +4210,9 @@ class SessionsLocalCompanion extends UpdateCompanion<SessionsLocalData> {
     if (completedAt.present) {
       map['completed_at'] = Variable<DateTime>(completedAt.value);
     }
+    if (note.present) {
+      map['note'] = Variable<String>(note.value);
+    }
     if (isSynced.present) {
       map['is_synced'] = Variable<bool>(isSynced.value);
     }
@@ -4196,6 +4240,7 @@ class SessionsLocalCompanion extends UpdateCompanion<SessionsLocalData> {
           ..write('driverId: $driverId, ')
           ..write('startedAt: $startedAt, ')
           ..write('completedAt: $completedAt, ')
+          ..write('note: $note, ')
           ..write('isSynced: $isSynced, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt, ')
@@ -8100,6 +8145,7 @@ typedef $$SessionsLocalTableCreateCompanionBuilder =
       required String driverId,
       Value<DateTime> startedAt,
       Value<DateTime?> completedAt,
+      Value<String?> note,
       Value<bool> isSynced,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -8116,6 +8162,7 @@ typedef $$SessionsLocalTableUpdateCompanionBuilder =
       Value<String> driverId,
       Value<DateTime> startedAt,
       Value<DateTime?> completedAt,
+      Value<String?> note,
       Value<bool> isSynced,
       Value<DateTime> createdAt,
       Value<DateTime> updatedAt,
@@ -8173,6 +8220,11 @@ class $$SessionsLocalTableFilterComposer
 
   ColumnFilters<DateTime> get completedAt => $composableBuilder(
     column: $table.completedAt,
+    builder: (column) => ColumnFilters(column),
+  );
+
+  ColumnFilters<String> get note => $composableBuilder(
+    column: $table.note,
     builder: (column) => ColumnFilters(column),
   );
 
@@ -8246,6 +8298,11 @@ class $$SessionsLocalTableOrderingComposer
     builder: (column) => ColumnOrderings(column),
   );
 
+  ColumnOrderings<String> get note => $composableBuilder(
+    column: $table.note,
+    builder: (column) => ColumnOrderings(column),
+  );
+
   ColumnOrderings<bool> get isSynced => $composableBuilder(
     column: $table.isSynced,
     builder: (column) => ColumnOrderings(column),
@@ -8302,6 +8359,9 @@ class $$SessionsLocalTableAnnotationComposer
     builder: (column) => column,
   );
 
+  GeneratedColumn<String> get note =>
+      $composableBuilder(column: $table.note, builder: (column) => column);
+
   GeneratedColumn<bool> get isSynced =>
       $composableBuilder(column: $table.isSynced, builder: (column) => column);
 
@@ -8356,6 +8416,7 @@ class $$SessionsLocalTableTableManager
                 Value<String> driverId = const Value.absent(),
                 Value<DateTime> startedAt = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
+                Value<String?> note = const Value.absent(),
                 Value<bool> isSynced = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -8370,6 +8431,7 @@ class $$SessionsLocalTableTableManager
                 driverId: driverId,
                 startedAt: startedAt,
                 completedAt: completedAt,
+                note: note,
                 isSynced: isSynced,
                 createdAt: createdAt,
                 updatedAt: updatedAt,
@@ -8386,6 +8448,7 @@ class $$SessionsLocalTableTableManager
                 required String driverId,
                 Value<DateTime> startedAt = const Value.absent(),
                 Value<DateTime?> completedAt = const Value.absent(),
+                Value<String?> note = const Value.absent(),
                 Value<bool> isSynced = const Value.absent(),
                 Value<DateTime> createdAt = const Value.absent(),
                 Value<DateTime> updatedAt = const Value.absent(),
@@ -8400,6 +8463,7 @@ class $$SessionsLocalTableTableManager
                 driverId: driverId,
                 startedAt: startedAt,
                 completedAt: completedAt,
+                note: note,
                 isSynced: isSynced,
                 createdAt: createdAt,
                 updatedAt: updatedAt,

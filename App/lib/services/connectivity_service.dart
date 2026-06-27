@@ -75,11 +75,17 @@ class ConnectivityService {
 
     final initial = await _connectivity.checkConnectivity();
     _hasLink = _resultsHaveLink(initial);
-    // Optimistic until a probe proves otherwise — avoids offline flash at launch.
+    // Optimistic when a link exists — UI stays online until probes prove otherwise.
+    // Probe runs in the background so cold start never blocks on a dead connection.
     _serverReachable = _hasLink;
+    _consecutiveFailures = 0;
+    _lastEmittedOnline = canReachServer;
 
-    await _probe();
-    _notifyIfChanged();
+    if (_hasLink) {
+      unawaited(_runInitialProbe());
+    } else {
+      _notifyIfChanged();
+    }
 
     _linkSub = _connectivity.onConnectivityChanged.listen((results) {
       final hadLink = _hasLink;
@@ -104,6 +110,11 @@ class ConnectivityService {
     });
 
     _restartPeriodicProbe();
+  }
+
+  Future<void> _runInitialProbe() async {
+    await _probe();
+    _notifyIfChanged();
   }
 
   /// Call from WidgetsBindingObserver on resumed.

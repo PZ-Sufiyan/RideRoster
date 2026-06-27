@@ -8,8 +8,21 @@ import '../../../../model/job_model.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 
-class PickupPage extends StatelessWidget {
+class PickupPage extends StatefulWidget {
   const PickupPage({super.key});
+
+  @override
+  State<PickupPage> createState() => _PickupPageState();
+}
+
+class _PickupPageState extends State<PickupPage> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<JobProvider>().startTrackingCurrentPickup();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {

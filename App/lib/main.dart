@@ -70,7 +70,6 @@ Future<void> main() async {
   SyncEngine.init(localRepo);
   SyncScheduler.register(() => SyncEngine.instance.processQueue());
   SessionCleanup.init(localRepo);
-  // Reconnect sync is handled below (cache refresh must run before the queue).
 
   // ── Device services ───────────────────────────────────────────────────────
   await LocationService().ensurePermission();
@@ -80,17 +79,8 @@ Future<void> main() async {
         NavigationService.handlePushOpened(message.data),
   );
 
-  // Warm cache only when we can actually reach Supabase (not just link-up).
-  if (ConnectivityService().canReachServer) {
-    try {
-      await cacheRepo.ensureFresh();
-    } catch (_) {
-      // canReachServer can lag by one probe cycle — swallow and read local DB.
-    }
-  }
-
-  // onReconnect fires when canReachServer transitions false→true (real internet,
-  // not just link restored). Refresh server truth first, then replay the queue.
+  // Cache refresh runs after the UI is up — JobProvider loads local data first,
+  // then refreshes when [ConnectivityService.canReachServer] is true.
   ConnectivityService().onReconnect.listen((_) async {
     try {
       await cacheRepo.forceRefresh();

@@ -143,6 +143,7 @@ create table public.job_sessions (
   status text not null default 'pending'::text,
   started_at timestamp with time zone null,
   completed_at timestamp with time zone null,
+  note text null,
   driver_id uuid null,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),

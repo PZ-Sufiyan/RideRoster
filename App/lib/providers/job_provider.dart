@@ -40,13 +40,16 @@ class JobProvider extends ChangeNotifier {
   double? _currentDistanceMeters;
   bool _hasArrivedAtPickup = false;
   bool _hasArrivedAtDropoff = false;
+  String? _trackingPickupStopId;
 
   StreamSubscription<Map<String, dynamic>>? _jobSub;
   StreamSubscription<Map<String, dynamic>>? _sessionSub;
   StreamSubscription<Map<String, dynamic>>? _passengerSub;
   StreamSubscription<void>? _reconnectSub;
+  StreamSubscription<bool>? _onlineSub;
   StreamSubscription<AuthState>? _authSub;
   Timer? _reloadDebounce;
+  bool _serverRefreshInFlight = false;
 
   JobProvider({
     required LocalJobRepository localRepo,
@@ -55,13 +58,16 @@ class JobProvider extends ChangeNotifier {
        _cacheRepo = cacheRepo {
     _listenToRealtime();
     _reconnectSub = ConnectivityService().onReconnect.listen((_) {
-      loadJob(silent: true);
+      _refreshFromServerInBackground();
     });
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
       if (event.session?.user.id == null) return;
       if (!_hasLoadedOnce) {
         loadJob();
       }
+    });
+    _onlineSub = ConnectivityService().onlineStream.listen((online) {
+      if (online) _refreshFromServerInBackground();
     });
   }
 
@@ -153,42 +159,11 @@ class JobProvider extends ChangeNotifier {
     });
   }
 
-  // ── Load — reads from local drift DB ─────────────────────────────────────
+  // ── Load — local DB first, server refresh in background ───────────────────
 
   Future<void> loadJob({bool silent = false}) async {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return;
-
-    String? assignmentRevokedMessage;
-
-    // Warm cache when online — on first load always try if a link exists so
-    // fresh install/login is not blocked waiting for a background probe.
-    final shouldRefreshCache =
-        ConnectivityService().canReachServer ||
-        (!_hasLoadedOnce && ConnectivityService().hasNetworkLink);
-    if (shouldRefreshCache) {
-      try {
-        final refresh = _cacheRepo.ensureFresh();
-        // Fresh install / first login must finish cache warm-up — a 3s cap
-        // caused empty current job + stats until a later reconnect reload.
-        if (silent && _hasLoadedOnce) {
-          await refresh.timeout(const Duration(seconds: 8));
-        } else {
-          await refresh;
-        }
-      } catch (_) {}
-      assignmentRevokedMessage = await _localRepo.discardStaleLocalWork(userId);
-      if (assignmentRevokedMessage != null) {
-        _job = null;
-        _activePickupIndex = 0;
-      }
-    }
-
-    if (shouldRefreshCache) {
-      try {
-        await _localRepo.ensureChecklistCachedFromServer(userId);
-      } catch (_) {}
-    }
 
     final todayKey = _todayKey(DateTime.now());
     if (_lastLoadedDayKey != null && _lastLoadedDayKey != todayKey) {
@@ -198,9 +173,9 @@ class JobProvider extends ChangeNotifier {
       _hasArrivedAtDropoff = false;
       _isTracking = false;
       _currentDistanceMeters = null;
+      _trackingPickupStopId = null;
       _checklistCompletedToday = false;
       _error = null;
-      // Clear write tables for the new day
       await _localRepo.clearWriteTablesForNewDay();
       notifyListeners();
     }
@@ -239,11 +214,7 @@ class JobProvider extends ChangeNotifier {
       } else {
         _activePickupIndex = 0;
       }
-      if (assignmentRevokedMessage != null && _job == null) {
-        _error = assignmentRevokedMessage;
-      } else {
-        _error = null;
-      }
+      _error = null;
     } catch (e) {
       if (blockUiWithLoading) _error = e.toString();
     } finally {
@@ -253,6 +224,77 @@ class JobProvider extends ChangeNotifier {
       _jobDataEpoch++;
       notifyListeners();
     }
+
+    _refreshFromServerInBackground();
+  }
+
+  /// Pulls server truth into the cache, then silently re-reads local tables.
+  /// Never blocks the first paint — call only after local data is on screen.
+  Future<void> _refreshFromServerInBackground() async {
+    if (_serverRefreshInFlight) return;
+    if (!ConnectivityService().canReachServer) return;
+
+    final userId = Supabase.instance.client.auth.currentUser?.id;
+    if (userId == null || userId.isEmpty) return;
+
+    _serverRefreshInFlight = true;
+    try {
+      await _cacheRepo.ensureFresh();
+
+      final assignmentRevokedMessage = await _localRepo.discardStaleLocalWork(
+        userId,
+      );
+
+      try {
+        await _localRepo.ensureChecklistCachedFromServer(userId);
+      } catch (_) {}
+
+      await _reloadJobFromLocal(userId);
+
+      if (assignmentRevokedMessage != null && _job == null) {
+        _error = assignmentRevokedMessage;
+        _jobDataEpoch++;
+        notifyListeners();
+      }
+    } catch (_) {
+      // Local cache remains authoritative until the next reconnect.
+    } finally {
+      _serverRefreshInFlight = false;
+    }
+  }
+
+  Future<void> _reloadJobFromLocal(String userId) async {
+    try {
+      final results = await Future.wait<dynamic>([
+        _localRepo.fetchCurrentJob(userId),
+        _localRepo.isChecklistCompletedToday(userId),
+      ]);
+      final updatedJob = results[0] as JobModel?;
+      _checklistCompletedToday = results[1] as bool;
+
+      final sameJob =
+          updatedJob != null &&
+          _job != null &&
+          updatedJob.jobDbId == _job!.jobDbId;
+
+      _job = updatedJob;
+
+      if (_job != null) {
+        if (!sameJob) {
+          _setActiveToFirstPending();
+        } else {
+          _activePickupIndex = _activePickupIndex.clamp(
+            0,
+            _job!.pickups.length,
+          );
+        }
+      } else {
+        _activePickupIndex = 0;
+      }
+
+      _jobDataEpoch++;
+      notifyListeners();
+    } catch (_) {}
   }
 
   Future<void> refreshJobDataSilently() async => loadJob(silent: true);
@@ -304,6 +346,28 @@ class JobProvider extends ChangeNotifier {
     );
   }
 
+  /// Starts background distance tracking toward the active pickup so arrival
+  /// notifications fire even when the driver does not open Google Maps.
+  Future<void> startTrackingCurrentPickup() async {
+    final stop = activePickup;
+    if (stop == null) return;
+    if (!stop.hasCoordinates) return;
+
+    if (_trackingPickupStopId == stop.id &&
+        (_isTracking || _hasArrivedAtPickup)) {
+      return;
+    }
+
+    final hasPermission = await _locationService.ensurePermission();
+    if (!hasPermission) {
+      _error = 'Location permission required for arrival tracking.';
+      notifyListeners();
+      return;
+    }
+
+    _startPickupTracking(stop);
+  }
+
   Future<void> navigateToCurrentPickup() async {
     final stop = activePickup;
     if (stop == null) return;
@@ -312,15 +376,8 @@ class JobProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final hasPermission = await _locationService.ensurePermission();
-    if (!hasPermission) {
-      _error = 'Location permission required for tracking.';
-      notifyListeners();
-      return;
-    }
-    _hasArrivedAtPickup = false;
     await _navService.openSingleStop(lat: stop.lat!, lng: stop.lng!);
-    _startPickupTracking(stop);
+    await startTrackingCurrentPickup();
   }
 
   Future<void> navigateToDropoff() async {
@@ -487,11 +544,13 @@ class JobProvider extends ChangeNotifier {
     _isTracking = false;
     _currentDistanceMeters = null;
     _hasArrivedAtPickup = false;
+    _trackingPickupStopId = null;
 
     for (int i = _activePickupIndex + 1; i < _job!.pickups.length; i++) {
       if (_job!.pickups[i].status == PickupStatus.pending) {
         _activePickupIndex = i;
         notifyListeners();
+        unawaited(startTrackingCurrentPickup());
         return true;
       }
     }
@@ -540,15 +599,18 @@ class JobProvider extends ChangeNotifier {
     _currentDistanceMeters = null;
     _hasArrivedAtPickup = false;
     _hasArrivedAtDropoff = false;
+    _trackingPickupStopId = null;
     notifyListeners();
   }
 
-  // ── Background tracking (unchanged) ──────────────────────────────────────
+  // ── Background tracking ───────────────────────────────────────────────────
 
   void _startPickupTracking(PickupStop stop) {
+    final isNewStop = _trackingPickupStopId != stop.id;
+    _trackingPickupStopId = stop.id;
     _isTracking = true;
     _currentDistanceMeters = null;
-    _hasArrivedAtPickup = false;
+    if (isNewStop) _hasArrivedAtPickup = false;
     notifyListeners();
 
     BackgroundLocationTask.start(
@@ -617,6 +679,7 @@ class JobProvider extends ChangeNotifier {
   void dispose() {
     _reloadDebounce?.cancel();
     _reconnectSub?.cancel();
+    _onlineSub?.cancel();
     _authSub?.cancel();
     _jobSub?.cancel();
     _sessionSub?.cancel();

@@ -630,11 +630,16 @@ class JobService {
         .eq('session_id', sessionId)
         .eq('status', 'picked_up');
 
+    final noteValue = (comments == null || comments.trim().isEmpty)
+        ? null
+        : comments.trim();
+
     await _supabase
         .from('job_sessions')
         .update({
           'status': 'completed',
           'completed_at': DateTime.now().toIso8601String(),
+          if (noteValue != null) 'note': noteValue,
           'updated_at': DateTime.now().toIso8601String(),
         })
         .eq('id', sessionId);

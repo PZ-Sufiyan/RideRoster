@@ -122,6 +122,7 @@ class SessionsLocal extends Table {
   TextColumn get driverId => text()();
   DateTimeColumn get startedAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get completedAt => dateTime().nullable()();
+  TextColumn get note => text().nullable()();
   BoolColumn get isSynced => boolean().withDefault(const Constant(false))();
   DateTimeColumn get createdAt => dateTime().withDefault(currentDateAndTime)();
   DateTimeColumn get updatedAt => dateTime().withDefault(currentDateAndTime)();
@@ -227,13 +228,15 @@ class AppDatabase extends _$AppDatabase {
 
   /// Bump this whenever you add/change a table.
   @override
-  int get schemaVersion => 2;
+  int get schemaVersion => 3;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
     onCreate: (m) => m.createAll(),
     onUpgrade: (m, from, to) async {
-      // Add migration steps here as schemaVersion grows.
+      if (from < 3) {
+        await m.addColumn(sessionsLocal, sessionsLocal.note);
+      }
     },
   );
 }

@@ -96,7 +96,7 @@ class PaJobService {
     final sessionRows = await _supabase
         .from('job_sessions')
         .select(
-          'id, direction, status, driver_id, started_at, completed_at',
+          'id, direction, status, driver_id, started_at, completed_at, note',
         )
         .eq('job_id', jobDbId)
         .eq('session_date', todayDate)

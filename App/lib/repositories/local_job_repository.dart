@@ -695,6 +695,10 @@ class LocalJobRepository {
           ),
         );
 
+    final noteValue = (comments == null || comments.trim().isEmpty)
+        ? null
+        : comments.trim();
+
     // Mark session complete
     await (_db.update(
       _db.sessionsLocal,
@@ -702,6 +706,7 @@ class LocalJobRepository {
       SessionsLocalCompanion(
         status: const Value('completed'),
         completedAt: Value(now),
+        note: Value(noteValue),
         updatedAt: Value(now),
         isSynced: const Value(false),
       ),
@@ -717,7 +722,7 @@ class LocalJobRepository {
         'local_session_id': localSessionId,
         'server_session_id': session?.serverId,
         'completed_at': now.toIso8601String(),
-        'comments': comments ?? '',
+        'note': noteValue,
       },
     );
   }
@@ -1453,6 +1458,8 @@ class LocalJobRepository {
         final driverId = (sessionRow['driver_id'] ?? '').toString();
         final startedAt = _parseDateTime(sessionRow['started_at']) ?? DateTime.now();
         final completedAt = _parseDateTime(sessionRow['completed_at']);
+        final note = sessionRow['note']?.toString().trim();
+        final noteValue = (note == null || note.isEmpty) ? null : note;
 
         var localSession =
             await (_db.select(_db.sessionsLocal)
@@ -1482,6 +1489,7 @@ class LocalJobRepository {
               ),
               startedAt: Value(startedAt),
               completedAt: Value(completedAt),
+              note: Value(noteValue),
               isSynced: const Value(true),
               updatedAt: Value(DateTime.now()),
             ),
@@ -1499,6 +1507,7 @@ class LocalJobRepository {
               driverId: driverId,
               startedAt: Value(startedAt),
               completedAt: Value(completedAt),
+              note: Value(noteValue),
               isSynced: const Value(true),
             ),
           );

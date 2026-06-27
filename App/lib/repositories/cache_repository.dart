@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:drift/drift.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../database/app_database.dart';
@@ -21,19 +23,30 @@ class CacheRepository {
   SupabaseClient get _supabase => Supabase.instance.client;
 
   static const int _maxAgeHours = 4;
+  static const Duration _networkTimeout = Duration(seconds: 12);
 
   CacheRepository(this._db);
 
-  /// Entry point. Call on launch and before each job load when online.
+  /// Entry point. Call when online — never block UI on this; use a timeout.
   /// Job assignment is always synced; schedules are always refreshed.
   Future<void> ensureFresh() async {
+    if (!ConnectivityService().canReachServer) return;
+
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return;
 
+    try {
+      await _ensureFreshInternal(userId).timeout(_networkTimeout);
+      ConnectivityService().noteSuccessfulRequest();
+    } on TimeoutException {
+      // Keep serving cached rows — a later reconnect will retry.
+    } catch (_) {}
+  }
+
+  Future<void> _ensureFreshInternal(String userId) async {
     final stale = await _isCacheStale();
     final vehicleMissing = await _isVehicleCacheEmpty();
 
-    // Jobs + vehicle in parallel — schedules need job ids from jobs_cache next.
     await Future.wait([
       _refreshJobs(userId),
       _refreshPaJobs(userId),
@@ -44,7 +57,6 @@ class CacheRepository {
     ]);
 
     await _refreshSchedulesAndPassengers(userId);
-    ConnectivityService().noteSuccessfulRequest();
   }
 
   /// Force-refresh regardless of age. Call after SyncEngine drains the queue
