@@ -98,7 +98,7 @@ export const getJobSessionsByDriver = async (driverId) => {
   if (!driverId) return []
   const { data, error } = await supabase
     .from('job_sessions')
-    .select('id, job_id, session_date, direction, status, started_at, completed_at, driver_id, created_at')
+    .select('id, job_id, session_date, direction, status, started_at, completed_at, driver_id, created_at, note')
     .eq('driver_id', driverId)
     .order('session_date', { ascending: false })
     .order('started_at', { ascending: false, nullsFirst: false })

@@ -105,6 +105,14 @@ const Dashboard = () => {
         return d.toISOString().slice(0, 10)
     }
 
+    const shortenUuid = (value) => {
+        if (value == null) return '—'
+        const s = String(value).trim()
+        if (!s) return '—'
+        const first = s.split('-')[0]
+        return first || s
+    }
+
     const lineChartPoints = useMemo(() => {
         if (!companyGrowth.length) return ''
         const maxValue = Math.max(...companyGrowth.map(p => p.total || 0), 1)
@@ -458,7 +466,7 @@ const Dashboard = () => {
                                 </tr>
                             )) : pendingApprovals.map((row, idx) => (
                                 <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="px-6 py-4 text-gray-500">{row.id || '—'}</td>
+                                    <td className="px-6 py-4 text-gray-500">{shortenUuid(row.id)}</td>
                                     <td className="px-6 py-4 font-medium text-gray-900">{row.company_name || '—'}</td>
                                     <td className="px-6 py-4 text-gray-500">{formatDate(row.created_at)}</td>
                                     <td className="px-6 py-4 text-gray-500">{row.company_operating_address || row.company_address || '—'}</td>

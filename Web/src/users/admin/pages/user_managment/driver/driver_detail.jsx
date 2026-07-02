@@ -18,6 +18,7 @@ import {
     getJobSessionsByDriver,
 } from '../../../../../services/driverVehicleService';
 import SendUserMessageModal from '../../../../../components/SendDriverMessageModal';
+import SessionNoteModal from '../../../../../components/SessionNoteModal';
 
 /** Labels aligned with `add_new_driver.jsx` / DB document_type enums */
 const DRIVER_DOCUMENT_LABELS = {
@@ -164,6 +165,7 @@ const DriverDetail = () => {
     const [jobs, setJobs] = useState([]);
     const [jobSessions, setJobSessions] = useState([]);
     const [showMessageModal, setShowMessageModal] = useState(false);
+    const [noteModal, setNoteModal] = useState({ open: false, note: '', label: '' });
 
     const load = useCallback(async () => {
         if (!id) {
@@ -561,11 +563,12 @@ const DriverDetail = () => {
                         <thead className="bg-gray-50/60 border-b border-gray-100">
                             <tr>
                                 <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Job ID</th>
-                                <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Job Session ID</th>
+                                <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Session ID</th>
                                 <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Date</th>
                                 <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Route</th>
                                 <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Start Time</th>
                                 <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">End Time</th>
+                                <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Notes</th>
                                 <th className="px-5 py-3 text-left text-[11px] font-semibold text-gray-500">Status</th>
                             </tr>
                         </thead>
@@ -577,12 +580,14 @@ const DriverDetail = () => {
                                     </td>
                                 </tr>
                             ) : (
-                                jobSessionsToShow.map((session) => (
+                                jobSessionsToShow.map((session) => {
+                                    const noteText = (session.note || '').trim();
+                                    return (
                                     <tr key={session.id}>
                                         <td className="px-5 py-2.5 text-[12px] font-semibold text-gray-700">
                                             {shortenUuid(session.job_id)}
                                         </td>
-                                        <td className="px-5 py-2.5 text-[12px] font-semibold text-gray-700">
+                                        <td className="px-5 py-2.5 text-[12px] text-gray-500">
                                             {shortenUuid(session.id)}
                                         </td>
                                         <td className="px-5 py-2.5 text-[12px] text-gray-500">
@@ -597,6 +602,26 @@ const DriverDetail = () => {
                                         <td className="px-5 py-2.5 text-[12px] text-gray-500">
                                             {formatTime(session.completed_at)}
                                         </td>
+                                        <td className="px-5 py-2.5 text-[12px] text-gray-500">
+                                            {noteText ? (
+                                                <button
+                                                    type="button"
+                                                    onClick={() =>
+                                                        setNoteModal({
+                                                            open: true,
+                                                            note: noteText,
+                                                            label: `${formatDate(session.session_date)} · ${formatDirectionLabel(session.direction)}`,
+                                                        })
+                                                    }
+                                                    className="inline-flex items-center gap-1 text-[#005580] font-semibold hover:underline"
+                                                >
+                                                    <MdVisibility size={14} />
+                                                    View
+                                                </button>
+                                            ) : (
+                                                '—'
+                                            )}
+                                        </td>
                                         <td className="px-5 py-2.5">
                                             <span
                                                 className={`inline-flex items-center gap-1 text-[11px] font-semibold ${sessionStatusTextClass(session.status)}`}
@@ -606,7 +631,8 @@ const DriverDetail = () => {
                                             </span>
                                         </td>
                                     </tr>
-                                ))
+                                    );
+                                })
                             )}
                         </tbody>
                     </table>
@@ -618,6 +644,12 @@ const DriverDetail = () => {
                 recipientName={displayName}
                 userType="driver"
                 onClose={() => setShowMessageModal(false)}
+            />
+            <SessionNoteModal
+                open={noteModal.open}
+                note={noteModal.note}
+                sessionLabel={noteModal.label}
+                onClose={() => setNoteModal({ open: false, note: '', label: '' })}
             />
         </div>
     );

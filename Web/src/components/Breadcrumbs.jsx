@@ -9,6 +9,7 @@ const SIDEBAR_PATHS = new Set([
     '/platform/sos',
     '/platform/logs',
     '/platform/settings',
+    '/platform/add-admin',
     '/portal/dashboard',
     '/portal/users/drivers',
     '/portal/users/pa',
@@ -39,13 +40,22 @@ const STEP_LABELS = {
     '3': 'Schedule & Pay',
 };
 
+/** Returns the first segment of a UUID (text before the first dash). */
+const shortenUuid = (value) => {
+    if (value == null) return '—';
+    const s = String(value).trim();
+    if (!s) return '—';
+    const first = s.split('-')[0];
+    return first || s;
+};
+
 const ROUTE_CRUMB_MAP = [
     // ─── SUPERADMIN ───────────────────────────────────────────────
     {
         match: /^\/platform\/companies\/review\/([^/]+)$/,
         crumbs: (_, [id]) => [
             { label: 'Pending Companies', to: '/platform/companies/pending' },
-            { label: decodeURIComponent(id) },
+            { label: `C#${shortenUuid(decodeURIComponent(id))}` },
         ],
     },
     {
@@ -67,12 +77,6 @@ const ROUTE_CRUMB_MAP = [
         crumbs: (_, [id]) => [
             { label: 'SOS Monitoring', to: '/platform/sos' },
             { label: decodeURIComponent(id) },
-        ],
-    },
-    {
-        match: /^\/platform\/add-admin$/,
-        crumbs: () => [
-            { label: 'Add Admin' },
         ],
     },
 
@@ -353,7 +357,7 @@ const Breadcrumbs = () => {
                                     {crumb.label}
                                 </NavLink>
                             ) : (
-                                <span className={`capitalize ${isLast ? 'font-medium text-gray-800' : ''}`}>
+                                <span className="capitalize text-gray-500">
                                     {crumb.label}
                                 </span>
                             )}

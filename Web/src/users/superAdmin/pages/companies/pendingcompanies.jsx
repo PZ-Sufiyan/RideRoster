@@ -291,7 +291,14 @@ const PendingCompanies = () => {
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 font-bold text-gray-900">{company.name}</td>
+                                        <td className="px-6 py-4">
+                                            <Link
+                                                to={`/platform/companies/review/${company.id}`}
+                                                className="font-bold text-gray-900 hover:text-blue-600 hover:underline"
+                                            >
+                                                {company.name}
+                                            </Link>
+                                        </td>
                                         <td className="px-6 py-4 text-gray-500">{company.submitted}</td>
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
@@ -324,13 +331,6 @@ const PendingCompanies = () => {
                                                 </button>
                                                 {activeActionMenuId === company.id && (
                                                     <div className="absolute right-0 mt-2 w-36 bg-white rounded-lg shadow-lg border border-gray-100 z-20 overflow-hidden">
-                                                        <Link
-                                                            to={`/platform/companies/review/${company.id}`}
-                                                            onClick={() => setActiveActionMenuId(null)}
-                                                            className="block w-full text-left px-3 py-2 text-sm text-gray-700 hover:bg-gray-50"
-                                                        >
-                                                            Review
-                                                        </Link>
                                                         <button
                                                             onClick={() => handleSingleAction(company.id, 'approve')}
                                                             disabled={isProcessing}
