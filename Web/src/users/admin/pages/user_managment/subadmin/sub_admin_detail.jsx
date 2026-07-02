@@ -363,9 +363,6 @@ const SubAdminDetail = () => {
                         <div className="flex items-center justify-between mb-2 gap-3 flex-wrap">
                             <div>
                                 <h3 className="text-[16px] font-bold text-gray-900">Access Permissions</h3>
-                                {id && (
-                                    <p className="text-[11px] text-gray-400 font-medium mt-0.5">Sub-admin ID: {id}</p>
-                                )}
                             </div>
                             <span className="text-[11px] font-bold text-gray-400 bg-gray-50 px-2 py-1 rounded shrink-0">
                                 {activeCount} / {allPermKeys.length} granted

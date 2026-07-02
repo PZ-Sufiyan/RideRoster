@@ -62,6 +62,14 @@ function display(v) {
     return String(v);
 }
 
+function shortenUuid(value) {
+    if (value == null) return '—';
+    const s = String(value).trim();
+    if (!s) return '—';
+    const first = s.split('-')[0];
+    return first || s;
+}
+
 function normalizePassengerStatus(raw) {
     if (raw == null || raw === '') return 'pending';
     return String(raw).trim().toLowerCase();
@@ -580,7 +588,7 @@ const PassengerDetail = () => {
 
     const jobTitleLine = useMemo(() => {
         if (!job) return 'Not assigned to any job currently';
-        const ref = job.internal_job_id?.trim() || job.id?.slice(0, 8) || '—';
+        const ref = shortenUuid(job.id).toUpperCase();
         return `Job ${ref} – ${job.job_name || '—'}`;
     }, [job]);
 
@@ -656,8 +664,7 @@ const PassengerDetail = () => {
         <div className="space-y-5">
 
             {/* ── Page Header ── */}
-            <div className="flex items-center justify-between flex-wrap gap-3">
-                <h1 className="text-[22px] font-bold text-gray-900">Passenger Profile</h1>
+            <div className="flex items-center justify-end flex-wrap gap-3">
                 <div className="flex items-center gap-3">
                     <button
                         type="button"
@@ -699,7 +706,6 @@ const PassengerDetail = () => {
                                         </span>
                                     )}
                                 </div>
-                                <div className="text-[11px] text-gray-400 mt-1 font-mono">ID: {p.id}</div>
                             </div>
                         </div>
 

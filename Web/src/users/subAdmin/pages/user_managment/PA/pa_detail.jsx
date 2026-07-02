@@ -3,7 +3,6 @@ import { useNavigate, useParams } from 'react-router-dom';
 import {
     MdArrowBack,
     MdEdit,
-    MdAdd,
     MdEmail,
     MdPhone,
     MdDateRange,
@@ -66,6 +65,14 @@ function formatDate(isoOrDate) {
 
 function formatMemberSince(iso) {
     return formatDate(iso);
+}
+
+function shortenUuid(value) {
+    if (value == null) return '—';
+    const s = String(value).trim();
+    if (!s) return '—';
+    const first = s.split('-')[0];
+    return first || s;
 }
 
 /** @returns {'expired'|'soon'|'ok'|'none'} */
@@ -334,14 +341,6 @@ const PADetail = () => {
                         <MdEdit size={16} />
                         Edit Profile
                     </button>
-                    <button
-                        type="button"
-                        onClick={() => navigate('/team/jobs')}
-                        className="flex items-center gap-2 px-4 py-2 bg-[#005580] text-white rounded-lg text-sm font-medium hover:bg-sky-900 transition-colors shadow-sm"
-                    >
-                        <MdAdd size={16} />
-                        Assign to Job
-                    </button>
                 </div>
             </div>
 
@@ -358,11 +357,6 @@ const PADetail = () => {
                         />
                         <div>
                             <h2 className="text-lg font-bold text-gray-900">{displayName}</h2>
-                            <div className="flex items-center justify-center gap-2 mt-1 text-xs text-gray-400 font-mono">
-                                <MdBadge size={14} className="shrink-0" aria-hidden />
-                                <span>id</span>
-                                <span className="text-gray-600">{pa.id}</span>
-                            </div>
                             <div className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${statusClass}`}>
                                 <span className="w-2 h-2 rounded-full bg-current opacity-60 shrink-0" />
                                 {statusLabel}
@@ -498,7 +492,7 @@ const PADetail = () => {
                                     </tr>
                                 ) : (
                                     paginated.map((job) => {
-                                        const ref = job.internal_job_id?.trim() || job.id?.slice(0, 8) || '—';
+                                        const ref = shortenUuid(job.id);
                                         const statusLbl = formatJobStatusLabel(job.status);
                                         const statusStyle =
                                             JOB_STATUS_COLORS[statusLbl] || 'bg-gray-100 text-gray-600 border border-gray-200';

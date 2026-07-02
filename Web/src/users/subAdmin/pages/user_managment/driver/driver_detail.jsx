@@ -359,7 +359,6 @@ const DriverDetail = () => {
                                 {formatStatusLabel(driver.status)}
                             </span>
                         </div>
-                        <p className="text-xs text-gray-500 mt-0.5">Driver ID: {driver.internal_driver_id || driver.id}</p>
                     </div>
                 </div>
                 <div className="flex items-center gap-3">

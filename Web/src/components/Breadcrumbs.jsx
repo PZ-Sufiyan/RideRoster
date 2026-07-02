@@ -12,8 +12,11 @@ const SIDEBAR_PATHS = new Set([
     '/platform/add-admin',
     '/portal/dashboard',
     '/portal/users/drivers',
+    '/portal/users/drivers/add',
     '/portal/users/pa',
+    '/portal/users/pa/add',
     '/portal/users/subadmins',
+    '/portal/users/subadmins/add',
     '/portal/users/passengers',
     '/portal/users/off-day-requests',
     '/portal/jobs',
@@ -26,7 +29,9 @@ const SIDEBAR_PATHS = new Set([
     '/team/dashboard',
     '/team/approvals',
     '/team/users/drivers',
+    '/team/users/drivers/add',
     '/team/users/pa',
+    '/team/users/pa/add',
     '/team/users/passengers',
     '/team/jobs',
     '/team/notifications',
@@ -48,6 +53,40 @@ const shortenUuid = (value) => {
     const first = s.split('-')[0];
     return first || s;
 };
+
+const driverCrumbLabel = (segment) => {
+    const action = decodeURIComponent(segment || '').trim().toLowerCase();
+    if (action === 'add') return 'Add Driver';
+    return 'Driver Detail';
+};
+
+const paCrumbLabel = (segment) => {
+    const action = decodeURIComponent(segment || '').trim().toLowerCase();
+    if (action === 'add') return 'Add PA';
+    return 'PA Detail';
+};
+
+const passengerCrumbLabel = (segment) => {
+    const action = decodeURIComponent(segment || '').trim().toLowerCase();
+    if (action === 'assign') return 'Job Assignment';
+    if (action === 'review') return 'Assignment Review';
+    if (action === 'success') return 'Assignment Confirmed';
+    return 'Passenger Detail';
+};
+
+const jobDetailCrumbLabel = (id) => {
+    if (id === 'calendar') return 'Job Calendar';
+    return 'Job Detail';
+};
+
+const formatJobCrumbId = (id) => `J#${shortenUuid(decodeURIComponent(id))}`;
+
+const HIDDEN_BREADCRUMB_PATTERNS = [
+    /^\/portal\/users\/passengers\/add$/,
+    /^\/team\/users\/passengers\/add$/,
+    /^\/portal\/users\/passengers\/[^/]+\/edit$/,
+    /^\/team\/users\/passengers\/[^/]+\/edit$/,
+];
 
 const ROUTE_CRUMB_MAP = [
     // ─── SUPERADMIN ───────────────────────────────────────────────
@@ -86,7 +125,7 @@ const ROUTE_CRUMB_MAP = [
         crumbs: (_, [action]) => [
             { label: 'User Management' },
             { label: 'Drivers', to: '/portal/users/drivers' },
-            { label: decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) },
+            { label: driverCrumbLabel(action) },
         ],
     },
     {
@@ -94,7 +133,7 @@ const ROUTE_CRUMB_MAP = [
         crumbs: (_, [action]) => [
             { label: 'User Management' },
             { label: 'PA', to: '/portal/users/pa' },
-            { label: decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) },
+            { label: paCrumbLabel(action) },
         ],
     },
     {
@@ -137,10 +176,7 @@ const ROUTE_CRUMB_MAP = [
         crumbs: (_, [action]) => [
             { label: 'User Management' },
             { label: 'Passengers', to: '/portal/users/passengers' },
-            { label: action === 'assign' ? 'Job Assignment' :
-                     action === 'review' ? 'Assignment Review' :
-                     action === 'success' ? 'Assignment Confirmed' :
-                     decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, c => c.toUpperCase()) },
+            { label: passengerCrumbLabel(action) },
         ],
     },
     // New consolidated add-job route — step label comes from ?step query param
@@ -160,7 +196,7 @@ const ROUTE_CRUMB_MAP = [
         match: /^\/portal\/jobs\/([^/]+)\/edit$/,
         crumbs: (_, [id]) => [
             { label: 'Job Management', to: '/portal/jobs' },
-            { label: decodeURIComponent(id), to: `/portal/jobs/${id}` },
+            { label: formatJobCrumbId(id), to: `/portal/jobs/${id}` },
             { label: 'Edit Job' },
         ],
     },
@@ -176,7 +212,7 @@ const ROUTE_CRUMB_MAP = [
         match: /^\/portal\/jobs\/([^/]+)$/,
         crumbs: (_, [id]) => [
             { label: 'Job Management', to: '/portal/jobs' },
-            { label: id === 'calendar' ? 'Job Calendar' : decodeURIComponent(id) },
+            { label: jobDetailCrumbLabel(id) },
         ],
     },
     {
@@ -195,9 +231,9 @@ const ROUTE_CRUMB_MAP = [
     },
     {
         match: /^\/portal\/sos\/([^/]+)$/,
-        crumbs: (_, [id]) => [
+        crumbs: () => [
             { label: 'SOS Monitoring', to: '/portal/sos' },
-            { label: decodeURIComponent(id) },
+            { label: 'SOS Detail' },
         ],
     },
 
@@ -207,7 +243,7 @@ const ROUTE_CRUMB_MAP = [
         crumbs: (_, [action]) => [
             { label: 'User Management' },
             { label: 'Drivers', to: '/team/users/drivers' },
-            { label: decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) },
+            { label: driverCrumbLabel(action) },
         ],
     },
     {
@@ -215,7 +251,7 @@ const ROUTE_CRUMB_MAP = [
         crumbs: (_, [action]) => [
             { label: 'User Management' },
             { label: 'PA', to: '/team/users/pa' },
-            { label: decodeURIComponent(action).replace(/-/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase()) },
+            { label: paCrumbLabel(action) },
         ],
     },
     {
@@ -250,18 +286,7 @@ const ROUTE_CRUMB_MAP = [
         crumbs: (_, [action]) => [
             { label: 'User Management' },
             { label: 'Passengers', to: '/team/users/passengers' },
-            {
-                label:
-                    action === 'assign'
-                        ? 'Job Assignment'
-                        : action === 'review'
-                          ? 'Assignment Review'
-                          : action === 'success'
-                            ? 'Assignment Confirmed'
-                            : decodeURIComponent(action)
-                                .replace(/-/g, ' ')
-                                .replace(/\b\w/g, (c) => c.toUpperCase()),
-            },
+            { label: passengerCrumbLabel(action) },
         ],
     },
     {
@@ -280,7 +305,7 @@ const ROUTE_CRUMB_MAP = [
         match: /^\/team\/jobs\/([^/]+)\/edit$/,
         crumbs: (_, [id]) => [
             { label: 'Job Management', to: '/team/jobs' },
-            { label: decodeURIComponent(id), to: `/team/jobs/${id}` },
+            { label: formatJobCrumbId(id), to: `/team/jobs/${id}` },
             { label: 'Edit Job' },
         ],
     },
@@ -296,7 +321,7 @@ const ROUTE_CRUMB_MAP = [
         match: /^\/team\/jobs\/([^/]+)$/,
         crumbs: (_, [id]) => [
             { label: 'Job Management', to: '/team/jobs' },
-            { label: id === 'calendar' ? 'Job Calendar' : decodeURIComponent(id) },
+            { label: jobDetailCrumbLabel(id) },
         ],
     },
     {
@@ -308,9 +333,9 @@ const ROUTE_CRUMB_MAP = [
     },
     {
         match: /^\/team\/sos\/([^/]+)$/,
-        crumbs: (_, [id]) => [
+        crumbs: () => [
             { label: 'SOS Monitoring', to: '/team/sos' },
-            { label: decodeURIComponent(id) },
+            { label: 'SOS Detail' },
         ],
     },
     {
@@ -327,6 +352,7 @@ const Breadcrumbs = () => {
     const searchParams = new URLSearchParams(search);
 
     if (SIDEBAR_PATHS.has(pathname)) return null;
+    if (HIDDEN_BREADCRUMB_PATTERNS.some((pattern) => pattern.test(pathname))) return null;
 
     let crumbs = null;
     for (const route of ROUTE_CRUMB_MAP) {
