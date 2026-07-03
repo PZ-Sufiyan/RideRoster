@@ -15,16 +15,31 @@ class PickupQuePage extends StatefulWidget {
   State<PickupQuePage> createState() => _PickupQuePageState();
 }
 
-class _PickupQuePageState extends State<PickupQuePage> {
+class _PickupQuePageState extends State<PickupQuePage>
+    with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final provider = context.read<JobProvider>();
       await provider.ensureSessionStarted();
       if (!mounted) return;
       await provider.startTrackingCurrentPickup();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      context.read<JobProvider>().resumeProximityTracking();
+    }
   }
 
   @override

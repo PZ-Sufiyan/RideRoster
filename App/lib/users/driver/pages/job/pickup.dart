@@ -15,13 +15,27 @@ class PickupPage extends StatefulWidget {
   State<PickupPage> createState() => _PickupPageState();
 }
 
-class _PickupPageState extends State<PickupPage> {
+class _PickupPageState extends State<PickupPage> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<JobProvider>().startTrackingCurrentPickup();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      context.read<JobProvider>().resumeProximityTracking();
+    }
   }
 
   @override
@@ -48,8 +62,8 @@ class _PickupPageState extends State<PickupPage> {
                   _TrackingBanner(
                     distanceMeters: provider.currentDistanceMeters,
                   ),
-                // Arrival banner — shown once driver enters threshold radius
-                if (!provider.isTracking && provider.hasArrivedAtPickup)
+                // Arrival banner — shown when driver is within completion radius
+                if (provider.canCompletePickup)
                   _ArrivalBanner(locationName: active?.locationName ?? ''),
                 Expanded(
                   child: job == null || active == null
@@ -84,7 +98,7 @@ class _PickupPageState extends State<PickupPage> {
                               SizedBox(height: SizeConfig.r(10)),
                               _ActiveStopCard(
                                 stop: active,
-                                hasArrived: provider.hasArrivedAtPickup,
+                                canComplete: provider.canCompletePickup,
                               ),
                               SizedBox(height: SizeConfig.r(20)),
                               if (upcoming.isNotEmpty) ...[
@@ -347,15 +361,13 @@ class _StatusBar extends StatelessWidget {
 // ─────────────────────────────────────────────────────────────────────────────
 // Active Stop Card
 //
-// [hasArrived] — when true, the "Pickup complete" button turns green and
-// pulses slightly to draw the driver's attention. The button was always
-// tappable; this just makes the arrived state visually clear.
+// [canComplete] — when true, the driver is within 20 m and may confirm pickup.
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _ActiveStopCard extends StatelessWidget {
   final PickupStop stop;
-  final bool hasArrived;
-  const _ActiveStopCard({required this.stop, required this.hasArrived});
+  final bool canComplete;
+  const _ActiveStopCard({required this.stop, required this.canComplete});
 
   @override
   Widget build(BuildContext context) {
@@ -365,7 +377,7 @@ class _ActiveStopCard extends StatelessWidget {
         color: AppColors.background,
         borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
         // Subtle green border once arrived to reinforce the state
-        border: hasArrived
+        border: canComplete
             ? Border.all(
                 color: AppColors.success.withValues(alpha: 0.5),
                 width: 1.5,
@@ -383,17 +395,14 @@ class _ActiveStopCard extends StatelessWidget {
                 height: SizeConfig.r(32),
                 decoration: BoxDecoration(
                   // Green circle when arrived, blue otherwise
-                  color: hasArrived
+                  color: canComplete
                       ? AppColors.success
                       : const Color(0xFF0284C7),
                   shape: BoxShape.circle,
                 ),
                 alignment: Alignment.center,
                 // Show stop number when not arrived, checkmark when arrived
-                foregroundDecoration: hasArrived
-                    ? null
-                    : BoxDecoration(shape: BoxShape.circle),
-                child: hasArrived
+                child: canComplete
                     ? Icon(
                         Icons.check,
                         color: Colors.white,
@@ -419,7 +428,7 @@ class _ActiveStopCard extends StatelessWidget {
                   ),
                 ),
               ),
-              if (hasArrived)
+              if (canComplete)
                 Container(
                   padding: EdgeInsets.symmetric(
                     horizontal: SizeConfig.r(8),
@@ -487,7 +496,7 @@ class _ActiveStopCard extends StatelessWidget {
               // Navigate button — disabled once arrived (already there)
               Expanded(
                 child: AppButton(
-                  label: hasArrived
+                  label: canComplete
                       ? 'Navigated'
                       : stop.hasCoordinates
                       ? 'Navigate'
@@ -496,7 +505,7 @@ class _ActiveStopCard extends StatelessWidget {
                   fontSize: SizeConfig.sp(13),
                   fontWeight: FontWeight.w600,
                   borderRadius: SizeConfig.radiusLG,
-                  onPressed: (hasArrived || !stop.hasCoordinates)
+                  onPressed: (canComplete || !stop.hasCoordinates)
                       ? null
                       : () => context
                             .read<JobProvider>()
@@ -504,11 +513,20 @@ class _ActiveStopCard extends StatelessWidget {
                 ),
               ),
               SizedBox(width: SizeConfig.r(10)),
-              // Pickup complete — always tappable, highlighted green on arrival
+              // Pickup complete — enabled only within 20 m of the stop
               Expanded(
                 child: ElevatedButton(
                   onPressed: () async {
                     final provider = context.read<JobProvider>();
+                    final validationError =
+                        await provider.validatePickupCompletion();
+                    if (validationError != null) {
+                      if (!context.mounted) return;
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text(validationError)),
+                      );
+                      return;
+                    }
                     await provider.markCurrentAsCompleted();
                     provider.advanceToNextPickup();
                     if (!context.mounted) return;
@@ -519,10 +537,9 @@ class _ActiveStopCard extends StatelessWidget {
                     }
                   },
                   style: ElevatedButton.styleFrom(
-                    // Green when arrived (driver should tap now), blue-grey otherwise
-                    backgroundColor: hasArrived
+                    backgroundColor: canComplete
                         ? AppColors.success
-                        : const Color(0xFF0284C7),
+                        : AppColors.textLight,
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(SizeConfig.radius),

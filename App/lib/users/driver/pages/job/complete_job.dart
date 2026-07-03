@@ -14,13 +14,31 @@ class CompleteJobPage extends StatefulWidget {
   State<CompleteJobPage> createState() => _CompleteJobPageState();
 }
 
-class _CompleteJobPageState extends State<CompleteJobPage> {
+class _CompleteJobPageState extends State<CompleteJobPage>
+    with WidgetsBindingObserver {
   final _commentsController = TextEditingController();
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<JobProvider>().startTrackingCurrentDropoff();
+    });
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _commentsController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      context.read<JobProvider>().resumeProximityTracking();
+    }
   }
 
   @override
@@ -57,6 +75,11 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
                     isInbound: job?.isInbound ?? true,
                     currentDropoff: currentDropoff,
                   ),
+                if (!allDropoffsDone && provider.canCompleteDropoff)
+                  _DropoffArrivalBanner(
+                    isInbound: job?.isInbound ?? false,
+                    currentDropoff: currentDropoff,
+                  ),
                 Expanded(
                   child: SingleChildScrollView(
                     padding: EdgeInsets.all(SizeConfig.r(16)),
@@ -79,6 +102,7 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
                   allDropoffsDone: allDropoffsDone,
                   currentDropoff: currentDropoff,
                   job: job,
+                  canCompleteDropoff: provider.canCompleteDropoff,
                 ),
               ],
             );
@@ -302,6 +326,57 @@ class _CompleteJobPageState extends State<CompleteJobPage> {
           );
         }),
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Drop-off Arrival Banner
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _DropoffArrivalBanner extends StatelessWidget {
+  final bool isInbound;
+  final DropoffStop? currentDropoff;
+
+  const _DropoffArrivalBanner({
+    required this.isInbound,
+    required this.currentDropoff,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final name = currentDropoff?.passengerName ?? '';
+    final label = isInbound && name.isNotEmpty
+        ? '$name\'s home'
+        : 'the drop-off location';
+
+    return Container(
+      width: double.infinity,
+      color: AppColors.success.withValues(alpha: 0.12),
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.hPad,
+        vertical: SizeConfig.r(8),
+      ),
+      child: Row(
+        children: [
+          Icon(
+            Icons.check_circle_outline,
+            size: SizeConfig.r(16),
+            color: AppColors.success,
+          ),
+          SizedBox(width: SizeConfig.r(8)),
+          Expanded(
+            child: Text(
+              'You\'ve arrived at $label. Tap the button below to confirm drop-off.',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.success,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
@@ -823,6 +898,7 @@ class _BottomBar extends StatelessWidget {
   final bool allDropoffsDone;
   final DropoffStop? currentDropoff;
   final JobModel? job;
+  final bool canCompleteDropoff;
 
   const _BottomBar({
     required this.commentsController,
@@ -830,6 +906,7 @@ class _BottomBar extends StatelessWidget {
     required this.allDropoffsDone,
     required this.currentDropoff,
     required this.job,
+    required this.canCompleteDropoff,
   });
 
   String _resolveLabel() {
@@ -870,7 +947,11 @@ class _BottomBar extends StatelessWidget {
         child: ElevatedButton(
           onPressed: () => _handleTap(context),
           style: ElevatedButton.styleFrom(
-            backgroundColor: isFinish ? AppColors.success : AppColors.textDark,
+            backgroundColor: isFinish
+                ? AppColors.success
+                : canCompleteDropoff
+                ? AppColors.textDark
+                : AppColors.textLight,
             elevation: 0,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
@@ -904,10 +985,15 @@ class _BottomBar extends StatelessWidget {
     final provider = context.read<JobProvider>();
 
     if (!allDropoffsDone) {
-      // Mark the current dropoff as completed and stay on this page.
-      // For outbound: bulk-marks all passengers at the same school.
-      // For inbound: marks a single passenger's home dropoff.
-      // The provider will reload via realtime, updating dropoff statuses.
+      final validationError = await provider.validateDropoffCompletion();
+      if (validationError != null) {
+        if (!context.mounted) return;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(validationError)),
+        );
+        return;
+      }
+
       await provider.markDropoffAsCompleted();
       return;
     }

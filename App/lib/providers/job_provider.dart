@@ -7,6 +7,7 @@ import '../repositories/local_job_repository.dart';
 import '../services/connectivity_service.dart';
 import '../services/realtime_service.dart';
 import '../services/navigation_service.dart';
+import '../services/location_constants.dart';
 import '../services/location_service.dart';
 import '../services/location_task.dart';
 import '../services/notification_service.dart';
@@ -38,9 +39,10 @@ class JobProvider extends ChangeNotifier {
   int _activePickupIndex = 0;
   bool _isTracking = false;
   double? _currentDistanceMeters;
-  bool _hasArrivedAtPickup = false;
-  bool _hasArrivedAtDropoff = false;
+  bool _isWithinCompletionRadius = false;
   String? _trackingPickupStopId;
+  String? _trackingDropoffId;
+  DateTime? _lastProximityNotify;
 
   StreamSubscription<Map<String, dynamic>>? _jobSub;
   StreamSubscription<Map<String, dynamic>>? _sessionSub;
@@ -83,8 +85,24 @@ class JobProvider extends ChangeNotifier {
   bool get isTracking => _isTracking;
   double? get currentDistanceMeters => _currentDistanceMeters;
   bool get sessionStarted => _job != null && _job!.sessionId.isNotEmpty;
-  bool get hasArrivedAtPickup => _hasArrivedAtPickup;
-  bool get hasArrivedAtDropoff => _hasArrivedAtDropoff;
+  /// True when the driver is within [LocationConstants.completionRadiusMeters]
+  /// of the active pickup stop (live GPS stream).
+  bool get canCompletePickup {
+    final stop = activePickup;
+    if (stop == null || !stop.hasCoordinates) return false;
+    return _isWithinCompletionRadius;
+  }
+
+  /// True when the driver is within [LocationConstants.completionRadiusMeters]
+  /// of the current pending drop-off stop.
+  bool get canCompleteDropoff {
+    final dropoff = _job?.currentDropoff;
+    if (dropoff == null || !dropoff.hasCoordinates) return false;
+    return _isWithinCompletionRadius;
+  }
+
+  /// Backwards-compatible alias used by pickup UI for arrival styling.
+  bool get hasArrivedAtPickup => canCompletePickup;
 
   PickupStop? get activePickup {
     if (_job == null || _job!.pickups.isEmpty) return null;
@@ -169,11 +187,11 @@ class JobProvider extends ChangeNotifier {
     if (_lastLoadedDayKey != null && _lastLoadedDayKey != todayKey) {
       _job = null;
       _activePickupIndex = 0;
-      _hasArrivedAtPickup = false;
-      _hasArrivedAtDropoff = false;
+      _isWithinCompletionRadius = false;
       _isTracking = false;
       _currentDistanceMeters = null;
       _trackingPickupStopId = null;
+      _trackingDropoffId = null;
       _checklistCompletedToday = false;
       _error = null;
       await _localRepo.clearWriteTablesForNewDay();
@@ -354,7 +372,8 @@ class JobProvider extends ChangeNotifier {
     if (!stop.hasCoordinates) return;
 
     if (_trackingPickupStopId == stop.id &&
-        (_isTracking || _hasArrivedAtPickup)) {
+        _isTracking &&
+        BackgroundLocationTask.isRunning) {
       return;
     }
 
@@ -394,15 +413,77 @@ class JobProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    _hasArrivedAtDropoff = false;
     await _navService.openSingleStop(lat: dropoff.lat!, lng: dropoff.lng!);
+    await startTrackingCurrentDropoff();
+  }
+
+  /// Starts background proximity tracking toward the current pending drop-off.
+  Future<void> startTrackingCurrentDropoff() async {
+    final dropoff = _job?.currentDropoff;
+    if (dropoff == null) return;
+    if (!dropoff.hasCoordinates) return;
+
+    if (_trackingDropoffId == dropoff.id &&
+        _isTracking &&
+        BackgroundLocationTask.isRunning) {
+      return;
+    }
+
+    final hasPermission = await _locationService.ensurePermission();
+    if (!hasPermission) {
+      _error = 'Location permission required for drop-off validation.';
+      notifyListeners();
+      return;
+    }
+
     _startDropoffTracking(dropoff);
   }
 
   // ── Status mutations — write-first via LocalJobRepository ─────────────────
 
+  /// Returns an error message when pickup completion is blocked, or null if OK.
+  Future<String?> validatePickupCompletion() async {
+    final stop = activePickup;
+    if (stop == null) return 'No active pickup stop.';
+    if (!stop.hasCoordinates) return LocationConstants.noPickupCoordinatesMessage;
+
+    final distance = await _locationService.distanceTo(stop.lat!, stop.lng!);
+    if (distance == null) return LocationConstants.locationUnavailableMessage;
+    if (distance > LocationConstants.completionRadiusMeters) {
+      return LocationConstants.pickupTooFarMessage;
+    }
+    return null;
+  }
+
+  /// Returns an error message when drop-off completion is blocked, or null if OK.
+  Future<String?> validateDropoffCompletion() async {
+    final dropoff = _job?.currentDropoff;
+    if (dropoff == null) return 'No pending drop-off stop.';
+    if (!dropoff.hasCoordinates) {
+      return LocationConstants.noDropoffCoordinatesMessage;
+    }
+
+    final distance = await _locationService.distanceTo(
+      dropoff.lat!,
+      dropoff.lng!,
+    );
+    if (distance == null) return LocationConstants.locationUnavailableMessage;
+    if (distance > LocationConstants.completionRadiusMeters) {
+      return LocationConstants.dropoffTooFarMessage;
+    }
+    return null;
+  }
+
   Future<void> markCurrentAsCompleted() async {
     if (_job == null) return;
+
+    final validationError = await validatePickupCompletion();
+    if (validationError != null) {
+      _error = validationError;
+      notifyListeners();
+      return;
+    }
+
     await ensureSessionStarted();
 
     try {
@@ -429,7 +510,7 @@ class JobProvider extends ChangeNotifier {
         localSessionId: localSessionId,
       );
       _job!.pickups[_activePickupIndex].status = PickupStatus.completed;
-      _hasArrivedAtPickup = false;
+      _isWithinCompletionRadius = false;
       _error = null;
       notifyListeners();
     } catch (e) {
@@ -464,7 +545,7 @@ class JobProvider extends ChangeNotifier {
         localSessionId: localSessionId,
       );
       _job!.pickups[_activePickupIndex].status = PickupStatus.notPicked;
-      _hasArrivedAtPickup = false;
+      _isWithinCompletionRadius = false;
       _error = null;
       notifyListeners();
     } catch (e) {
@@ -511,6 +592,13 @@ class JobProvider extends ChangeNotifier {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
 
+    final validationError = await validateDropoffCompletion();
+    if (validationError != null) {
+      _error = validationError;
+      notifyListeners();
+      return;
+    }
+
     try {
       final localSessionId = await _localRepo.resolveLocalSessionIdAsync(
         _job!.sessionId,
@@ -528,9 +616,10 @@ class JobProvider extends ChangeNotifier {
         );
       }
       dropoff.status = DropoffStatus.completed;
-      _hasArrivedAtDropoff = false;
+      _isWithinCompletionRadius = false;
       _error = null;
       notifyListeners();
+      unawaited(startTrackingCurrentDropoff());
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -543,8 +632,9 @@ class JobProvider extends ChangeNotifier {
     BackgroundLocationTask.stop();
     _isTracking = false;
     _currentDistanceMeters = null;
-    _hasArrivedAtPickup = false;
+    _isWithinCompletionRadius = false;
     _trackingPickupStopId = null;
+    _trackingDropoffId = null;
 
     for (int i = _activePickupIndex + 1; i < _job!.pickups.length; i++) {
       if (_job!.pickups[i].status == PickupStatus.pending) {
@@ -597,66 +687,106 @@ class JobProvider extends ChangeNotifier {
     _activePickupIndex = 0;
     _isTracking = false;
     _currentDistanceMeters = null;
-    _hasArrivedAtPickup = false;
-    _hasArrivedAtDropoff = false;
+    _isWithinCompletionRadius = false;
     _trackingPickupStopId = null;
+    _trackingDropoffId = null;
     notifyListeners();
   }
 
   // ── Background tracking ───────────────────────────────────────────────────
 
+  static const Duration _proximityNotifyInterval = Duration(seconds: 1);
+
+  void _updateProximity(double distance) {
+    _currentDistanceMeters = distance;
+    final withinRadius =
+        distance <= LocationConstants.completionRadiusMeters;
+    final radiusChanged = withinRadius != _isWithinCompletionRadius;
+    _isWithinCompletionRadius = withinRadius;
+
+    final now = DateTime.now();
+    final shouldNotify =
+        radiusChanged ||
+        _lastProximityNotify == null ||
+        now.difference(_lastProximityNotify!) >= _proximityNotifyInterval;
+    if (!shouldNotify) return;
+
+    _lastProximityNotify = now;
+    notifyListeners();
+  }
+
+  void _onTrackingLocationUnavailable() {
+    _isTracking = false;
+    _currentDistanceMeters = null;
+    _isWithinCompletionRadius = false;
+    _lastProximityNotify = null;
+    _error = LocationConstants.locationUnavailableMessage;
+    notifyListeners();
+  }
+
   void _startPickupTracking(PickupStop stop) {
     final isNewStop = _trackingPickupStopId != stop.id;
     _trackingPickupStopId = stop.id;
+    _trackingDropoffId = null;
     _isTracking = true;
     _currentDistanceMeters = null;
-    if (isNewStop) _hasArrivedAtPickup = false;
+    if (isNewStop) _isWithinCompletionRadius = false;
     notifyListeners();
 
     BackgroundLocationTask.start(
       targetLat: stop.lat!,
       targetLng: stop.lng!,
-      onDistanceUpdate: (distance) {
-        _currentDistanceMeters = distance;
-        notifyListeners();
-      },
-      onArrived: () async {
-        _isTracking = false;
-        _currentDistanceMeters = null;
-        _hasArrivedAtPickup = true;
+      radiusMeters: LocationConstants.completionRadiusMeters,
+      onDistanceUpdate: _updateProximity,
+      onLocationUnavailable: _onTrackingLocationUnavailable,
+      onEnterRadius: () async {
         await NotificationService().showArrivalNotification(
           stop.locationName,
           isPickup: true,
         );
-        notifyListeners();
       },
     );
   }
 
   void _startDropoffTracking(DropoffStop dropoff) {
+    final isNewStop = _trackingDropoffId != dropoff.id;
+    _trackingDropoffId = dropoff.id;
+    _trackingPickupStopId = null;
     _isTracking = true;
     _currentDistanceMeters = null;
-    _hasArrivedAtDropoff = false;
+    if (isNewStop) _isWithinCompletionRadius = false;
     notifyListeners();
 
     BackgroundLocationTask.start(
       targetLat: dropoff.lat!,
       targetLng: dropoff.lng!,
-      onDistanceUpdate: (distance) {
-        _currentDistanceMeters = distance;
-        notifyListeners();
-      },
-      onArrived: () async {
-        _isTracking = false;
-        _currentDistanceMeters = null;
-        _hasArrivedAtDropoff = true;
+      radiusMeters: LocationConstants.completionRadiusMeters,
+      onDistanceUpdate: _updateProximity,
+      onLocationUnavailable: _onTrackingLocationUnavailable,
+      onEnterRadius: () async {
         await NotificationService().showArrivalNotification(
           dropoff.address,
           isPickup: false,
         );
-        notifyListeners();
       },
     );
+  }
+
+  /// Re-attempts proximity tracking after GPS was disabled or lost.
+  Future<void> resumeProximityTracking() async {
+    if (_trackingPickupStopId != null) {
+      final stop = activePickup;
+      if (stop != null && stop.id == _trackingPickupStopId) {
+        await startTrackingCurrentPickup();
+        return;
+      }
+    }
+    if (_trackingDropoffId != null) {
+      final dropoff = _job?.currentDropoff;
+      if (dropoff != null && dropoff.id == _trackingDropoffId) {
+        await startTrackingCurrentDropoff();
+      }
+    }
   }
 
   void _setActiveToFirstPending() {

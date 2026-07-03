@@ -1,87 +1,93 @@
 import 'dart:async';
-import 'package:flutter_background_service/flutter_background_service.dart';
 import 'package:geolocator/geolocator.dart';
 
-/// Tracks driver location in the background and fires [onArrived] when the
-/// driver is within [thresholdMeters] of the target coordinates.
+/// Foreground proximity tracking toward a target coordinate.
 ///
-/// IMPORTANT — arrival behaviour:
-///   [onArrived] is called once when the driver enters the threshold radius.
-///   It is the caller's responsibility to decide what happens on arrival.
-///
-///   For PICKUPS: the provider shows an arrival notification and stops
-///   tracking — the driver must still tap "Pickup complete" manually.
-///   Auto-completing a pickup without confirmation risks wrong pickups
-///   being recorded (GPS drift, driver passing nearby, etc.).
-///
-///   For DROPOFFS: same pattern — notify arrival, driver confirms.
-///
-/// [onDistanceUpdate] is called on every GPS tick so the UI can display
-/// "X m away" to help the driver know they are approaching.
+/// Uses [Geolocator] only — no background service (which was causing ANRs
+/// when started without platform configuration).
 class BackgroundLocationTask {
-  static StreamSubscription<Position>? _sub;
+  static StreamSubscription<Position>? _positionSub;
+  static StreamSubscription<ServiceStatus>? _serviceStatusSub;
+  static bool _enterRadiusNotified = false;
+
+  static const Duration _initialFixTimeout = Duration(seconds: 8);
 
   /// Whether tracking is currently active.
-  static bool get isRunning => _sub != null;
+  static bool get isRunning => _positionSub != null;
 
-  /// Starts tracking toward [targetLat]/[targetLng].
-  ///
-  /// [onArrived]        — called once when driver is within [thresholdMeters].
-  ///                      Does NOT auto-complete anything — caller decides.
-  /// [onDistanceUpdate] — called on every GPS tick with distance in meters.
-  /// [thresholdMeters]  — arrival radius (default 30 m; wider than 10 m to
-  ///                      account for urban GPS accuracy variance).
+  /// Starts continuous proximity tracking toward [targetLat]/[targetLng].
   static Future<void> start({
     required double targetLat,
     required double targetLng,
-    required Future<void> Function() onArrived,
-    void Function(double distanceMeters)? onDistanceUpdate,
-    double thresholdMeters = 30,
+    required void Function(double distanceMeters) onDistanceUpdate,
+    Future<void> Function()? onEnterRadius,
+    void Function()? onLocationUnavailable,
+    double radiusMeters = 20,
   }) async {
-    // Guard: don't start a second stream if already running.
-    if (_sub != null) await stop();
+    await stop();
+    _enterRadiusNotified = false;
 
-    // Start the background service so the app stays alive when minimised.
-    final service = FlutterBackgroundService();
-    if (!await service.isRunning()) {
-      await service.startService();
+    void reportPosition(Position pos) {
+      final distance = Geolocator.distanceBetween(
+        pos.latitude,
+        pos.longitude,
+        targetLat,
+        targetLng,
+      );
+      onDistanceUpdate(distance);
+
+      if (distance <= radiusMeters &&
+          !_enterRadiusNotified &&
+          onEnterRadius != null) {
+        _enterRadiusNotified = true;
+        unawaited(onEnterRadius());
+      }
     }
 
-    _sub =
+    // Seed distance immediately instead of waiting for the position stream.
+    try {
+      final enabled = await Geolocator.isLocationServiceEnabled();
+      if (enabled) {
+        final initial = await Geolocator.getCurrentPosition(
+          locationSettings: const LocationSettings(
+            accuracy: LocationAccuracy.medium,
+            timeLimit: _initialFixTimeout,
+          ),
+        ).timeout(_initialFixTimeout);
+        reportPosition(initial);
+      }
+    } catch (_) {
+      // Stream may still deliver a fix; unavailable is handled below.
+    }
+
+    _positionSub =
         Geolocator.getPositionStream(
           locationSettings: const LocationSettings(
             accuracy: LocationAccuracy.high,
-            distanceFilter: 5, // update every 5 m of movement
+            distanceFilter: 5,
           ),
-        ).listen((pos) async {
-          final distance = Geolocator.distanceBetween(
-            pos.latitude,
-            pos.longitude,
-            targetLat,
-            targetLng,
-          );
+        ).listen(
+          reportPosition,
+          onError: (_) {
+            onLocationUnavailable?.call();
+          },
+          cancelOnError: false,
+        );
 
-          // Report distance to provider for live "X m away" UI display.
-          onDistanceUpdate?.call(distance);
-
-          if (distance <= thresholdMeters) {
-            // Cancel FIRST to prevent duplicate callbacks on subsequent ticks.
-            await stop();
-            // Notify caller — caller decides what to do (show notification,
-            // update UI state, etc.) but does NOT auto-mark anything complete.
-            await onArrived();
-          }
-        });
+    _serviceStatusSub = Geolocator.getServiceStatusStream().listen((status) {
+      if (status == ServiceStatus.disabled) {
+        onLocationUnavailable?.call();
+        unawaited(stop());
+      }
+    });
   }
 
-  /// Stops the location stream and the background service.
+  /// Stops the location stream.
   static Future<void> stop() async {
-    await _sub?.cancel();
-    _sub = null;
-
-    final service = FlutterBackgroundService();
-    if (await service.isRunning()) {
-      service.invoke('stopService');
-    }
+    await _positionSub?.cancel();
+    _positionSub = null;
+    await _serviceStatusSub?.cancel();
+    _serviceStatusSub = null;
+    _enterRadiusNotified = false;
   }
 }
