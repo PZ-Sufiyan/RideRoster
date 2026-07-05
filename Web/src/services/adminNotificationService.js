@@ -14,12 +14,14 @@ export const NOTIFICATION_TABS = {
   SOS: 'SOS Alerts',
   JOBS: 'Job Updates',
   LEAVE: 'Staff Day of Requests',
+  DOCUMENTS: 'Documents',
 }
 
 export const NOTIFICATION_CATEGORIES = {
   SOS: 'sos',
   JOB: 'job',
   LEAVE: 'leave',
+  DOCUMENT: 'document',
 }
 
 const JOB_RESPONSE_STATUSES = new Set(['accepted', 'rejected', 'counter request', 'counter requested'])
@@ -33,13 +35,54 @@ const NOTIFICATION_ROUTES = {
     job: (id) => `/portal/jobs/${id}`,
     counterOffer: (id) => `/portal/jobs/${id}/counter-offer`,
     sos: (id) => `/portal/sos/${id}`,
+    driverDetail: (id) => `/portal/users/drivers/${id}`,
+    paDetail: (id) => `/portal/users/pa/${id}`,
   },
   [NOTIFICATION_ROLES.SUBADMIN]: {
     leaveRequests: '/team/approvals',
     job: (id) => `/team/jobs/${id}`,
     counterOffer: (id) => `/team/jobs/${id}/counter-offer`,
     sos: (id) => `/team/sos/${id}`,
+    driverDetail: (id) => `/team/users/drivers/${id}`,
+    paDetail: (id) => `/team/users/pa/${id}`,
   },
+}
+
+const DOCUMENT_EXPIRY_REMINDER_LABELS = {
+  '30d': '30 days',
+  '14d': '14 days',
+  '7d': '7 days',
+  '48h': '48 hours',
+  '24h': '24 hours',
+}
+
+const DRIVER_DOCUMENT_LABELS = {
+  passport: 'Passport',
+  driving_license_front: 'Driving License (Front)',
+  driving_license_back: 'Driving License (Back)',
+  taxi_badge_front: 'Taxi Badge (Front)',
+  taxi_badge_back: 'Taxi Badge (Back)',
+  dbs_certificate_front: 'DBS Certificate (Front)',
+  dbs_certificate_back: 'DBS Certificate (Back)',
+  safeguarding_certificate: 'Safeguarding Certificate',
+  right_to_work: 'Right to Work',
+}
+
+const VEHICLE_DOCUMENT_LABELS = {
+  mot_certificate: 'MOT Certificate',
+  taxi_license_plate: 'Taxi License Plate',
+  insurance_certificate: 'Insurance Certificate',
+  v5_front: 'V5 (Front)',
+  v5_inside: 'V5 (Inside)',
+  vehicle_photo: 'Vehicle Photo',
+}
+
+const PA_DOCUMENT_LABELS = {
+  passport: 'Passport',
+  safeguarding_certificate: 'Safeguarding Certificate',
+  background_check: 'Background Check Certificate',
+  first_aid_certificate: 'First Aid Certification',
+  other_certificate: 'Other Certificate',
 }
 
 let activeNotificationRoutes = NOTIFICATION_ROUTES[NOTIFICATION_ROLES.ADMIN]
@@ -683,6 +726,65 @@ function buildLeaveNotification(row) {
   }
 }
 
+function formatDocumentTypeLabel(documentType, documentSource) {
+  const key = String(documentType || '').trim()
+  if (documentSource === 'vehicle') {
+    return VEHICLE_DOCUMENT_LABELS[key] ?? key.replace(/_/g, ' ')
+  }
+  if (documentSource === 'passenger_assistant') {
+    return PA_DOCUMENT_LABELS[key] ?? key.replace(/_/g, ' ')
+  }
+  return DRIVER_DOCUMENT_LABELS[key] ?? key.replace(/_/g, ' ')
+}
+
+function formatDocumentExpiryDate(ymd) {
+  if (!ymd) return '—'
+  const d = new Date(`${String(ymd).slice(0, 10)}T12:00:00`)
+  if (Number.isNaN(d.getTime())) return ymd
+  return d.toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+  })
+}
+
+function buildDocumentExpiryNotification({
+  documentId,
+  documentSource,
+  documentType,
+  expiryDate,
+  reminderType,
+  sentAt,
+  personName,
+  staffRole,
+  staffUserId,
+}) {
+  const docName = formatDocumentTypeLabel(documentType, documentSource)
+  const roleLabel = staffRole === 'passenger_assistant' ? 'Passenger assistant' : 'Driver'
+  const reminderLabel = DOCUMENT_EXPIRY_REMINDER_LABELS[reminderType] || reminderType
+  const expiryLabel = formatDocumentExpiryDate(expiryDate)
+  const isUrgent = reminderType === '24h' || reminderType === '48h'
+  const linkTo = staffRole === 'passenger_assistant'
+    ? activeNotificationRoutes.paDetail(staffUserId)
+    : activeNotificationRoutes.driverDetail(staffUserId)
+
+  return {
+    key: `doc-expiry:${documentSource}:${documentId}:${reminderType}`,
+    category: NOTIFICATION_CATEGORIES.DOCUMENT,
+    tab: NOTIFICATION_TABS.DOCUMENTS,
+    createdAt: sentAt,
+    isNew: false,
+    IconName: 'MdDescription',
+    iconColor: isUrgent ? 'text-red-500 bg-red-50' : 'text-orange-500 bg-orange-50',
+    title: 'Document Expiring Soon:',
+    content: `${roleLabel} ${personName}'s ${docName} expires on ${expiryLabel} (${reminderLabel} remaining).`,
+    linkText: 'View Profile',
+    linkTo,
+    toastType: 'warning',
+    toastTitle: 'Document Expiring Soon',
+  }
+}
+
 /**
  * Resolve leave requester profile and verify they belong to [companyId].
  */
@@ -900,6 +1002,99 @@ async function fetchJobNotifications(companyId) {
     .filter(Boolean)
 }
 
+async function fetchDocumentDetailsBySource(sentRows) {
+  const driverDocIds = sentRows
+    .filter((row) => row.document_source === 'driver')
+    .map((row) => row.document_id)
+  const vehicleDocIds = sentRows
+    .filter((row) => row.document_source === 'vehicle')
+    .map((row) => row.document_id)
+  const paDocIds = sentRows
+    .filter((row) => row.document_source === 'passenger_assistant')
+    .map((row) => row.document_id)
+
+  const [driverDocsRes, vehicleDocsRes, paDocsRes] = await Promise.all([
+    driverDocIds.length
+      ? supabase
+        .from('driver_documents')
+        .select('id, document_type, expiry_date')
+        .in('id', driverDocIds)
+      : Promise.resolve({ data: [], error: null }),
+    vehicleDocIds.length
+      ? supabase
+        .from('vehicle_documents')
+        .select('id, document_type, expiry_date')
+        .in('id', vehicleDocIds)
+      : Promise.resolve({ data: [], error: null }),
+    paDocIds.length
+      ? supabase
+        .from('passenger_assistant_documents')
+        .select('id, document_type, expiry_date')
+        .in('id', paDocIds)
+      : Promise.resolve({ data: [], error: null }),
+  ])
+
+  if (driverDocsRes.error) throw driverDocsRes.error
+  if (vehicleDocsRes.error) throw vehicleDocsRes.error
+  if (paDocsRes.error) throw paDocsRes.error
+
+  const detailsByKey = new Map()
+  for (const doc of driverDocsRes.data || []) {
+    detailsByKey.set(`driver:${doc.id}`, doc)
+  }
+  for (const doc of vehicleDocsRes.data || []) {
+    detailsByKey.set(`vehicle:${doc.id}`, doc)
+  }
+  for (const doc of paDocsRes.data || []) {
+    detailsByKey.set(`passenger_assistant:${doc.id}`, doc)
+  }
+
+  return detailsByKey
+}
+
+async function fetchDocumentExpiryNotifications(companyId, profileByUserId) {
+  const { data: sentRows, error } = await supabase
+    .from('document_expiry_notifications_sent')
+    .select('document_id, document_source, user_id, reminder_type, sent_at')
+    .eq('company_id', companyId)
+    .order('sent_at', { ascending: false })
+    .limit(300)
+
+  if (error) throw error
+  if (!sentRows?.length) return []
+
+  const detailsByKey = await fetchDocumentDetailsBySource(sentRows)
+  const notifications = []
+
+  for (const row of sentRows) {
+    const profile = profileByUserId.get(row.user_id)
+    if (!profile) continue
+
+    const detail = detailsByKey.get(`${row.document_source}:${row.document_id}`)
+    if (!detail) continue
+
+    const personName = formatPersonName(profile.first_name, profile.last_name) || 'Staff member'
+    const staffRole = row.document_source === 'passenger_assistant'
+      ? 'passenger_assistant'
+      : 'driver'
+
+    const notification = buildDocumentExpiryNotification({
+      documentId: row.document_id,
+      documentSource: row.document_source,
+      documentType: detail.document_type,
+      expiryDate: detail.expiry_date,
+      reminderType: row.reminder_type,
+      sentAt: row.sent_at,
+      personName,
+      staffRole,
+      staffUserId: row.user_id,
+    })
+    if (notification) notifications.push(notification)
+  }
+
+  return notifications
+}
+
 /**
  * Fetch company-scoped notifications for admin or sub-admin.
  */
@@ -908,16 +1103,25 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
   const { companyId, userId } = await getCompanyContextForRole(role)
   const { profileByUserId, companyUserIds } = await fetchCompanyUserProfiles(companyId)
 
-  const [sosItems, leaveItems, jobItems, sessionItems, sessionPassengerItems] = await Promise.all([
+  const [sosItems, leaveItems, jobItems, sessionItems, sessionPassengerItems, documentItems] =
+    await Promise.all([
     fetchSosNotifications(companyId),
     fetchLeaveNotifications(companyId, profileByUserId, companyUserIds),
     fetchJobNotifications(companyId),
     fetchJobSessionNotifications(companyId),
     fetchJobSessionPassengerNotifications(companyId),
+    fetchDocumentExpiryNotifications(companyId, profileByUserId),
   ])
 
   const readIds = await getReadNotificationIds(userId, role)
-  const merged = [...sosItems, ...leaveItems, ...jobItems, ...sessionItems, ...sessionPassengerItems]
+  const merged = [
+    ...sosItems,
+    ...leaveItems,
+    ...jobItems,
+    ...sessionItems,
+    ...sessionPassengerItems,
+    ...documentItems,
+  ]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .map((n) => ({
       ...n,
@@ -958,6 +1162,9 @@ export function filterNotificationsByTab(notifications, activeTab) {
   }
   if (activeTab === NOTIFICATION_TABS.LEAVE) {
     return notifications.filter((n) => n.category === NOTIFICATION_CATEGORIES.LEAVE)
+  }
+  if (activeTab === NOTIFICATION_TABS.DOCUMENTS) {
+    return notifications.filter((n) => n.category === NOTIFICATION_CATEGORIES.DOCUMENT)
   }
   return notifications
 }
@@ -1032,4 +1239,23 @@ export function buildNotificationFromJobRow(job, driver = null) {
     driverById.set(job.assigned_driver_id, driver)
   }
   return buildJobNotification(job, driverById)
+}
+
+export function buildNotificationFromDocumentExpiryRow(row, profile = {}, document = {}) {
+  const personName = formatPersonName(profile.first_name, profile.last_name) || 'Staff member'
+  const staffRole = row.document_source === 'passenger_assistant'
+    ? 'passenger_assistant'
+    : 'driver'
+
+  return buildDocumentExpiryNotification({
+    documentId: row.document_id,
+    documentSource: row.document_source,
+    documentType: document.document_type,
+    expiryDate: document.expiry_date,
+    reminderType: row.reminder_type,
+    sentAt: row.sent_at,
+    personName,
+    staffRole,
+    staffUserId: row.user_id,
+  })
 }

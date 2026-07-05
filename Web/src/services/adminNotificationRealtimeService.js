@@ -6,7 +6,7 @@ import {
 
 const POLL_MS = 12000
 
-/** @typedef {'sos' | 'leave' | 'job' | 'job_session' | 'job_session_passenger' | 'poll' | 'system'} AdminNotificationRealtimeSource */
+/** @typedef {'sos' | 'leave' | 'job' | 'job_session' | 'job_session_passenger' | 'document_expiry' | 'poll' | 'system'} AdminNotificationRealtimeSource */
 
 /** @typedef {Object} AdminNotificationRealtimeEvent
  * @property {AdminNotificationRealtimeSource} source
@@ -172,6 +172,17 @@ function ensureChannel(companyId) {
       table: 'job_session_passengers',
     },
     forward('job_session_passenger'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
+      schema: 'public',
+      table: 'document_expiry_notifications_sent',
+      filter: `company_id=eq.${companyId}`,
+    },
+    forward('document_expiry'),
   )
 
   channel.subscribe((status) => {

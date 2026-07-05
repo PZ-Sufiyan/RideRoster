@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import {
+  buildNotificationFromDocumentExpiryRow,
   buildNotificationFromJobRow,
   buildNotificationFromLeaveRow,
   buildNotificationFromSessionPassengerRow,
@@ -179,6 +180,62 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
     [maybeToast],
   )
 
+  const enrichAndToastDocumentExpiry = useCallback(
+    async (row) => {
+      if (!row?.document_id || row.company_id !== companyIdRef.current) return
+
+      let profile = null
+      if (row.document_source === 'passenger_assistant') {
+        const { data } = await supabaseLookupPa(row.user_id)
+        if (data) {
+          profile = {
+            first_name: data.first_name ?? '',
+            last_name: data.surname ?? '',
+            user_role: 'passenger_assistant',
+          }
+        }
+      } else {
+        const { data } = await supabaseLookupDriver(row.user_id)
+        if (data) {
+          profile = {
+            first_name: data.first_name ?? '',
+            last_name: data.last_name ?? '',
+            user_role: 'driver',
+          }
+        }
+      }
+      if (!profile) return
+
+      let document = null
+      if (row.document_source === 'driver') {
+        const { data } = await supabase
+          .from('driver_documents')
+          .select('document_type, expiry_date')
+          .eq('id', row.document_id)
+          .maybeSingle()
+        document = data
+      } else if (row.document_source === 'vehicle') {
+        const { data } = await supabase
+          .from('vehicle_documents')
+          .select('document_type, expiry_date')
+          .eq('id', row.document_id)
+          .maybeSingle()
+        document = data
+      } else if (row.document_source === 'passenger_assistant') {
+        const { data } = await supabase
+          .from('passenger_assistant_documents')
+          .select('document_type, expiry_date')
+          .eq('id', row.document_id)
+          .maybeSingle()
+        document = data
+      }
+      if (!document) return
+
+      maybeToast(buildNotificationFromDocumentExpiryRow(row, profile, document))
+    },
+    [maybeToast],
+  )
+
   const handleRealtimeEvent = useCallback(
     async (event) => {
       setNotificationRole(role)
@@ -218,9 +275,15 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
 
       if (event.source === 'job_session_passenger' && payload.new) {
         await enrichAndToastSessionPassenger(payload.new, payload.old ?? null)
+        return
+      }
+
+      if (event.source === 'document_expiry' && payload.new) {
+        await enrichAndToastDocumentExpiry(payload.new)
       }
     },
     [
+      enrichAndToastDocumentExpiry,
       enrichAndToastJob,
       enrichAndToastLeave,
       enrichAndToastSession,

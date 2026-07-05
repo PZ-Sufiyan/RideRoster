@@ -191,6 +191,7 @@ async function processDocument({
     document_id: document.id,
     document_source: document.document_source,
     user_id: document.user_id,
+    company_id: document.company_id ?? null,
     reminder_type: reminder.type,
   })
   if (!claimed) {
@@ -387,7 +388,7 @@ export function startDocumentExpiryScheduler(supabase) {
   const cronExpr = process.env.DOCUMENT_EXPIRY_CRON ?? '* * * * *'
 
   console.info(
-    `document expiry scheduler enabled (per-user timezone at 00:00, fallback=${fallbackTz}, cron="${cronExpr}")`,
+    `document expiry scheduler enabled (per-user timezone at 21:35, fallback=${fallbackTz}, cron="${cronExpr}")`,
   )
 
   cron.schedule(cronExpr, async () => {
