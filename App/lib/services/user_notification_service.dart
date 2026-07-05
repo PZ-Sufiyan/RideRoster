@@ -47,6 +47,14 @@ class UserNotificationItem {
 
   String? get jobId => payload['job_id']?.toString();
 
+  String? get documentName => payload['document_name']?.toString();
+
+  String? get documentType => payload['document_type']?.toString();
+
+  String? get expiryDate => payload['expiry_date']?.toString();
+
+  String? get reminderLabel => payload['reminder_label']?.toString();
+
   factory UserNotificationItem.fromRow(Map<String, dynamic> row) {
     final payloadRaw = row['payload'];
     final payload = payloadRaw is Map

@@ -5,6 +5,7 @@ import { getSubAdminById } from './subAdminService'
 export const NOTIFICATION_TYPE_MESSAGE = 'message'
 export const NOTIFICATION_TYPE_LEAVE_STATUS = 'leave_status'
 export const NOTIFICATION_TYPE_JOB_ASSIGNMENT = 'job_assignment'
+export const NOTIFICATION_TYPE_DOCUMENT_EXPIRY = 'document_expiry'
 
 const MAX_PREVIEW_LEN = 160
 

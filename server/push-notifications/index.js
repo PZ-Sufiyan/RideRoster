@@ -2,6 +2,7 @@ import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
 import { sendJobAssignmentPush, sendUserNotificationPush } from './fcm.js'
+import { startDocumentExpiryScheduler } from './documentExpiryScheduler.js'
 import { startJobScheduler } from './jobScheduler.js'
 import {
   createSupabaseAdminClient,
@@ -185,5 +186,7 @@ app.post('/notify/user-notification', async (req, res) => {
 
 app.listen(port, '0.0.0.0', () => {
   console.log(`Push notification server listening on 0.0.0.0:${port}`)
-  startJobScheduler(createSupabaseAdminClient())
+  const supabaseAdmin = createSupabaseAdminClient()
+  startJobScheduler(supabaseAdmin)
+  startDocumentExpiryScheduler(supabaseAdmin)
 })

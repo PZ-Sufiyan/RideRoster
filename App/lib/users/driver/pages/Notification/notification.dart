@@ -17,7 +17,7 @@ class _DriverNotificationColors {
   static const Color iconRedBg = Color(0xFFFEE2E2);
 }
 
-enum _NotificationFilter { all, leaveStatus, message, unread }
+enum _NotificationFilter { all, leaveStatus, message, document, unread }
 
 class DriverNotificationsPage extends StatefulWidget {
   const DriverNotificationsPage({super.key});
@@ -88,6 +88,8 @@ class _DriverNotificationsPageState extends State<DriverNotificationsPage> {
         return _items.where((n) => n.notificationType == 'leave_status').toList();
       case _NotificationFilter.message:
         return _items.where((n) => n.notificationType == 'message').toList();
+      case _NotificationFilter.document:
+        return _items.where((n) => n.notificationType == 'document_expiry').toList();
       case _NotificationFilter.unread:
         return _items.where((n) => n.isUnread).toList();
       case _NotificationFilter.all:
@@ -203,6 +205,9 @@ class _DriverNotificationsPageState extends State<DriverNotificationsPage> {
                   _items.where((n) => n.notificationType == 'message').length,
               leaveCount: _items
                   .where((n) => n.notificationType == 'leave_status')
+                  .length,
+              documentCount: _items
+                  .where((n) => n.notificationType == 'document_expiry')
                   .length,
               onSelected: (f) => setState(() => _selectedFilter = f),
             ),
@@ -350,6 +355,7 @@ class _FilterChips extends StatelessWidget {
   final int unreadCount;
   final int messageCount;
   final int leaveCount;
+  final int documentCount;
   final ValueChanged<_NotificationFilter> onSelected;
 
   const _FilterChips({
@@ -357,6 +363,7 @@ class _FilterChips extends StatelessWidget {
     required this.unreadCount,
     required this.messageCount,
     required this.leaveCount,
+    required this.documentCount,
     required this.onSelected,
   });
 
@@ -385,6 +392,13 @@ class _FilterChips extends StatelessWidget {
             badge: messageCount > 0 ? '$messageCount' : null,
             isSelected: selectedFilter == _NotificationFilter.message,
             onTap: () => onSelected(_NotificationFilter.message),
+          ),
+          SizedBox(width: SizeConfig.r(10)),
+          _FilterChip(
+            label: 'Document',
+            badge: documentCount > 0 ? '$documentCount' : null,
+            isSelected: selectedFilter == _NotificationFilter.document,
+            onTap: () => onSelected(_NotificationFilter.document),
           ),
           SizedBox(width: SizeConfig.r(10)),
           _FilterChip(
@@ -484,6 +498,13 @@ class _NotificationCard extends StatelessWidget {
   });
 
   ({IconData icon, Color iconColor, Color iconBg}) get _style {
+    if (item.notificationType == 'document_expiry') {
+      return (
+        icon: Icons.description_outlined,
+        iconColor: _DriverNotificationColors.iconOrange,
+        iconBg: _DriverNotificationColors.iconOrangeBg,
+      );
+    }
     if (item.notificationType == 'message') {
       return (
         icon: Icons.chat_bubble_outline,
@@ -631,6 +652,7 @@ class _NotificationDetailDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMessage = item.notificationType == 'message';
     final isLeave = item.notificationType == 'leave_status';
+    final isDocument = item.notificationType == 'document_expiry';
 
     return AlertDialog(
       shape: RoundedRectangleBorder(
@@ -694,6 +716,22 @@ class _NotificationDetailDialog extends StatelessWidget {
                   ),
                 ),
               ],
+            ],
+            if (isDocument) ...[
+              if (item.documentName != null)
+                _DetailRow(label: 'Document', value: item.documentName!),
+              if (item.expiryDate != null)
+                _DetailRow(label: 'Expiry date', value: item.expiryDate!),
+              if (item.reminderLabel != null)
+                _DetailRow(label: 'Reminder', value: item.reminderLabel!),
+              Text(
+                item.fullMessage,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(14),
+                  color: AppColors.textMedium,
+                  height: 1.5,
+                ),
+              ),
             ],
           ],
         ),
@@ -761,6 +799,8 @@ class _EmptyState extends StatelessWidget {
       message = 'No messages yet.';
     } else if (filter == _NotificationFilter.leaveStatus) {
       message = 'No leave status updates yet.';
+    } else if (filter == _NotificationFilter.document) {
+      message = 'No document expiry notices yet.';
     }
 
     return Center(

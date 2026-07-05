@@ -154,7 +154,10 @@ class FcmService {
 
   String? _pushPayloadFor(Map<String, dynamic> data) {
     final type = data['type']?.toString() ?? '';
-    if (type == 'message' || type == 'leave_status' || type == 'job_assignment') {
+    if (type == 'message' ||
+        type == 'leave_status' ||
+        type == 'job_assignment' ||
+        type == 'document_expiry') {
       final user = Supabase.instance.client.auth.currentUser;
       final meta = user?.userMetadata ?? user?.appMetadata;
       final role = meta?['role']?.toString();

@@ -17,7 +17,7 @@ class _PaNotificationColors {
   static const Color iconRedBg = Color(0xFFFEE2E2);
 }
 
-enum _NotificationFilter { all, leaveStatus, message, newJobs, unread }
+enum _NotificationFilter { all, leaveStatus, message, newJobs, document, unread }
 
 class PaNotificationsPage extends StatefulWidget {
   const PaNotificationsPage({super.key});
@@ -90,6 +90,8 @@ class _PaNotificationsPageState extends State<PaNotificationsPage> {
         return _items.where((n) => n.notificationType == 'message').toList();
       case _NotificationFilter.newJobs:
         return _items.where((n) => n.notificationType == 'job_assignment').toList();
+      case _NotificationFilter.document:
+        return _items.where((n) => n.notificationType == 'document_expiry').toList();
       case _NotificationFilter.unread:
         return _items.where((n) => n.isUnread).toList();
       case _NotificationFilter.all:
@@ -208,6 +210,9 @@ class _PaNotificationsPageState extends State<PaNotificationsPage> {
                   .length,
               jobCount: _items
                   .where((n) => n.notificationType == 'job_assignment')
+                  .length,
+              documentCount: _items
+                  .where((n) => n.notificationType == 'document_expiry')
                   .length,
               onSelected: (f) => setState(() => _selectedFilter = f),
             ),
@@ -356,6 +361,7 @@ class _FilterChips extends StatelessWidget {
   final int messageCount;
   final int leaveCount;
   final int jobCount;
+  final int documentCount;
   final ValueChanged<_NotificationFilter> onSelected;
 
   const _FilterChips({
@@ -364,6 +370,7 @@ class _FilterChips extends StatelessWidget {
     required this.messageCount,
     required this.leaveCount,
     required this.jobCount,
+    required this.documentCount,
     required this.onSelected,
   });
 
@@ -399,6 +406,13 @@ class _FilterChips extends StatelessWidget {
             badge: jobCount > 0 ? '$jobCount' : null,
             isSelected: selectedFilter == _NotificationFilter.newJobs,
             onTap: () => onSelected(_NotificationFilter.newJobs),
+          ),
+          SizedBox(width: SizeConfig.r(10)),
+          _FilterChip(
+            label: 'Document',
+            badge: documentCount > 0 ? '$documentCount' : null,
+            isSelected: selectedFilter == _NotificationFilter.document,
+            onTap: () => onSelected(_NotificationFilter.document),
           ),
           SizedBox(width: SizeConfig.r(10)),
           _FilterChip(
@@ -498,6 +512,13 @@ class _NotificationCard extends StatelessWidget {
   });
 
   ({IconData icon, Color iconColor, Color iconBg}) get _style {
+    if (item.notificationType == 'document_expiry') {
+      return (
+        icon: Icons.description_outlined,
+        iconColor: _PaNotificationColors.iconOrange,
+        iconBg: _PaNotificationColors.iconOrangeBg,
+      );
+    }
     if (item.notificationType == 'job_assignment') {
       return (
         icon: Icons.route_outlined,
@@ -653,6 +674,7 @@ class _NotificationDetailDialog extends StatelessWidget {
     final isMessage = item.notificationType == 'message';
     final isLeave = item.notificationType == 'leave_status';
     final isJob = item.notificationType == 'job_assignment';
+    final isDocument = item.notificationType == 'document_expiry';
 
     return AlertDialog(
       shape: RoundedRectangleBorder(
@@ -731,6 +753,22 @@ class _NotificationDetailDialog extends StatelessWidget {
                 ),
               ),
             ],
+            if (isDocument) ...[
+              if (item.documentName != null)
+                _DetailRow(label: 'Document', value: item.documentName!),
+              if (item.expiryDate != null)
+                _DetailRow(label: 'Expiry date', value: item.expiryDate!),
+              if (item.reminderLabel != null)
+                _DetailRow(label: 'Reminder', value: item.reminderLabel!),
+              Text(
+                item.fullMessage,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(14),
+                  color: AppColors.textMedium,
+                  height: 1.5,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -797,6 +835,8 @@ class _EmptyState extends StatelessWidget {
       message = 'No messages yet.';
     } else if (filter == _NotificationFilter.newJobs) {
       message = 'No new job assignments yet.';
+    } else if (filter == _NotificationFilter.document) {
+      message = 'No document expiry notices yet.';
     } else if (filter == _NotificationFilter.leaveStatus) {
       message = 'No leave status updates yet.';
     }
