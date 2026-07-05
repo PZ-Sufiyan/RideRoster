@@ -822,7 +822,7 @@ class _SosButton extends StatelessWidget {
       width: double.infinity,
       height: SizeConfig.r(54),
       child: ElevatedButton(
-        onPressed: () {},
+        onPressed: () => Navigator.pushNamed(context, AppRoutes.paSos),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFEF6B6B),
           foregroundColor: Colors.white,

@@ -636,7 +636,10 @@ function buildSosNotification(alert) {
     : alert.vehicle_id
       ? `Vehicle ${String(alert.vehicle_id).slice(0, 8)}`
       : 'A vehicle'
-  const driverPart = alert.driver_label ? ` by ${alert.driver_label}` : ''
+
+  const triggeredByPa = Boolean(alert.passenger_assistant_id)
+  const triggerLabel = triggeredByPa ? alert.pa_label : alert.driver_label
+  const triggerPart = triggerLabel ? ` by ${triggerLabel}` : ''
 
   return {
     key: `sos:${alert.id}`,
@@ -647,7 +650,7 @@ function buildSosNotification(alert) {
     IconName: 'MdWarning',
     iconColor: 'text-red-500 bg-red-50',
     title: 'SOS Alert Triggered:',
-    content: `${plate}${driverPart} has triggered an SOS alert.`,
+    content: `${plate}${triggerPart} has triggered an SOS alert.`,
     linkText: 'View Details',
     linkTo: activeNotificationRoutes.sos(alert.id),
     toastType: 'error',
@@ -780,7 +783,7 @@ async function fetchCompanyUserProfiles(companyId) {
 async function fetchSosNotifications(companyId) {
   const { data: sosRows, error } = await supabase
     .from('sos')
-    .select('id, vehicle_id, company_id, driver_id, created_at, status')
+    .select('id, vehicle_id, company_id, driver_id, passenger_assistant_id, created_at, status')
     .eq('company_id', companyId)
     .order('created_at', { ascending: false })
 
@@ -789,32 +792,43 @@ async function fetchSosNotifications(companyId) {
 
   const vehicleIds = [...new Set(sosRows.map((r) => r.vehicle_id).filter(Boolean))]
   const driverIds = [...new Set(sosRows.map((r) => r.driver_id).filter(Boolean))]
+  const paIds = [...new Set(sosRows.map((r) => r.passenger_assistant_id).filter(Boolean))]
 
-  const [vehiclesRes, driversRes] = await Promise.all([
+  const [vehiclesRes, driversRes, pasRes] = await Promise.all([
     vehicleIds.length
       ? supabase.from('vehicles').select('id, taxi_license_plate_number').in('id', vehicleIds)
       : Promise.resolve({ data: [], error: null }),
     driverIds.length
       ? supabase.from('drivers').select('id, first_name, last_name').in('id', driverIds)
       : Promise.resolve({ data: [], error: null }),
+    paIds.length
+      ? supabase.from('passenger_assistant').select('id, first_name, surname').in('id', paIds)
+      : Promise.resolve({ data: [], error: null }),
   ])
 
   if (vehiclesRes.error) throw vehiclesRes.error
   if (driversRes.error) throw driversRes.error
+  if (pasRes.error) throw pasRes.error
 
   const plateMap = new Map((vehiclesRes.data || []).map((v) => [v.id, v.taxi_license_plate_number]))
   const driverMap = new Map((driversRes.data || []).map((d) => [
     d.id,
     formatPersonName(d.first_name, d.last_name),
   ]))
+  const paMap = new Map((pasRes.data || []).map((pa) => [
+    pa.id,
+    formatPersonName(pa.first_name, pa.surname),
+  ]))
 
   return sosRows.map((row) =>
     buildSosNotification({
       id: row.id,
       vehicle_id: row.vehicle_id,
+      passenger_assistant_id: row.passenger_assistant_id,
       created_at: row.created_at,
       taxi_license_plate_number: plateMap.get(row.vehicle_id) || null,
       driver_label: driverMap.get(row.driver_id) || null,
+      pa_label: paMap.get(row.passenger_assistant_id) || null,
     }),
   )
 }
@@ -995,9 +1009,11 @@ export function buildNotificationFromSosRow(row, enrich = {}) {
   return buildSosNotification({
     id: row.id,
     vehicle_id: row.vehicle_id,
+    passenger_assistant_id: row.passenger_assistant_id ?? null,
     created_at: row.created_at,
     taxi_license_plate_number: enrich.plate ?? null,
     driver_label: enrich.driverLabel ?? null,
+    pa_label: enrich.paLabel ?? null,
   })
 }
 

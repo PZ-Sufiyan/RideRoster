@@ -164,20 +164,30 @@ export const getActiveSosAlertsForCompany = async (companyId, { limit = null } =
 }
 
 /**
- * Passengers on a job (ordered by job_passenger_routes.created_at).
+ * Passengers on a job (ordered by passenger_schedules stop_order).
  */
 export const getPassengersForJobByJobId = async (jobId) => {
   if (!jobId) return []
 
-  const { data: routes, error: rErr } = await supabase
-    .from('job_passenger_routes')
-    .select('passenger_id, created_at')
+  const { data: scheduleRows, error: schedErr } = await supabase
+    .from('passenger_schedules')
+    .select('passenger_id, stop_order, weekday')
     .eq('job_id', jobId)
-    .order('created_at', { ascending: true })
+    .is('exception_date', null)
+    .order('weekday', { ascending: true })
+    .order('stop_order', { ascending: true })
 
-  if (rErr) throw rErr
+  if (schedErr) throw schedErr
 
-  const orderedIds = (routes || []).map((r) => r.passenger_id).filter(Boolean)
+  const orderedIds = []
+  const seen = new Set()
+  for (const row of scheduleRows || []) {
+    const id = row.passenger_id
+    if (!id || seen.has(id)) continue
+    seen.add(id)
+    orderedIds.push(id)
+  }
+
   if (!orderedIds.length) return []
 
   const { data: paxRows, error: pErr } = await supabase

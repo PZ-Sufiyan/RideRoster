@@ -21,6 +21,7 @@ import '../users/driver/pages/leave/leave.dart';
 import '../users/driver/pages/leave/leave_request_form.dart';
 import '../users/PA/pages/leave/pa_leave_page.dart';
 import '../users/PA/pages/leave/pa_leave_request_form_page.dart';
+import '../users/PA/pages/sos/sos.dart';
 import '../users/driver/pages/profile/profile.dart';
 import '../users/driver/pages/profile/edit_profile.dart';
 import '../users/driver/pages/Notification/notification.dart';
@@ -54,6 +55,7 @@ class AppRoutes {
   static const String paAssignedJobs = '/pa/assigned-jobs';
   static const String paLeave = '/pa/leave';
   static const String paLeaveRequest = '/pa/leave-request';
+  static const String paSos = '/pa/sos';
 
   static Route<dynamic> generateRoute(
     RouteSettings settings, {
@@ -157,6 +159,9 @@ class AppRoutes {
         return MaterialPageRoute(
           builder: (_) => const PaLeaveRequestFormPage(),
         );
+
+      case paSos:
+        return MaterialPageRoute(builder: (_) => const PaSOSPage());
 
       default:
         return MaterialPageRoute(builder: (_) => const LoginPage());

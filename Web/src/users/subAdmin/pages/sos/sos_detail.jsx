@@ -63,6 +63,11 @@ const jobIdLabel = (job) => {
     return job.job_name || '—'
 }
 
+const sosTriggeredByLabel = (sos) =>
+    sos?.passenger_assistant_id
+        ? 'SOS Button Activated by Passenger Assistant'
+        : 'SOS Button Activated by Driver'
+
 const createSosIcon = ({ color = '#ef4444' } = {}) => {
     const safe = color || '#ef4444'
     return L.divIcon({
@@ -397,7 +402,7 @@ const SubAdmin_SOSDetail = () => {
                                     <div className="relative">
                                         <div className="absolute -left-[27px] top-1.5 w-3 h-3 rounded-full bg-red-400 border-2 border-white" />
                                         <h4 className="text-sm font-bold text-gray-900 leading-tight">
-                                            SOS Button Activated by Driver
+                                            {sosTriggeredByLabel(detail.sos)}
                                         </h4>
                                         <p className="text-xs text-gray-500 mt-1">
                                             Manual Trigger — {formatAlertTime(detail.sos.created_at)} (

@@ -92,6 +92,7 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
 
       let plate = null
       let driverLabel = null
+      let paLabel = null
 
       if (row.vehicle_id) {
         const { data } = await supabaseLookupVehicle(row.vehicle_id)
@@ -105,7 +106,14 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
         }
       }
 
-      maybeToast(buildNotificationFromSosRow(row, { plate, driverLabel }))
+      if (row.passenger_assistant_id) {
+        const { data } = await supabaseLookupPa(row.passenger_assistant_id)
+        if (data) {
+          paLabel = [data.first_name, data.surname].filter(Boolean).join(' ').trim() || null
+        }
+      }
+
+      maybeToast(buildNotificationFromSosRow(row, { plate, driverLabel, paLabel }))
     },
     [maybeToast],
   )

@@ -62,6 +62,18 @@ const jobIdLabel = (job) => {
     return job.job_name || '—'
 }
 
+const DEFAULT_SOS_NOTES = ['SOS triggered from driver app.', 'SOS triggered from PA app.']
+
+const isDefaultSosNote = (notes) => {
+    const normalized = (notes || '').trim().toLowerCase()
+    return DEFAULT_SOS_NOTES.some((note) => note.toLowerCase() === normalized)
+}
+
+const sosTriggeredByLabel = (sos) =>
+    sos?.passenger_assistant_id
+        ? 'SOS Button Activated by Passenger Assistant'
+        : 'SOS Button Activated by Driver'
+
 const toRadians = (value) => (value * Math.PI) / 180
 const distanceKmBetween = (lat1, lng1, lat2, lng2) => {
     const earthRadiusKm = 6371
@@ -226,9 +238,9 @@ const SOSDetail = () => {
             setError('Please save notes with at least 10 characters before resolving this alert.')
             return
         }
-        if (notes.toLowerCase() === 'SOS triggered from driver app.'.toLowerCase()) {
+        if (isDefaultSosNote(notes)) {
             setError(
-                'Please replace the default note ("SOS triggered from driver app.") with a real resolution note before resolving.'
+                'Please replace the default SOS note with a real resolution note before resolving.'
             )
             return
         }
@@ -281,9 +293,8 @@ const SOSDetail = () => {
     const isResolved = status === 'resolved' || status === 'cancelled'
 
     const MIN_NOTES_LENGTH = 10
-    const DEFAULT_SOS_NOTE = 'SOS triggered from driver app.'
     const savedNotes = (detail?.sos?.notes || '').trim()
-    const isDefaultNote = savedNotes.toLowerCase() === DEFAULT_SOS_NOTE.toLowerCase()
+    const isDefaultNote = isDefaultSosNote(savedNotes)
     const hasValidNotes = savedNotes.length >= MIN_NOTES_LENGTH && !isDefaultNote
     const canResolve = !resolving && !isResolved && !!detail && hasValidNotes
 
@@ -444,7 +455,7 @@ const SOSDetail = () => {
                                     <div className="relative">
                                         <div className="absolute -left-[27px] top-1.5 w-3 h-3 rounded-full bg-red-400 border-2 border-white" />
                                         <h4 className="text-sm font-bold text-gray-900 leading-tight">
-                                            SOS Button Activated by Driver
+                                            {sosTriggeredByLabel(detail.sos)}
                                         </h4>
                                         <p className="text-xs text-gray-500 mt-1">
                                             Manual Trigger — {formatAlertTime(detail.sos.created_at)} (
@@ -538,7 +549,7 @@ const SOSDetail = () => {
                                     {!isResolved && !hasValidNotes && (
                                         <p className="text-xs text-gray-500">
                                             {isDefaultNote
-                                                ? `Replace the default note ("${DEFAULT_SOS_NOTE}") with a real resolution note (at least ${MIN_NOTES_LENGTH} characters) to enable resolving this alert.`
+                                                ? `Replace the default SOS note with a real resolution note (at least ${MIN_NOTES_LENGTH} characters) to enable resolving this alert.`
                                                 : `Save notes with at least ${MIN_NOTES_LENGTH} characters to enable resolving this alert.`}
                                         </p>
                                     )}
@@ -565,7 +576,7 @@ const SOSDetail = () => {
                             isResolved
                                 ? 'This SOS alert is already resolved.'
                                 : isDefaultNote
-                                  ? `Replace the default note ("${DEFAULT_SOS_NOTE}") with a real resolution note before resolving.`
+                                  ? 'Replace the default SOS note with a real resolution note before resolving.'
                                   : !hasValidNotes
                                     ? `Save notes with at least ${MIN_NOTES_LENGTH} characters before resolving.`
                                     : undefined
