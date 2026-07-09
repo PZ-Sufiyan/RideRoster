@@ -29,12 +29,12 @@ class NotificationService {
         importance: Importance.high,
       );
 
-  Future<void> init() async {
+  Future<void> init({bool requestIosPermissions = true}) async {
     const androidInit = AndroidInitializationSettings('@mipmap/ic_launcher');
     const iosInit = DarwinInitializationSettings(
-      requestSoundPermission: true,
-      requestAlertPermission: true,
-      requestBadgePermission: true,
+      requestSoundPermission: false,
+      requestAlertPermission: false,
+      requestBadgePermission: false,
     );
     const initSettings = InitializationSettings(
       android: androidInit,
@@ -58,11 +58,13 @@ class NotificationService {
         >()
         ?.requestNotificationsPermission();
 
-    await _plugin
-        .resolvePlatformSpecificImplementation<
-          IOSFlutterLocalNotificationsPlugin
-        >()
-        ?.requestPermissions(alert: true, badge: true, sound: true);
+    if (requestIosPermissions) {
+      await _plugin
+          .resolvePlatformSpecificImplementation<
+            IOSFlutterLocalNotificationsPlugin
+          >()
+          ?.requestPermissions(alert: true, badge: true, sound: true);
+    }
   }
 
   /// Shows an arrival notification.

@@ -39,9 +39,53 @@ async function getFcmAccessToken() {
   return accessToken
 }
 
+function stringifyData(data) {
+  const out = {}
+  for (const [key, value] of Object.entries(data ?? {})) {
+    out[key] = value == null ? '' : String(value)
+  }
+  return out
+}
+
+/** Keep one token per platform (latest updated_at) to avoid duplicate pushes. */
+function resolveDeliveryTokens(tokens) {
+  const rows = (tokens ?? [])
+    .map((token) => {
+      if (typeof token === 'string') {
+        return { fcm_token: token.trim(), platform: null, updated_at: null }
+      }
+      return {
+        fcm_token: String(token?.fcm_token ?? '').trim(),
+        platform: token?.platform ?? null,
+        updated_at: token?.updated_at ?? null,
+      }
+    })
+    .filter((row) => row.fcm_token.length > 0)
+
+  if (!rows.length) return []
+
+  const latestByPlatform = new Map()
+  for (const row of rows) {
+    const key = row.platform || '_unknown'
+    const existing = latestByPlatform.get(key)
+    if (!existing) {
+      latestByPlatform.set(key, row)
+      continue
+    }
+    const existingTime = Date.parse(existing.updated_at ?? '') || 0
+    const rowTime = Date.parse(row.updated_at ?? '') || 0
+    if (rowTime >= existingTime) {
+      latestByPlatform.set(key, row)
+    }
+  }
+
+  return Array.from(latestByPlatform.values()).map((row) => row.fcm_token)
+}
+
 async function sendFcmMessage({ token, title, body, data }) {
   const projectId = process.env.FIREBASE_PROJECT_ID
   const accessToken = await getFcmAccessToken()
+  const payloadData = stringifyData(data)
   const notificationTag = [
     data?.type ?? 'push',
     data?.job_id ?? 'general',
@@ -61,7 +105,7 @@ async function sendFcmMessage({ token, title, body, data }) {
         message: {
           token,
           notification: { title, body },
-          data,
+          data: payloadData,
           android: {
             priority: 'HIGH',
             notification: {
@@ -73,9 +117,12 @@ async function sendFcmMessage({ token, title, body, data }) {
             },
           },
           apns: {
+            headers: {
+              'apns-priority': '10',
+              'apns-push-type': 'alert',
+            },
             payload: {
               aps: {
-                alert: { title, body },
                 sound: 'default',
                 badge: 1,
               },
@@ -86,16 +133,20 @@ async function sendFcmMessage({ token, title, body, data }) {
     },
   )
 
+  const responseText = await res.text()
   if (!res.ok) {
-    const err = await res.text()
-    throw new Error(`FCM send failed: ${err}`)
+    throw new Error(`FCM send failed (${res.status}): ${responseText}`)
+  }
+
+  try {
+    return JSON.parse(responseText)
+  } catch {
+    return { raw: responseText }
   }
 }
 
 async function sendToTokens({ tokens, title, body, data, driverId, supabaseAdmin }) {
-  const fcmTokens = (tokens ?? [])
-    .map((token) => (typeof token === 'string' ? token : token?.fcm_token))
-    .filter((token) => typeof token === 'string' && token.trim().length > 0)
+  const fcmTokens = resolveDeliveryTokens(tokens)
 
   if (!fcmTokens.length) {
     return { ok: true, skipped: 'no_device_tokens', sent: 0, failed: 0, total: 0 }
@@ -109,18 +160,31 @@ async function sendToTokens({ tokens, title, body, data, driverId, supabaseAdmin
   const failed = results.filter((result) => result.status === 'rejected').length
 
   const staleTokens = []
+  const errors = []
   for (let i = 0; i < results.length; i++) {
     const result = results[i]
     if (result.status === 'rejected') {
       const message = String(result.reason ?? '')
+      errors.push(message.slice(0, 300))
       if (
         message.includes('NOT_FOUND')
         || message.includes('UNREGISTERED')
         || message.includes('InvalidRegistration')
+        || message.includes('INVALID_ARGUMENT')
       ) {
         staleTokens.push(fcmTokens[i])
       }
     }
+  }
+
+  if (errors.length > 0) {
+    console.warn('FCM send errors', {
+      driverId,
+      errors,
+      hint: errors.some((e) => /APNS|THIRD_PARTY_AUTH|InvalidApnsCredential/i.test(e))
+        ? 'Upload APNs .p8 key in Firebase Console → Project settings → Cloud Messaging'
+        : undefined,
+    })
   }
 
   if (staleTokens.length > 0 && driverId && supabaseAdmin) {
@@ -131,7 +195,7 @@ async function sendToTokens({ tokens, title, body, data, driverId, supabaseAdmin
       .in('fcm_token', staleTokens)
   }
 
-  return { ok: true, sent, failed, total: fcmTokens.length }
+  return { ok: true, sent, failed, total: fcmTokens.length, errors }
 }
 
 export async function sendUserNotificationPush({

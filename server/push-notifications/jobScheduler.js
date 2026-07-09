@@ -27,13 +27,11 @@ async function claimNotification(supabase, record) {
 async function loadDriverTokens(supabase, driverId) {
   const { data, error } = await supabase
     .from('device_push_tokens')
-    .select('fcm_token')
+    .select('fcm_token, platform, updated_at')
     .eq('user_id', driverId)
 
   if (error) throw error
-  return (data ?? [])
-    .map((row) => row.fcm_token)
-    .filter((token) => typeof token === 'string' && token.trim().length > 0)
+  return data ?? []
 }
 
 async function loadDriverTimezones(supabase, driverIds) {

@@ -107,7 +107,7 @@ app.post('/notify/job-assignment', async (req, res) => {
 
     const { data: tokens, error: tokenError } = await supabaseAdmin
       .from('device_push_tokens')
-      .select('fcm_token')
+      .select('fcm_token, platform, updated_at')
       .eq('user_id', job.assigned_driver_id)
 
     if (tokenError) throw tokenError
@@ -121,7 +121,10 @@ app.post('/notify/job-assignment', async (req, res) => {
     console.info('job-assignment push', {
       jobId,
       driverId: job.assigned_driver_id,
-      tokenCount: tokens?.length ?? 0,
+      tokens: (tokens ?? []).map((t) => ({
+        platform: t.platform,
+        tokenPrefix: String(t.fcm_token || '').slice(0, 12),
+      })),
       result,
     })
 
@@ -156,7 +159,7 @@ app.post('/notify/user-notification', async (req, res) => {
 
     const { data: tokens, error: tokenError } = await supabaseAdmin
       .from('device_push_tokens')
-      .select('fcm_token')
+      .select('fcm_token, platform, updated_at')
       .eq('user_id', userId)
 
     if (tokenError) throw tokenError

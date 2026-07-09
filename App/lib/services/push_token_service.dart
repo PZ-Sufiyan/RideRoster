@@ -25,6 +25,14 @@ class PushTokenService {
 
     final timezone = await _deviceTimezone();
 
+    // One active token per platform — old tokens linger after Firebase app changes.
+    await _supabase
+        .from('device_push_tokens')
+        .delete()
+        .eq('user_id', userId)
+        .eq('platform', platform)
+        .neq('fcm_token', token);
+
     await _supabase.from('device_push_tokens').upsert(
       {
         'user_id': userId,

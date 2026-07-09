@@ -57,16 +57,14 @@ class DefaultFirebaseOptions {
     projectId: 'rideroster-2030d',
     storageBucket: 'rideroster-2030d.firebasestorage.app',
   );
-
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyD1mr045KNUmZHYC48OtQFDGpr83J7sJbk',
-    appId: '1:1027188643153:ios:6f7f7ff704422955afaf70',
+    appId: '1:1027188643153:ios:bdbe56916356195dafaf70',
     messagingSenderId: '1027188643153',
     projectId: 'rideroster-2030d',
     storageBucket: 'rideroster-2030d.firebasestorage.app',
-    iosBundleId: 'com.example.rideroster',
+    iosBundleId: 'com.nst-sch.app',
   );
-
   static const FirebaseOptions macos = FirebaseOptions(
     apiKey: 'AIzaSyD1mr045KNUmZHYC48OtQFDGpr83J7sJbk',
     appId: '1:1027188643153:ios:6f7f7ff704422955afaf70',

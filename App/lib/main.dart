@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -71,14 +74,6 @@ Future<void> main() async {
   SyncScheduler.register(() => SyncEngine.instance.processQueue());
   SessionCleanup.init(localRepo);
 
-  // ── Device services ───────────────────────────────────────────────────────
-  await LocationService().ensurePermission();
-  await NotificationService().init();
-  await FcmService().init(
-    onMessageOpened: (message) =>
-        NavigationService.handlePushOpened(message.data),
-  );
-
   // Cache refresh runs after the UI is up — JobProvider loads local data first,
   // then refreshes when [ConnectivityService.canReachServer] is true.
   ConnectivityService().onReconnect.listen((_) async {
@@ -89,6 +84,32 @@ Future<void> main() async {
   });
 
   runApp(RideRosterApp(localRepo: localRepo, cacheRepo: cacheRepo));
+
+  FcmService().setOnMessageOpenedHandler(
+    (message) => NavigationService.handlePushOpened(message.data),
+  );
+
+  // Defer native notification / Firebase work until after the first frame.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    unawaited(_initDeviceServices());
+  });
+}
+
+Future<void> _initDeviceServices() async {
+  try {
+    await NotificationService().init(requestIosPermissions: false);
+
+    // On iOS, Firebase initializes after login to avoid cold-start crashes.
+    if (!Platform.isIOS) {
+      await FcmService().init(
+        onMessageOpened: (message) =>
+            NavigationService.handlePushOpened(message.data),
+      );
+    }
+  } catch (error, stack) {
+    debugPrint('Device services init failed: $error');
+    debugPrint('$stack');
+  }
 }
 
 class RideRosterApp extends StatelessWidget {
@@ -134,8 +155,13 @@ class RideRosterApp extends StatelessWidget {
               brightness: Brightness.light,
             ),
             scaffoldBackgroundColor: Colors.white,
-            textTheme: GoogleFonts.manropeTextTheme(),
-            primaryTextTheme: GoogleFonts.manropeTextTheme(),
+            // Avoid blocking first paint on iOS while Google Fonts downloads.
+            textTheme: Platform.isIOS
+                ? Typography.material2021(platform: TargetPlatform.iOS).black
+                : GoogleFonts.manropeTextTheme(),
+            primaryTextTheme: Platform.isIOS
+                ? Typography.material2021(platform: TargetPlatform.iOS).black
+                : GoogleFonts.manropeTextTheme(),
           ),
           home: const _AppRuntimeGuard(),
           onGenerateRoute: (settings) =>
@@ -228,12 +254,22 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
   Future<void> _enforceLocationRequirement({bool showLoader = true}) async {
     if (!mounted) return;
     if (showLoader) setState(() => _isCheckingLocation = true);
-    final hasPermission = await _locationService.ensurePermission();
-    if (!mounted) return;
-    setState(() {
-      _locationReady = hasPermission;
-      if (showLoader) _isCheckingLocation = false;
-    });
+    try {
+      final hasPermission = await _locationService
+          .ensurePermission()
+          .timeout(const Duration(seconds: 30), onTimeout: () => false);
+      if (!mounted) return;
+      setState(() {
+        _locationReady = hasPermission;
+        if (showLoader) _isCheckingLocation = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _locationReady = false;
+        if (showLoader) _isCheckingLocation = false;
+      });
+    }
   }
 
   Future<void> _startSosTrackingIfAuthenticated() async {
