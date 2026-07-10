@@ -99,7 +99,7 @@ class _RouteDetailPageState extends State<RouteDetailPage> {
                           ),
                         ),
                 ),
-                if (job != null) _BottomBar(job: job),
+                if (job != null) _BottomBar(job: job, provider: provider),
               ],
             );
           },
@@ -555,7 +555,8 @@ class _StatusBadge extends StatelessWidget {
 
 class _BottomBar extends StatelessWidget {
   final JobModel job;
-  const _BottomBar({required this.job});
+  final JobProvider provider;
+  const _BottomBar({required this.job, required this.provider});
 
   @override
   Widget build(BuildContext context) {
@@ -563,6 +564,9 @@ class _BottomBar extends StatelessWidget {
     final total = job.totalPickups;
     final progress = job.progressFraction;
     final percent = (progress * 100).round();
+    final startBlocked =
+        !provider.sessionStarted && provider.routeStartWindowError != null;
+    final startWindowLabel = provider.routeStartWindowLabel;
 
     return Container(
       padding: EdgeInsets.fromLTRB(
@@ -612,18 +616,43 @@ class _BottomBar extends StatelessWidget {
             ),
           ),
           SizedBox(height: SizeConfig.r(12)),
+          if (startBlocked && startWindowLabel != null) ...[
+            Text(
+              'Start window: $startWindowLabel',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.warning,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            SizedBox(height: SizeConfig.r(8)),
+          ],
           AppButton(
-            label: 'Continue Journey',
+            label: startBlocked ? 'Start Window Closed' : 'Continue Journey',
             borderRadius: SizeConfig.radiusLG,
-            onPressed: () async {
-              final provider = context.read<JobProvider>();
-
-              // Create session + snapshot passengers if not yet started.
-              // This is the earliest point the driver has confirmed intent
-              // to start the run.
-              await provider.ensureSessionStarted();
+            backgroundColor: startBlocked ? AppColors.textLight : null,
+            onPressed: startBlocked
+                ? () {
+                    final message = provider.routeStartWindowError;
+                    if (message == null) return;
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(message)));
+                  }
+                : () async {
+              final started = await provider.ensureSessionStarted();
 
               if (!context.mounted) return;
+              if (!started) {
+                final message = provider.error;
+                if (message != null && message.isNotEmpty) {
+                  ScaffoldMessenger.of(
+                    context,
+                  ).showSnackBar(SnackBar(content: Text(message)));
+                }
+                return;
+              }
 
               if (provider.allResolved) {
                 Navigator.pushNamed(context, AppRoutes.completeJob);

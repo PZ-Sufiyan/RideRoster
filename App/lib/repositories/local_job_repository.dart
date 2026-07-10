@@ -9,6 +9,7 @@ import '../services/sync_scheduler.dart';
 import '../services/connectivity_service.dart';
 import '../services/vehicle_safety_check_service.dart';
 import '../utils/utc_time.dart';
+import '../utils/session_schedule.dart';
 
 /// Replaces the network calls in [JobService] with local drift reads/writes.
 ///
@@ -136,6 +137,8 @@ class LocalJobRepository {
             .getSingleOrNull();
 
     if (jobRow == null) return null;
+
+    await enforceSessionDeadlines(jobRow: jobRow, driverId: userId);
 
     // 2. Find or determine the session direction
     final sessions =
@@ -357,8 +360,202 @@ class LocalJobRepository {
       dropoffLocation: primaryDropoffLocation,
       dropoffEta: primaryDropoffEta,
       direction: direction,
+      sessionStatus: existingSession?.status ?? '',
+      outboundSessionStatus: sessionMap['outbound']?.status,
+      morningStartTime: jobRow.morningStartTime,
+      morningEndTime: jobRow.morningEndTime,
+      eveningStartTime: jobRow.eveningStartTime,
       pickups: pickups,
       dropoffs: dropoffs,
+    );
+  }
+
+  // ── Session deadline enforcement ───────────────────────────────────────────
+
+  /// Applies morning skip/incomplete and evening incomplete rules for today.
+  Future<void> enforceSessionDeadlines({
+    required JobsCacheData jobRow,
+    required String driverId,
+    DateTime? now,
+  }) async {
+    final current = now ?? DateTime.now();
+    final todayDate = _dateString(current);
+
+    final sessions =
+        await (_db.select(_db.sessionsLocal)..where(
+              (t) =>
+                  t.jobId.equals(jobRow.id) & t.sessionDate.equals(todayDate),
+            ))
+            .get();
+
+    final sessionMap = {for (final s in sessions) s.direction: s};
+
+    if (jobRow.hasOutbound) {
+      await _enforceMorningSessionDeadline(
+        jobRow: jobRow,
+        driverId: driverId,
+        todayDate: todayDate,
+        outbound: sessionMap['outbound'],
+        now: current,
+      );
+    }
+
+    if (jobRow.hasInbound) {
+      await _enforceEveningSessionDeadline(
+        jobRow: jobRow,
+        inbound: sessionMap['inbound'],
+        now: current,
+      );
+    }
+
+    await SyncScheduler.flushIfOnline();
+  }
+
+  Future<void> _enforceMorningSessionDeadline({
+    required JobsCacheData jobRow,
+    required String driverId,
+    required String todayDate,
+    required SessionsLocalData? outbound,
+    required DateTime now,
+  }) async {
+    if (!SessionSchedule.isPastMorningDeadline(jobRow.morningEndTime, now)) {
+      return;
+    }
+
+    if (outbound != null && SessionSchedule.isTerminalStatus(outbound.status)) {
+      return;
+    }
+
+    if (outbound != null && SessionSchedule.morningWasStarted(outbound.status)) {
+      await _markSessionStatusLocally(
+        localSessionId: outbound.localId,
+        status: 'incomplete',
+        note: SessionSchedule.morningIncompleteNote,
+      );
+      return;
+    }
+
+    if (outbound != null) {
+      await _markSessionStatusLocally(
+        localSessionId: outbound.localId,
+        status: 'skipped',
+        note: SessionSchedule.skippedNote,
+      );
+      return;
+    }
+
+    await _createSkippedSessionLocally(
+      jobId: jobRow.id,
+      driverId: driverId,
+      todayDate: todayDate,
+      direction: 'outbound',
+      note: SessionSchedule.skippedNote,
+    );
+  }
+
+  Future<void> _enforceEveningSessionDeadline({
+    required JobsCacheData jobRow,
+    required SessionsLocalData? inbound,
+    required DateTime now,
+  }) async {
+    if (inbound == null) return;
+    if (inbound.status != 'active') return;
+
+    final maxDuration = SessionSchedule.eveningMaxDurationMinutes(
+      morningStartTime: jobRow.morningStartTime,
+      morningEndTime: jobRow.morningEndTime,
+    );
+    if (maxDuration == null) return;
+
+    if (!SessionSchedule.isPastEveningCompletionDeadline(
+      startedAt: inbound.startedAt,
+      maxDurationMinutes: maxDuration,
+      now: now,
+    )) {
+      return;
+    }
+
+    await _markSessionStatusLocally(
+      localSessionId: inbound.localId,
+      status: 'incomplete',
+      note: SessionSchedule.eveningIncompleteNote,
+    );
+  }
+
+  Future<void> _createSkippedSessionLocally({
+    required String jobId,
+    required String driverId,
+    required String todayDate,
+    required String direction,
+    required String note,
+  }) async {
+    final localSessionId = _uuid.v4();
+    final now = DateTime.now();
+
+    await _db.into(_db.sessionsLocal).insert(
+      SessionsLocalCompanion.insert(
+        localId: localSessionId,
+        jobId: jobId,
+        sessionDate: todayDate,
+        direction: direction,
+        status: const Value('skipped'),
+        driverId: driverId,
+        startedAt: Value(now),
+        note: Value(note),
+        isSynced: const Value(false),
+      ),
+    );
+
+    await _enqueue(
+      opType: 'session_status',
+      payload: {
+        'local_session_id': localSessionId,
+        'job_id': jobId,
+        'direction': direction,
+        'session_date': todayDate,
+        'driver_id': driverId,
+        'status': 'skipped',
+        'note': note,
+      },
+    );
+  }
+
+  Future<void> _markSessionStatusLocally({
+    required String localSessionId,
+    required String status,
+    required String note,
+  }) async {
+    final session = await (_db.select(
+      _db.sessionsLocal,
+    )..where((t) => t.localId.equals(localSessionId))).getSingleOrNull();
+    if (session == null) return;
+    if (SessionSchedule.isTerminalStatus(session.status)) return;
+    if (session.status == status) return;
+
+    final now = DateTime.now();
+    await (_db.update(
+      _db.sessionsLocal,
+    )..where((t) => t.localId.equals(localSessionId))).write(
+      SessionsLocalCompanion(
+        status: Value(status),
+        note: Value(note),
+        updatedAt: Value(now),
+        isSynced: const Value(false),
+      ),
+    );
+
+    await _enqueue(
+      opType: 'session_status',
+      payload: {
+        'local_session_id': localSessionId,
+        'server_session_id': session.serverId,
+        'job_id': session.jobId,
+        'direction': session.direction,
+        'session_date': session.sessionDate,
+        'driver_id': session.driverId,
+        'status': status,
+        'note': note,
+      },
     );
   }
 
@@ -388,6 +585,9 @@ class LocalJobRepository {
             ))
             .getSingleOrNull();
     if (existing != null) {
+      if (SessionSchedule.isTerminalStatus(existing.status)) {
+        throw StateError('This route session can no longer be started.');
+      }
       final unlinkedPassengers =
           await (_db.select(_db.passengersLocal)..where(
                 (t) =>
@@ -957,6 +1157,8 @@ class LocalJobRepository {
       sessions: sessions,
       passengersByServerSessionId: passengersByServerSessionId,
     );
+
+    await enforceSessionDeadlines(jobRow: jobRow, driverId: driverId);
   }
 
   // ── Stats helpers (for DashboardStatsService offline fallback) ────────────
@@ -1760,8 +1962,12 @@ class LocalJobRepository {
       if (entry.value.status == 'active') return entry.key;
     }
 
-    final outboundDone = sessionMap['outbound']?.status == 'completed';
-    final inboundDone = sessionMap['inbound']?.status == 'completed';
+    final outboundDone = SessionSchedule.isSettledForDirection(
+      sessionMap['outbound']?.status,
+    );
+    final inboundDone = SessionSchedule.isSettledForDirection(
+      sessionMap['inbound']?.status,
+    );
 
     if ((!jobRow.hasOutbound || outboundDone) &&
         (!jobRow.hasInbound || inboundDone)) {

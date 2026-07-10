@@ -13,6 +13,7 @@ import '../../../../services/dashboard_stats_service.dart';
 import '../../../../services/driver_job_request_service.dart';
 import '../../../../services/fcm_service.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/session_schedule.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../widgets/notification_bell_button.dart';
@@ -287,13 +288,31 @@ class _CurrentJobCard extends StatelessWidget {
         final sessionActive = provider.sessionStarted;
         final checklistDone = provider.checklistCompletedToday;
         final isStartAction = !isDropoffPhase;
-        final buttonBlocked = isStartAction && !checklistDone && !sessionActive;
+        final startWindowError = provider.routeStartWindowError;
+        final startWindowBlocked =
+            isStartAction && !sessionActive && startWindowError != null;
+        final buttonBlocked =
+            (isStartAction && !checklistDone && !sessionActive) ||
+            startWindowBlocked;
+        final currentStatusBadge = SessionSchedule.dashboardBadgeLabel(
+          direction: job.direction,
+          status: job.sessionStatus,
+        );
+        final morningStatusBadge = job.direction == 'inbound'
+            ? SessionSchedule.dashboardBadgeLabel(
+                direction: 'outbound',
+                status: job.outboundSessionStatus,
+              )
+            : null;
 
         return _CurrentJobCardShell(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Row(
+              Wrap(
+                spacing: SizeConfig.r(8),
+                runSpacing: SizeConfig.r(8),
+                crossAxisAlignment: WrapCrossAlignment.center,
                 children: [
                   Container(
                     padding: EdgeInsets.symmetric(
@@ -317,8 +336,7 @@ class _CurrentJobCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  if (sessionActive) ...[
-                    SizedBox(width: SizeConfig.r(8)),
+                  if (sessionActive)
                     Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: SizeConfig.r(8),
@@ -351,7 +369,10 @@ class _CurrentJobCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                  ],
+                  if (currentStatusBadge != null)
+                    _SessionStatusBadge(label: currentStatusBadge),
+                  if (morningStatusBadge != null)
+                    _SessionStatusBadge(label: morningStatusBadge),
                 ],
               ),
               SizedBox(height: SizeConfig.r(12)),
@@ -365,7 +386,7 @@ class _CurrentJobCard extends StatelessWidget {
               _JobInfoRow(
                 icon: Icons.group_outlined,
                 label:
-                    '${job.totalPickups} student${job.totalPickups == 1 ? '' : 's'}',
+                    '${job.totalPickups} passenger${job.totalPickups == 1 ? '' : 's'}',
               ),
               SizedBox(height: SizeConfig.r(9)),
               _JobInfoRow(
@@ -428,15 +449,17 @@ class _CurrentJobCard extends StatelessWidget {
                       Icon(
                         Icons.warning_amber_rounded,
                         color: AppColors.warning,
-                        size: SizeConfig.r(16),
+                        size: SizeConfig.r(18),
                       ),
                       SizedBox(width: SizeConfig.r(8)),
                       Expanded(
                         child: Text(
-                          'Complete today\'s safety checklist before starting your run.',
+                          startWindowBlocked
+                              ? startWindowError
+                              : 'Complete today\'s safety checklist before starting your run.',
                           style: TextStyle(
                             fontSize: SizeConfig.sp(12),
-                            color: AppColors.textDark,
+                            color: AppColors.textMedium,
                             height: 1.3,
                           ),
                         ),
@@ -447,7 +470,11 @@ class _CurrentJobCard extends StatelessWidget {
               ],
               SizedBox(height: SizeConfig.r(18)),
               AppButton(
-                label: buttonBlocked ? 'Checklist Required' : actionLabel,
+                label: buttonBlocked
+                    ? (startWindowBlocked
+                          ? 'Outside Start Window'
+                          : 'Checklist Required')
+                    : actionLabel,
                 height: SizeConfig.r(46),
                 borderRadius: SizeConfig.radius,
                 backgroundColor: buttonBlocked ? AppColors.textLight : null,
@@ -459,20 +486,61 @@ class _CurrentJobCard extends StatelessWidget {
                         size: SizeConfig.r(18),
                       ),
                 onPressed: () {
-                  if (buttonBlocked) {
+                  if (startWindowBlocked) {
+                    ScaffoldMessenger.of(
+                      context,
+                    ).showSnackBar(SnackBar(content: Text(startWindowError)));
+                    return;
+                  }
+                  if (isStartAction && !checklistDone && !sessionActive) {
                     _pushVehicleChecklist(context).then((_) {
                       if (!context.mounted) return;
                       context.read<JobProvider>().loadJob(silent: true);
                     });
-                  } else {
-                    Navigator.pushNamed(context, actionRoute);
+                    return;
                   }
+                  Navigator.pushNamed(context, actionRoute);
                 },
               ),
             ],
           ),
         );
       },
+    );
+  }
+}
+
+class _SessionStatusBadge extends StatelessWidget {
+  final String label;
+  const _SessionStatusBadge({required this.label});
+
+  bool get _isSkipped => label.toLowerCase().contains('skipped');
+
+  @override
+  Widget build(BuildContext context) {
+    final color = _isSkipped ? AppColors.textMedium : AppColors.error;
+    final background = _isSkipped
+        ? AppColors.textLight.withValues(alpha: 0.18)
+        : AppColors.error.withValues(alpha: 0.12);
+
+    return Container(
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.r(8),
+        vertical: SizeConfig.r(3),
+      ),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(SizeConfig.r(4)),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          fontSize: SizeConfig.sp(11),
+          fontWeight: FontWeight.w600,
+          color: color,
+        ),
+      ),
     );
   }
 }

@@ -24,8 +24,18 @@ class _PickupQuePageState extends State<PickupQuePage>
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final provider = context.read<JobProvider>();
-      await provider.ensureSessionStarted();
+      final started = await provider.ensureSessionStarted();
       if (!mounted) return;
+      if (!started) {
+        final message = provider.error;
+        if (message != null && message.isNotEmpty) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text(message)));
+        }
+        NavigationService.popToDriverHome(context);
+        return;
+      }
       await provider.startTrackingCurrentPickup();
     });
   }

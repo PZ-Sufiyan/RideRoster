@@ -3,6 +3,7 @@ import '../model/pa_job_model.dart';
 import '../model/job_model.dart' show PickupStatus, DropoffStatus;
 import '../repositories/local_job_repository.dart';
 import '../services/connectivity_service.dart';
+import '../utils/session_schedule.dart';
 
 /// All Supabase queries for the Passenger Assistant — with offline-first fallback.
 ///
@@ -578,7 +579,7 @@ class PaJobService {
     }
   }
 
-  String _pickDirection({
+  String? _pickDirection({
     required Map<String, dynamic> jobRow,
     required Map<String, Map<String, dynamic>> sessionMap,
   }) {
@@ -587,13 +588,18 @@ class PaJobService {
     }
     final hasOutbound = jobRow['has_outbound'] == true;
     final hasInbound = jobRow['has_inbound'] == true;
-    final outboundDone = sessionMap['outbound']?['status'] == 'completed';
-    final inboundDone = sessionMap['inbound']?['status'] == 'completed';
+    final outboundDone = SessionSchedule.isSettledForDirection(
+      sessionMap['outbound']?['status']?.toString(),
+    );
+    final inboundDone = SessionSchedule.isSettledForDirection(
+      sessionMap['inbound']?['status']?.toString(),
+    );
+    if ((!hasOutbound || outboundDone) && (!hasInbound || inboundDone)) {
+      return null;
+    }
     if (hasOutbound && !outboundDone) return 'outbound';
     if (hasInbound && !inboundDone) return 'inbound';
-    if (hasInbound && inboundDone) return 'inbound';
-    if (hasOutbound && outboundDone) return 'outbound';
-    return 'outbound';
+    return null;
   }
 
   String _fullName(Map<String, dynamic>? profile) {

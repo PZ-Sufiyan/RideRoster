@@ -141,6 +141,10 @@ class SyncEngine {
         await _handleCompleteJob(payload, sessionIdMap);
         break;
 
+      case 'session_status':
+        await _handleSessionStatus(payload, sessionIdMap);
+        break;
+
       case 'save_checklist':
         await _handleSaveChecklist(payload);
         break;
@@ -569,6 +573,64 @@ class SyncEngine {
           'updated_at': UtcTime.nowIso(),
         })
         .eq('id', serverSessionId);
+  }
+
+  // ── session_status ────────────────────────────────────────────────────────
+
+  Future<void> _handleSessionStatus(
+    Map<String, dynamic> payload,
+    Map<String, String> sessionIdMap,
+  ) async {
+    final localSessionId = payload['local_session_id'] as String;
+    final status = (payload['status'] as String?)?.trim() ?? '';
+    final note = payload['note'] as String?;
+    if (status.isEmpty) {
+      throw Exception('session_status: missing status');
+    }
+
+    String? serverSessionId = payload['server_session_id'] as String?;
+    serverSessionId ??= sessionIdMap[localSessionId];
+
+    if (serverSessionId == null || serverSessionId.isEmpty) {
+      final jobId = payload['job_id'] as String;
+      final sessionDate = payload['session_date'] as String;
+      final direction = payload['direction'] as String;
+      final driverId = payload['driver_id'] as String;
+
+      await _assertDriverStillAssigned(jobId: jobId, driverId: driverId);
+
+      final result = await _supabase
+          .from('job_sessions')
+          .upsert({
+            'job_id': jobId,
+            'session_date': sessionDate,
+            'direction': direction,
+            'status': status,
+            'driver_id': driverId,
+            if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+            'updated_at': UtcTime.nowIso(),
+          }, onConflict: 'job_id,session_date,direction')
+          .select('id')
+          .single();
+
+      serverSessionId = (result['id'] ?? '').toString();
+      if (serverSessionId.isEmpty) {
+        throw Exception('session_status: server returned empty session ID');
+      }
+
+      sessionIdMap[localSessionId] = serverSessionId;
+      await _local.patchSessionServerId(
+        localId: localSessionId,
+        serverId: serverSessionId,
+      );
+      return;
+    }
+
+    await _supabase.from('job_sessions').update({
+      'status': status,
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+      'updated_at': UtcTime.nowIso(),
+    }).eq('id', serverSessionId);
   }
 
   // ── save_checklist ────────────────────────────────────────────────────────

@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/job_model.dart';
 import '../utils/utc_time.dart';
+import '../utils/session_schedule.dart';
 
 /// All Supabase queries for the active job + session flow.
 ///
@@ -71,6 +72,27 @@ class JobService {
 
     final sessionMap = <String, Map<String, dynamic>>{};
     for (final s in allSessionsToday) {
+      final dir = (s['direction'] ?? '').toString();
+      sessionMap[dir] = Map<String, dynamic>.from(s as Map);
+    }
+
+    await _enforceSessionDeadlines(
+      jobRow: jobRow,
+      jobDbId: jobDbId,
+      userId: userId,
+      todayDate: todayDate,
+      sessionMap: sessionMap,
+    );
+
+    // Re-load sessions after deadline enforcement may have changed status.
+    final refreshedSessions = await _supabase
+        .from('job_sessions')
+        .select('id, direction, status')
+        .eq('job_id', jobDbId)
+        .eq('session_date', todayDate);
+
+    sessionMap.clear();
+    for (final s in refreshedSessions) {
       final dir = (s['direction'] ?? '').toString();
       sessionMap[dir] = Map<String, dynamic>.from(s as Map);
     }
@@ -364,6 +386,11 @@ class JobService {
       dropoffLocation: primaryDropoffLocation,
       dropoffEta: primaryDropoffEta,
       direction: direction,
+      sessionStatus: existingSession?['status']?.toString() ?? '',
+      outboundSessionStatus: sessionMap['outbound']?['status']?.toString(),
+      morningStartTime: jobRow['morning_start_time']?.toString(),
+      morningEndTime: jobRow['morning_end_time']?.toString(),
+      eveningStartTime: jobRow['evening_start_time']?.toString(),
       pickups: pickups,
       dropoffs: dropoffs,
     );
@@ -446,8 +473,12 @@ class JobService {
       if (entry.value['status'] == 'active') return entry.key;
     }
 
-    final outboundDone = sessionMap['outbound']?['status'] == 'completed';
-    final inboundDone = sessionMap['inbound']?['status'] == 'completed';
+    final outboundDone = SessionSchedule.isSettledForDirection(
+      sessionMap['outbound']?['status']?.toString(),
+    );
+    final inboundDone = SessionSchedule.isSettledForDirection(
+      sessionMap['inbound']?['status']?.toString(),
+    );
 
     // Both done (or neither available) → nothing to show
     if ((!hasOutbound || outboundDone) && (!hasInbound || inboundDone)) {
@@ -461,6 +492,119 @@ class JobService {
     if (hasInbound && !inboundDone) return 'inbound';
 
     return null;
+  }
+
+  Future<void> _enforceSessionDeadlines({
+    required Map<String, dynamic> jobRow,
+    required String jobDbId,
+    required String userId,
+    required String todayDate,
+    required Map<String, Map<String, dynamic>> sessionMap,
+    DateTime? now,
+  }) async {
+    final current = now ?? DateTime.now();
+    final morningEnd = jobRow['morning_end_time']?.toString();
+    final morningStart = jobRow['morning_start_time']?.toString();
+    final hasOutbound = jobRow['has_outbound'] == true;
+    final hasInbound = jobRow['has_inbound'] == true;
+
+    if (hasOutbound &&
+        SessionSchedule.isPastMorningDeadline(morningEnd, current)) {
+      final outbound = sessionMap['outbound'];
+      final outboundStatus = outbound?['status']?.toString();
+
+      if (!SessionSchedule.isTerminalStatus(outboundStatus)) {
+        if (outbound != null &&
+            SessionSchedule.morningWasStarted(outboundStatus)) {
+          await _updateSessionStatusOnServer(
+            sessionId: outbound['id']?.toString() ?? '',
+            status: 'incomplete',
+            note: SessionSchedule.morningIncompleteNote,
+          );
+        } else if (outbound != null) {
+          await _updateSessionStatusOnServer(
+            sessionId: outbound['id']?.toString() ?? '',
+            status: 'skipped',
+            note: SessionSchedule.skippedNote,
+          );
+        } else {
+          await _upsertSkippedSessionOnServer(
+            jobDbId: jobDbId,
+            userId: userId,
+            todayDate: todayDate,
+            direction: 'outbound',
+            note: SessionSchedule.skippedNote,
+          );
+        }
+      }
+    }
+
+    if (!hasInbound) return;
+
+    final inbound = sessionMap['inbound'];
+    if (inbound == null) return;
+    if ((inbound['status']?.toString() ?? '') != 'active') return;
+
+    final maxDuration = SessionSchedule.eveningMaxDurationMinutes(
+      morningStartTime: morningStart,
+      morningEndTime: morningEnd,
+    );
+    if (maxDuration == null) return;
+
+    final startedAt = _parseDateTime(inbound['started_at']);
+    if (startedAt == null) return;
+
+    if (!SessionSchedule.isPastEveningCompletionDeadline(
+      startedAt: startedAt,
+      maxDurationMinutes: maxDuration,
+      now: current,
+    )) {
+      return;
+    }
+
+    await _updateSessionStatusOnServer(
+      sessionId: inbound['id']?.toString() ?? '',
+      status: 'incomplete',
+      note: SessionSchedule.eveningIncompleteNote,
+    );
+  }
+
+  Future<void> _upsertSkippedSessionOnServer({
+    required String jobDbId,
+    required String userId,
+    required String todayDate,
+    required String direction,
+    required String note,
+  }) async {
+    await _supabase.from('job_sessions').upsert({
+      'job_id': jobDbId,
+      'session_date': todayDate,
+      'direction': direction,
+      'status': 'skipped',
+      'driver_id': userId,
+      'note': note,
+      'updated_at': UtcTime.nowIso(),
+    }, onConflict: 'job_id,session_date,direction');
+  }
+
+  Future<void> _updateSessionStatusOnServer({
+    required String sessionId,
+    required String status,
+    required String note,
+  }) async {
+    if (sessionId.isEmpty) return;
+    await _supabase.from('job_sessions').update({
+      'status': status,
+      'note': note,
+      'updated_at': UtcTime.nowIso(),
+    }).eq('id', sessionId);
+  }
+
+  DateTime? _parseDateTime(dynamic raw) {
+    if (raw == null) return null;
+    final value = raw.toString().trim();
+    if (value.isEmpty || value == 'null') return null;
+    return DateTime.tryParse(value);
   }
 
   // ── Session management ────────────────────────────────────────────────────

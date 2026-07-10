@@ -123,6 +123,11 @@ class JobModel {
   final String dropoffLocation; // primary dropoff label for dashboard card
   final String dropoffEta;
   final String direction; // 'outbound' | 'inbound'
+  final String sessionStatus; // job_sessions.status for current direction
+  final String? outboundSessionStatus; // morning session status for context
+  final String? morningStartTime; // raw DB time, e.g. 07:30:00
+  final String? morningEndTime; // raw DB time, e.g. 09:00:00
+  final String? eveningStartTime; // raw DB time, e.g. 15:00:00
   final List<PickupStop> pickups;
   final List<DropoffStop> dropoffs;
 
@@ -138,6 +143,11 @@ class JobModel {
     required this.dropoffLocation,
     required this.dropoffEta,
     required this.direction,
+    this.sessionStatus = '',
+    this.outboundSessionStatus,
+    this.morningStartTime,
+    this.morningEndTime,
+    this.eveningStartTime,
     required this.pickups,
     this.dropoffs = const [],
   });
@@ -172,6 +182,9 @@ class JobModel {
       dropoffs.every((d) => d.status == DropoffStatus.completed);
 
   bool get isInbound => direction == 'inbound';
+
+  String? get routeStartTimeRaw =>
+      direction == 'outbound' ? morningStartTime : eveningStartTime;
 
   /// Backward-compat alias
   String get backendJobId => sessionId;

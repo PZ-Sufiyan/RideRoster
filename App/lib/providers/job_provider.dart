@@ -11,6 +11,8 @@ import '../services/location_constants.dart';
 import '../services/location_service.dart';
 import '../services/location_task.dart';
 import '../services/notification_service.dart';
+import '../utils/job_start_window.dart';
+import '../utils/session_schedule.dart';
 
 /// Manages active job + session state for the driver flow.
 ///
@@ -51,6 +53,7 @@ class JobProvider extends ChangeNotifier {
   StreamSubscription<bool>? _onlineSub;
   StreamSubscription<AuthState>? _authSub;
   Timer? _reloadDebounce;
+  Timer? _deadlineTimer;
   bool _serverRefreshInFlight = false;
 
   JobProvider({
@@ -85,6 +88,37 @@ class JobProvider extends ChangeNotifier {
   bool get isTracking => _isTracking;
   double? get currentDistanceMeters => _currentDistanceMeters;
   bool get sessionStarted => _job != null && _job!.sessionId.isNotEmpty;
+
+  /// Null when the driver may start (or resume) the route; otherwise an error.
+  String? get routeStartWindowError {
+    if (sessionStarted) return null;
+    final job = _job;
+    if (job == null) return null;
+
+    if (job.direction == 'outbound' &&
+        SessionSchedule.isPastMorningDeadline(
+          job.morningEndTime,
+          DateTime.now(),
+        )) {
+      return 'The morning route is no longer available today.';
+    }
+
+    return JobStartWindow.validate(
+      direction: job.direction,
+      morningStartTime: job.morningStartTime,
+      eveningStartTime: job.eveningStartTime,
+    );
+  }
+
+  String? get routeStartWindowLabel {
+    final job = _job;
+    if (job == null) return null;
+    return JobStartWindow.allowedWindowLabel(
+      direction: job.direction,
+      morningStartTime: job.morningStartTime,
+      eveningStartTime: job.eveningStartTime,
+    );
+  }
   /// True when the driver is within [LocationConstants.completionRadiusMeters]
   /// of the active pickup stop (live GPS stream).
   bool get canCompletePickup {
@@ -252,9 +286,18 @@ class JobProvider extends ChangeNotifier {
       _hasLoadedOnce = true;
       _jobDataEpoch++;
       notifyListeners();
+      _syncDeadlineWatcher();
     }
 
     _refreshFromServerInBackground();
+  }
+
+  void _syncDeadlineWatcher() {
+    _deadlineTimer?.cancel();
+    if (_job == null) return;
+    _deadlineTimer = Timer.periodic(const Duration(minutes: 1), (_) {
+      loadJob(silent: true);
+    });
   }
 
   /// Pulls server truth into the cache, then silently re-reads local tables.
@@ -356,12 +399,21 @@ class JobProvider extends ChangeNotifier {
 
   // ── Session start ─────────────────────────────────────────────────────────
 
-  Future<void> ensureSessionStarted() async {
+  Future<bool> ensureSessionStarted() async {
     final job = _job;
-    if (job == null) return;
+    if (job == null) return false;
 
     final userId = Supabase.instance.client.auth.currentUser?.id ?? '';
-    if (userId.isEmpty) return;
+    if (userId.isEmpty) return false;
+
+    if (job.sessionId.isNotEmpty) return true;
+
+    final windowError = routeStartWindowError;
+    if (windowError != null) {
+      _error = windowError;
+      notifyListeners();
+      return false;
+    }
 
     _isLoading = true;
     _error = null;
@@ -383,8 +435,10 @@ class JobProvider extends ChangeNotifier {
       );
       _job = await _localRepo.fetchCurrentJob(userId);
       if (_job != null) _setActiveToFirstPending();
+      return _job?.sessionId.isNotEmpty == true;
     } catch (e) {
       _error = e.toString();
+      return false;
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -527,7 +581,8 @@ class JobProvider extends ChangeNotifier {
       return;
     }
 
-    await ensureSessionStarted();
+    final started = await ensureSessionStarted();
+    if (!started) return;
 
     try {
       final stop = _job!.pickups[_activePickupIndex];
@@ -564,7 +619,8 @@ class JobProvider extends ChangeNotifier {
 
   Future<void> markCurrentAsNotPicked() async {
     if (_job == null) return;
-    await ensureSessionStarted();
+    final started = await ensureSessionStarted();
+    if (!started) return;
 
     try {
       final stop = _job!.pickups[_activePickupIndex];
@@ -600,7 +656,8 @@ class JobProvider extends ChangeNotifier {
   /// Saves extended wait minutes for the active pickup (status stays pending).
   Future<void> saveExtendedWait({required int minutes}) async {
     if (_job == null || minutes <= 0) return;
-    await ensureSessionStarted();
+    final started = await ensureSessionStarted();
+    if (!started) return;
 
     try {
       final stop = _job!.pickups[_activePickupIndex];
@@ -851,6 +908,7 @@ class JobProvider extends ChangeNotifier {
   @override
   void dispose() {
     _reloadDebounce?.cancel();
+    _deadlineTimer?.cancel();
     _reconnectSub?.cancel();
     _onlineSub?.cancel();
     _authSub?.cancel();
