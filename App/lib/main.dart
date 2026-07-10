@@ -214,26 +214,58 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
   final LocationService _locationService = LocationService();
   final SosLocationService _sosLocationService = SosLocationService();
   bool _locationReady = false;
-  bool _isCheckingLocation = true;
+  /// False until the first permission probe finishes — avoids flashing the
+  /// "required" screen while we still don't know the real permission state.
+  bool _locationCheckComplete = false;
+  bool _isCheckingLocation = false;
   String? _lastAuthUserId;
+  bool _locationCheckInFlight = false;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _enforceLocationRequirement();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final auth = context.read<AuthProvider>();
+      auth.addListener(_onAuthChanged);
+      _onAuthChanged();
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    try {
+      context.read<AuthProvider>().removeListener(_onAuthChanged);
+    } catch (_) {}
     super.dispose();
+  }
+
+  void _onAuthChanged() {
+    if (!mounted) return;
+    final auth = context.read<AuthProvider>();
+    if (auth.isAuthenticated && auth.isDriver) {
+      unawaited(_enforceLocationRequirement());
+      return;
+    }
+
+    if (!auth.isAuthenticated) {
+      setState(() {
+        _locationReady = false;
+        _locationCheckComplete = false;
+        _isCheckingLocation = false;
+      });
+    }
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      _enforceLocationRequirement(showLoader: false);
+      final auth = context.read<AuthProvider>();
+      if (auth.isAuthenticated && auth.isDriver) {
+        unawaited(_enforceLocationRequirement(showLoader: false));
+      }
       _resumeSosTrackingIfAuthenticated();
       // Re-probe on foreground so banner updates quickly after app switch.
       ConnectivityService().triggerProbe();
@@ -253,22 +285,47 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
 
   Future<void> _enforceLocationRequirement({bool showLoader = true}) async {
     if (!mounted) return;
-    if (showLoader) setState(() => _isCheckingLocation = true);
+    final auth = context.read<AuthProvider>();
+    if (!auth.isAuthenticated || !auth.isDriver) return;
+    if (_locationCheckInFlight) return;
+
+    _locationCheckInFlight = true;
+    if (showLoader && mounted && (!_locationCheckComplete || !_locationReady)) {
+      setState(() => _isCheckingLocation = true);
+    }
     try {
-      final hasPermission = await _locationService
-          .ensurePermission()
-          .timeout(const Duration(seconds: 30), onTimeout: () => false);
+      var hasPermission = await _locationService
+          .ensurePermission(requestIfDenied: false)
+          .timeout(const Duration(seconds: 3), onTimeout: () => false);
+
+      if (!hasPermission) {
+        hasPermission = await _locationService
+            .ensurePermission()
+            .timeout(const Duration(seconds: 8), onTimeout: () => false);
+      }
+
+      if (!hasPermission) {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        hasPermission = await _locationService
+            .ensurePermission(requestIfDenied: false)
+            .timeout(const Duration(seconds: 3), onTimeout: () => false);
+      }
+
       if (!mounted) return;
       setState(() {
         _locationReady = hasPermission;
-        if (showLoader) _isCheckingLocation = false;
+        _locationCheckComplete = true;
+        _isCheckingLocation = false;
       });
     } catch (_) {
       if (!mounted) return;
       setState(() {
         _locationReady = false;
-        if (showLoader) _isCheckingLocation = false;
+        _locationCheckComplete = true;
+        _isCheckingLocation = false;
       });
+    } finally {
+      _locationCheckInFlight = false;
     }
   }
 
@@ -301,19 +358,21 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
     return Consumer<AuthProvider>(
       builder: (_, auth, __) {
         if (auth.isAuthenticated) {
-          _startSosTrackingIfAuthenticated();
+          unawaited(_startSosTrackingIfAuthenticated());
         } else {
-          _stopSosTracking();
+          unawaited(_stopSosTracking());
         }
 
-        if (_isCheckingLocation) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
+        if (auth.isAuthenticated && auth.isDriver) {
+          if (!_locationCheckComplete || _isCheckingLocation) {
+            return const Scaffold(
+              body: Center(child: CircularProgressIndicator()),
+            );
+          }
 
-        if (!_locationReady) {
-          return LocationRequiredPage(onRetry: _enforceLocationRequirement);
+          if (!_locationReady) {
+            return LocationRequiredPage(onRetry: _enforceLocationRequirement);
+          }
         }
 
         return const _AuthEntryPage();

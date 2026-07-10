@@ -66,8 +66,15 @@ class _PickupPageState extends State<PickupPage> with WidgetsBindingObserver {
                 if (provider.canCompletePickup)
                   _ArrivalBanner(locationName: active?.locationName ?? ''),
                 Expanded(
-                  child: job == null || active == null
+                  child: job == null
                       ? const Center(child: CircularProgressIndicator())
+                      : active == null
+                      ? _AllPickupsResolved(
+                          onContinue: () => Navigator.pushNamed(
+                            context,
+                            AppRoutes.completeJob,
+                          ),
+                        )
                       : SingleChildScrollView(
                           padding: EdgeInsets.all(SizeConfig.r(16)),
                           child: Column(
@@ -164,7 +171,13 @@ class _PickupPageState extends State<PickupPage> with WidgetsBindingObserver {
       child: Row(
         children: [
           IconButton(
-            onPressed: () => Navigator.maybePop(context),
+            onPressed: () {
+              if (Navigator.of(context).canPop()) {
+                Navigator.of(context).pop();
+                return;
+              }
+              Navigator.pushReplacementNamed(context, AppRoutes.pickupQueue);
+            },
             icon: Icon(
               Icons.arrow_back,
               color: AppColors.textDark,
@@ -670,6 +683,49 @@ class _UpcomingStopCard extends StatelessWidget {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// All Pickups Resolved
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _AllPickupsResolved extends StatelessWidget {
+  final VoidCallback onContinue;
+  const _AllPickupsResolved({required this.onContinue});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: EdgeInsets.all(SizeConfig.r(24)),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              Icons.check_circle_outline,
+              size: SizeConfig.r(52),
+              color: AppColors.success,
+            ),
+            SizedBox(height: SizeConfig.r(16)),
+            Text(
+              'All pickups resolved',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(17),
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
+              ),
+            ),
+            SizedBox(height: SizeConfig.r(24)),
+            AppButton(
+              label: 'Go to Drop-off',
+              borderRadius: SizeConfig.radiusLG,
+              onPressed: onContinue,
+            ),
+          ],
+        ),
       ),
     );
   }

@@ -4,6 +4,7 @@ import '../../../../components/app_button.dart';
 import '../../../../components/offline_banner.dart';
 import '../../../../providers/job_provider.dart';
 import '../../../../routes/app_routes.dart';
+import '../../../../services/navigation_service.dart';
 import '../../../../model/job_model.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
@@ -45,7 +46,13 @@ class _PickupQuePageState extends State<PickupQuePage>
   @override
   Widget build(BuildContext context) {
     SizeConfig.init(context);
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        NavigationService.popToDriverHome(context);
+      },
+      child: Scaffold(
       backgroundColor: AppColors.surfaceGray,
       body: SafeArea(
         child: Consumer<JobProvider>(
@@ -110,6 +117,7 @@ class _PickupQuePageState extends State<PickupQuePage>
           },
         ),
       ),
+    ),
     );
   }
 
@@ -148,7 +156,7 @@ class _PickupQuePageState extends State<PickupQuePage>
       child: Row(
         children: [
           IconButton(
-            onPressed: () => Navigator.maybePop(context),
+            onPressed: () => NavigationService.popToDriverHome(context),
             icon: Icon(
               Icons.arrow_back,
               color: AppColors.textDark,

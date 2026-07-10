@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/job_model.dart';
+import '../utils/utc_time.dart';
 
 /// All Supabase queries for the active job + session flow.
 ///
@@ -483,7 +484,7 @@ class JobService {
           'direction': direction,
           'status': 'active',
           'driver_id': userId,
-          'started_at': DateTime.now().toIso8601String(),
+          'started_at': UtcTime.nowIso(),
         }, onConflict: 'job_id,session_date,direction')
         .select('id')
         .single();
@@ -563,10 +564,10 @@ class JobService {
     if (pickupId.isEmpty) return;
     final update = <String, dynamic>{
       'status': _dbPickupStatus(status),
-      'updated_at': DateTime.now().toIso8601String(),
+      'updated_at': UtcTime.nowIso(),
     };
     if (status == PickupStatus.completed) {
-      update['picked_up_at'] = DateTime.now().toIso8601String();
+      update['picked_up_at'] = UtcTime.nowIso();
     }
     await _supabase
         .from('job_session_passengers')
@@ -582,10 +583,10 @@ class JobService {
     if (dropoffId.isEmpty) return;
     final update = <String, dynamic>{
       'status': status == DropoffStatus.completed ? 'dropped_off' : 'pending',
-      'updated_at': DateTime.now().toIso8601String(),
+      'updated_at': UtcTime.nowIso(),
     };
     if (status == DropoffStatus.completed) {
-      update['dropped_off_at'] = DateTime.now().toIso8601String();
+      update['dropped_off_at'] = UtcTime.nowIso();
     }
     await _supabase
         .from('job_session_passengers')
@@ -607,8 +608,8 @@ class JobService {
         .from('job_session_passengers')
         .update({
           'status': 'dropped_off',
-          'dropped_off_at': DateTime.now().toIso8601String(),
-          'updated_at': DateTime.now().toIso8601String(),
+          'dropped_off_at': UtcTime.nowIso(),
+          'updated_at': UtcTime.nowIso(),
         })
         .eq('session_id', sessionId)
         .eq('dropoff_address', schoolAddress);
@@ -624,8 +625,8 @@ class JobService {
         .from('job_session_passengers')
         .update({
           'status': 'dropped_off',
-          'dropped_off_at': DateTime.now().toIso8601String(),
-          'updated_at': DateTime.now().toIso8601String(),
+          'dropped_off_at': UtcTime.nowIso(),
+          'updated_at': UtcTime.nowIso(),
         })
         .eq('session_id', sessionId)
         .eq('status', 'picked_up');
@@ -638,9 +639,9 @@ class JobService {
         .from('job_sessions')
         .update({
           'status': 'completed',
-          'completed_at': DateTime.now().toIso8601String(),
+          'completed_at': UtcTime.nowIso(),
           if (noteValue != null) 'note': noteValue,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': UtcTime.nowIso(),
         })
         .eq('id', sessionId);
   }

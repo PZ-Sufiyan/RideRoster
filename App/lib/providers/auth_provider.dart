@@ -96,9 +96,7 @@ class AuthProvider extends ChangeNotifier {
       _userRole = result.role;
       _errorMessage = null;
       _setStatus(AuthStatus.authenticated);
-      // Subscribe after successful login — userId is now set
-      await _subscribeRealtime();
-      await _registerPushTokenIfNeeded();
+      unawaited(_completeAuthenticatedSetup());
       return true;
     } else {
       _errorMessage = result.error;

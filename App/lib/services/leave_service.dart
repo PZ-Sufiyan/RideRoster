@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/leave_model.dart';
+import '../utils/utc_time.dart';
 
 /// All Supabase queries for the unified leave request feature.
 ///
@@ -200,8 +201,8 @@ class LeaveService {
           if (attachmentUrl != null && attachmentUrl.isNotEmpty)
             'attachment_url': attachmentUrl,
           'status': 'pending',
-          'created_at': DateTime.now().toIso8601String(),
-          'updated_at': DateTime.now().toIso8601String(),
+          'created_at': UtcTime.nowIso(),
+          'updated_at': UtcTime.nowIso(),
         })
         .select()
         .single();
@@ -229,7 +230,7 @@ class LeaveService {
         .update({
           'status': status,
           'admin_notes': adminNotes?.trim(),
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': UtcTime.nowIso(),
         })
         .eq('id', requestId);
   }

@@ -1,5 +1,6 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/job_request_model.dart';
+import '../utils/utc_time.dart';
 
 /// Fetches pending job approval requests for the driver.
 ///
@@ -202,7 +203,7 @@ class DriverJobRequestService {
     final normalizedStatus = status.trim().toLowerCase();
     final Map<String, dynamic> payload = {
       'driver_approval_status': normalizedStatus,
-      'updated_at': DateTime.now().toIso8601String(),
+      'updated_at': UtcTime.nowIso(),
     };
 
     // Only write the counter amount when sending a counter request.

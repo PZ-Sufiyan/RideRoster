@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:drift/drift.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:uuid/uuid.dart';
 import '../database/app_database.dart';
 import '../../model/job_model.dart';
@@ -7,6 +8,7 @@ import '../../model/pa_job_model.dart';
 import '../services/sync_scheduler.dart';
 import '../services/connectivity_service.dart';
 import '../services/vehicle_safety_check_service.dart';
+import '../utils/utc_time.dart';
 
 /// Replaces the network calls in [JobService] with local drift reads/writes.
 ///
@@ -402,7 +404,7 @@ class LocalJobRepository {
             'direction': direction,
             'session_date': todayDate,
             'driver_id': driverId,
-            'started_at': (existing.startedAt ?? now).toIso8601String(),
+            'started_at': UtcTime.toIso(existing.startedAt ?? now),
           },
         );
       }
@@ -477,7 +479,7 @@ class LocalJobRepository {
           'direction': direction,
           'session_date': todayDate,
           'driver_id': driverId,
-          'started_at': now.toIso8601String(),
+          'started_at': UtcTime.toIso(now),
         },
       );
     });
@@ -534,7 +536,7 @@ class LocalJobRepository {
         'local_session_id': row.localSessionId,
         'status': dbStatus,
         'picked_up_at': status == PickupStatus.completed
-            ? now.toIso8601String()
+            ? UtcTime.toIso(now)
             : null,
         if (row.notes != null && row.notes!.trim().isNotEmpty)
           'notes': row.notes,
@@ -629,7 +631,7 @@ class LocalJobRepository {
         'passenger_local_id': resolvedId,
         'passenger_server_id': row.serverId,
         'local_session_id': row.localSessionId,
-        'dropped_off_at': now.toIso8601String(),
+        'dropped_off_at': UtcTime.toIso(now),
       },
     );
   }
@@ -667,7 +669,7 @@ class LocalJobRepository {
         'local_session_id': localSessionId,
         'server_session_id': session?.serverId,
         'school_address': schoolAddress,
-        'dropped_off_at': now.toIso8601String(),
+        'dropped_off_at': UtcTime.toIso(now),
       },
     );
   }
@@ -721,7 +723,7 @@ class LocalJobRepository {
       payload: {
         'local_session_id': localSessionId,
         'server_session_id': session?.serverId,
-        'completed_at': now.toIso8601String(),
+        'completed_at': UtcTime.toIso(now),
         'note': noteValue,
       },
     );
@@ -769,7 +771,7 @@ class LocalJobRepository {
         'checks': checksPassFail,
         'status': status,
         'all_pass': allPass,
-        'updated_at': now.toIso8601String(),
+        'updated_at': UtcTime.nowIso(),
       },
     );
 
@@ -880,6 +882,81 @@ class LocalJobRepository {
               ..limit(1))
             .getSingleOrNull();
     return row != null;
+  }
+
+  /// After logout/reinstall the local session rows are wiped — pull today's
+  /// [job_sessions] + [job_session_passengers] from Supabase when online so
+  /// the driver dashboard resumes the in-progress run.
+  Future<void> ensureSessionCachedFromServer(String driverId) async {
+    if (driverId.trim().isEmpty) return;
+    if (await hasSessionToday(driverId)) return;
+    if (!ConnectivityService().canReachServer) return;
+
+    final todayDate = _dateString(DateTime.now());
+    final supabase = Supabase.instance.client;
+
+    final jobRow =
+        await (_db.select(_db.jobsCache)
+              ..where(
+                (t) =>
+                    t.assignedDriverId.equals(driverId) &
+                    t.status.isNotIn(['cancelled']) &
+                    t.driverApprovalStatus.equalsNullable('accepted'),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+    if (jobRow == null) return;
+
+    List<Map<String, dynamic>> sessions;
+    try {
+      final sessionRows = await supabase
+          .from('job_sessions')
+          .select(
+            'id, direction, status, driver_id, started_at, completed_at, note',
+          )
+          .eq('job_id', jobRow.id)
+          .eq('session_date', todayDate)
+          .timeout(const Duration(seconds: 4));
+
+      sessions = sessionRows
+          .map((s) => Map<String, dynamic>.from(s as Map))
+          .toList();
+    } catch (_) {
+      return;
+    }
+    if (sessions.isEmpty) return;
+
+    final passengersByServerSessionId = <String, List<Map<String, dynamic>>>{};
+    for (final session in sessions) {
+      final sessionId = (session['id'] ?? '').toString();
+      if (sessionId.isEmpty) continue;
+
+      try {
+        final passengerRows = await supabase
+            .from('job_session_passengers')
+            .select(
+              'id, passenger_id, stop_order, status, '
+              'pickup_address, pickup_postcode, pickup_latitude, pickup_longitude, '
+              'dropoff_address, dropoff_postcode, notes, '
+              'picked_up_at, dropped_off_at',
+            )
+            .eq('session_id', sessionId)
+            .timeout(const Duration(seconds: 4));
+
+        passengersByServerSessionId[sessionId] = passengerRows
+            .map((r) => Map<String, dynamic>.from(r as Map))
+            .toList();
+      } catch (_) {
+        passengersByServerSessionId[sessionId] = [];
+      }
+    }
+
+    await mirrorPaLiveStateFromServer(
+      jobId: jobRow.id,
+      todayDate: todayDate,
+      sessions: sessions,
+      passengersByServerSessionId: passengersByServerSessionId,
+    );
   }
 
   // ── Stats helpers (for DashboardStatsService offline fallback) ────────────

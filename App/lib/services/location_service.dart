@@ -4,12 +4,25 @@ import 'package:geolocator/geolocator.dart';
 class LocationService {
   /// Ensures location services are enabled and app permissions are granted.
   /// Returns true only when location access can be used right now.
-  Future<bool> ensurePermission() async {
-    final serviceEnabled = await Geolocator.isLocationServiceEnabled();
-    if (!serviceEnabled) return false;
-
+  Future<bool> ensurePermission({bool requestIfDenied = true}) async {
     var permission = await Geolocator.checkPermission();
-    if (permission == LocationPermission.denied) {
+    if (permission == LocationPermission.always ||
+        permission == LocationPermission.whileInUse) {
+      return Geolocator.isLocationServiceEnabled();
+    }
+
+    if (permission == LocationPermission.deniedForever) {
+      return false;
+    }
+
+    if (!await Geolocator.isLocationServiceEnabled()) {
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+      if (!await Geolocator.isLocationServiceEnabled()) {
+        return false;
+      }
+    }
+
+    if (permission == LocationPermission.denied && requestIfDenied) {
       permission = await Geolocator.requestPermission();
     }
 

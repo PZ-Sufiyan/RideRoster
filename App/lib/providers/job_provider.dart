@@ -206,6 +206,17 @@ class JobProvider extends ChangeNotifier {
     }
 
     try {
+      final needsSessionRestore =
+          ConnectivityService().canReachServer &&
+          !await _localRepo.hasSessionToday(userId);
+      if (needsSessionRestore) {
+        unawaited(
+          _localRepo.ensureSessionCachedFromServer(userId).then((_) async {
+            await _reloadJobFromLocal(userId);
+          }),
+        );
+      }
+
       final results = await Future.wait<dynamic>([
         _localRepo.fetchCurrentJob(userId),
         _localRepo.isChecklistCompletedToday(userId),
@@ -267,6 +278,10 @@ class JobProvider extends ChangeNotifier {
         await _localRepo.ensureChecklistCachedFromServer(userId);
       } catch (_) {}
 
+      try {
+        await _localRepo.ensureSessionCachedFromServer(userId);
+      } catch (_) {}
+
       await _reloadJobFromLocal(userId);
 
       if (assignmentRevokedMessage != null && _job == null) {
@@ -283,6 +298,12 @@ class JobProvider extends ChangeNotifier {
 
   Future<void> _reloadJobFromLocal(String userId) async {
     try {
+      final previousSessionId = _job?.sessionId ?? '';
+      final previousPickupStatuses = _job?.pickups
+              .map((p) => p.status)
+              .toList(growable: false) ??
+          const <PickupStatus>[];
+
       final results = await Future.wait<dynamic>([
         _localRepo.fetchCurrentJob(userId),
         _localRepo.isChecklistCompletedToday(userId),
@@ -298,7 +319,12 @@ class JobProvider extends ChangeNotifier {
       _job = updatedJob;
 
       if (_job != null) {
-        if (!sameJob) {
+        final sessionRestored =
+            previousSessionId.isEmpty && _job!.sessionId.isNotEmpty;
+        final pickupsChanged = sameJob &&
+            !_samePickupStatuses(previousPickupStatuses, _job!.pickups);
+
+        if (!sameJob || sessionRestored || pickupsChanged) {
           _setActiveToFirstPending();
         } else {
           _activePickupIndex = _activePickupIndex.clamp(
@@ -313,6 +339,17 @@ class JobProvider extends ChangeNotifier {
       _jobDataEpoch++;
       notifyListeners();
     } catch (_) {}
+  }
+
+  bool _samePickupStatuses(
+    List<PickupStatus> previous,
+    List<PickupStop> current,
+  ) {
+    if (previous.length != current.length) return false;
+    for (var i = 0; i < previous.length; i++) {
+      if (previous[i] != current[i].status) return false;
+    }
+    return true;
   }
 
   Future<void> refreshJobDataSilently() async => loadJob(silent: true);
@@ -331,6 +368,12 @@ class JobProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      if (ConnectivityService().canReachServer) {
+        try {
+          await _localRepo.ensureSessionCachedFromServer(userId);
+        } catch (_) {}
+      }
+
       // Idempotent — creates session if missing, or re-enqueues sync when
       // passengers still lack server IDs.
       await _localRepo.startSessionLocally(

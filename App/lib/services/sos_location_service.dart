@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'location_service.dart';
+import '../utils/utc_time.dart';
 
 /// Handles SOS alert creation and live location streaming.
 ///
@@ -362,7 +363,7 @@ class SosLocationService {
             'latitude': position.latitude,
             'longitude': position.longitude,
             'is_online': isOnline,
-            'updated_at': DateTime.now().toIso8601String(),
+            'updated_at': UtcTime.nowIso(),
           }, onConflict: 'driver_id')
           .timeout(_networkTimeout);
     } catch (_) {}
@@ -393,7 +394,7 @@ class SosLocationService {
                   'latitude': 0,
                   'longitude': 0,
                   'is_online': false,
-                  'updated_at': DateTime.now().toIso8601String(),
+                  'updated_at': UtcTime.nowIso(),
                 }, onConflict: 'driver_id')
                 .timeout(_networkTimeout);
           } catch (_) {}

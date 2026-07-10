@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../services/user_notification_service.dart';
 
 /// Notification screen palette — matches the design screenshot.
 class _PaNotificationColors {
-  static const Color pageBg = Color(0xFFF8F9FB);
   static const Color primary = Color(0xFF0088CC);
   static const Color chipBorder = Color(0xFFE5E7EB);
   static const Color iconBlueBg = Color(0xFFE8F4FC);
@@ -184,22 +184,32 @@ class _PaNotificationsPageState extends State<PaNotificationsPage> {
     final filtered = _filteredItems;
 
     return Scaffold(
-      backgroundColor: _PaNotificationColors.pageBg,
+      backgroundColor: AppColors.background,
       body: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            _NotificationsHeader(
-              unreadCount: _unreadCount,
+            _NotificationsAppBar(
               selectionMode: _selectionMode,
               selectedCount: _selectedIds.length,
               markingRead: _markingRead,
-              onMarkAllRead: _unreadCount > 0 ? _markAllRead : null,
+              onBack: () => _goBack(context),
+              onMarkAllRead: _unreadCount > 0 && !_selectionMode
+                  ? _markAllRead
+                  : null,
               onMarkSelectedRead:
-                  _selectionMode && _selectedIds.isNotEmpty ? _markSelectedRead : null,
+                  _selectionMode && _selectedIds.isNotEmpty
+                  ? _markSelectedRead
+                  : null,
               onCancelSelection: _selectionMode ? _exitSelectionMode : null,
             ),
-            SizedBox(height: SizeConfig.r(16)),
+            if (!_selectionMode) ...[
+              _NotificationsSummaryCard(
+                unreadCount: _unreadCount,
+                totalCount: _items.length,
+              ),
+              SizedBox(height: SizeConfig.r(16)),
+            ],
             _FilterChips(
               selectedFilter: _selectedFilter,
               unreadCount: _unreadCount,
@@ -250,22 +260,30 @@ class _PaNotificationsPageState extends State<PaNotificationsPage> {
       ),
     );
   }
+
+  void _goBack(BuildContext context) {
+    if (Navigator.canPop(context)) {
+      Navigator.pop(context);
+      return;
+    }
+    Navigator.pushReplacementNamed(context, AppRoutes.paDashboard);
+  }
 }
 
-class _NotificationsHeader extends StatelessWidget {
-  final int unreadCount;
+class _NotificationsAppBar extends StatelessWidget {
   final bool selectionMode;
   final int selectedCount;
   final bool markingRead;
+  final VoidCallback onBack;
   final VoidCallback? onMarkAllRead;
   final VoidCallback? onMarkSelectedRead;
   final VoidCallback? onCancelSelection;
 
-  const _NotificationsHeader({
-    required this.unreadCount,
+  const _NotificationsAppBar({
     required this.selectionMode,
     required this.selectedCount,
     required this.markingRead,
+    required this.onBack,
     this.onMarkAllRead,
     this.onMarkSelectedRead,
     this.onCancelSelection,
@@ -273,82 +291,160 @@ class _NotificationsHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: EdgeInsets.fromLTRB(
-        SizeConfig.hPad,
-        SizeConfig.r(12),
-        SizeConfig.hPad,
-        0,
+    return Container(
+      color: AppColors.background,
+      padding: EdgeInsets.symmetric(
+        horizontal: SizeConfig.r(8),
+        vertical: SizeConfig.r(10),
       ),
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          IconButton(
+            onPressed: markingRead ? null : onBack,
+            icon: Icon(
+              Icons.arrow_back,
+              color: AppColors.textDark,
+              size: SizeConfig.r(22),
+            ),
+          ),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  selectionMode ? '$selectedCount selected' : 'Notifications',
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(24),
-                    fontWeight: FontWeight.w700,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                if (!selectionMode) ...[
-                  SizedBox(height: SizeConfig.r(4)),
-                  RichText(
-                    text: TextSpan(
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(13),
-                        color: AppColors.textLight,
-                        fontWeight: FontWeight.w400,
-                      ),
-                      children: [
-                        const TextSpan(text: 'You have unread alerts '),
-                        TextSpan(
-                          text: '$unreadCount',
-                          style: const TextStyle(
-                            color: _PaNotificationColors.primary,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ],
+            child: Text(
+              selectionMode ? '$selectedCount selected' : 'Notifications',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(17),
+                fontWeight: FontWeight.w700,
+                color: AppColors.textDark,
+              ),
             ),
           ),
           if (selectionMode) ...[
             TextButton(
               onPressed: markingRead ? null : onCancelSelection,
-              child: const Text('Cancel'),
+              child: Text(
+                'Cancel',
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(13),
+                  color: AppColors.textMedium,
+                ),
+              ),
             ),
             if (onMarkSelectedRead != null)
               TextButton(
                 onPressed: markingRead ? null : onMarkSelectedRead,
-                child: Text(markingRead ? '…' : 'Mark read'),
-              ),
+                child: Text(
+                  markingRead ? '…' : 'Mark read',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(13),
+                    fontWeight: FontWeight.w600,
+                    color: _PaNotificationColors.primary,
+                  ),
+                ),
+              )
+            else
+              SizedBox(width: SizeConfig.r(48)),
           ] else if (onMarkAllRead != null)
-            GestureDetector(
-              onTap: markingRead ? null : onMarkAllRead,
-              child: Container(
-                width: SizeConfig.r(40),
-                height: SizeConfig.r(40),
-                decoration: const BoxDecoration(
-                  color: Color(0xFFF3F4F6),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.done_all,
-                  color: markingRead
-                      ? AppColors.textLight
-                      : AppColors.textMedium,
-                  size: SizeConfig.r(20),
-                ),
-              ),
+            IconButton(
+              onPressed: markingRead ? null : onMarkAllRead,
+              tooltip: 'Mark all as read',
+              icon: markingRead
+                  ? SizedBox(
+                      width: SizeConfig.r(20),
+                      height: SizeConfig.r(20),
+                      child: const CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(
+                      Icons.done_all,
+                      color: AppColors.textDark,
+                      size: SizeConfig.r(22),
+                    ),
+            )
+          else
+            SizedBox(width: SizeConfig.r(48)),
+        ],
+      ),
+    );
+  }
+}
+
+class _NotificationsSummaryCard extends StatelessWidget {
+  final int unreadCount;
+  final int totalCount;
+
+  const _NotificationsSummaryCard({
+    required this.unreadCount,
+    required this.totalCount,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: EdgeInsets.fromLTRB(
+        SizeConfig.hPad,
+        SizeConfig.r(8),
+        SizeConfig.hPad,
+        0,
+      ),
+      padding: EdgeInsets.all(SizeConfig.r(16)),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF0284C7).withValues(alpha: 0.12),
+            _PaNotificationColors.iconBlueBg,
+          ],
+        ),
+        borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
+        border: Border.all(
+          color: const Color(0xFF0284C7).withValues(alpha: 0.22),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: SizeConfig.r(48),
+            height: SizeConfig.r(48),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(SizeConfig.r(12)),
             ),
+            child: Icon(
+              Icons.notifications_active_outlined,
+              color: const Color(0xFF0284C7),
+              size: SizeConfig.r(26),
+            ),
+          ),
+          SizedBox(width: SizeConfig.r(14)),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  unreadCount > 0
+                      ? '$unreadCount unread alert${unreadCount == 1 ? '' : 's'}'
+                      : 'You\'re all caught up',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(16),
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.textDark,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.r(6)),
+                Text(
+                  totalCount > 0
+                      ? '$totalCount total notification${totalCount == 1 ? '' : 's'} — job assignments, leave updates, and messages.'
+                      : 'New job assignments, leave updates, and messages will appear here.',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(12),
+                    height: 1.4,
+                    color: AppColors.textMedium,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ],
       ),
     );

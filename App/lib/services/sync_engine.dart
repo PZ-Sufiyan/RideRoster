@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../database/app_database.dart';
 import '../repositories/local_job_repository.dart';
 import 'connectivity_service.dart';
+import '../utils/utc_time.dart';
 import 'package:drift/drift.dart';
 
 /// Thrown when queued offline work no longer matches server assignment.
@@ -172,23 +173,39 @@ class SyncEngine {
 
     await _assertDriverStillAssigned(jobId: jobId, driverId: driverId);
 
-    // Upsert session row — matches JobService.startSession behaviour
-    final sessionResult = await _supabase
+    final existingSession = await _supabase
         .from('job_sessions')
-        .upsert({
-          'job_id': jobId,
-          'session_date': sessionDate,
-          'direction': direction,
-          'status': 'active',
-          'driver_id': driverId,
-          'started_at': startedAt,
-        }, onConflict: 'job_id,session_date,direction')
-        .select('id')
-        .single();
+        .select('id, started_at')
+        .eq('job_id', jobId)
+        .eq('session_date', sessionDate)
+        .eq('direction', direction)
+        .maybeSingle();
 
-    final serverSessionId = (sessionResult['id'] ?? '').toString();
-    if (serverSessionId.isEmpty) {
-      throw Exception('start_session: server returned empty session ID');
+    late final String serverSessionId;
+    if (existingSession != null) {
+      serverSessionId = (existingSession['id'] ?? '').toString();
+      if (serverSessionId.isEmpty) {
+        throw Exception('start_session: existing session has empty ID');
+      }
+    } else {
+      // Upsert session row — matches JobService.startSession behaviour
+      final sessionResult = await _supabase
+          .from('job_sessions')
+          .upsert({
+            'job_id': jobId,
+            'session_date': sessionDate,
+            'direction': direction,
+            'status': 'active',
+            'driver_id': driverId,
+            'started_at': startedAt,
+          }, onConflict: 'job_id,session_date,direction')
+          .select('id')
+          .single();
+
+      serverSessionId = (sessionResult['id'] ?? '').toString();
+      if (serverSessionId.isEmpty) {
+        throw Exception('start_session: server returned empty session ID');
+      }
     }
 
     // Remember mapping for this queue pass
@@ -211,7 +228,14 @@ class SyncEngine {
         .where((lp) => lp.serverId == null || lp.serverId!.isEmpty)
         .toList();
 
-    if (passengersNeedingServerId.isNotEmpty) {
+    final existingServerPassengers = await _supabase
+        .from('job_session_passengers')
+        .select('id')
+        .eq('session_id', serverSessionId)
+        .limit(1);
+
+    if (passengersNeedingServerId.isNotEmpty &&
+        (existingServerPassengers as List).isEmpty) {
       final insertRows = passengersNeedingServerId
           .map(
             (lp) => {
@@ -294,7 +318,7 @@ class SyncEngine {
   ) async {
     final update = <String, dynamic>{
       'status': payload['status'],
-      'updated_at': DateTime.now().toIso8601String(),
+      'updated_at': UtcTime.nowIso(),
     };
     if (payload['picked_up_at'] != null) {
       update['picked_up_at'] = payload['picked_up_at'];
@@ -334,7 +358,7 @@ class SyncEngine {
       sessionIdMap: sessionIdMap,
       update: {
         'notes': notes,
-        'updated_at': DateTime.now().toIso8601String(),
+        'updated_at': UtcTime.nowIso(),
       },
       opLabel: 'extended_wait',
     );
@@ -454,7 +478,7 @@ class SyncEngine {
         .update({
           'status': 'dropped_off',
           'dropped_off_at': payload['dropped_off_at'],
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': UtcTime.nowIso(),
         })
         .eq('id', serverPassengerId);
 
@@ -492,7 +516,7 @@ class SyncEngine {
         .update({
           'status': 'dropped_off',
           'dropped_off_at': payload['dropped_off_at'],
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': UtcTime.nowIso(),
         })
         .eq('session_id', serverSessionId)
         .eq('dropoff_address', payload['school_address'] as String);
@@ -531,7 +555,7 @@ class SyncEngine {
         .update({
           'status': 'dropped_off',
           'dropped_off_at': payload['completed_at'],
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': UtcTime.nowIso(),
         })
         .eq('session_id', serverSessionId)
         .eq('status', 'picked_up');
@@ -542,7 +566,7 @@ class SyncEngine {
           'status': 'completed',
           'completed_at': payload['completed_at'],
           if (noteValue != null) 'note': noteValue,
-          'updated_at': DateTime.now().toIso8601String(),
+          'updated_at': UtcTime.nowIso(),
         })
         .eq('id', serverSessionId);
   }

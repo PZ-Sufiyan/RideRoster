@@ -18,6 +18,11 @@ class NavigationService {
     );
   }
 
+  /// Pops job-flow routes until the app home (driver dashboard) is visible.
+  static void popToDriverHome(BuildContext context) {
+    Navigator.of(context).popUntil((route) => route.isFirst);
+  }
+
   static void openDriverNotifications() {
     navigatorKey.currentState?.pushNamed(AppRoutes.driverNotifications);
   }

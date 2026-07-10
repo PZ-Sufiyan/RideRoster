@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:geolocator/geolocator.dart';
+import 'location_constants.dart';
 
 /// Foreground proximity tracking toward a target coordinate.
 ///
@@ -22,7 +23,7 @@ class BackgroundLocationTask {
     required void Function(double distanceMeters) onDistanceUpdate,
     Future<void> Function()? onEnterRadius,
     void Function()? onLocationUnavailable,
-    double radiusMeters = 20,
+    double radiusMeters = LocationConstants.completionRadiusMeters,
   }) async {
     await stop();
     _enterRadiusNotified = false;
