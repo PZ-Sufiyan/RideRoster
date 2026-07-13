@@ -66,6 +66,11 @@ class _Step2RegisterState extends State<Step2Register> {
 
   static const _categories = [
     _VehicleCategory(
+      key: 'Car',
+      icon: Icons.directions_car_outlined,
+      variants: [_VehicleVariant(label: '4 seater', seats: 4)],
+    ),
+    _VehicleCategory(
       key: 'People Carrier',
       icon: Icons.airport_shuttle_outlined,
       variants: [

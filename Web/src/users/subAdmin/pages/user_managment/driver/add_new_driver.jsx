@@ -213,6 +213,7 @@ const SectionHeading = ({ title }) => (
 );
 
 const VEHICLE_TYPES = [
+    { value: 'Car - 4 seater', seats: '4', wheelchairAccessible: false },
     { value: 'People Carrier - 6 passenger', seats: '6', wheelchairAccessible: false },
     { value: 'People Carrier - 7 passenger', seats: '7', wheelchairAccessible: false },
     { value: 'Minibus - 8 passenger', seats: '8', wheelchairAccessible: false },
