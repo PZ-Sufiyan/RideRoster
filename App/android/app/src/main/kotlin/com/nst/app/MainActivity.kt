@@ -1,4 +1,4 @@
-package com.example.rideroster
+package com.nst.app
 
 import io.flutter.embedding.android.FlutterActivity
 
