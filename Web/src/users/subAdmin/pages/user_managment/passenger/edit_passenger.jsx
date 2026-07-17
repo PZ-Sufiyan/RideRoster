@@ -500,8 +500,8 @@ const EditPassenger = () => {
             // This picks up changes to weekly_schedule, addresses, and times
             await syncPassengerSchedules(updatedPassenger);
 
-            // Stay on this page after save; just show success feedback
             pushToast('success', 'Passenger updated successfully. Schedules synced.');
+            navigate(`/team/users/passengers/${id}`);
         } catch (err) {
             pushToast('error', err?.message || 'Could not save changes.');
         } finally {
