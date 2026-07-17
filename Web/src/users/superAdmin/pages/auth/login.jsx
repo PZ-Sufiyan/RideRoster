@@ -3,6 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { FiEye, FiEyeOff } from 'react-icons/fi';
 import illustration from '../../../../assets/image.png';
 import { supabase } from '../../../../lib/supabaseClient';
+import {
+    mapLoginError,
+    requireConfirmedEmailOrSignOut,
+} from '../../../../utils/authEmailGuards';
 
 const Login = () => {
     const [showPassword, setShowPassword] = useState(false);
@@ -37,6 +41,8 @@ const Login = () => {
                 throw error;
             }
 
+            await requireConfirmedEmailOrSignOut(data.user);
+
             // Read role from app_metadata (server-controlled, set by Admin API).
             // Falls back to user_metadata for backwards compatibility.
             const role =
@@ -55,12 +61,7 @@ const Login = () => {
             localStorage.setItem('userRole', 'superadmin');
             navigate('/platform/dashboard');
         } catch (err) {
-            const message = err?.message || 'Login failed. Please try again.';
-            setLoginError(
-                message.toLowerCase().includes('invalid login credentials')
-                    ? 'Invalid email or password. Please try again.'
-                    : message
-            );
+            setLoginError(mapLoginError(err));
         } finally {
             setIsLoading(false);
         }

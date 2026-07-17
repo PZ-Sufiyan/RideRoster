@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../../model/driver_register_data.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/driver_register_validators.dart';
 import '../../../../utils/size_confg.dart';
 import 'register_widgets.dart';
 
@@ -27,6 +28,8 @@ class _Step2RegisterState extends State<Step2Register> {
   // Two-level selection
   String? _selectedCategory;
   String? _selectedVariant;
+  String? _formError;
+  Map<String, String> _fieldErrors = {};
 
   static const List<String> _makes = [
     'Toyota',
@@ -169,7 +172,37 @@ class _Step2RegisterState extends State<Step2Register> {
 
   // ── Save & next ────────────────────────────────────────────────────────────
 
+  void _clearFieldError(String key) {
+    if (_fieldErrors.containsKey(key)) {
+      setState(() => _fieldErrors.remove(key));
+    }
+  }
+
   void _saveAndNext() {
+    final result = DriverRegisterValidators.validateStep2(
+      registrationNumber: _regNumberCtrl.text.trim(),
+      taxiPlateNumber: _taxiPlateCtrl.text.trim(),
+      make: _selectedMake,
+      model: _modelCtrl.text.trim(),
+      vehicleColour: _vehicleColourCtrl.text.trim(),
+      yearOfFirstRegistration: _yearOfRegistration,
+      licensingType: _selectedLicensing,
+      category: _selectedCategory,
+      variant: _selectedVariant,
+    );
+
+    if (!result.isValid) {
+      setState(() {
+        _fieldErrors = Map<String, String>.from(result.errors);
+        _formError = result.firstError;
+      });
+      return;
+    }
+
+    setState(() {
+      _fieldErrors = {};
+      _formError = null;
+    });
     widget.data.registrationNumber = _regNumberCtrl.text.trim();
     widget.data.taxiPlateNumber = _taxiPlateCtrl.text.trim();
     widget.data.make = _selectedMake ?? '';
@@ -294,13 +327,23 @@ class _Step2RegisterState extends State<Step2Register> {
           // ── Registration Number ───────────────────────────────────────────
           const RegFieldLabel('Registration Number (Plate) *'),
           SizedBox(height: SizeConfig.r(6)),
-          RegField(controller: _regNumberCtrl, hintText: 'e.g. ABC 1234'),
+          RegField(
+            controller: _regNumberCtrl,
+            hintText: 'e.g. ABC 1234',
+            errorText: _fieldErrors['registrationNumber'],
+            onChanged: (_) => _clearFieldError('registrationNumber'),
+          ),
           SizedBox(height: SizeConfig.r(18)),
 
           // ── Taxi Plate ────────────────────────────────────────────────────
-          const RegFieldLabel('Vehicle Taxi Plate Number'),
+          const RegFieldLabel('Vehicle Taxi Plate Number *'),
           SizedBox(height: SizeConfig.r(6)),
-          RegField(controller: _taxiPlateCtrl, hintText: 'e.g. ABC 1234'),
+          RegField(
+            controller: _taxiPlateCtrl,
+            hintText: 'e.g. ABC 1234',
+            errorText: _fieldErrors['taxiPlateNumber'],
+            onChanged: (_) => _clearFieldError('taxiPlateNumber'),
+          ),
           SizedBox(height: SizeConfig.r(18)),
 
           // ── Make ──────────────────────────────────────────────────────────
@@ -309,24 +352,48 @@ class _Step2RegisterState extends State<Step2Register> {
           _DropdownTile(
             value: _selectedMake,
             placeholder: 'Select make',
+            hasError: _fieldErrors['make'] != null,
             onTap: () => _showPicker(
               _makes,
               _selectedMake,
-              (v) => setState(() => _selectedMake = v),
+              (v) => setState(() {
+                _selectedMake = v;
+                _fieldErrors.remove('make');
+              }),
             ),
           ),
+          if (_fieldErrors['make'] != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _fieldErrors['make']!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
           SizedBox(height: SizeConfig.r(18)),
 
           // ── Model ─────────────────────────────────────────────────────────
           const RegFieldLabel('Model *'),
           SizedBox(height: SizeConfig.r(6)),
-          RegField(controller: _modelCtrl, hintText: 'e.g. Prius, Vito Taxi'),
+          RegField(
+            controller: _modelCtrl,
+            hintText: 'e.g. Prius, Vito Taxi',
+            errorText: _fieldErrors['model'],
+            onChanged: (_) => _clearFieldError('model'),
+          ),
           SizedBox(height: SizeConfig.r(18)),
 
           // ── Colour ────────────────────────────────────────────────────────
           const RegFieldLabel('Vehicle Colour *'),
           SizedBox(height: SizeConfig.r(6)),
-          RegField(controller: _vehicleColourCtrl, hintText: 'e.g. Black'),
+          RegField(
+            controller: _vehicleColourCtrl,
+            hintText: 'e.g. Black',
+            errorText: _fieldErrors['vehicleColour'],
+            onChanged: (_) => _clearFieldError('vehicleColour'),
+          ),
           SizedBox(height: SizeConfig.r(18)),
 
           // ── Year ──────────────────────────────────────────────────────────
@@ -337,9 +404,25 @@ class _Step2RegisterState extends State<Step2Register> {
                 ? _formatDate(_yearOfRegistration!)
                 : null,
             placeholder: _formatDate(now),
-            onTap: _pickYear,
+            hasError: _fieldErrors['year'] != null,
+            onTap: () async {
+              await _pickYear();
+              if (_yearOfRegistration != null) {
+                _clearFieldError('year');
+              }
+            },
             trailingIcon: Icons.calendar_today_outlined,
           ),
+          if (_fieldErrors['year'] != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _fieldErrors['year']!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
           SizedBox(height: SizeConfig.r(18)),
 
           // ── Licensing Type ────────────────────────────────────────────────
@@ -348,12 +431,26 @@ class _Step2RegisterState extends State<Step2Register> {
           _DropdownTile(
             value: _selectedLicensing,
             placeholder: 'Nottingham city council, Gedling Bo...',
+            hasError: _fieldErrors['licensing'] != null,
             onTap: () => _showPicker(
               _licensingTypes,
               _selectedLicensing,
-              (v) => setState(() => _selectedLicensing = v),
+              (v) => setState(() {
+                _selectedLicensing = v;
+                _fieldErrors.remove('licensing');
+              }),
             ),
           ),
+          if (_fieldErrors['licensing'] != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _fieldErrors['licensing']!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
           SizedBox(height: SizeConfig.r(18)),
 
           // ── Vehicle Type (two-level) ───────────────────────────────────────
@@ -374,6 +471,7 @@ class _Step2RegisterState extends State<Step2Register> {
                       _selectedCategory = cat.key;
                       _selectedVariant =
                           null; // reset variant on category change
+                      _fieldErrors.remove('vehicleType');
                     }),
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 150),
@@ -384,9 +482,12 @@ class _Step2RegisterState extends State<Step2Register> {
                             : const Color(0xFFF3F7FC),
                         borderRadius: BorderRadius.circular(SizeConfig.radius),
                         border: Border.all(
-                          color: isSelected
-                              ? AppColors.primary
-                              : const Color(0xFFE0E8F3),
+                          color: _fieldErrors['vehicleType'] != null &&
+                                  !isSelected
+                              ? AppColors.error
+                              : isSelected
+                                  ? AppColors.primary
+                                  : const Color(0xFFE0E8F3),
                           width: isSelected ? 1.5 : 1,
                         ),
                       ),
@@ -420,6 +521,16 @@ class _Step2RegisterState extends State<Step2Register> {
               );
             }).toList(),
           ),
+          if (_fieldErrors['vehicleType'] != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _fieldErrors['vehicleType']!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
 
           // Level 2 — variant list (animated)
           AnimatedSize(
@@ -446,9 +557,10 @@ class _Step2RegisterState extends State<Step2Register> {
                           return Padding(
                             padding: EdgeInsets.only(bottom: SizeConfig.r(8)),
                             child: GestureDetector(
-                              onTap: () => setState(
-                                () => _selectedVariant = variant.label,
-                              ),
+                              onTap: () => setState(() {
+                                _selectedVariant = variant.label;
+                                _fieldErrors.remove('vehicleType');
+                              }),
                               child: AnimatedContainer(
                                 duration: const Duration(milliseconds: 150),
                                 width: double.infinity,
@@ -528,6 +640,17 @@ class _Step2RegisterState extends State<Step2Register> {
                   ),
           ),
 
+          if (_formError != null) ...[
+            SizedBox(height: SizeConfig.r(12)),
+            Text(
+              _formError!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
+
           SizedBox(height: SizeConfig.spaceLG),
 
           NextStepButton(onTap: _saveAndNext),
@@ -543,12 +666,14 @@ class _DropdownTile extends StatelessWidget {
     required this.placeholder,
     required this.onTap,
     this.trailingIcon = Icons.keyboard_arrow_down_rounded,
+    this.hasError = false,
   });
 
   final String? value;
   final String placeholder;
   final VoidCallback onTap;
   final IconData trailingIcon;
+  final bool hasError;
 
   @override
   Widget build(BuildContext context) {
@@ -566,7 +691,10 @@ class _DropdownTile extends StatelessWidget {
         decoration: BoxDecoration(
           color: const Color(0xFFF3F7FC),
           borderRadius: BorderRadius.circular(SizeConfig.radius),
-          border: Border.all(color: const Color(0xFFE0E8F3), width: 1),
+          border: Border.all(
+            color: hasError ? AppColors.error : const Color(0xFFE0E8F3),
+            width: 1,
+          ),
         ),
         child: Row(
           children: [

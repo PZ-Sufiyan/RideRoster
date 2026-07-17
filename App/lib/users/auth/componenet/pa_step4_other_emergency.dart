@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../model/passenger_assistant_register_data.dart';
 import 'register_widgets.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/driver_register_validators.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../services/passenger_assistant_registration_service.dart';
 
@@ -26,6 +27,7 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
   final _registration = PassengerAssistantRegistrationService();
   bool _loading = false;
   String? _error;
+  Map<String, String> _fieldErrors = {};
 
   @override
   void initState() {
@@ -40,6 +42,12 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
     _emergencyNameCtrl.dispose();
     _emergencyPhoneCtrl.dispose();
     super.dispose();
+  }
+
+  void _clearFieldError(String key) {
+    if (_fieldErrors.containsKey(key)) {
+      setState(() => _fieldErrors.remove(key));
+    }
   }
 
   Future<void> _addOtherCertificate() async {
@@ -179,24 +187,32 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
 
   Future<void> _submit() async {
     final d = widget.data;
-    final name = _emergencyNameCtrl.text.trim();
-    final phone = _emergencyPhoneCtrl.text.trim();
+    final validation = DriverRegisterValidators.validatePaStep4Emergency(
+      emergencyContactName: _emergencyNameCtrl.text,
+      emergencyContactPhone: _emergencyPhoneCtrl.text.trim(),
+    );
 
-    if (name.isEmpty || phone.isEmpty) {
-      setState(() => _error = 'Emergency contact name and phone are required.');
+    if (!validation.isValid) {
+      setState(() {
+        _fieldErrors = Map<String, String>.from(validation.errors);
+        _error = validation.firstError;
+      });
       return;
     }
+
     if (d.companyId.trim().isEmpty) {
       setState(() => _error = 'Please complete step 1 and select a company.');
       return;
     }
 
-    d.emergencyContactName = name;
-    d.emergencyContactPhone = phone;
+    d.emergencyContactName =
+        _emergencyNameCtrl.text.trim().replaceAll(RegExp(r' +'), ' ');
+    d.emergencyContactPhone = _emergencyPhoneCtrl.text.trim();
 
     setState(() {
       _loading = true;
       _error = null;
+      _fieldErrors = {};
     });
 
     final result = await _registration.registerPassengerAssistant(
@@ -441,6 +457,12 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
             controller: _emergencyNameCtrl,
             hintText: 'e.g. John Smith',
             keyboardType: TextInputType.name,
+            textCapitalization: TextCapitalization.words,
+            inputFormatters: [
+              DriverRegisterValidators.lettersAndSpacesFormatter,
+            ],
+            errorText: _fieldErrors['emergencyContactName'],
+            onChanged: (_) => _clearFieldError('emergencyContactName'),
           ),
           SizedBox(height: SizeConfig.r(18)),
           const RegFieldLabel('Contact phone number *'),
@@ -449,6 +471,8 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
             controller: _emergencyPhoneCtrl,
             hintText: 'e.g. 7700 900456',
             keyboardType: TextInputType.phone,
+            errorText: _fieldErrors['emergencyContactPhone'],
+            onChanged: (_) => _clearFieldError('emergencyContactPhone'),
           ),
           if (_error != null) ...[
             SizedBox(height: SizeConfig.r(16)),

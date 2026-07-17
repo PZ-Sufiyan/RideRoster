@@ -78,6 +78,7 @@ import SubAdmin_SOSDetail from './users/subAdmin/pages/sos/sos_detail';
 import SubAdmin_Notifications from './users/subAdmin/pages/notifications/notification';
 import SubAdmin_Settings from './users/subAdmin/pages/settings/settings';
 import Home from './home';
+import AuthConfirmed from './pages/auth/AuthConfirmed';
 import SubAdminProtectedPage from './components/SubAdminProtectedPage';
 import './App.css';
 
@@ -106,6 +107,7 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/home" replace />} />
         <Route path="/home" element={<Home />} />
+        <Route path="/auth/confirmed" element={<AuthConfirmed />} />
 
         {/* Auth Pages */}
         <Route path="/platform/login" element={<SuperAdmin_Login />} />

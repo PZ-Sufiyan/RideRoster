@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import '../../../model/driver_register_data.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/driver_register_validators.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../services/auth_service.dart';
 import 'register_widgets.dart';
@@ -232,11 +233,9 @@ class _Step3RegisterState extends State<Step3Register> {
       return;
     }
 
-    if (d.passportFile != null && d.passportExpiry == null) {
-      setState(() {
-        _errorMessage =
-            'Passport expiry date is required when a passport file is uploaded.';
-      });
+    final docsError = DriverRegisterValidators.validateStep3Documents(d);
+    if (docsError != null) {
+      setState(() => _errorMessage = docsError);
       return;
     }
 

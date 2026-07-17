@@ -1,5 +1,6 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../../../components/app_button.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/expiry_date_picker.dart';
@@ -42,6 +43,10 @@ class RegField extends StatelessWidget {
     this.keyboardType,
     this.prefixIcon,
     this.suffixIcon,
+    this.errorText,
+    this.inputFormatters,
+    this.onChanged,
+    this.textCapitalization = TextCapitalization.none,
   });
 
   final TextEditingController controller;
@@ -50,48 +55,83 @@ class RegField extends StatelessWidget {
   final TextInputType? keyboardType;
   final Widget? prefixIcon;
   final Widget? suffixIcon;
+  final String? errorText;
+  final List<TextInputFormatter>? inputFormatters;
+  final ValueChanged<String>? onChanged;
+  final TextCapitalization textCapitalization;
 
   @override
   Widget build(BuildContext context) {
     SizeConfig.init(context);
-    return TextField(
-      controller: controller,
-      obscureText: obscureText,
-      keyboardType: keyboardType,
-      style: TextStyle(fontSize: SizeConfig.sp(15), color: AppColors.textDark),
-      decoration: InputDecoration(
-        hintText: hintText,
-        hintStyle: TextStyle(
-          fontSize: SizeConfig.sp(15),
-          color: const Color(0xFFB0BEC5),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        TextField(
+          controller: controller,
+          obscureText: obscureText,
+          keyboardType: keyboardType,
+          inputFormatters: inputFormatters,
+          onChanged: onChanged,
+          textCapitalization: textCapitalization,
+          style: TextStyle(fontSize: SizeConfig.sp(15), color: AppColors.textDark),
+          decoration: InputDecoration(
+            hintText: hintText,
+            hintStyle: TextStyle(
+              fontSize: SizeConfig.sp(15),
+              color: const Color(0xFFB0BEC5),
+            ),
+            prefixIcon: prefixIcon,
+            suffixIcon: suffixIcon != null
+                ? Padding(
+                    padding: EdgeInsets.only(right: SizeConfig.r(12)),
+                    child: suffixIcon,
+                  )
+                : null,
+            suffixIconConstraints: const BoxConstraints(),
+            filled: true,
+            fillColor: const Color(0xFFF3F7FC),
+            contentPadding: EdgeInsets.symmetric(
+              horizontal: SizeConfig.r(16),
+              vertical: SizeConfig.r(16),
+            ),
+            border: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(SizeConfig.radius),
+              borderSide: BorderSide(
+                color: errorText != null
+                    ? AppColors.error
+                    : const Color(0xFFE0E8F3),
+                width: 1,
+              ),
+            ),
+            enabledBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(SizeConfig.radius),
+              borderSide: BorderSide(
+                color: errorText != null
+                    ? AppColors.error
+                    : const Color(0xFFE0E8F3),
+                width: 1,
+              ),
+            ),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(SizeConfig.radius),
+              borderSide: BorderSide(
+                color: errorText != null ? AppColors.error : AppColors.primary,
+                width: 1.5,
+              ),
+            ),
+          ),
         ),
-        prefixIcon: prefixIcon,
-        suffixIcon: suffixIcon != null
-            ? Padding(
-                padding: EdgeInsets.only(right: SizeConfig.r(12)),
-                child: suffixIcon,
-              )
-            : null,
-        suffixIconConstraints: const BoxConstraints(),
-        filled: true,
-        fillColor: const Color(0xFFF3F7FC),
-        contentPadding: EdgeInsets.symmetric(
-          horizontal: SizeConfig.r(16),
-          vertical: SizeConfig.r(16),
-        ),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(SizeConfig.radius),
-          borderSide: const BorderSide(color: Color(0xFFE0E8F3), width: 1),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(SizeConfig.radius),
-          borderSide: const BorderSide(color: Color(0xFFE0E8F3), width: 1),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(SizeConfig.radius),
-          borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
-        ),
-      ),
+        if (errorText != null) ...[
+          SizedBox(height: SizeConfig.r(6)),
+          Text(
+            errorText!,
+            style: TextStyle(
+              fontSize: SizeConfig.sp(12),
+              color: AppColors.error,
+            ),
+          ),
+        ],
+      ],
     );
   }
 }

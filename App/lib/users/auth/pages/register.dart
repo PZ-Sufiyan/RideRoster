@@ -31,7 +31,14 @@ class _DriverRegisterPageState extends State<DriverRegisterPage> {
   }
 
   void _onRegistered() {
-    // Registration complete — navigate to login (or dashboard when backend ready)
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Account created. Check your email to confirm before logging in.',
+        ),
+        duration: Duration(seconds: 5),
+      ),
+    );
     Navigator.pushReplacementNamed(context, AppRoutes.login);
   }
 

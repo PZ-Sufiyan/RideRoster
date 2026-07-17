@@ -1,4 +1,5 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin'
+import { createAuthUserRequiringEmailConfirm } from '../utils/authEmailGuards'
 import { SUB_ADMIN_PERMISSION_KEYS } from './subAdminService'
 
 const ROLE = 'subadmin'
@@ -47,21 +48,17 @@ export async function registerSubAdminWithAuthAndRecord({
   let authUserId = null
 
   try {
-    const { data: createdAuth, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+    const created = await createAuthUserRequiringEmailConfirm({
       email: normalizedEmail,
       password,
-      email_confirm: true,
-      app_metadata: { role: ROLE },
-      user_metadata: {
+      appMetadata: { role: ROLE },
+      userMetadata: {
         role: ROLE,
         email: normalizedEmail,
         name,
       },
     })
-
-    if (createErr) throw createErr
-    if (!createdAuth?.user?.id) throw new Error('Could not create auth user.')
-    authUserId = createdAuth.user.id
+    authUserId = created.userId
 
     const row = {
       id: authUserId,

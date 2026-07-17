@@ -8,6 +8,7 @@ import {
   createSupabaseAdminClient,
   createSupabaseAuthClient,
 } from './supabaseClient.js'
+import { requireEmailConfirmationForUser } from './emailConfirmation.js'
 
 const app = express()
 const port = Number(process.env.PORT || 3100)
@@ -76,6 +77,56 @@ async function requireAdmin(req, res) {
 
 app.get('/health', (_req, res) => {
   res.json({ ok: true, service: 'rideroster-push-notifications' })
+})
+
+/**
+ * Mobile self-registration: after Flutter signUp, force the new Auth user to
+ * stay unconfirmed and send the signup confirmation email (same policy as web
+ * Admin / Add Driver registration).
+ *
+ * Authorization: Bearer access token of the newly signed-up user.
+ * Body: { role: 'driver' | 'passenger_assistant', emailRedirectTo?: string }
+ */
+app.post('/auth/require-email-confirmation', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization
+    if (!authHeader) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const supabaseAuth = createSupabaseAuthClient(authHeader)
+    const {
+      data: { user },
+      error,
+    } = await supabaseAuth.auth.getUser()
+
+    if (error || !user) {
+      res.status(401).json({ error: 'Unauthorized' })
+      return
+    }
+
+    const role = String(req.body?.role || '').trim().toLowerCase()
+    const emailRedirectTo = req.body?.emailRedirectTo
+      ? String(req.body.emailRedirectTo).trim()
+      : undefined
+
+    const result = await requireEmailConfirmationForUser({
+      user,
+      role,
+      emailRedirectTo,
+    })
+
+    res.json(result)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    console.error('require-email-confirmation failed:', message)
+    const status =
+      message.includes('Only driver') || message.includes('no email')
+        ? 400
+        : 500
+    res.status(status).json({ error: message })
+  }
 })
 
 app.post('/notify/job-assignment', async (req, res) => {

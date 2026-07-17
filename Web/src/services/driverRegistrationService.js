@@ -1,5 +1,8 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import {
+  createAuthUserRequiringEmailConfirm,
+} from '../utils/authEmailGuards'
+import {
   uploadDriverVehicleDocument,
   uploadDriverProfileImage,
   removeCompanyDocument,
@@ -127,22 +130,18 @@ export async function registerDriverWithAuthAndRecords({
   }
 
   try {
-    const { data: createdAuth, error: createErr } = await supabaseAdmin.auth.admin.createUser({
+    const created = await createAuthUserRequiringEmailConfirm({
       email,
       password,
-      email_confirm: true,
-      app_metadata: { role: 'driver' },
-      user_metadata: {
+      appMetadata: { role: 'driver' },
+      userMetadata: {
         role: 'driver',
         email,
         first_name: cleanString(personal?.firstName),
         last_name: cleanString(personal?.lastName),
       },
     })
-
-    if (createErr) throw createErr
-    if (!createdAuth?.user?.id) throw new Error('Could not create auth user.')
-    authUserId = createdAuth.user.id
+    authUserId = created.userId
 
     const profileMeta = await uploadDriverProfileImage({
       companyId,

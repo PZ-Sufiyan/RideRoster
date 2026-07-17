@@ -1,5 +1,5 @@
-﻿import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+﻿import React, { useMemo, useState } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import {
     HiOutlineMail,
     HiOutlineLockClosed,
@@ -10,14 +10,23 @@ import {
 import bgImage from '../../../../assets/img.png';
 import logo from '../../../../assets/image-002.png';
 import { supabase } from '../../../../lib/supabaseClient';
+import {
+    mapLoginError,
+    requireConfirmedEmailOrSignOut,
+} from '../../../../utils/authEmailGuards';
 
 const AdminLogin = () => {
     const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
     const [showPassword, setShowPassword] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
     const [loginError, setLoginError] = useState('');
+    const verifiedNotice = useMemo(
+        () => searchParams.get('verified') === '1',
+        [searchParams]
+    );
 
     const handleLogin = async (e) => {
         e.preventDefault();
@@ -33,6 +42,8 @@ const AdminLogin = () => {
             if (error) {
                 throw error;
             }
+
+            await requireConfirmedEmailOrSignOut(data.user);
 
             // Read role from app_metadata — server-controlled, set by Admin API.
             // Falls back to user_metadata for backwards compatibility.
@@ -58,11 +69,10 @@ const AdminLogin = () => {
                 .maybeSingle();
 
             if (companyAdminError) {
-                console.error('company_admins lookup failed:', companyAdminError);
                 await supabase.auth.signOut();
                 localStorage.removeItem('isAuthenticated');
                 localStorage.removeItem('userRole');
-                setLoginError('Could not load your company profile. Please try again.');
+                setLoginError(mapLoginError(companyAdminError));
                 return;
             }
 
@@ -72,13 +82,7 @@ const AdminLogin = () => {
                 navigate('/portal/register', { replace: true });
             }
         } catch (err) {
-            const message = err?.message || 'Login failed. Please try again.';
-            // Normalise Supabase "Invalid login credentials" to a friendlier message.
-            setLoginError(
-                message.toLowerCase().includes('invalid login credentials')
-                    ? 'Invalid email or password.'
-                    : message
-            );
+            setLoginError(mapLoginError(err));
         } finally {
             setIsLoading(false);
         }
@@ -137,6 +141,11 @@ const AdminLogin = () => {
                         </p>
 
                         <form onSubmit={handleLogin} className="space-y-5">
+                            {verifiedNotice && !loginError && (
+                                <div className="px-4 py-3 bg-emerald-50 border border-emerald-200 rounded-lg text-sm text-emerald-700 font-medium">
+                                    Email confirmed. Please sign in with your credentials.
+                                </div>
+                            )}
                             {loginError && (
                                 <div className="px-4 py-3 bg-red-50 border border-red-200 rounded-lg text-sm text-red-600 font-medium">
                                     {loginError}

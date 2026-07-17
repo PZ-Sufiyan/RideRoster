@@ -34,6 +34,14 @@ class _RegisterPassengerAssistantPageState
   }
 
   void _onRegistered() {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text(
+          'Account created. Check your email to confirm before logging in.',
+        ),
+        duration: Duration(seconds: 5),
+      ),
+    );
     Navigator.pushReplacementNamed(context, AppRoutes.login);
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/driver_register_data.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/driver_register_validators.dart';
 import '../../../../utils/size_confg.dart';
 import 'register_widgets.dart';
 
@@ -39,6 +40,7 @@ class _Step1RegisterState extends State<Step1Register> {
   bool _isLoadingCompanies = false;
   String? _companyLoadError;
   String? _formError;
+  Map<String, String> _fieldErrors = {};
   final List<String> _companyOptions = [];
   final Map<String, String> _companyNameToId = {};
 
@@ -191,7 +193,14 @@ class _Step1RegisterState extends State<Step1Register> {
       } else {
         _nationalityCtrl.clear();
       }
+      _fieldErrors.remove('nationality');
     });
+  }
+
+  void _clearFieldError(String key) {
+    if (_fieldErrors.containsKey(key)) {
+      setState(() => _fieldErrors.remove(key));
+    }
   }
 
   // ── Save & next ────────────────────────────────────────────────────────────
@@ -202,31 +211,49 @@ class _Step1RegisterState extends State<Step1Register> {
     final password = _passwordCtrl.text;
     final confirmPassword = _confirmPasswordCtrl.text;
     final nationality = _nationalityCtrl.text.trim();
+    final companyName = _companyCtrl.text.trim();
+    final companyId = _companyNameToId[companyName.toLowerCase()] ?? '';
 
-    if (password != confirmPassword) {
-      setState(() => _formError = 'Password and confirm password must match.');
+    final result = DriverRegisterValidators.validateStep1(
+      firstName: firstName,
+      lastName: lastName,
+      email: _emailCtrl.text.trim(),
+      mobileNumber: _mobileCtrl.text.trim(),
+      password: password,
+      confirmPassword: confirmPassword,
+      companyName: companyName,
+      companyId: companyId,
+      residentialAddress: _residentialAddressCtrl.text.trim(),
+      emergencyContactName: _emergencyContactNameCtrl.text,
+      emergencyContactPhone: _emergencyContactPhoneCtrl.text.trim(),
+      nationality: nationality,
+    );
+
+    if (!result.isValid) {
+      setState(() {
+        _fieldErrors = Map<String, String>.from(result.errors);
+        _formError = result.firstError;
+      });
       return;
     }
 
-    if (nationality.isEmpty) {
-      setState(() => _formError = 'Please enter your nationality.');
-      return;
-    }
-
-    setState(() => _formError = null);
+    setState(() {
+      _fieldErrors = {};
+      _formError = null;
+    });
     widget.data.firstName = firstName;
     widget.data.lastName = lastName;
     widget.data.fullName = '$firstName $lastName'.trim();
     widget.data.password = password;
     widget.data.confirmPassword = confirmPassword;
     widget.data.email = _emailCtrl.text.trim();
-    widget.data.companyName = _companyCtrl.text.trim();
-    widget.data.companyId =
-        _companyNameToId[widget.data.companyName.toLowerCase()] ?? '';
+    widget.data.companyName = companyName;
+    widget.data.companyId = companyId;
     widget.data.countryCode = _countryCode;
     widget.data.mobileNumber = _mobileCtrl.text.trim();
     widget.data.residentialAddress = _residentialAddressCtrl.text.trim();
-    widget.data.emergencyContactName = _emergencyContactNameCtrl.text.trim();
+    widget.data.emergencyContactName =
+        _emergencyContactNameCtrl.text.trim().replaceAll(RegExp(r' +'), ' ');
     widget.data.emergencyContactPhone = _emergencyContactPhoneCtrl.text.trim();
     widget.data.passportNumber = _passportNumberCtrl.text.trim();
     widget.data.nationality = nationality;
@@ -311,6 +338,10 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _firstNameCtrl,
             hintText: 'e.g. John',
             keyboardType: TextInputType.name,
+            textCapitalization: TextCapitalization.words,
+            inputFormatters: [DriverRegisterValidators.lettersOnlyFormatter],
+            errorText: _fieldErrors['firstName'],
+            onChanged: (_) => _clearFieldError('firstName'),
           ),
           SizedBox(height: SizeConfig.r(18)),
 
@@ -321,6 +352,10 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _lastNameCtrl,
             hintText: 'e.g. Smith',
             keyboardType: TextInputType.name,
+            textCapitalization: TextCapitalization.words,
+            inputFormatters: [DriverRegisterValidators.lettersOnlyFormatter],
+            errorText: _fieldErrors['lastName'],
+            onChanged: (_) => _clearFieldError('lastName'),
           ),
           SizedBox(height: SizeConfig.r(18)),
 
@@ -331,6 +366,8 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _emailCtrl,
             hintText: 'john@example.com',
             keyboardType: TextInputType.emailAddress,
+            errorText: _fieldErrors['email'],
+            onChanged: (_) => _clearFieldError('email'),
           ),
           SizedBox(height: SizeConfig.r(18)),
 
@@ -338,6 +375,7 @@ class _Step1RegisterState extends State<Step1Register> {
           const RegFieldLabel('Mobile Number *'),
           SizedBox(height: SizeConfig.r(6)),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               GestureDetector(
                 onTap: _showCountryCodePicker,
@@ -369,6 +407,8 @@ class _Step1RegisterState extends State<Step1Register> {
                   controller: _mobileCtrl,
                   hintText: '555-0123',
                   keyboardType: TextInputType.phone,
+                  errorText: _fieldErrors['mobile'],
+                  onChanged: (_) => _clearFieldError('mobile'),
                 ),
               ),
             ],
@@ -382,6 +422,8 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _passwordCtrl,
             hintText: '••••••••',
             obscureText: _obscurePassword,
+            errorText: _fieldErrors['password'],
+            onChanged: (_) => _clearFieldError('password'),
             prefixIcon: Icon(
               Icons.lock_outline,
               color: AppColors.inputIcon,
@@ -398,6 +440,14 @@ class _Step1RegisterState extends State<Step1Register> {
               ),
             ),
           ),
+          SizedBox(height: SizeConfig.r(6)),
+          Text(
+            'Min 8 characters, with upper, lower, number and special character.',
+            style: TextStyle(
+              fontSize: SizeConfig.sp(11),
+              color: AppColors.textLight,
+            ),
+          ),
           SizedBox(height: SizeConfig.r(18)),
 
           // ── Confirm Password ──────────────────────────────────────────────
@@ -407,6 +457,8 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _confirmPasswordCtrl,
             hintText: '••••••••',
             obscureText: _obscureConfirmPassword,
+            errorText: _fieldErrors['confirmPassword'],
+            onChanged: (_) => _clearFieldError('confirmPassword'),
             prefixIcon: Icon(
               Icons.lock_outline,
               color: AppColors.inputIcon,
@@ -450,12 +502,14 @@ class _Step1RegisterState extends State<Step1Register> {
                 _companyCtrl.selection = TextSelection.fromPosition(
                   TextPosition(offset: _companyCtrl.text.length),
                 );
+                _clearFieldError('company');
               },
               fieldViewBuilder:
                   (context, controller, focusNode, onFieldSubmitted) {
                     return TextField(
                       controller: controller,
                       focusNode: focusNode,
+                      onChanged: (_) => _clearFieldError('company'),
                       style: TextStyle(
                         fontSize: SizeConfig.sp(15),
                         color: AppColors.textDark,
@@ -492,8 +546,10 @@ class _Step1RegisterState extends State<Step1Register> {
                           borderRadius: BorderRadius.circular(
                             SizeConfig.radius,
                           ),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFE0E8F3),
+                          borderSide: BorderSide(
+                            color: _fieldErrors['company'] != null
+                                ? AppColors.error
+                                : const Color(0xFFE0E8F3),
                             width: 1,
                           ),
                         ),
@@ -501,8 +557,10 @@ class _Step1RegisterState extends State<Step1Register> {
                           borderRadius: BorderRadius.circular(
                             SizeConfig.radius,
                           ),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFE0E8F3),
+                          borderSide: BorderSide(
+                            color: _fieldErrors['company'] != null
+                                ? AppColors.error
+                                : const Color(0xFFE0E8F3),
                             width: 1,
                           ),
                         ),
@@ -510,8 +568,10 @@ class _Step1RegisterState extends State<Step1Register> {
                           borderRadius: BorderRadius.circular(
                             SizeConfig.radius,
                           ),
-                          borderSide: const BorderSide(
-                            color: AppColors.primary,
+                          borderSide: BorderSide(
+                            color: _fieldErrors['company'] != null
+                                ? AppColors.error
+                                : AppColors.primary,
                             width: 1.5,
                           ),
                         ),
@@ -565,6 +625,16 @@ class _Step1RegisterState extends State<Step1Register> {
               },
             ),
           ),
+          if (_fieldErrors['company'] != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _fieldErrors['company']!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
           if (_companyLoadError != null) ...[
             SizedBox(height: SizeConfig.r(6)),
             Text(
@@ -584,6 +654,8 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _residentialAddressCtrl,
             hintText: 'Enter residential address',
             keyboardType: TextInputType.streetAddress,
+            errorText: _fieldErrors['residentialAddress'],
+            onChanged: (_) => _clearFieldError('residentialAddress'),
           ),
           SizedBox(height: SizeConfig.r(18)),
 
@@ -594,6 +666,12 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _emergencyContactNameCtrl,
             hintText: 'Enter emergency contact name',
             keyboardType: TextInputType.name,
+            textCapitalization: TextCapitalization.words,
+            inputFormatters: [
+              DriverRegisterValidators.lettersAndSpacesFormatter,
+            ],
+            errorText: _fieldErrors['emergencyContactName'],
+            onChanged: (_) => _clearFieldError('emergencyContactName'),
           ),
           SizedBox(height: SizeConfig.r(18)),
 
@@ -603,6 +681,8 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _emergencyContactPhoneCtrl,
             hintText: 'Enter emergency contact phone',
             keyboardType: TextInputType.phone,
+            errorText: _fieldErrors['emergencyContactPhone'],
+            onChanged: (_) => _clearFieldError('emergencyContactPhone'),
           ),
           SizedBox(height: SizeConfig.r(18)),
 
@@ -686,9 +766,21 @@ class _Step1RegisterState extends State<Step1Register> {
                       controller: _nationalityCtrl,
                       hintText: 'e.g. Pakistani, Indian, Nigerian...',
                       keyboardType: TextInputType.text,
+                      errorText: _fieldErrors['nationality'],
+                      onChanged: (_) => _clearFieldError('nationality'),
                     ),
                   ),
           ),
+          if (_isBritish && _fieldErrors['nationality'] != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _fieldErrors['nationality']!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
           SizedBox(height: SizeConfig.r(18)),
 
           // ── Right to Work — only shown for non-British ─────────────────────

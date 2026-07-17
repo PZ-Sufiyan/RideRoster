@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../../model/passenger_assistant_register_data.dart';
 import 'register_widgets.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/driver_register_validators.dart';
 import '../../../../utils/size_confg.dart';
 
 class PaStep3Documents extends StatefulWidget {
@@ -37,20 +38,10 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
   String? _formError;
 
   void _saveAndNext() {
-    final d = widget.data;
-
-    if (d.passportCopy != null && d.passportExpiry == null) {
-      setState(
-        () => _formError =
-            'Passport expiry is required when a passport file is uploaded.',
-      );
-      return;
-    }
-    if (d.safeguardingCertificate != null && d.safeguardingExpiry == null) {
-      setState(
-        () => _formError =
-            'Safeguarding expiry is required when a safeguarding file is uploaded.',
-      );
+    final docsError =
+        DriverRegisterValidators.validatePaStep3Documents(widget.data);
+    if (docsError != null) {
+      setState(() => _formError = docsError);
       return;
     }
     setState(() => _formError = null);

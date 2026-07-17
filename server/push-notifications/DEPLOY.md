@@ -64,6 +64,28 @@ Rebuild/redeploy the web app after changing this value.
 
 ---
 
+## Mobile email confirmation
+
+Flutter driver / PA self-registration calls:
+
+```
+POST https://supabase.nst-sch.com/push-api/auth/require-email-confirmation
+Authorization: Bearer <new-user-access-token>
+{ "role": "driver" | "passenger_assistant" }
+```
+
+This forces `email_confirm: false` and sends the signup confirmation email
+(same policy as web Admin registration). Set `APP_URL` in the server `.env`
+so confirmation links land on `{APP_URL}/auth/confirmed?role=…`.
+
+After deploying `emailConfirmation.js` + the updated `index.js`, restart pm2:
+
+```
+pm2 restart rideroster-push
+```
+
+---
+
 ## CORS
 
 `CORS_ORIGINS` in `.env` must include every admin URL, comma-separated, e.g.:

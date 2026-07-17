@@ -1,8 +1,12 @@
 import React, { useState } from 'react';
 import { HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
 import { ToastStack } from '../../../../utils/Toast';
-import { supabase } from '../../../../lib/supabaseClient';
 import { supabaseAdmin } from '../../../../lib/supabaseAdmin';
+import {
+    DUPLICATE_EMAIL_MESSAGE,
+    createAuthUserRequiringEmailConfirm,
+    mapDuplicateAuthError,
+} from '../../../../utils/authEmailGuards';
 
 const AddAdmin = () => {
     const [formData, setFormData] = useState({
@@ -36,49 +40,30 @@ const AddAdmin = () => {
             try {
                 setIsSubmitting(true);
 
-                // Step 1: Create the user in Supabase Auth (anon key).
-                // Writes role to user_metadata only (user-editable, not trusted for auth).
-                const { data, error } = await supabase.auth.signUp({
-                    email: formData.email.trim().toLowerCase(),
-                    password: formData.password,
-                });
-
-                if (error) {
-                    throw error;
+                // Step 1: Create Auth user (unconfirmed) + send confirmation email.
+                // Uses Admin API so the super-admin session is not replaced.
+                let created;
+                try {
+                    created = await createAuthUserRequiringEmailConfirm({
+                        email: formData.email.trim().toLowerCase(),
+                        password: formData.password,
+                        appMetadata: { role: 'admin' },
+                        userMetadata: { role: 'admin' },
+                    });
+                } catch (createErr) {
+                    const duplicate = mapDuplicateAuthError(createErr);
+                    throw new Error(duplicate || createErr.message || DUPLICATE_EMAIL_MESSAGE);
                 }
 
-                if (!data?.user) {
-                    throw new Error('Admin user could not be created. Please try again.');
-                }
-
-                const normalizedEmail = formData.email.trim().toLowerCase();
+                const normalizedEmail = created.email;
                 const nowIso = new Date().toISOString();
 
-                // Step 2: Write role to app_metadata using the Admin API (service role key).
-                // app_metadata is server-controlled and cannot be modified by the user,
-                // making it the trusted source for role-based authorization.
-                const { error: metaError } = await supabaseAdmin.auth.admin.updateUserById(
-                    data.user.id,
-                    {
-                        app_metadata: { role: 'admin' },
-                        user_metadata: { role: 'admin' },
-                    }
-                );
-
-                if (metaError) {
-                    // User was created but role could not be set — log clearly.
-                    console.error('User created but role assignment failed:', metaError);
-                    throw new Error(
-                        `User was created but role could not be saved: ${metaError.message}. Check that VITE_SUPABASE_SERVICE_ROLE_KEY is set correctly.`
-                    );
-                }
-
-                // Step 3: Create the linked company_admins record with auth.user.id as FK.
+                // Step 2: Create the linked company_admins record with auth.user.id as FK.
                 // Keep optional fields empty during super admin registration.
                 const { error: companyAdminError } = await supabaseAdmin
                     .from('company_admins')
                     .insert({
-                        id: data.user.id,
+                        id: created.userId,
                         email: normalizedEmail,
                         company_id: null,
                         full_name: null,
@@ -89,6 +74,11 @@ const AddAdmin = () => {
 
                 if (companyAdminError) {
                     console.error('User created but company_admins insert failed:', companyAdminError);
+                    try {
+                        await supabaseAdmin.auth.admin.deleteUser(created.userId);
+                    } catch {
+                        /* best effort */
+                    }
                     throw new Error(
                         `User was created but company admin profile could not be saved: ${companyAdminError.message}`
                     );
@@ -96,7 +86,7 @@ const AddAdmin = () => {
 
                 pushToast(
                     'success',
-                    `Admin account created successfully for ${normalizedEmail}. Auth user and company admin profile were both created.`
+                    `Admin account created for ${normalizedEmail}. They must confirm their email before logging in.`
                 );
                 setFormData({ email: '', password: '' });
             } catch (err) {

@@ -335,7 +335,7 @@ const AddNewPA = () => {
                     other_certificates: otherCertificates,
                 },
             });
-            pushToast('success', 'Passenger assistant registered successfully.');
+            pushToast('success', 'Passenger assistant registered. They must confirm their email before logging in.');
             navigate('/portal/users/pa');
         } catch (e) {
             const msg = e?.message || 'Could not register passenger assistant.';

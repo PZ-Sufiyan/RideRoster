@@ -2,8 +2,10 @@ import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../config/supabase_config.dart';
 import 'api_service.dart';
 import 'auth_result.dart';
+import 'email_confirmation_service.dart';
 
 /// Registers a passenger assistant: Supabase Auth sign-up, then
 /// `passenger_assistant` and `passenger_assistant_documents`.
@@ -71,7 +73,9 @@ class PassengerAssistantRegistrationService extends ApiService {
       sourcePath: localPath,
     );
 
-    await _supabase.storage.from(_companyDocsBucket).upload(
+    await _supabase.storage
+        .from(_companyDocsBucket)
+        .upload(
           storagePath,
           file,
           fileOptions: const FileOptions(upsert: true),
@@ -162,12 +166,16 @@ class PassengerAssistantRegistrationService extends ApiService {
     }
 
     try {
+      const role = 'passenger_assistant';
+      final emailRedirectTo = SupabaseConfig.emailConfirmRedirectUrl(role);
+
       // 1) Supabase Authentication — metadata matches app usage (role, company, etc.)
       final authResponse = await _supabase.auth.signUp(
         email: emailNorm,
         password: password,
+        emailRedirectTo: emailRedirectTo,
         data: {
-          'role': 'passenger_assistant',
+          'role': role,
           'email': emailNorm,
           'full_name': fullName,
           'first_name': firstName.trim(),
@@ -182,6 +190,30 @@ class PassengerAssistantRegistrationService extends ApiService {
       final authUser = authResponse.user;
       if (authUser == null) {
         return AuthResult.failure('Could not create auth account.');
+      }
+
+      if (authUser.identities != null && authUser.identities!.isEmpty) {
+        return AuthResult.failure(
+          'An account with this email already exists. Use a different email or sign in.',
+        );
+      }
+
+      try {
+        await EmailConfirmationService.instance.enforceAfterSignUp(
+          email: emailNorm,
+          role: role,
+          session: authResponse.session,
+        );
+      } catch (e) {
+        try {
+          await _supabase.auth.signOut();
+        } catch (_) {}
+        final msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+        return AuthResult.failure(
+          msg.isEmpty
+              ? 'Registration failed: could not send confirmation email.'
+              : msg,
+        );
       }
 
       final assistantId = authUser.id;
@@ -208,8 +240,8 @@ class PassengerAssistantRegistrationService extends ApiService {
         'phone': '$countryCode${mobileNumber.trim()}',
         'residential_address':
             residentialAddress == null || residentialAddress.trim().isEmpty
-                ? null
-                : residentialAddress.trim(),
+            ? null
+            : residentialAddress.trim(),
         'profile_picture_url': profilePictureUrl,
         'emergency_contact_name': emergencyContactName.trim(),
         'emergency_contact_phone': emergencyContactPhone.trim(),
@@ -217,12 +249,12 @@ class PassengerAssistantRegistrationService extends ApiService {
         'right_to_work_code': isBritishPassportHolder
             ? null
             : (rightToWorkCode?.trim().isEmpty ?? true
-                ? null
-                : rightToWorkCode!.trim()),
+                  ? null
+                  : rightToWorkCode!.trim()),
         'passport_number':
             passportNumber == null || passportNumber.trim().isEmpty
-                ? null
-                : passportNumber.trim(),
+            ? null
+            : passportNumber.trim(),
         'status': 'pending',
       });
 
@@ -303,17 +335,32 @@ class PassengerAssistantRegistrationService extends ApiService {
         await _supabase.from('passenger_assistant_documents').insert(docRows);
       }
 
+      if (_supabase.auth.currentSession != null) {
+        await _supabase.auth.signOut();
+      }
+
       return AuthResult.success(
-        token: authResponse.session?.accessToken,
         userId: assistantId,
         name: fullName,
         email: emailNorm,
         message:
-            'Registration successful. Check your email to confirm your account.',
+            'Registration successful. Check your email to confirm your account before logging in.',
       );
     } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('already') || msg.contains('registered')) {
+        return AuthResult.failure(
+          'An account with this email already exists. Use a different email or sign in.',
+        );
+      }
       return AuthResult.failure(e.message);
     } on PostgrestException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('duplicate') || msg.contains('unique')) {
+        return AuthResult.failure(
+          'An account with this email already exists. Use a different email or sign in.',
+        );
+      }
       return AuthResult.failure(e.message);
     } on StorageException catch (e) {
       return AuthResult.failure(e.message);

@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/passenger_assistant_register_data.dart';
 import 'register_widgets.dart';
 import '../../../../utils/app_colors.dart';
+import '../../../../utils/driver_register_validators.dart';
 import '../../../../utils/size_confg.dart';
 
 class PaStep1Personal extends StatefulWidget {
@@ -37,6 +38,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
   bool _isLoadingCompanies = false;
   String? _companyLoadError;
   String? _formError;
+  Map<String, String> _fieldErrors = {};
   final List<String> _companyOptions = [];
   final Map<String, String> _companyNameToId = {};
 
@@ -156,12 +158,20 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
       if (value) {
         _nationalityCtrl.text = 'British';
         _rightToWorkCodeCtrl.clear();
+        _fieldErrors.remove('rightToWork');
       } else {
         if (_nationalityCtrl.text.trim() == 'British') {
           _nationalityCtrl.clear();
         }
       }
+      _fieldErrors.remove('nationality');
     });
+  }
+
+  void _clearFieldError(String key) {
+    if (_fieldErrors.containsKey(key)) {
+      setState(() => _fieldErrors.remove(key));
+    }
   }
 
   void _saveAndNext() {
@@ -173,37 +183,32 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
     final companyName = _companyCtrl.text.trim();
     final companyId = _companyNameToId[companyName.toLowerCase()] ?? '';
 
-    if (password != confirmPassword) {
-      setState(() => _formError = 'Password and confirm password must match.');
-      return;
-    }
-    if (firstName.isEmpty ||
-        lastName.isEmpty ||
-        _emailCtrl.text.trim().isEmpty ||
-        _mobileCtrl.text.trim().isEmpty ||
-        password.isEmpty) {
-      setState(() => _formError = 'Please fill in all required fields.');
-      return;
-    }
-    if (companyId.isEmpty) {
-      setState(
-        () => _formError = 'Please select a valid company from the list.',
-      );
-      return;
-    }
-    if (nationality.isEmpty) {
-      setState(() => _formError = 'Please enter your nationality.');
-      return;
-    }
-    if (!_britishPassport && _rightToWorkCodeCtrl.text.trim().isEmpty) {
-      setState(
-        () => _formError =
-            'Right to work is required unless you are a British passport holder.',
-      );
+    final result = DriverRegisterValidators.validatePaStep1(
+      firstName: firstName,
+      lastName: lastName,
+      email: _emailCtrl.text.trim(),
+      mobileNumber: _mobileCtrl.text.trim(),
+      password: password,
+      confirmPassword: confirmPassword,
+      companyName: companyName,
+      companyId: companyId,
+      nationality: nationality,
+      isBritishPassportHolder: _britishPassport,
+      rightToWorkCode: _rightToWorkCodeCtrl.text.trim(),
+    );
+
+    if (!result.isValid) {
+      setState(() {
+        _fieldErrors = Map<String, String>.from(result.errors);
+        _formError = result.firstError;
+      });
       return;
     }
 
-    setState(() => _formError = null);
+    setState(() {
+      _fieldErrors = {};
+      _formError = null;
+    });
     final d = widget.data;
     d.firstName = firstName;
     d.lastName = lastName;
@@ -291,6 +296,10 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             controller: _firstNameCtrl,
             hintText: 'e.g. Jane',
             keyboardType: TextInputType.name,
+            textCapitalization: TextCapitalization.words,
+            inputFormatters: [DriverRegisterValidators.lettersOnlyFormatter],
+            errorText: _fieldErrors['firstName'],
+            onChanged: (_) => _clearFieldError('firstName'),
           ),
           SizedBox(height: SizeConfig.r(18)),
           const RegFieldLabel('Last Name *'),
@@ -299,6 +308,10 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             controller: _lastNameCtrl,
             hintText: 'e.g. Doe',
             keyboardType: TextInputType.name,
+            textCapitalization: TextCapitalization.words,
+            inputFormatters: [DriverRegisterValidators.lettersOnlyFormatter],
+            errorText: _fieldErrors['lastName'],
+            onChanged: (_) => _clearFieldError('lastName'),
           ),
           SizedBox(height: SizeConfig.r(18)),
           const RegFieldLabel('Email Address *'),
@@ -307,11 +320,14 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             controller: _emailCtrl,
             hintText: 'e.g. jane.doe@example.com',
             keyboardType: TextInputType.emailAddress,
+            errorText: _fieldErrors['email'],
+            onChanged: (_) => _clearFieldError('email'),
           ),
           SizedBox(height: SizeConfig.r(18)),
           const RegFieldLabel('Phone Number *'),
           SizedBox(height: SizeConfig.r(6)),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               GestureDetector(
                 onTap: _showCountryCodePicker,
@@ -343,6 +359,8 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
                   controller: _mobileCtrl,
                   hintText: 'e.g. 7700 900123',
                   keyboardType: TextInputType.phone,
+                  errorText: _fieldErrors['mobile'],
+                  onChanged: (_) => _clearFieldError('mobile'),
                 ),
               ),
             ],
@@ -354,6 +372,8 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             controller: _passwordCtrl,
             hintText: '••••••••',
             obscureText: _obscurePassword,
+            errorText: _fieldErrors['password'],
+            onChanged: (_) => _clearFieldError('password'),
             prefixIcon: Icon(
               Icons.lock_outline,
               color: AppColors.inputIcon,
@@ -370,6 +390,14 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
               ),
             ),
           ),
+          SizedBox(height: SizeConfig.r(6)),
+          Text(
+            'Min 8 characters, with upper, lower, number and special character.',
+            style: TextStyle(
+              fontSize: SizeConfig.sp(11),
+              color: AppColors.textLight,
+            ),
+          ),
           SizedBox(height: SizeConfig.r(18)),
           const RegFieldLabel('Confirm Password *'),
           SizedBox(height: SizeConfig.r(6)),
@@ -377,6 +405,8 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             controller: _confirmPasswordCtrl,
             hintText: '••••••••',
             obscureText: _obscureConfirmPassword,
+            errorText: _fieldErrors['confirmPassword'],
+            onChanged: (_) => _clearFieldError('confirmPassword'),
             prefixIcon: Icon(
               Icons.lock_outline,
               color: AppColors.inputIcon,
@@ -426,12 +456,14 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
                 _companyCtrl.selection = TextSelection.fromPosition(
                   TextPosition(offset: _companyCtrl.text.length),
                 );
+                _clearFieldError('company');
               },
               fieldViewBuilder:
                   (context, controller, focusNode, onFieldSubmitted) {
                     return TextField(
                       controller: controller,
                       focusNode: focusNode,
+                      onChanged: (_) => _clearFieldError('company'),
                       style: TextStyle(
                         fontSize: SizeConfig.sp(15),
                         color: AppColors.textDark,
@@ -468,8 +500,10 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
                           borderRadius: BorderRadius.circular(
                             SizeConfig.radius,
                           ),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFE0E8F3),
+                          borderSide: BorderSide(
+                            color: _fieldErrors['company'] != null
+                                ? AppColors.error
+                                : const Color(0xFFE0E8F3),
                             width: 1,
                           ),
                         ),
@@ -477,8 +511,10 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
                           borderRadius: BorderRadius.circular(
                             SizeConfig.radius,
                           ),
-                          borderSide: const BorderSide(
-                            color: Color(0xFFE0E8F3),
+                          borderSide: BorderSide(
+                            color: _fieldErrors['company'] != null
+                                ? AppColors.error
+                                : const Color(0xFFE0E8F3),
                             width: 1,
                           ),
                         ),
@@ -486,8 +522,10 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
                           borderRadius: BorderRadius.circular(
                             SizeConfig.radius,
                           ),
-                          borderSide: const BorderSide(
-                            color: AppColors.primary,
+                          borderSide: BorderSide(
+                            color: _fieldErrors['company'] != null
+                                ? AppColors.error
+                                : AppColors.primary,
                             width: 1.5,
                           ),
                         ),
@@ -541,6 +579,16 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
               },
             ),
           ),
+          if (_fieldErrors['company'] != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _fieldErrors['company']!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
           if (_companyLoadError != null) ...[
             SizedBox(height: SizeConfig.r(6)),
             Text(
@@ -564,7 +612,12 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
               decoration: BoxDecoration(
                 color: const Color(0xFFF3F7FC),
                 borderRadius: BorderRadius.circular(SizeConfig.radius),
-                border: Border.all(color: const Color(0xFFE0E8F3), width: 1),
+                border: Border.all(
+                  color: _fieldErrors['nationality'] != null
+                      ? AppColors.error
+                      : const Color(0xFFE0E8F3),
+                  width: 1,
+                ),
               ),
               child: Text(
                 'British',
@@ -580,7 +633,19 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
               controller: _nationalityCtrl,
               hintText: 'e.g. British, Pakistani, Indian',
               keyboardType: TextInputType.text,
+              errorText: _fieldErrors['nationality'],
+              onChanged: (_) => _clearFieldError('nationality'),
             ),
+          if (_britishPassport && _fieldErrors['nationality'] != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _fieldErrors['nationality']!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
           SizedBox(height: SizeConfig.r(12)),
           GestureDetector(
             onTap: () => _onBritishPassportToggle(!_britishPassport),
@@ -646,6 +711,8 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
                       RegField(
                         controller: _rightToWorkCodeCtrl,
                         hintText: 'Enter right to work code',
+                        errorText: _fieldErrors['rightToWork'],
+                        onChanged: (_) => _clearFieldError('rightToWork'),
                       ),
                       SizedBox(height: SizeConfig.r(18)),
                     ],

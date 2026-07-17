@@ -1,10 +1,13 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'api_service.dart';
 import 'auth_result.dart';
 import 'connectivity_service.dart';
+import 'email_confirmation_service.dart';
 import 'passenger_assistant_registration_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../config/supabase_config.dart';
 
 export 'auth_result.dart';
 
@@ -147,14 +150,23 @@ class AuthService extends ApiService {
 
     try {
       final response = await _supabase.auth.signInWithPassword(
-        email: email,
+        email: email.trim().toLowerCase(),
         password: password,
       );
       final user = response.user;
       final session = response.session;
 
       if (user == null || session == null) {
-        return AuthResult.failure('Unable to sign in. Please try again.');
+        return AuthResult.failure(
+          'Unable to sign in right now. Please try again.',
+        );
+      }
+
+      if (user.emailConfirmedAt == null) {
+        await _supabase.auth.signOut();
+        return AuthResult.failure(
+          'Please check your email and confirm your account before logging in.',
+        );
       }
 
       final role = _extractRole(user);
@@ -175,12 +187,55 @@ class AuthService extends ApiService {
         role: role,
       );
     } on AuthException catch (e) {
-      return AuthResult.failure(e.message);
-    } catch (_) {
+      return AuthResult.failure(_friendlyLoginError(e.message));
+    } on SocketException {
       return AuthResult.failure(
-        'Login failed due to an unexpected error. Please try again.',
+        'Connection problem. Check your internet and try again.',
       );
+    } on TimeoutException {
+      return AuthResult.failure(
+        'Connection problem. Check your internet and try again.',
+      );
+    } catch (e) {
+      return AuthResult.failure(_friendlyLoginError(e.toString()));
     }
+  }
+
+  /// User-facing login errors only — never raw network/auth text.
+  String _friendlyLoginError(String? raw) {
+    final msg = (raw ?? '').toLowerCase();
+    if (msg.contains('email not confirmed') ||
+        msg.contains('email_not_confirmed') ||
+        msg.contains('confirm your email') ||
+        msg.contains('check your email and confirm')) {
+      return 'Please check your email and confirm your account before logging in.';
+    }
+    if (msg.contains('invalid login credentials') ||
+        msg.contains('invalid credentials') ||
+        msg.contains('wrong password') ||
+        msg.contains('user not found')) {
+      return 'Incorrect email or password.';
+    }
+    if (msg.contains('failed to fetch') ||
+        msg.contains('socket') ||
+        msg.contains('network') ||
+        msg.contains('timeout') ||
+        msg.contains('timed out') ||
+        msg.contains('offline') ||
+        msg.contains('connection') ||
+        msg.contains('clientexception') ||
+        msg.contains('handshake')) {
+      return 'Connection problem. Check your internet and try again.';
+    }
+    if (msg.contains('server') ||
+        msg.contains('500') ||
+        msg.contains('502') ||
+        msg.contains('503') ||
+        msg.contains('504') ||
+        msg.contains('internal')) {
+      return 'Something went wrong on our side. Please try again in a moment.';
+    }
+    return 'Unable to sign in right now. Please try again.';
   }
 
   /// Send password-reset email.
@@ -192,11 +247,17 @@ class AuthService extends ApiService {
       await _supabase.auth.resetPasswordForEmail(email);
       return AuthResult.success(message: 'Password reset link sent to $email');
     } on AuthException catch (e) {
-      return AuthResult.failure(e.message);
-    } catch (_) {
+      return AuthResult.failure(_friendlyLoginError(e.message));
+    } on SocketException {
       return AuthResult.failure(
-        'Unable to send reset link right now. Please try again.',
+        'Connection problem. Check your internet and try again.',
       );
+    } on TimeoutException {
+      return AuthResult.failure(
+        'Connection problem. Check your internet and try again.',
+      );
+    } catch (e) {
+      return AuthResult.failure(_friendlyLoginError(e.toString()));
     }
   }
 
@@ -317,12 +378,17 @@ class AuthService extends ApiService {
     }
 
     try {
+      final emailNorm = email.trim().toLowerCase();
+      const role = 'driver';
+      final emailRedirectTo = SupabaseConfig.emailConfirmRedirectUrl(role);
+
       // ── 1. Create auth user ──────────────────────────────────────────────
       final authResponse = await _supabase.auth.signUp(
-        email: email,
+        email: emailNorm,
         password: password,
+        emailRedirectTo: emailRedirectTo,
         data: {
-          'role': 'driver',
+          'role': role,
           'full_name': fullName,
           'company_id': companyId,
           'company_name': companyName,
@@ -334,6 +400,34 @@ class AuthService extends ApiService {
         return AuthResult.failure('Could not create auth account.');
       }
 
+      // When Confirm email is on, signUp for an existing email returns a fake user.
+      if (authUser.identities != null && authUser.identities!.isEmpty) {
+        return AuthResult.failure(
+          'An account with this email already exists. Use a different email or sign in.',
+        );
+      }
+
+      // Force unconfirmed + send confirmation email (same policy as web Admin).
+      // Runs before profile/vehicle/document writes so a mailer failure does not
+      // leave a login-ready account with partial roster data.
+      try {
+        await EmailConfirmationService.instance.enforceAfterSignUp(
+          email: emailNorm,
+          role: role,
+          session: authResponse.session,
+        );
+      } catch (e) {
+        try {
+          await _supabase.auth.signOut();
+        } catch (_) {}
+        final msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
+        return AuthResult.failure(
+          msg.isEmpty
+              ? 'Registration failed: could not send confirmation email.'
+              : msg,
+        );
+      }
+
       // ── 2. Insert driver row ─────────────────────────────────────────────
       final driverInsert = await _supabase
           .from('drivers')
@@ -342,7 +436,7 @@ class AuthService extends ApiService {
             'company_id': companyId,
             'first_name': firstName.trim(),
             'last_name': lastName.trim(),
-            'email': email,
+            'email': emailNorm,
             'phone': '$countryCode${mobileNumber.trim()}',
             'residential_address': residentialAddress.trim(),
             'emergency_contact_name': emergencyContactName.trim(),
@@ -571,17 +665,33 @@ class AuthService extends ApiService {
         await _supabase.from('vehicle_documents').insert(vehicleDocs);
       }
 
+      // Do not leave a logged-in session until email is confirmed.
+      if (_supabase.auth.currentSession != null) {
+        await _supabase.auth.signOut();
+      }
+
       return AuthResult.success(
-        token: authResponse.session?.accessToken,
         userId: authUser.id,
         name: fullName,
-        email: email,
+        email: emailNorm,
         message:
-            'Registration successful. Check your email to confirm account.',
+            'Registration successful. Check your email to confirm your account before logging in.',
       );
     } on AuthException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('already') || msg.contains('registered')) {
+        return AuthResult.failure(
+          'An account with this email already exists. Use a different email or sign in.',
+        );
+      }
       return AuthResult.failure(e.message);
     } on PostgrestException catch (e) {
+      final msg = e.message.toLowerCase();
+      if (msg.contains('duplicate') || msg.contains('unique')) {
+        return AuthResult.failure(
+          'An account with this email already exists. Use a different email or sign in.',
+        );
+      }
       return AuthResult.failure(e.message);
     } on StorageException catch (e) {
       return AuthResult.failure(e.message);
@@ -668,6 +778,13 @@ class AuthService extends ApiService {
         await _supabase.auth.signOut();
         return AuthResult.failure(
           'Access denied. Only drivers and passenger assistants can sign in.',
+        );
+      }
+
+      if (user.emailConfirmedAt == null) {
+        await _supabase.auth.signOut();
+        return AuthResult.failure(
+          'Please check your email and confirm your account before logging in.',
         );
       }
 

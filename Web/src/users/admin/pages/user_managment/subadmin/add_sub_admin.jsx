@@ -113,7 +113,7 @@ const AddSubAdmin = () => {
                 password: form.password,
                 permissionKeys: permissions,
             });
-            pushToast('success', 'Sub-admin created successfully.');
+            pushToast('success', 'Sub-admin created. They must confirm their email before logging in.');
             navigate('/portal/users/subadmins');
         } catch (e) {
             const msg = e?.message || 'Could not create sub-admin.';
