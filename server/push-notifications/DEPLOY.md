@@ -66,22 +66,21 @@ Rebuild/redeploy the web app after changing this value.
 
 ## Mobile email confirmation
 
-Flutter driver / PA self-registration calls:
+Flutter driver / PA self-registration Auth step:
 
 ```
-POST https://supabase.nst-sch.com/push-api/auth/require-email-confirmation
-Authorization: Bearer <new-user-access-token>
-{ "role": "driver" | "passenger_assistant" }
+POST https://supabase.nst-sch.com/push-api/auth/create-unconfirmed-mobile-user
+{ "email", "password", "role": "driver"|"passenger_assistant", "userMetadata"?: {} }
 ```
 
-This forces `email_confirm: false` and sends the signup confirmation email
-(same policy as web Admin registration). Set `APP_URL` in the server `.env`
+Creates the Auth user with `email_confirm: false` (same as web Admin) and
+sends the signup confirmation email. Set `APP_URL` in the server `.env`
 so confirmation links land on `{APP_URL}/auth/confirmed?role=…`.
 
 After deploying `emailConfirmation.js` + the updated `index.js`, restart pm2:
 
 ```
-pm2 restart rideroster-push
+pm2 restart rideroster-push --update-env
 ```
 
 ---

@@ -2,7 +2,6 @@ import 'dart:io';
 
 import 'package:supabase_flutter/supabase_flutter.dart';
 
-import '../config/supabase_config.dart';
 import 'api_service.dart';
 import 'auth_result.dart';
 import 'email_confirmation_service.dart';
@@ -167,42 +166,26 @@ class PassengerAssistantRegistrationService extends ApiService {
 
     try {
       const role = 'passenger_assistant';
-      final emailRedirectTo = SupabaseConfig.emailConfirmRedirectUrl(role);
 
-      // 1) Supabase Authentication — metadata matches app usage (role, company, etc.)
-      final authResponse = await _supabase.auth.signUp(
-        email: emailNorm,
-        password: password,
-        emailRedirectTo: emailRedirectTo,
-        data: {
-          'role': role,
-          'email': emailNorm,
-          'full_name': fullName,
-          'first_name': firstName.trim(),
-          'last_name': lastName.trim(),
-          'company_id': companyId,
-          'company_name': companyName.trim(),
-          if (passportNumber != null && passportNumber.trim().isNotEmpty)
-            'passport_number': passportNumber.trim(),
-        },
-      );
-
-      final authUser = authResponse.user;
-      if (authUser == null) {
-        return AuthResult.failure('Could not create auth account.');
-      }
-
-      if (authUser.identities != null && authUser.identities!.isEmpty) {
-        return AuthResult.failure(
-          'An account with this email already exists. Use a different email or sign in.',
-        );
-      }
-
+      // 1) Create unconfirmed Auth user (server) + session for uploads
+      late final User authUser;
       try {
-        await EmailConfirmationService.instance.enforceAfterSignUp(
+        authUser =
+            await EmailConfirmationService.instance.createUnconfirmedUserAndSignIn(
           email: emailNorm,
+          password: password,
           role: role,
-          session: authResponse.session,
+          userMetadata: {
+            'role': role,
+            'email': emailNorm,
+            'full_name': fullName,
+            'first_name': firstName.trim(),
+            'last_name': lastName.trim(),
+            'company_id': companyId,
+            'company_name': companyName.trim(),
+            if (passportNumber != null && passportNumber.trim().isNotEmpty)
+              'passport_number': passportNumber.trim(),
+          },
         );
       } catch (e) {
         try {
@@ -210,9 +193,7 @@ class PassengerAssistantRegistrationService extends ApiService {
         } catch (_) {}
         final msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
         return AuthResult.failure(
-          msg.isEmpty
-              ? 'Registration failed: could not send confirmation email.'
-              : msg,
+          msg.isEmpty ? 'Could not create auth account.' : msg,
         );
       }
 

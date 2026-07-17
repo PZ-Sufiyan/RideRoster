@@ -1,6 +1,7 @@
 import 'dotenv/config'
 import cors from 'cors'
 import express from 'express'
+import ws from 'ws'
 import { sendJobAssignmentPush, sendUserNotificationPush } from './fcm.js'
 import { startDocumentExpiryScheduler } from './documentExpiryScheduler.js'
 import { startJobScheduler } from './jobScheduler.js'
@@ -8,7 +9,12 @@ import {
   createSupabaseAdminClient,
   createSupabaseAuthClient,
 } from './supabaseClient.js'
-import { requireEmailConfirmationForUser } from './emailConfirmation.js'
+import { createUnconfirmedMobileUser } from './emailConfirmation.js'
+
+// Node 20 has no global WebSocket; supabase-js Realtime requires one.
+if (!globalThis.WebSocket) {
+  globalThis.WebSocket = ws
+}
 
 const app = express()
 const port = Number(process.env.PORT || 3100)
@@ -80,49 +86,46 @@ app.get('/health', (_req, res) => {
 })
 
 /**
- * Mobile self-registration: after Flutter signUp, force the new Auth user to
- * stay unconfirmed and send the signup confirmation email (same policy as web
- * Admin / Add Driver registration).
+ * Mobile self-registration Auth step (same policy as web Admin / Add Driver):
+ * create Auth user with email_confirm: false and send confirmation email.
  *
- * Authorization: Bearer access token of the newly signed-up user.
- * Body: { role: 'driver' | 'passenger_assistant', emailRedirectTo?: string }
+ * Body: {
+ *   email, password,
+ *   role: 'driver' | 'passenger_assistant',
+ *   userMetadata?: object,
+ *   emailRedirectTo?: string
+ * }
  */
-app.post('/auth/require-email-confirmation', async (req, res) => {
+app.post('/auth/create-unconfirmed-mobile-user', async (req, res) => {
   try {
-    const authHeader = req.headers.authorization
-    if (!authHeader) {
-      res.status(401).json({ error: 'Unauthorized' })
-      return
-    }
-
-    const supabaseAuth = createSupabaseAuthClient(authHeader)
-    const {
-      data: { user },
-      error,
-    } = await supabaseAuth.auth.getUser()
-
-    if (error || !user) {
-      res.status(401).json({ error: 'Unauthorized' })
-      return
-    }
-
+    const email = req.body?.email
+    const password = req.body?.password
     const role = String(req.body?.role || '').trim().toLowerCase()
+    const userMetadata =
+      req.body?.userMetadata && typeof req.body.userMetadata === 'object'
+        ? req.body.userMetadata
+        : {}
     const emailRedirectTo = req.body?.emailRedirectTo
       ? String(req.body.emailRedirectTo).trim()
       : undefined
 
-    const result = await requireEmailConfirmationForUser({
-      user,
+    const result = await createUnconfirmedMobileUser({
+      email,
+      password,
       role,
+      userMetadata,
       emailRedirectTo,
     })
 
     res.json(result)
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Unknown error'
-    console.error('require-email-confirmation failed:', message)
+    console.error('create-unconfirmed-mobile-user failed:', message)
     const status =
-      message.includes('Only driver') || message.includes('no email')
+      message.includes('already exists') ||
+      message.includes('required') ||
+      message.includes('Only driver') ||
+      message.includes('at least 6')
         ? 400
         : 500
     res.status(status).json({ error: message })

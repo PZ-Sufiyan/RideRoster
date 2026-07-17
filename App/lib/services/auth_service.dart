@@ -7,7 +7,6 @@ import 'connectivity_service.dart';
 import 'email_confirmation_service.dart';
 import 'passenger_assistant_registration_service.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../config/supabase_config.dart';
 
 export 'auth_result.dart';
 
@@ -380,41 +379,21 @@ class AuthService extends ApiService {
     try {
       final emailNorm = email.trim().toLowerCase();
       const role = 'driver';
-      final emailRedirectTo = SupabaseConfig.emailConfirmRedirectUrl(role);
 
-      // ── 1. Create auth user ──────────────────────────────────────────────
-      final authResponse = await _supabase.auth.signUp(
-        email: emailNorm,
-        password: password,
-        emailRedirectTo: emailRedirectTo,
-        data: {
-          'role': role,
-          'full_name': fullName,
-          'company_id': companyId,
-          'company_name': companyName,
-        },
-      );
-
-      final authUser = authResponse.user;
-      if (authUser == null) {
-        return AuthResult.failure('Could not create auth account.');
-      }
-
-      // When Confirm email is on, signUp for an existing email returns a fake user.
-      if (authUser.identities != null && authUser.identities!.isEmpty) {
-        return AuthResult.failure(
-          'An account with this email already exists. Use a different email or sign in.',
-        );
-      }
-
-      // Force unconfirmed + send confirmation email (same policy as web Admin).
-      // Runs before profile/vehicle/document writes so a mailer failure does not
-      // leave a login-ready account with partial roster data.
+      // ── 1. Create unconfirmed auth user (server) + session for uploads ───
+      late final User authUser;
       try {
-        await EmailConfirmationService.instance.enforceAfterSignUp(
+        authUser =
+            await EmailConfirmationService.instance.createUnconfirmedUserAndSignIn(
           email: emailNorm,
+          password: password,
           role: role,
-          session: authResponse.session,
+          userMetadata: {
+            'role': role,
+            'full_name': fullName,
+            'company_id': companyId,
+            'company_name': companyName,
+          },
         );
       } catch (e) {
         try {
@@ -422,9 +401,7 @@ class AuthService extends ApiService {
         } catch (_) {}
         final msg = e.toString().replaceFirst(RegExp(r'^Exception:\s*'), '');
         return AuthResult.failure(
-          msg.isEmpty
-              ? 'Registration failed: could not send confirmation email.'
-              : msg,
+          msg.isEmpty ? 'Could not create auth account.' : msg,
         );
       }
 
