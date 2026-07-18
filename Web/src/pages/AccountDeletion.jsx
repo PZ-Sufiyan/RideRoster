@@ -129,24 +129,6 @@ const AccountDeletion = () => (
                     </p>
                 </section>
 
-                <section className="pt-8 mt-2 border-t border-gray-100">
-                    <h2 className="text-[17px] font-semibold text-gray-900">
-                        Partial data deletion (without closing your account)
-                    </h2>
-                    <p className="mt-3 text-[14px] text-gray-600 leading-relaxed">
-                        To request deletion or correction of specific personal data without deleting
-                        your whole account, email{' '}
-                        <a
-                            href="mailto:privacy@nst-sch.com?subject=Data%20Deletion%20Request%20-%20NST%20%2F%20NST%20SCH"
-                            className="font-semibold text-[#004D6D] hover:underline"
-                        >
-                            privacy@nst-sch.com
-                        </a>{' '}
-                        describing which data you want removed. We will respond within a reasonable
-                        period and explain what can be deleted versus what must be retained by law.
-                    </p>
-                </section>
-
                 <aside className="mt-10 pt-8 border-t border-gray-100 text-[13px] text-gray-600 leading-relaxed">
                     <p className="font-semibold text-gray-800">
                         NOTTINGHAM SPECIALIST TRANSPORT LTD
