@@ -81,6 +81,7 @@ import Home from './home';
 import AuthConfirmed from './pages/auth/AuthConfirmed';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import ContactUs from './pages/ContactUs';
+import AccountDeletion from './pages/AccountDeletion';
 import SubAdminProtectedPage from './components/SubAdminProtectedPage';
 import './App.css';
 
@@ -111,6 +112,7 @@ function App() {
         <Route path="/home" element={<Home />} />
         <Route path="/privacy-policy" element={<PrivacyPolicy />} />
         <Route path="/contact-us" element={<ContactUs />} />
+        <Route path="/account-deletion" element={<AccountDeletion />} />
         <Route path="/auth/confirmed" element={<AuthConfirmed />} />
 
         {/* Auth Pages */}

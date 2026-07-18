@@ -6,6 +6,7 @@ const NAV_LINKS = [
     { to: '/home', label: 'Home' },
     { to: '/privacy-policy', label: 'Privacy Policy' },
     { to: '/contact-us', label: 'Contact Us' },
+    { to: '/account-deletion', label: 'Delete Account' },
 ];
 
 const PublicLayout = ({ children }) => {
@@ -75,6 +76,9 @@ const PublicLayout = ({ children }) => {
                             </Link>
                             <Link to="/contact-us" className="text-gray-600 hover:text-[#004D6D] transition-colors">
                                 Contact Us
+                            </Link>
+                            <Link to="/account-deletion" className="text-gray-600 hover:text-[#004D6D] transition-colors">
+                                Delete Account
                             </Link>
                             <a
                                 href="https://nst-sch.com/"
