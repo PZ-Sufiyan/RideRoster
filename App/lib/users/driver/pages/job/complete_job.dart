@@ -52,71 +52,71 @@ class _CompleteJobPageState extends State<CompleteJobPage>
         NavigationService.popToDriverHome(context);
       },
       child: Scaffold(
-      backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: Consumer<JobProvider>(
-          builder: (context, provider, _) {
-            final job = provider.job;
+        backgroundColor: AppColors.background,
+        body: SafeArea(
+          child: Consumer<JobProvider>(
+            builder: (context, provider, _) {
+              final job = provider.job;
 
-            final pendingDropoffs =
-                job?.dropoffs
-                    .where((d) => d.status == DropoffStatus.pending)
-                    .toList() ??
-                [];
-            final allDropoffsDone =
-                job != null &&
-                job.dropoffs.isNotEmpty &&
-                pendingDropoffs.isEmpty;
-            final currentDropoff = pendingDropoffs.isNotEmpty
-                ? pendingDropoffs.first
-                : null;
+              final pendingDropoffs =
+                  job?.dropoffs
+                      .where((d) => d.status == DropoffStatus.pending)
+                      .toList() ??
+                  [];
+              final allDropoffsDone =
+                  job != null &&
+                  job.dropoffs.isNotEmpty &&
+                  pendingDropoffs.isEmpty;
+              final currentDropoff = pendingDropoffs.isNotEmpty
+                  ? pendingDropoffs.first
+                  : null;
 
-            return Column(
-              children: [
-                const OfflineBanner(),
-                _buildAppBar(context, job),
-                _StatusBar(job: job),
-                if (provider.isTracking)
-                  _TrackingBanner(
-                    distanceMeters: provider.currentDistanceMeters,
-                    isInbound: job?.isInbound ?? true,
-                    currentDropoff: currentDropoff,
-                  ),
-                if (!allDropoffsDone && provider.canCompleteDropoff)
-                  _DropoffArrivalBanner(
-                    isInbound: job?.isInbound ?? false,
-                    currentDropoff: currentDropoff,
-                  ),
-                Expanded(
-                  child: SingleChildScrollView(
-                    padding: EdgeInsets.all(SizeConfig.r(16)),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        _buildTimeline(job),
-                        SizedBox(height: SizeConfig.r(16)),
-                        _buildDropoffSection(job, provider, currentDropoff),
-                        SizedBox(height: SizeConfig.r(16)),
-                        _JobCommentsCard(controller: _commentsController),
-                        SizedBox(height: SizeConfig.r(16)),
-                      ],
+              return Column(
+                children: [
+                  const OfflineBanner(),
+                  _buildAppBar(context, job),
+                  _StatusBar(job: job),
+                  if (provider.isTracking)
+                    _TrackingBanner(
+                      distanceMeters: provider.currentDistanceMeters,
+                      isInbound: job?.isInbound ?? true,
+                      currentDropoff: currentDropoff,
+                    ),
+                  if (!allDropoffsDone && provider.canCompleteDropoff)
+                    _DropoffArrivalBanner(
+                      isInbound: job?.isInbound ?? false,
+                      currentDropoff: currentDropoff,
+                    ),
+                  Expanded(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(SizeConfig.r(16)),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          _buildTimeline(job),
+                          SizedBox(height: SizeConfig.r(16)),
+                          _buildDropoffSection(job, provider, currentDropoff),
+                          SizedBox(height: SizeConfig.r(16)),
+                          _JobCommentsCard(controller: _commentsController),
+                          SizedBox(height: SizeConfig.r(16)),
+                        ],
+                      ),
                     ),
                   ),
-                ),
-                _BottomBar(
-                  commentsController: _commentsController,
-                  isInbound: job?.isInbound ?? false,
-                  allDropoffsDone: allDropoffsDone,
-                  currentDropoff: currentDropoff,
-                  job: job,
-                  canCompleteDropoff: provider.canCompleteDropoff,
-                ),
-              ],
-            );
-          },
+                  _BottomBar(
+                    commentsController: _commentsController,
+                    isInbound: job?.isInbound ?? false,
+                    allDropoffsDone: allDropoffsDone,
+                    currentDropoff: currentDropoff,
+                    job: job,
+                    canCompleteDropoff: provider.canCompleteDropoff,
+                  ),
+                ],
+              );
+            },
+          ),
         ),
       ),
-    ),
     );
   }
 
@@ -991,9 +991,9 @@ class _BottomBar extends StatelessWidget {
       final validationError = await provider.validateDropoffCompletion();
       if (validationError != null) {
         if (!context.mounted) return;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(validationError)),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(validationError)));
         return;
       }
 
