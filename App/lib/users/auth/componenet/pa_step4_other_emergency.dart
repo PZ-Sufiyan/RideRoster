@@ -205,8 +205,10 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
       return;
     }
 
-    d.emergencyContactName =
-        _emergencyNameCtrl.text.trim().replaceAll(RegExp(r' +'), ' ');
+    d.emergencyContactName = _emergencyNameCtrl.text.trim().replaceAll(
+      RegExp(r' +'),
+      ' ',
+    );
     d.emergencyContactPhone = _emergencyPhoneCtrl.text.trim();
 
     setState(() {

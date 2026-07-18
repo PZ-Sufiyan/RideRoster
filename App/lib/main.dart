@@ -214,6 +214,7 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
   final LocationService _locationService = LocationService();
   final SosLocationService _sosLocationService = SosLocationService();
   bool _locationReady = false;
+
   /// False until the first permission probe finishes — avoids flashing the
   /// "required" screen while we still don't know the real permission state.
   bool _locationCheckComplete = false;
@@ -299,9 +300,10 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
           .timeout(const Duration(seconds: 3), onTimeout: () => false);
 
       if (!hasPermission) {
-        hasPermission = await _locationService
-            .ensurePermission()
-            .timeout(const Duration(seconds: 8), onTimeout: () => false);
+        hasPermission = await _locationService.ensurePermission().timeout(
+          const Duration(seconds: 8),
+          onTimeout: () => false,
+        );
       }
 
       if (!hasPermission) {

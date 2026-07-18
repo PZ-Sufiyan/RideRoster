@@ -79,6 +79,8 @@ import SubAdmin_Notifications from './users/subAdmin/pages/notifications/notific
 import SubAdmin_Settings from './users/subAdmin/pages/settings/settings';
 import Home from './home';
 import AuthConfirmed from './pages/auth/AuthConfirmed';
+import PrivacyPolicy from './pages/PrivacyPolicy';
+import ContactUs from './pages/ContactUs';
 import SubAdminProtectedPage from './components/SubAdminProtectedPage';
 import './App.css';
 
@@ -107,6 +109,8 @@ function App() {
       <Routes>
         <Route path="/" element={<Navigate to="/home" replace />} />
         <Route path="/home" element={<Home />} />
+        <Route path="/privacy-policy" element={<PrivacyPolicy />} />
+        <Route path="/contact-us" element={<ContactUs />} />
         <Route path="/auth/confirmed" element={<AuthConfirmed />} />
 
         {/* Auth Pages */}

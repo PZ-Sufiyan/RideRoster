@@ -144,10 +144,12 @@ async function forceUnconfirmUser(supabaseAdmin, userId) {
  *
  * Also mints a short-lived registration session (password sign-in is blocked
  * for unconfirmed users on this GoTrue). Flow:
- * 1) create unconfirmed + send email
+ * 1) create unconfirmed
  * 2) temporarily confirm + sign in to get tokens
  * 3) force unconfirm again (SQL) so login stays blocked
- * 4) return tokens — JWT still works for profile/document writes
+ * 4) send confirmation email LAST — so the link matches the unconfirmed user
+ *    (sending before step 2/3 invalidates the token when we temp-confirm)
+ * 5) return tokens — JWT still works for profile/document writes
  */
 export async function createUnconfirmedMobileUser({
   email,
@@ -209,18 +211,10 @@ export async function createUnconfirmedMobileUser({
     )
   }
 
-  try {
-    await sendSignupConfirmationEmail(normalizedEmail, redirectTo)
-  } catch (emailErr) {
-    try {
-      await supabaseAdmin.auth.admin.deleteUser(userId)
-    } catch {
-      /* best effort */
-    }
-    throw emailErr
-  }
-
   // Mint registration session (GoTrue blocks password login while unconfirmed).
+  // Do this BEFORE sending the confirmation email — temp-confirming consumes
+  // any previously issued signup token (which is why email links appeared to
+  // "work" as a redirect but left the user still waiting for verification).
   let accessToken
   let refreshToken
   try {
@@ -251,6 +245,17 @@ export async function createUnconfirmedMobileUser({
       /* best effort */
     }
     throw sessionErr
+  }
+
+  try {
+    await sendSignupConfirmationEmail(normalizedEmail, redirectTo)
+  } catch (emailErr) {
+    try {
+      await supabaseAdmin.auth.admin.deleteUser(userId)
+    } catch {
+      /* best effort */
+    }
+    throw emailErr
   }
 
   console.info('create-unconfirmed-mobile-user ok', {

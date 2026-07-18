@@ -1,4 +1,5 @@
 import React from 'react';
+import { Link } from 'react-router-dom';
 
 const Home = () => (
     <div className="min-h-screen bg-[#0f172a] text-white flex flex-col items-center justify-center px-6 selection:bg-slate-500/30">
@@ -16,6 +17,15 @@ const Home = () => (
             <p className="text-lg md:text-xl font-medium text-slate-400 tracking-wide">
                 coming soon
             </p>
+            <div className="mt-14 flex items-center justify-center gap-6 text-[13px] text-slate-500">
+                <Link to="/privacy-policy" className="hover:text-slate-300 transition-colors">
+                    Privacy Policy
+                </Link>
+                <span className="text-slate-700">·</span>
+                <Link to="/contact-us" className="hover:text-slate-300 transition-colors">
+                    Contact Us
+                </Link>
+            </div>
         </div>
     </div>
 );
