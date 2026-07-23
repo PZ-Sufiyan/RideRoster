@@ -17,7 +17,8 @@ if (keystorePropertiesFile.exists()) {
 
 android {
     namespace = "com.nst_sch.app"
-    compileSdk = flutter.compileSdkVersion
+    // Google Play requires target API 36 (Android 16) by Aug 31, 2026
+    compileSdk = 36
     ndkVersion = "28.2.13676358"
 
     compileOptions {
@@ -33,7 +34,7 @@ android {
     defaultConfig {
         applicationId = "com.nst_sch.app"
         minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
