@@ -21,7 +21,8 @@ class _PickupPageState extends State<PickupPage> with WidgetsBindingObserver {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<JobProvider>().startTrackingCurrentPickup();
+      if (!mounted) return;
+      context.read<JobProvider>().startTrackingCurrentPickup(context: context);
     });
   }
 
@@ -522,7 +523,7 @@ class _ActiveStopCard extends StatelessWidget {
                       ? null
                       : () => context
                             .read<JobProvider>()
-                            .navigateToCurrentPickup(),
+                            .navigateToCurrentPickup(context: context),
                 ),
               ),
               SizedBox(width: SizeConfig.r(10)),

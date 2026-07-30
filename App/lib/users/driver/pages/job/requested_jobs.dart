@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import '../../../../components/app_button.dart';
 import '../../../../providers/job_provider.dart';
 import '../../../../services/driver_job_request_service.dart';
+import '../../../../services/location_service.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
@@ -21,6 +22,7 @@ class RequestedJobsPage extends StatefulWidget {
 
 class _RequestedJobsPageState extends State<RequestedJobsPage> {
   final DriverJobRequestService _service = DriverJobRequestService();
+  final LocationService _locationService = LocationService();
   bool _isSubmitting = false;
   bool _isPageLoading = true;
   LatLng? _currentLocation;
@@ -35,14 +37,11 @@ class _RequestedJobsPageState extends State<RequestedJobsPage> {
     try {
       final serviceEnabled = await Geolocator.isLocationServiceEnabled();
       if (!serviceEnabled) return;
-      var permission = await Geolocator.checkPermission();
-      if (permission == LocationPermission.denied) {
-        permission = await Geolocator.requestPermission();
-      }
-      if (permission != LocationPermission.always &&
-          permission != LocationPermission.whileInUse) {
-        return;
-      }
+      if (!mounted) return;
+      final hasPermission = await _locationService.ensurePermission(
+        context: context,
+      );
+      if (!hasPermission) return;
       final pos = await Geolocator.getCurrentPosition(
         locationSettings: const LocationSettings(
           accuracy: LocationAccuracy.high,

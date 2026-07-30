@@ -24,7 +24,8 @@ class _CompleteJobPageState extends State<CompleteJobPage>
     super.initState();
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<JobProvider>().startTrackingCurrentDropoff();
+      if (!mounted) return;
+      context.read<JobProvider>().startTrackingCurrentDropoff(context: context);
     });
   }
 
@@ -323,7 +324,7 @@ class _CompleteJobPageState extends State<CompleteJobPage>
               isCompleted: dropoff.status == DropoffStatus.completed,
               // Navigate only for the current pending stop
               onNavigate: (isCurrent && dropoff.hasCoordinates)
-                  ? () => provider.navigateToDropoff()
+                  ? () => provider.navigateToDropoff(context: context)
                   : null,
             ),
           );

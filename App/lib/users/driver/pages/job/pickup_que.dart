@@ -36,7 +36,7 @@ class _PickupQuePageState extends State<PickupQuePage>
         NavigationService.popToDriverHome(context);
         return;
       }
-      await provider.startTrackingCurrentPickup();
+      await provider.startTrackingCurrentPickup(context: context);
     });
   }
 

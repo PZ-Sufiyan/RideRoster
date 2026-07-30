@@ -1,10 +1,20 @@
+import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
+
+import '../components/location_disclosure.dart';
 
 /// Handles location service and permission checks for navigation/tracking flows.
 class LocationService {
   /// Ensures location services are enabled and app permissions are granted.
   /// Returns true only when location access can be used right now.
-  Future<bool> ensurePermission({bool requestIfDenied = true}) async {
+  ///
+  /// When [requestIfDenied] is true and permission is not yet granted, pass
+  /// [context] so the prominent disclosure can be shown once before the
+  /// system permission dialog (Google Play policy).
+  Future<bool> ensurePermission({
+    bool requestIfDenied = true,
+    BuildContext? context,
+  }) async {
     var permission = await Geolocator.checkPermission();
     if (permission == LocationPermission.always ||
         permission == LocationPermission.whileInUse) {
@@ -23,6 +33,12 @@ class LocationService {
     }
 
     if (permission == LocationPermission.denied && requestIfDenied) {
+      if (!await LocationDisclosure.hasAccepted()) {
+        if (context == null || !context.mounted) return false;
+        final accepted = await LocationDisclosure.showIfNeeded(context);
+        if (!accepted) return false;
+      }
+
       permission = await Geolocator.requestPermission();
     }
 
@@ -31,8 +47,8 @@ class LocationService {
   }
 
   /// Returns the device's current GPS position. Works offline.
-  Future<Position?> getCurrentPosition() async {
-    if (!await ensurePermission()) return null;
+  Future<Position?> getCurrentPosition({BuildContext? context}) async {
+    if (!await ensurePermission(context: context)) return null;
 
     try {
       return await Geolocator.getCurrentPosition(
@@ -48,8 +64,12 @@ class LocationService {
 
   /// Haversine distance from the device to [targetLat]/[targetLng] in meters.
   /// Returns null when GPS is unavailable.
-  Future<double?> distanceTo(double targetLat, double targetLng) async {
-    final position = await getCurrentPosition();
+  Future<double?> distanceTo(
+    double targetLat,
+    double targetLng, {
+    BuildContext? context,
+  }) async {
+    final position = await getCurrentPosition(context: context);
     if (position == null) return null;
 
     return Geolocator.distanceBetween(
@@ -64,9 +84,10 @@ class LocationService {
   Future<bool> isWithinRadius(
     double targetLat,
     double targetLng,
-    double radiusMeters,
-  ) async {
-    final distance = await distanceTo(targetLat, targetLng);
+    double radiusMeters, {
+    BuildContext? context,
+  }) async {
+    final distance = await distanceTo(targetLat, targetLng, context: context);
     if (distance == null) return false;
     return distance <= radiusMeters;
   }

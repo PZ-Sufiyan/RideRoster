@@ -48,7 +48,7 @@ class _SOSPageState extends State<SOSPage> with SingleTickerProviderStateMixin {
 
     setState(() => _isSubmittingSos = true);
     try {
-      await _sosLocationService.createSosAlert();
+      await _sosLocationService.createSosAlert(context: context);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(

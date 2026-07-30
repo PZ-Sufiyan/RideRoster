@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/widgets.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -74,7 +75,14 @@ class SosLocationService {
     }
   }
 
-  Future<String> createSosAlert({String? notes}) async {
+  Future<String> createSosAlert({String? notes, BuildContext? context}) async {
+    final hasPermission = await _locationService.ensurePermission(
+      context: context,
+    );
+    if (!hasPermission) {
+      throw StateError('Location permission is required to send SOS.');
+    }
+
     await _ensureDriverContext();
 
     final driverId = _driverId;
@@ -83,11 +91,6 @@ class SosLocationService {
       throw StateError(
         'Unable to send SOS while offline. Reconnect and try again.',
       );
-    }
-
-    final hasPermission = await _locationService.ensurePermission();
-    if (!hasPermission) {
-      throw StateError('Location permission is required to send SOS.');
     }
 
     final position = await Geolocator.getCurrentPosition(
@@ -329,7 +332,9 @@ class SosLocationService {
   Future<void> _startLocationStream() async {
     if (_streaming) return;
 
-    final hasPermission = await _locationService.ensurePermission();
+    final hasPermission = await _locationService.ensurePermission(
+      requestIfDenied: false,
+    );
     if (!hasPermission) return;
 
     _streaming = true;

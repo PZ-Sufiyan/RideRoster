@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../model/job_model.dart';
 import '../repositories/cache_repository.dart';
@@ -447,9 +448,11 @@ class JobProvider extends ChangeNotifier {
 
   // ── Navigation (unchanged) ────────────────────────────────────────────────
 
-  Future<void> navigateFullRoute() async {
+  Future<void> navigateFullRoute({BuildContext? context}) async {
     if (_job == null) return;
-    final hasPermission = await _locationService.ensurePermission();
+    final hasPermission = await _locationService.ensurePermission(
+      context: context,
+    );
     if (!hasPermission) {
       _error = 'Location permission required for navigation.';
       notifyListeners();
@@ -463,7 +466,10 @@ class JobProvider extends ChangeNotifier {
 
   /// Starts background distance tracking toward the active pickup so arrival
   /// notifications fire even when the driver does not open Google Maps.
-  Future<void> startTrackingCurrentPickup() async {
+  Future<void> startTrackingCurrentPickup({
+    BuildContext? context,
+    bool requestPermission = true,
+  }) async {
     final stop = activePickup;
     if (stop == null) return;
     if (!stop.hasCoordinates) return;
@@ -474,7 +480,10 @@ class JobProvider extends ChangeNotifier {
       return;
     }
 
-    final hasPermission = await _locationService.ensurePermission();
+    final hasPermission = await _locationService.ensurePermission(
+      requestIfDenied: requestPermission,
+      context: context,
+    );
     if (!hasPermission) {
       _error = 'Location permission required for arrival tracking.';
       notifyListeners();
@@ -484,7 +493,7 @@ class JobProvider extends ChangeNotifier {
     _startPickupTracking(stop);
   }
 
-  Future<void> navigateToCurrentPickup() async {
+  Future<void> navigateToCurrentPickup({BuildContext? context}) async {
     final stop = activePickup;
     if (stop == null) return;
     if (!stop.hasCoordinates) {
@@ -493,10 +502,10 @@ class JobProvider extends ChangeNotifier {
       return;
     }
     await _navService.openSingleStop(lat: stop.lat!, lng: stop.lng!);
-    await startTrackingCurrentPickup();
+    await startTrackingCurrentPickup(context: context);
   }
 
-  Future<void> navigateToDropoff() async {
+  Future<void> navigateToDropoff({BuildContext? context}) async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
     if (!dropoff.hasCoordinates) {
@@ -504,18 +513,23 @@ class JobProvider extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final hasPermission = await _locationService.ensurePermission();
+    final hasPermission = await _locationService.ensurePermission(
+      context: context,
+    );
     if (!hasPermission) {
       _error = 'Location permission required for tracking.';
       notifyListeners();
       return;
     }
     await _navService.openSingleStop(lat: dropoff.lat!, lng: dropoff.lng!);
-    await startTrackingCurrentDropoff();
+    await startTrackingCurrentDropoff(context: context);
   }
 
   /// Starts background proximity tracking toward the current pending drop-off.
-  Future<void> startTrackingCurrentDropoff() async {
+  Future<void> startTrackingCurrentDropoff({
+    BuildContext? context,
+    bool requestPermission = true,
+  }) async {
     final dropoff = _job?.currentDropoff;
     if (dropoff == null) return;
     if (!dropoff.hasCoordinates) return;
@@ -526,7 +540,10 @@ class JobProvider extends ChangeNotifier {
       return;
     }
 
-    final hasPermission = await _locationService.ensurePermission();
+    final hasPermission = await _locationService.ensurePermission(
+      requestIfDenied: requestPermission,
+      context: context,
+    );
     if (!hasPermission) {
       _error = 'Location permission required for drop-off validation.';
       notifyListeners();
@@ -719,7 +736,7 @@ class JobProvider extends ChangeNotifier {
       _isWithinCompletionRadius = false;
       _error = null;
       notifyListeners();
-      unawaited(startTrackingCurrentDropoff());
+      unawaited(startTrackingCurrentDropoff(requestPermission: false));
     } catch (e) {
       _error = e.toString();
       notifyListeners();
@@ -740,7 +757,7 @@ class JobProvider extends ChangeNotifier {
       if (_job!.pickups[i].status == PickupStatus.pending) {
         _activePickupIndex = i;
         notifyListeners();
-        unawaited(startTrackingCurrentPickup());
+        unawaited(startTrackingCurrentPickup(requestPermission: false));
         return true;
       }
     }
@@ -877,14 +894,14 @@ class JobProvider extends ChangeNotifier {
     if (_trackingPickupStopId != null) {
       final stop = activePickup;
       if (stop != null && stop.id == _trackingPickupStopId) {
-        await startTrackingCurrentPickup();
+        await startTrackingCurrentPickup(requestPermission: false);
         return;
       }
     }
     if (_trackingDropoffId != null) {
       final dropoff = _job?.currentDropoff;
       if (dropoff != null && dropoff.id == _trackingDropoffId) {
-        await startTrackingCurrentDropoff();
+        await startTrackingCurrentDropoff(requestPermission: false);
       }
     }
   }

@@ -296,26 +296,30 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
     if (_locationCheckInFlight) return;
 
     _locationCheckInFlight = true;
-    if (showLoader && mounted && (!_locationCheckComplete || !_locationReady)) {
+    // Keep the loading screen for the whole permission flow (disclosure +
+    // system dialog). Never show LocationRequiredPage underneath those UI.
+    if (mounted &&
+        (showLoader || !_locationReady || !_locationCheckComplete)) {
       setState(() => _isCheckingLocation = true);
     }
     try {
       var hasPermission = await _locationService
           .ensurePermission(requestIfDenied: false)
-          .timeout(const Duration(seconds: 3), onTimeout: () => false);
+          .timeout(const Duration(seconds: 2), onTimeout: () => false);
 
-      if (!hasPermission) {
-        hasPermission = await _locationService.ensurePermission().timeout(
-          const Duration(seconds: 8),
-          onTimeout: () => false,
+      if (!hasPermission && mounted) {
+        // No timeout here — user may take time on disclosure / system prompt.
+        hasPermission = await _locationService.ensurePermission(
+          context: context,
         );
       }
 
-      if (!hasPermission) {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
+      if (!hasPermission && mounted) {
+        // Brief re-check after the system dialog closes (some devices lag).
+        await Future<void>.delayed(const Duration(milliseconds: 250));
         hasPermission = await _locationService
             .ensurePermission(requestIfDenied: false)
-            .timeout(const Duration(seconds: 3), onTimeout: () => false);
+            .timeout(const Duration(seconds: 2), onTimeout: () => false);
       }
 
       if (!mounted) return;
@@ -371,12 +375,14 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
         }
 
         if (auth.isAuthenticated && auth.isDriver) {
+          // Loading while checking / disclosure / system permission dialog.
           if (!_locationCheckComplete || _isCheckingLocation) {
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           }
 
+          // Only after the user has finished the permission flow and denied.
           if (!_locationReady) {
             return LocationRequiredPage(onRetry: _enforceLocationRequirement);
           }
@@ -481,8 +487,9 @@ class LocationRequiredPage extends StatelessWidget {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  'RideRoster requires location service and location '
-                  'permission at all times while the app is open.',
+                  'Location access is required for active job tracking and '
+                  'SOS safety features. Tap Retry to review the location '
+                  'disclosure and grant permission.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: Colors.black87),
                 ),
