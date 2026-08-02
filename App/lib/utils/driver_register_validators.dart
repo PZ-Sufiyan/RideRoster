@@ -194,7 +194,7 @@ class DriverRegisterValidators {
       errors['year'] = 'Year of first registration is required.';
     }
     if (licensingType == null || licensingType.trim().isEmpty) {
-      errors['licensing'] = 'Licensing type is required.';
+      errors['licensing'] = 'License type is required.';
     }
     if (category == null || category.isEmpty) {
       errors['vehicleType'] = 'Please select a vehicle type.';

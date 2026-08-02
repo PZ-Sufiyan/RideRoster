@@ -43,6 +43,7 @@ class _Step1RegisterState extends State<Step1Register> {
   Map<String, String> _fieldErrors = {};
   final List<String> _companyOptions = [];
   final Map<String, String> _companyNameToId = {};
+  final Map<String, String> _companyNameToCountry = {};
 
   /// true  → driver is British (nationality locked, right-to-work hidden)
   /// false → driver must type nationality and may enter right-to-work code
@@ -159,17 +160,21 @@ class _Step1RegisterState extends State<Step1Register> {
     try {
       final rows = await Supabase.instance.client
           .from('companies')
-          .select('id,company_name')
+          .select('id,company_name,company_country')
           .order('company_name');
       if (!mounted) return;
       _companyOptions.clear();
       _companyNameToId.clear();
+      _companyNameToCountry.clear();
       for (final row in (rows as List)) {
         final name = row['company_name']?.toString().trim() ?? '';
         final id = row['id']?.toString().trim() ?? '';
+        final country = row['company_country']?.toString().trim() ?? '';
         if (name.isEmpty || id.isEmpty) continue;
         _companyOptions.add(name);
-        _companyNameToId[name.toLowerCase()] = id;
+        final key = name.toLowerCase();
+        _companyNameToId[key] = id;
+        _companyNameToCountry[key] = country;
       }
       setState(() => _isLoadingCompanies = false);
     } catch (_) {
@@ -212,7 +217,9 @@ class _Step1RegisterState extends State<Step1Register> {
     final confirmPassword = _confirmPasswordCtrl.text;
     final nationality = _nationalityCtrl.text.trim();
     final companyName = _companyCtrl.text.trim();
-    final companyId = _companyNameToId[companyName.toLowerCase()] ?? '';
+    final companyKey = companyName.toLowerCase();
+    final companyId = _companyNameToId[companyKey] ?? '';
+    final companyCountry = _companyNameToCountry[companyKey] ?? '';
 
     final result = DriverRegisterValidators.validateStep1(
       firstName: firstName,
@@ -249,6 +256,10 @@ class _Step1RegisterState extends State<Step1Register> {
     widget.data.email = _emailCtrl.text.trim();
     widget.data.companyName = companyName;
     widget.data.companyId = companyId;
+    if (widget.data.companyCountry != companyCountry) {
+      widget.data.licensingType = '';
+    }
+    widget.data.companyCountry = companyCountry;
     widget.data.countryCode = _countryCode;
     widget.data.mobileNumber = _mobileCtrl.text.trim();
     widget.data.residentialAddress = _residentialAddressCtrl.text.trim();
@@ -502,6 +513,13 @@ class _Step1RegisterState extends State<Step1Register> {
                 _companyCtrl.selection = TextSelection.fromPosition(
                   TextPosition(offset: _companyCtrl.text.length),
                 );
+                widget.data.companyName = selection;
+                widget.data.companyId =
+                    _companyNameToId[selection.toLowerCase()] ?? '';
+                widget.data.companyCountry =
+                    _companyNameToCountry[selection.toLowerCase()] ?? '';
+                // Clear previous license type if company (and country) changed
+                widget.data.licensingType = '';
                 _clearFieldError('company');
               },
               fieldViewBuilder:

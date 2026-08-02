@@ -301,6 +301,10 @@ const CompanyReview = () => {
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Address</label>
                                 <p className="text-sm text-gray-900 font-medium">{company?.company_address || '—'}</p>
                             </div>
+                            <div>
+                                <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Country</label>
+                                <p className="text-sm text-gray-900 font-medium">{company?.company_country || 'United Kingdom'}</p>
+                            </div>
                         </div>
                     </div>
 

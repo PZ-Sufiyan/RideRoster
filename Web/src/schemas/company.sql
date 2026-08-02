@@ -5,6 +5,7 @@ create table public.companies (
   company_type text not null,
   company_address text not null,
   company_operating_address text not null,
+  company_country text not null default 'United Kingdom'::text,
   company_email text not null,
   company_phone text not null,
   company_website text not null,

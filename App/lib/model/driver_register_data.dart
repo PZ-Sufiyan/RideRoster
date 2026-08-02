@@ -20,6 +20,8 @@ class DriverRegisterData {
   String email = '';
   String companyName = '';
   String companyId = '';
+  /// Country of the selected company — used to load applicable license types.
+  String companyCountry = '';
   String countryCode = '+44';
   String mobileNumber = '';
   String residentialAddress = '';

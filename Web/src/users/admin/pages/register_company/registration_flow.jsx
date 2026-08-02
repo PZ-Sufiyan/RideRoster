@@ -31,6 +31,7 @@ const initialRegistrationState = {
 
         company_address: '',
         company_operating_address: '',
+        company_country: 'United Kingdom',
         company_email: '',
         company_phone: '',
         company_website: '',

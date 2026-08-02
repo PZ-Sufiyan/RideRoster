@@ -64,6 +64,7 @@ export async function submitCompanyRegistration(registrationData) {
 
       company_address: cleanString(registrationData?.company?.company_address),
       company_operating_address: cleanString(registrationData?.company?.company_operating_address),
+      company_country: cleanString(registrationData?.company?.company_country || 'United Kingdom'),
       company_email: cleanString(registrationData?.company?.company_email),
       company_phone: cleanString(registrationData?.company?.company_phone),
       company_website: cleanString(registrationData?.company?.company_website || ''), // schema is NOT NULL

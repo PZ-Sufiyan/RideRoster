@@ -1,4 +1,5 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { getCountries } from 'libphonenumber-js';
 import {
     MdLocationOn,
     MdSearch,
@@ -6,9 +7,11 @@ import {
     MdPhone,
     MdEmail,
     MdLanguage,
+    MdPublic,
     MdArrowBack,
     MdArrowForward,
     MdErrorOutline,
+    MdKeyboardArrowDown,
 } from 'react-icons/md';
 
 // ─── Validators ───────────────────────────────────────────────────────────────
@@ -22,14 +25,45 @@ const isValidUrl   = (v) => {
 
 const EMPTY_COMPANY = Object.freeze({});
 
+// ─── Country list via libphonenumber-js + Intl (full names only) ──────────────
+
+const buildCountryOptions = () => {
+    const display = new Intl.DisplayNames(['en'], { type: 'region' });
+    return getCountries()
+        .map((code) => display.of(code))
+        .filter(Boolean)
+        .sort((a, b) => a.localeCompare(b));
+};
+
 // ─── Admin_Register_Contact ───────────────────────────────────────────────────
 
 const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
     const [touched, setTouched]                = useState({});
     const [submitAttempted, setSubmitAttempted] = useState(false);
     const [sameAddress, setSameAddress]         = useState(false);
+    const [countryOpen, setCountryOpen]         = useState(false);
+    const countryRef = useRef(null);
 
     const company = useMemo(() => value?.company ?? EMPTY_COMPANY, [value?.company]);
+    const countryOptions = useMemo(() => buildCountryOptions(), []);
+
+    const filteredCountries = useMemo(() => {
+        const q = (company.company_country || '').trim().toLowerCase();
+        if (!q) return countryOptions;
+        return countryOptions.filter((name) => name.toLowerCase().includes(q));
+    }, [company.company_country, countryOptions]);
+
+    // Close country dropdown on outside click
+    useEffect(() => {
+        if (!countryOpen) return;
+        const onDocClick = (e) => {
+            if (countryRef.current && !countryRef.current.contains(e.target)) {
+                setCountryOpen(false);
+            }
+        };
+        document.addEventListener('mousedown', onDocClick);
+        return () => document.removeEventListener('mousedown', onDocClick);
+    }, [countryOpen]);
 
     // ── Field setter ──
     const setField = (field, v) =>
@@ -52,6 +86,8 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
             e.company_address = 'Registered office address is required';
         if (!company.company_operating_address?.trim())
             e.company_operating_address = 'Operating address is required';
+        if (!company.company_country?.trim())
+            e.company_country = 'Country is required';
         if (!company.company_phone?.trim())
             e.company_phone = 'Phone number is required';
         else if (!isValidPhone(company.company_phone))
@@ -74,6 +110,7 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
         setTouched({
             company_address: true,
             company_operating_address: true,
+            company_country: true,
             company_phone: true,
             company_email: true,
             company_website: true,
@@ -171,6 +208,89 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
                         </button>
                     </div>
                     {renderFieldError('company_address')}
+                </div>
+
+                {/* Country — searchable select + free-text */}
+                <div className="space-y-1.5" ref={countryRef}>
+                    <label className="block text-[14px] font-bold text-[#1e293b]">
+                        Country <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
+                            <MdPublic size={20} />
+                        </div>
+                        <input
+                            type="text"
+                            role="combobox"
+                            aria-expanded={countryOpen}
+                            aria-autocomplete="list"
+                            aria-controls="country-options"
+                            placeholder="Search or type a country (e.g. Pakistan)"
+                            value={company.company_country || ''}
+                            onChange={(e) => {
+                                setField('company_country', e.target.value);
+                                setCountryOpen(true);
+                            }}
+                            onFocus={() => setCountryOpen(true)}
+                            onBlur={() => touch('company_country')}
+                            className={`${iconInputClass('company_country')} pr-10`}
+                            autoComplete="off"
+                        />
+                        <button
+                            type="button"
+                            tabIndex={-1}
+                            onMouseDown={(e) => e.preventDefault()}
+                            onClick={() => setCountryOpen((o) => !o)}
+                            className="absolute inset-y-0 right-0 pr-3 flex items-center text-gray-400 hover:text-gray-600"
+                            aria-label="Toggle country list"
+                        >
+                            <MdKeyboardArrowDown
+                                size={22}
+                                className={`transition-transform ${countryOpen ? 'rotate-180' : ''}`}
+                            />
+                        </button>
+
+                        {countryOpen && (
+                            <ul
+                                id="country-options"
+                                role="listbox"
+                                className="absolute z-20 mt-1.5 w-full max-h-56 overflow-y-auto bg-white border border-gray-200 rounded-xl shadow-lg py-1"
+                            >
+                                {filteredCountries.length === 0 ? (
+                                    <li className="px-4 py-3 text-[13px] text-gray-500">
+                                        No match — keep typing to use &ldquo;{company.company_country}&rdquo; as custom country
+                                    </li>
+                                ) : (
+                                    filteredCountries.map((name) => (
+                                        <li key={name} role="option">
+                                            <button
+                                                type="button"
+                                                className={[
+                                                    'w-full text-left px-4 py-2.5 text-[14px] transition-colors',
+                                                    'hover:bg-[#2f6b8f]/8 hover:text-[#1a3f55]',
+                                                    company.company_country === name
+                                                        ? 'bg-[#2f6b8f]/10 text-[#2f6b8f] font-semibold'
+                                                        : 'text-gray-800',
+                                                ].join(' ')}
+                                                onMouseDown={(e) => e.preventDefault()}
+                                                onClick={() => {
+                                                    setField('company_country', name);
+                                                    setCountryOpen(false);
+                                                    touch('company_country');
+                                                }}
+                                            >
+                                                {name}
+                                            </button>
+                                        </li>
+                                    ))
+                                )}
+                            </ul>
+                        )}
+                    </div>
+                    {renderFieldError('company_country')}
+                    <p className="text-[12px] text-gray-400 font-medium pt-0.5">
+                        Select from the list or type a full country name manually.
+                    </p>
                 </div>
 
                 {/* Same-address toggle */}

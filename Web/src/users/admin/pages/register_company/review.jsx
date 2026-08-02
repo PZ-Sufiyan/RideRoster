@@ -348,6 +348,7 @@ const Admin_Register_Review = ({ value, onPrev }) => {
                                 <ReviewField label="Main Phone"        value={company.company_phone} />
                                 <ReviewField label="Website"           value={company.company_website || '—'} />
                                 <ReviewField label="Preferred Language" value={company.company_preferred_language || 'English (UK)'} />
+                                <ReviewField label="Country"           value={company.company_country || 'United Kingdom'} />
                                 <ReviewField label="Registered Address" value={company.company_address} colSpan={2} />
                                 <ReviewField label="Operating Address"  value={company.company_operating_address} colSpan={2} />
                             </div>

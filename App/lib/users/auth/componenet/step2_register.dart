@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/driver_register_data.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/driver_register_validators.dart';
@@ -31,6 +32,14 @@ class _Step2RegisterState extends State<Step2Register> {
   String? _formError;
   Map<String, String> _fieldErrors = {};
 
+  bool _isLoadingLicenseTypes = false;
+  String? _licenseTypesLoadError;
+  final List<String> _licensingTypes = [];
+
+  bool _isLoadingCategories = true;
+  String? _categoriesLoadError;
+  final List<_VehicleCategory> _categories = [];
+
   static const List<String> _makes = [
     'Toyota',
     'Honda',
@@ -54,77 +63,46 @@ class _Step2RegisterState extends State<Step2Register> {
     'Citroën',
   ];
 
-  static const List<String> _licensingTypes = [
-    'Nottingham City Council',
-    'Gedling Borough Council',
-    'Derby City Council',
-    'Leicester City Council',
-    'Nottinghamshire County Council',
-    'Birmingham City Council',
-    'Manchester City Council',
-    'Leeds City Council',
-  ];
-
-  // ── Vehicle taxonomy ───────────────────────────────────────────────────────
-
-  static const _categories = [
-    _VehicleCategory(
-      key: 'Car',
-      icon: Icons.directions_car_outlined,
-      variants: [_VehicleVariant(label: '4 seater', seats: 4)],
-    ),
-    _VehicleCategory(
-      key: 'People Carrier',
-      icon: Icons.airport_shuttle_outlined,
-      variants: [
-        _VehicleVariant(label: '6 passenger', seats: 6),
-        _VehicleVariant(label: '7 passenger', seats: 7),
-      ],
-    ),
-    _VehicleCategory(
-      key: 'Minibus',
-      icon: Icons.directions_bus_outlined,
-      variants: [
-        _VehicleVariant(label: '8 passenger', seats: 8),
-        _VehicleVariant(
-          label: 'Wheelchair ramp',
-          seats: 8,
-          wheelchairAccessible: true,
-        ),
-        _VehicleVariant(
-          label: 'Wheelchair tail lift',
-          seats: 8,
-          wheelchairAccessible: true,
-        ),
-      ],
-    ),
-    _VehicleCategory(
-      key: 'Hackney',
-      icon: Icons.local_taxi_outlined,
-      variants: [
-        _VehicleVariant(label: '5 passenger', seats: 5),
-        _VehicleVariant(label: '6 passenger', seats: 6),
-        _VehicleVariant(
-          label: 'Wheelchair',
-          seats: 5,
-          wheelchairAccessible: true,
-        ),
-      ],
-    ),
+  /// Preferred display order matching the original UI layout.
+  static const List<String> _categoryOrder = [
+    'Car',
+    'People Carrier',
+    'Minibus',
+    'Hackney',
   ];
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
-  _VehicleCategory? get _currentCategory => _selectedCategory == null
-      ? null
-      : _categories.firstWhere((c) => c.key == _selectedCategory);
+  static IconData _iconForCategory(String key) {
+    switch (key) {
+      case 'Car':
+        return Icons.directions_car_outlined;
+      case 'People Carrier':
+        return Icons.airport_shuttle_outlined;
+      case 'Minibus':
+        return Icons.directions_bus_outlined;
+      case 'Hackney':
+        return Icons.local_taxi_outlined;
+      default:
+        return Icons.directions_car_outlined;
+    }
+  }
+
+  _VehicleCategory? get _currentCategory {
+    if (_selectedCategory == null) return null;
+    for (final c in _categories) {
+      if (c.key == _selectedCategory) return c;
+    }
+    return null;
+  }
 
   _VehicleVariant? get _currentVariant {
-    if (_currentCategory == null || _selectedVariant == null) return null;
-    return _currentCategory!.variants.cast<_VehicleVariant?>().firstWhere(
-      (v) => v!.label == _selectedVariant,
-      orElse: () => null,
-    );
+    final category = _currentCategory;
+    if (category == null || _selectedVariant == null) return null;
+    for (final v in category.variants) {
+      if (v.label == _selectedVariant) return v;
+    }
+    return null;
   }
 
   /// Full body style string saved to data model e.g. "Hackney - 5 passenger"
@@ -158,6 +136,158 @@ class _Step2RegisterState extends State<Step2Register> {
         _selectedCategory = saved.substring(0, separatorIndex);
         _selectedVariant = saved.substring(separatorIndex + 3);
       }
+    }
+
+    _isLoadingLicenseTypes = true;
+    _isLoadingCategories = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _loadLicenseTypes();
+      _loadVehicleCategories();
+    });
+  }
+
+  Future<void> _loadLicenseTypes() async {
+    final country = widget.data.companyCountry.trim();
+    if (country.isEmpty) {
+      if (!mounted) return;
+      setState(() {
+        _licensingTypes.clear();
+        _licenseTypesLoadError =
+            'No company country found. Go back and select a company.';
+        _isLoadingLicenseTypes = false;
+      });
+      return;
+    }
+
+    setState(() {
+      _isLoadingLicenseTypes = true;
+      _licenseTypesLoadError = null;
+    });
+
+    try {
+      final row = await Supabase.instance.client
+          .from('country_license_types')
+          .select('license_types')
+          .eq('country', country)
+          .maybeSingle();
+
+      if (!mounted) return;
+
+      final raw = row?['license_types'];
+      final types = <String>[];
+      if (raw is List) {
+        for (final item in raw) {
+          final value = item?.toString().trim() ?? '';
+          if (value.isNotEmpty) types.add(value);
+        }
+      }
+
+      setState(() {
+        _licensingTypes
+          ..clear()
+          ..addAll(types);
+        // Drop a previously saved selection that is no longer valid for this country
+        if (_selectedLicensing != null &&
+            !_licensingTypes.contains(_selectedLicensing)) {
+          _selectedLicensing = null;
+          widget.data.licensingType = '';
+        }
+        _licenseTypesLoadError = types.isEmpty
+            ? 'No license types configured for $country.'
+            : null;
+        _isLoadingLicenseTypes = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingLicenseTypes = false;
+        _licenseTypesLoadError =
+            'Could not load license types right now.';
+      });
+    }
+  }
+
+  Future<void> _loadVehicleCategories() async {
+    setState(() {
+      _isLoadingCategories = true;
+      _categoriesLoadError = null;
+    });
+
+    try {
+      final rows = await Supabase.instance.client
+          .from('vehicle_categories')
+          .select(
+            'category_key,variant_label,seats,wheelchair_accessible',
+          )
+          .order('category_key')
+          .order('variant_label');
+
+      if (!mounted) return;
+
+      final grouped = <String, List<_VehicleVariant>>{};
+      for (final row in (rows as List)) {
+        final key = row['category_key']?.toString().trim() ?? '';
+        final label = row['variant_label']?.toString().trim() ?? '';
+        if (key.isEmpty || label.isEmpty) continue;
+
+        final seatsRaw = row['seats'];
+        final seats = seatsRaw is int
+            ? seatsRaw
+            : int.tryParse(seatsRaw?.toString() ?? '') ?? 0;
+        if (seats <= 0) continue;
+
+        final wheelchair = row['wheelchair_accessible'] == true;
+        grouped.putIfAbsent(key, () => []).add(
+              _VehicleVariant(
+                label: label,
+                seats: seats,
+                wheelchairAccessible: wheelchair,
+              ),
+            );
+      }
+
+      final orderedKeys = <String>[
+        ..._categoryOrder.where(grouped.containsKey),
+        ...grouped.keys.where((k) => !_categoryOrder.contains(k)),
+      ];
+
+      final categories = orderedKeys
+          .map(
+            (key) => _VehicleCategory(
+              key: key,
+              icon: _iconForCategory(key),
+              variants: grouped[key]!,
+            ),
+          )
+          .toList();
+
+      setState(() {
+        _categories
+          ..clear()
+          ..addAll(categories);
+
+        // Clear restored selection if it no longer exists in DB data
+        if (_selectedCategory != null &&
+            !_categories.any((c) => c.key == _selectedCategory)) {
+          _selectedCategory = null;
+          _selectedVariant = null;
+        } else if (_selectedVariant != null && _currentVariant == null) {
+          _selectedVariant = null;
+        }
+
+        _categoriesLoadError = categories.isEmpty
+            ? 'No vehicle types configured.'
+            : null;
+        _isLoadingCategories = false;
+      });
+    } catch (_) {
+      if (!mounted) return;
+      setState(() {
+        _isLoadingCategories = false;
+        _categoriesLoadError =
+            'Could not load vehicle types right now.';
+      });
     }
   }
 
@@ -425,26 +555,45 @@ class _Step2RegisterState extends State<Step2Register> {
           ],
           SizedBox(height: SizeConfig.r(18)),
 
-          // ── Licensing Type ────────────────────────────────────────────────
-          const RegFieldLabel('Licensing Type *'),
+          // ── License Type (from company country) ───────────────────────────
+          const RegFieldLabel('License Type *'),
           SizedBox(height: SizeConfig.r(6)),
           _DropdownTile(
             value: _selectedLicensing,
-            placeholder: 'Nottingham city council, Gedling Bo...',
+            placeholder: _isLoadingLicenseTypes
+                ? 'Loading license types...'
+                : 'Select license type',
             hasError: _fieldErrors['licensing'] != null,
-            onTap: () => _showPicker(
-              _licensingTypes,
-              _selectedLicensing,
-              (v) => setState(() {
-                _selectedLicensing = v;
-                _fieldErrors.remove('licensing');
-              }),
-            ),
+            trailingIcon: _isLoadingLicenseTypes
+                ? null
+                : Icons.keyboard_arrow_down_rounded,
+            showLoading: _isLoadingLicenseTypes,
+            onTap: () {
+              if (_isLoadingLicenseTypes || _licensingTypes.isEmpty) return;
+              _showPicker(
+                _licensingTypes,
+                _selectedLicensing,
+                (v) => setState(() {
+                  _selectedLicensing = v;
+                  _fieldErrors.remove('licensing');
+                }),
+              );
+            },
           ),
           if (_fieldErrors['licensing'] != null) ...[
             SizedBox(height: SizeConfig.r(6)),
             Text(
               _fieldErrors['licensing']!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
+          if (_licenseTypesLoadError != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _licenseTypesLoadError!,
               style: TextStyle(
                 fontSize: SizeConfig.sp(12),
                 color: AppColors.error,
@@ -457,74 +606,96 @@ class _Step2RegisterState extends State<Step2Register> {
           const RegFieldLabel('Vehicle Type *'),
           SizedBox(height: SizeConfig.r(10)),
 
-          // Level 1 — category grid
-          Row(
-            children: _categories.map((cat) {
-              final isSelected = _selectedCategory == cat.key;
-              return Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(
-                    right: cat == _categories.last ? 0 : SizeConfig.r(10),
-                  ),
-                  child: GestureDetector(
-                    onTap: () => setState(() {
-                      _selectedCategory = cat.key;
-                      _selectedVariant =
-                          null; // reset variant on category change
-                      _fieldErrors.remove('vehicleType');
-                    }),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 150),
-                      padding: EdgeInsets.symmetric(vertical: SizeConfig.r(14)),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppColors.primary.withValues(alpha: 0.08)
-                            : const Color(0xFFF3F7FC),
-                        borderRadius: BorderRadius.circular(SizeConfig.radius),
-                        border: Border.all(
-                          color: _fieldErrors['vehicleType'] != null &&
-                                  !isSelected
-                              ? AppColors.error
-                              : isSelected
-                                  ? AppColors.primary
-                                  : const Color(0xFFE0E8F3),
-                          width: isSelected ? 1.5 : 1,
-                        ),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            cat.icon,
-                            color: isSelected
-                                ? AppColors.primary
-                                : AppColors.inputIcon,
-                            size: SizeConfig.r(26),
+          if (_isLoadingCategories)
+            Padding(
+              padding: EdgeInsets.symmetric(vertical: SizeConfig.r(20)),
+              child: const Center(
+                child: CircularProgressIndicator(strokeWidth: 2),
+              ),
+            )
+          else if (_categories.isEmpty)
+            const SizedBox.shrink()
+          else
+            // Level 1 — category grid
+            Row(
+              children: _categories.map((cat) {
+                final isSelected = _selectedCategory == cat.key;
+                return Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(
+                      right: cat == _categories.last ? 0 : SizeConfig.r(10),
+                    ),
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        _selectedCategory = cat.key;
+                        _selectedVariant =
+                            null; // reset variant on category change
+                        _fieldErrors.remove('vehicleType');
+                      }),
+                      child: AnimatedContainer(
+                        duration: const Duration(milliseconds: 150),
+                        padding:
+                            EdgeInsets.symmetric(vertical: SizeConfig.r(14)),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppColors.primary.withValues(alpha: 0.08)
+                              : const Color(0xFFF3F7FC),
+                          borderRadius:
+                              BorderRadius.circular(SizeConfig.radius),
+                          border: Border.all(
+                            color: _fieldErrors['vehicleType'] != null &&
+                                    !isSelected
+                                ? AppColors.error
+                                : isSelected
+                                    ? AppColors.primary
+                                    : const Color(0xFFE0E8F3),
+                            width: isSelected ? 1.5 : 1,
                           ),
-                          SizedBox(height: SizeConfig.r(6)),
-                          Text(
-                            cat.key,
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              fontSize: SizeConfig.sp(12),
-                              fontWeight: FontWeight.w600,
+                        ),
+                        child: Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(
+                              cat.icon,
                               color: isSelected
                                   ? AppColors.primary
-                                  : AppColors.textMedium,
+                                  : AppColors.inputIcon,
+                              size: SizeConfig.r(26),
                             ),
-                          ),
-                        ],
+                            SizedBox(height: SizeConfig.r(6)),
+                            Text(
+                              cat.key,
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: SizeConfig.sp(12),
+                                fontWeight: FontWeight.w600,
+                                color: isSelected
+                                    ? AppColors.primary
+                                    : AppColors.textMedium,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
-                ),
-              );
-            }).toList(),
-          ),
+                );
+              }).toList(),
+            ),
           if (_fieldErrors['vehicleType'] != null) ...[
             SizedBox(height: SizeConfig.r(6)),
             Text(
               _fieldErrors['vehicleType']!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
+          if (_categoriesLoadError != null) ...[
+            SizedBox(height: SizeConfig.r(6)),
+            Text(
+              _categoriesLoadError!,
               style: TextStyle(
                 fontSize: SizeConfig.sp(12),
                 color: AppColors.error,
@@ -536,7 +707,7 @@ class _Step2RegisterState extends State<Step2Register> {
           AnimatedSize(
             duration: const Duration(milliseconds: 250),
             curve: Curves.easeInOut,
-            child: _selectedCategory == null
+            child: _currentCategory == null
                 ? const SizedBox.shrink()
                 : Padding(
                     padding: EdgeInsets.only(top: SizeConfig.r(14)),
@@ -667,13 +838,15 @@ class _DropdownTile extends StatelessWidget {
     required this.onTap,
     this.trailingIcon = Icons.keyboard_arrow_down_rounded,
     this.hasError = false,
+    this.showLoading = false,
   });
 
   final String? value;
   final String placeholder;
   final VoidCallback onTap;
-  final IconData trailingIcon;
+  final IconData? trailingIcon;
   final bool hasError;
+  final bool showLoading;
 
   @override
   Widget build(BuildContext context) {
@@ -712,11 +885,18 @@ class _DropdownTile extends StatelessWidget {
               ),
             ),
             SizedBox(width: SizeConfig.r(10)),
-            Icon(
-              trailingIcon,
-              color: AppColors.inputIcon,
-              size: SizeConfig.r(20),
-            ),
+            if (showLoading)
+              SizedBox(
+                width: SizeConfig.r(18),
+                height: SizeConfig.r(18),
+                child: const CircularProgressIndicator(strokeWidth: 2),
+              )
+            else if (trailingIcon != null)
+              Icon(
+                trailingIcon,
+                color: AppColors.inputIcon,
+                size: SizeConfig.r(20),
+              ),
           ],
         ),
       ),
