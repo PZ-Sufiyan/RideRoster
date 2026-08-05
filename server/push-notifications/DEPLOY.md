@@ -83,6 +83,22 @@ After deploying `emailConfirmation.js` + the updated `index.js`, restart pm2:
 pm2 restart rideroster-push --update-env
 ```
 
+### Mobile delete account
+
+Flutter driver / PA Profile → Delete Account:
+
+```
+POST https://supabase.nst-sch.com/push-api/auth/delete-account
+Authorization: Bearer <access_token>
+```
+
+Deletes the caller's profile rows and Auth user. After deploying
+`deleteAccount.js` + the updated `index.js`, restart pm2:
+
+```
+pm2 restart rideroster-push --update-env
+```
+
 ---
 
 ## CORS

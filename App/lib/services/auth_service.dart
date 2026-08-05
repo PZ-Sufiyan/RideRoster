@@ -1,12 +1,16 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'dart:convert';
+
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import '../config/supabase_config.dart';
 import 'api_service.dart';
 import 'auth_result.dart';
 import 'connectivity_service.dart';
 import 'email_confirmation_service.dart';
 import 'passenger_assistant_registration_service.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 export 'auth_result.dart';
 
@@ -736,6 +740,56 @@ class AuthService extends ApiService {
   /// Logout — clear token from storage.
   Future<void> driverLogout() async {
     await _supabase.auth.signOut();
+  }
+
+  /// Permanently delete the signed-in driver / PA account via push-api.
+  Future<AuthResult> deleteAccount() async {
+    final session = _supabase.auth.currentSession;
+    final accessToken = session?.accessToken;
+    if (accessToken == null || accessToken.isEmpty) {
+      return AuthResult.failure('You must be signed in to delete your account.');
+    }
+
+    final client = HttpClient();
+    try {
+      final uri = Uri.parse('${SupabaseConfig.pushApiUrl}/auth/delete-account');
+      final request =
+          await client.postUrl(uri).timeout(const Duration(seconds: 60));
+      request.headers.set(HttpHeaders.contentTypeHeader, 'application/json');
+      request.headers.set(HttpHeaders.authorizationHeader, 'Bearer $accessToken');
+      request.add(utf8.encode('{}'));
+
+      final response =
+          await request.close().timeout(const Duration(seconds: 60));
+      final body = await response.transform(utf8.decoder).join();
+
+      if (response.statusCode < 200 || response.statusCode >= 300) {
+        String message = 'Could not delete account. Please try again.';
+        try {
+          final decoded = jsonDecode(body);
+          if (decoded is Map && decoded['error'] != null) {
+            message = decoded['error'].toString();
+          }
+        } catch (_) {
+          /* keep default */
+        }
+        return AuthResult.failure(message);
+      }
+
+      return AuthResult.success(message: 'Account deleted.');
+    } on SocketException {
+      return AuthResult.failure(
+        'Connection problem. Check your internet and try again.',
+      );
+    } on TimeoutException {
+      return AuthResult.failure(
+        'Connection problem. Check your internet and try again.',
+      );
+    } catch (e) {
+      return AuthResult.failure('Could not delete account. Please try again.');
+    } finally {
+      client.close(force: true);
+    }
   }
 
   /// Restore current auth session if one exists.

@@ -128,7 +128,10 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                               .loadProfile(forceRefresh: true),
                         ),
                         SizedBox(height: SizeConfig.r(24)),
-                        _SettingsSection(onLogout: () => _logout(context)),
+                        _SettingsSection(
+                          onDeleteAccount: () => _deleteAccount(context),
+                          onLogout: () => _logout(context),
+                        ),
                         SizedBox(height: SizeConfig.r(28)),
                       ],
                     ),
@@ -160,6 +163,73 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
   static Future<void> _logout(BuildContext context) async {
     await context.read<AuthProvider>().logout();
     if (!context.mounted) return;
+    Navigator.pushNamedAndRemoveUntil(
+      context,
+      AppRoutes.login,
+      (route) => false,
+    );
+  }
+
+  static Future<void> _deleteAccount(BuildContext context) async {
+    if (!context.read<ConnectivityProvider>().isOnline) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Internet connection required to delete your account.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete Account'),
+          content: const Text(
+            'This action will permanently delete your account. This cannot be undone.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Cancel'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              style: TextButton.styleFrom(foregroundColor: AppColors.error),
+              child: const Text('Delete Account'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !context.mounted) return;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(
+        child: CircularProgressIndicator(),
+      ),
+    );
+
+    final error = await context.read<AuthProvider>().deleteAccount();
+
+    if (!context.mounted) return;
+    Navigator.of(context, rootNavigator: true).pop();
+
+    if (error != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(error),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+      return;
+    }
+
     Navigator.pushNamedAndRemoveUntil(
       context,
       AppRoutes.login,
@@ -1141,8 +1211,12 @@ class _QuickAction {
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _SettingsSection extends StatelessWidget {
+  final VoidCallback onDeleteAccount;
   final VoidCallback onLogout;
-  const _SettingsSection({required this.onLogout});
+  const _SettingsSection({
+    required this.onDeleteAccount,
+    required this.onLogout,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -1182,6 +1256,14 @@ class _SettingsSection extends StatelessWidget {
             iconColor: AppColors.textMedium,
             labelColor: AppColors.textDark,
             onTap: () {},
+          ),
+          Divider(height: 1, thickness: 1, color: AppColors.inputBorder),
+          _SettingsTile(
+            icon: Icons.delete_outline,
+            label: 'Delete Account',
+            iconColor: AppColors.error,
+            labelColor: AppColors.error,
+            onTap: onDeleteAccount,
           ),
           Divider(height: 1, thickness: 1, color: AppColors.inputBorder),
           _SettingsTile(

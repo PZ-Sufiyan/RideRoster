@@ -10,6 +10,7 @@ import {
   createSupabaseAuthClient,
 } from './supabaseClient.js'
 import { createUnconfirmedMobileUser } from './emailConfirmation.js'
+import { deleteAuthenticatedAccount } from './deleteAccount.js'
 
 // Node 20 has no global WebSocket; supabase-js Realtime requires one.
 if (!globalThis.WebSocket) {
@@ -128,6 +129,23 @@ app.post('/auth/create-unconfirmed-mobile-user', async (req, res) => {
       message.includes('at least 6')
         ? 400
         : 500
+    res.status(status).json({ error: message })
+  }
+})
+
+/**
+ * Mobile self-service account deletion.
+ * Requires Authorization: Bearer <access_token> for a driver or PA.
+ */
+app.post('/auth/delete-account', async (req, res) => {
+  try {
+    const authHeader = req.headers.authorization
+    const result = await deleteAuthenticatedAccount(authHeader)
+    res.json(result)
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown error'
+    const status = Number(error?.status) || 500
+    console.error('delete-account failed:', message)
     res.status(status).json({ error: message })
   }
 })

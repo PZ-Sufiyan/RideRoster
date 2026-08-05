@@ -144,6 +144,22 @@ class AuthProvider extends ChangeNotifier {
     );
   }
 
+  /// Permanently delete the current account, then clear local session.
+  ///
+  /// Returns `null` on success, or an error message on failure.
+  Future<String?> deleteAccount() async {
+    await _awaitLogoutCleanup();
+
+    final result = await _authService.deleteAccount();
+    if (!result.success) {
+      return result.error ?? 'Could not delete account. Please try again.';
+    }
+
+    // Auth user is gone — clear local state (signOut may fail; cleanup tolerates it).
+    await logout();
+    return null;
+  }
+
   Future<void> _runLogoutCleanup(bool wasDriver) async {
     try {
       await RealtimeService().unsubscribe();
