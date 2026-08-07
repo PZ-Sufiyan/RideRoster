@@ -4,7 +4,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/app_colors.dart';
 import '../utils/size_confg.dart';
 
-/// Google Play prominent disclosure for background location (shown once).
+/// Prominent location disclosure shown once before the system permission prompt
+/// (Google Play background-location policy). On iOS, Continue must always lead
+/// into the system dialog — no deferral (App Store 5.1.1(iv)).
 class LocationDisclosure {
   LocationDisclosure._();
 
@@ -108,49 +110,35 @@ class _LocationDisclosureDialog extends StatelessWidget {
             _bullet('Track active ride progress for your company'),
             _bullet('Share live location during SOS safety alerts'),
             SizedBox(height: SizeConfig.r(18)),
-            Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: Text(
-                      'Not now',
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(14),
-                        color: AppColors.textMedium,
-                      ),
-                    ),
+            // App Store 5.1.1(iv): after a custom pre-permission message, the
+            // user must always proceed to the system permission request — no
+            // "Not now" / dismiss that delays the prompt.
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: () async {
+                  await LocationDisclosure.markAccepted();
+                  if (context.mounted) {
+                    Navigator.of(context).pop(true);
+                  }
+                },
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppColors.primary,
+                  foregroundColor: Colors.white,
+                  elevation: 0,
+                  padding: EdgeInsets.symmetric(vertical: SizeConfig.r(12)),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(SizeConfig.r(10)),
                   ),
                 ),
-                SizedBox(width: SizeConfig.r(8)),
-                Expanded(
-                  flex: 2,
-                  child: ElevatedButton(
-                    onPressed: () async {
-                      await LocationDisclosure.markAccepted();
-                      if (context.mounted) {
-                        Navigator.of(context).pop(true);
-                      }
-                    },
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary,
-                      foregroundColor: Colors.white,
-                      elevation: 0,
-                      padding: EdgeInsets.symmetric(vertical: SizeConfig.r(12)),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(SizeConfig.r(10)),
-                      ),
-                    ),
-                    child: Text(
-                      'Continue',
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(14),
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
+                child: Text(
+                  'Continue',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(14),
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-              ],
+              ),
             ),
           ],
         ),

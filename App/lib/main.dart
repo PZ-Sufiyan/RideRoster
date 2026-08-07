@@ -488,8 +488,8 @@ class LocationRequiredPage extends StatelessWidget {
                 const SizedBox(height: 12),
                 const Text(
                   'Location access is required for active job tracking and '
-                  'SOS safety features. Tap Retry to review the location '
-                  'disclosure and grant permission.',
+                  'SOS safety features. Enable location for this app in '
+                  'Settings, then return here and tap Retry.',
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: Colors.black87),
                 ),
@@ -500,17 +500,15 @@ class LocationRequiredPage extends StatelessWidget {
                   alignment: WrapAlignment.center,
                   children: [
                     ElevatedButton(
-                      onPressed: Geolocator.openLocationSettings,
-                      child: const Text('Open Location Settings'),
-                    ),
-                    ElevatedButton(
                       onPressed: Geolocator.openAppSettings,
-                      child: const Text('Open App Settings'),
+                      child: const Text('Open Settings'),
+                    ),
+                    OutlinedButton(
+                      onPressed: onRetry,
+                      child: const Text('Retry'),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                OutlinedButton(onPressed: onRetry, child: const Text('Retry')),
               ],
             ),
           ),
