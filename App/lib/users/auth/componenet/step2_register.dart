@@ -19,10 +19,12 @@ class Step2Register extends StatefulWidget {
 class _Step2RegisterState extends State<Step2Register> {
   late final TextEditingController _regNumberCtrl;
   late final TextEditingController _taxiPlateCtrl;
+  late final TextEditingController _makeCtrl;
   late final TextEditingController _modelCtrl;
   late final TextEditingController _vehicleColourCtrl;
+  late final TextEditingController _licensingCtrl;
+  late final FocusNode _licensingFocusNode;
 
-  String? _selectedMake;
   String? _selectedLicensing;
   DateTime? _yearOfRegistration;
 
@@ -39,29 +41,6 @@ class _Step2RegisterState extends State<Step2Register> {
   bool _isLoadingCategories = true;
   String? _categoriesLoadError;
   final List<_VehicleCategory> _categories = [];
-
-  static const List<String> _makes = [
-    'Toyota',
-    'Honda',
-    'Ford',
-    'Volkswagen',
-    'BMW',
-    'Mercedes-Benz',
-    'Audi',
-    'Hyundai',
-    'Nissan',
-    'Kia',
-    'Vauxhall',
-    'Peugeot',
-    'Renault',
-    'Fiat',
-    'Skoda',
-    'Seat',
-    'Volvo',
-    'Land Rover',
-    'Jaguar',
-    'Citroën',
-  ];
 
   /// Preferred display order matching the original UI layout.
   static const List<String> _categoryOrder = [
@@ -120,12 +99,14 @@ class _Step2RegisterState extends State<Step2Register> {
       text: widget.data.registrationNumber,
     );
     _taxiPlateCtrl = TextEditingController(text: widget.data.taxiPlateNumber);
+    _makeCtrl = TextEditingController(text: widget.data.make);
     _modelCtrl = TextEditingController(text: widget.data.model);
     _vehicleColourCtrl = TextEditingController(text: widget.data.vehicleColour);
-    _selectedMake = widget.data.make.isEmpty ? null : widget.data.make;
     _selectedLicensing = widget.data.licensingType.isEmpty
         ? null
         : widget.data.licensingType;
+    _licensingCtrl = TextEditingController(text: _selectedLicensing ?? '');
+    _licensingFocusNode = FocusNode();
     _yearOfRegistration = widget.data.yearOfFirstRegistration;
 
     // Restore two-level selection from saved bodyStyle e.g. "Hackney - 5 passenger"
@@ -192,6 +173,10 @@ class _Step2RegisterState extends State<Step2Register> {
             !_licensingTypes.contains(_selectedLicensing)) {
           _selectedLicensing = null;
           widget.data.licensingType = '';
+          _licensingCtrl.clear();
+        } else if (_selectedLicensing != null &&
+            _licensingCtrl.text.trim() != _selectedLicensing) {
+          _licensingCtrl.text = _selectedLicensing!;
         }
         _licenseTypesLoadError = types.isEmpty
             ? 'No license types configured for $country.'
@@ -295,8 +280,11 @@ class _Step2RegisterState extends State<Step2Register> {
   void dispose() {
     _regNumberCtrl.dispose();
     _taxiPlateCtrl.dispose();
+    _makeCtrl.dispose();
     _modelCtrl.dispose();
     _vehicleColourCtrl.dispose();
+    _licensingCtrl.dispose();
+    _licensingFocusNode.dispose();
     super.dispose();
   }
 
@@ -308,23 +296,41 @@ class _Step2RegisterState extends State<Step2Register> {
     }
   }
 
+  String? _resolveLicensingType(String typed) {
+    final query = typed.trim().toLowerCase();
+    if (query.isEmpty) return null;
+    for (final type in _licensingTypes) {
+      if (type.toLowerCase() == query) return type;
+    }
+    return null;
+  }
+
   void _saveAndNext() {
+    final make = _makeCtrl.text.trim();
+    final licensingTyped = _licensingCtrl.text.trim();
+    final resolvedLicensing = _resolveLicensingType(licensingTyped);
+
     final result = DriverRegisterValidators.validateStep2(
       registrationNumber: _regNumberCtrl.text.trim(),
       taxiPlateNumber: _taxiPlateCtrl.text.trim(),
-      make: _selectedMake,
+      make: make.isEmpty ? null : make,
       model: _modelCtrl.text.trim(),
       vehicleColour: _vehicleColourCtrl.text.trim(),
       yearOfFirstRegistration: _yearOfRegistration,
-      licensingType: _selectedLicensing,
+      licensingType: resolvedLicensing,
       category: _selectedCategory,
       variant: _selectedVariant,
     );
 
-    if (!result.isValid) {
+    final errors = Map<String, String>.from(result.errors);
+    if (licensingTyped.isNotEmpty && resolvedLicensing == null) {
+      errors['licensing'] = 'Please select a license type from the list.';
+    }
+
+    if (errors.isNotEmpty) {
       setState(() {
-        _fieldErrors = Map<String, String>.from(result.errors);
-        _formError = result.firstError;
+        _fieldErrors = errors;
+        _formError = errors.values.first;
       });
       return;
     }
@@ -332,14 +338,15 @@ class _Step2RegisterState extends State<Step2Register> {
     setState(() {
       _fieldErrors = {};
       _formError = null;
+      _selectedLicensing = resolvedLicensing;
     });
     widget.data.registrationNumber = _regNumberCtrl.text.trim();
     widget.data.taxiPlateNumber = _taxiPlateCtrl.text.trim();
-    widget.data.make = _selectedMake ?? '';
+    widget.data.make = make;
     widget.data.model = _modelCtrl.text.trim();
     widget.data.vehicleColour = _vehicleColourCtrl.text.trim();
     widget.data.yearOfFirstRegistration = _yearOfRegistration;
-    widget.data.licensingType = _selectedLicensing ?? '';
+    widget.data.licensingType = resolvedLicensing ?? '';
     widget.data.bodyStyle = _fullBodyStyle;
     widget.data.passengerSeats = _currentVariant?.seats.toString() ?? '';
     widget.data.wheelchairAccessible =
@@ -384,38 +391,6 @@ class _Step2RegisterState extends State<Step2Register> {
       'December',
     ];
     return '${d.day} ${months[d.month]}, ${d.year}';
-  }
-
-  void _showPicker(
-    List<String> items,
-    String? selected,
-    ValueChanged<String> onSelect,
-  ) {
-    showModalBottomSheet<void>(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SizeConfig.r(16)),
-        ),
-      ),
-      builder: (_) => ListView(
-        shrinkWrap: true,
-        children: items
-            .map(
-              (item) => ListTile(
-                title: Text(item),
-                trailing: item == selected
-                    ? const Icon(Icons.check, color: AppColors.primary)
-                    : null,
-                onTap: () {
-                  onSelect(item);
-                  Navigator.pop(context);
-                },
-              ),
-            )
-            .toList(),
-      ),
-    );
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -479,29 +454,13 @@ class _Step2RegisterState extends State<Step2Register> {
           // ── Make ──────────────────────────────────────────────────────────
           const RegFieldLabel('Make *'),
           SizedBox(height: SizeConfig.r(6)),
-          _DropdownTile(
-            value: _selectedMake,
-            placeholder: 'Select make',
-            hasError: _fieldErrors['make'] != null,
-            onTap: () => _showPicker(
-              _makes,
-              _selectedMake,
-              (v) => setState(() {
-                _selectedMake = v;
-                _fieldErrors.remove('make');
-              }),
-            ),
+          RegField(
+            controller: _makeCtrl,
+            hintText: 'e.g. Toyota, Ford',
+            textCapitalization: TextCapitalization.words,
+            errorText: _fieldErrors['make'],
+            onChanged: (_) => _clearFieldError('make'),
           ),
-          if (_fieldErrors['make'] != null) ...[
-            SizedBox(height: SizeConfig.r(6)),
-            Text(
-              _fieldErrors['make']!,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(12),
-                color: AppColors.error,
-              ),
-            ),
-          ],
           SizedBox(height: SizeConfig.r(18)),
 
           // ── Model ─────────────────────────────────────────────────────────
@@ -555,28 +514,164 @@ class _Step2RegisterState extends State<Step2Register> {
           ],
           SizedBox(height: SizeConfig.r(18)),
 
-          // ── License Type (from company country) ───────────────────────────
+          // ── License Type (searchable autocomplete) ────────────────────────
           const RegFieldLabel('License Type *'),
           SizedBox(height: SizeConfig.r(6)),
-          _DropdownTile(
-            value: _selectedLicensing,
-            placeholder: _isLoadingLicenseTypes
-                ? 'Loading license types...'
-                : 'Select license type',
-            hasError: _fieldErrors['licensing'] != null,
-            trailingIcon: _isLoadingLicenseTypes
-                ? null
-                : Icons.keyboard_arrow_down_rounded,
-            showLoading: _isLoadingLicenseTypes,
-            onTap: () {
-              if (_isLoadingLicenseTypes || _licensingTypes.isEmpty) return;
-              _showPicker(
-                _licensingTypes,
-                _selectedLicensing,
-                (v) => setState(() {
-                  _selectedLicensing = v;
-                  _fieldErrors.remove('licensing');
-                }),
+          RawAutocomplete<String>(
+            textEditingController: _licensingCtrl,
+            focusNode: _licensingFocusNode,
+            optionsBuilder: (textEditingValue) {
+              if (_isLoadingLicenseTypes || _licensingTypes.isEmpty) {
+                return const Iterable<String>.empty();
+              }
+              final query = textEditingValue.text.trim().toLowerCase();
+              if (query.isEmpty) return _licensingTypes;
+              return _licensingTypes.where(
+                (t) => t.toLowerCase().contains(query),
+              );
+            },
+            onSelected: (selection) {
+              _licensingCtrl.text = selection;
+              _licensingCtrl.selection = TextSelection.fromPosition(
+                TextPosition(offset: _licensingCtrl.text.length),
+              );
+              setState(() {
+                _selectedLicensing = selection;
+                _fieldErrors.remove('licensing');
+              });
+            },
+            fieldViewBuilder:
+                (context, controller, focusNode, onFieldSubmitted) {
+              return TextField(
+                controller: controller,
+                focusNode: focusNode,
+                enabled: !_isLoadingLicenseTypes,
+                onChanged: (_) {
+                  _selectedLicensing = null;
+                  _clearFieldError('licensing');
+                },
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(15),
+                  color: AppColors.textDark,
+                ),
+                decoration: InputDecoration(
+                  hintText: _isLoadingLicenseTypes
+                      ? 'Loading license types...'
+                      : 'Search license type',
+                  hintStyle: TextStyle(
+                    fontSize: SizeConfig.sp(15),
+                    color: const Color(0xFFB0BEC5),
+                  ),
+                  suffixIcon: _isLoadingLicenseTypes
+                      ? Padding(
+                          padding: EdgeInsets.all(SizeConfig.r(12)),
+                          child: SizedBox(
+                            width: SizeConfig.r(18),
+                            height: SizeConfig.r(18),
+                            child: const CircularProgressIndicator(
+                              strokeWidth: 2,
+                            ),
+                          ),
+                        )
+                      : Icon(
+                          Icons.keyboard_arrow_down,
+                          color: AppColors.inputIcon,
+                          size: SizeConfig.r(22),
+                        ),
+                  filled: true,
+                  fillColor: const Color(0xFFF3F7FC),
+                  contentPadding: EdgeInsets.symmetric(
+                    horizontal: SizeConfig.r(16),
+                    vertical: SizeConfig.r(16),
+                  ),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    borderSide: BorderSide(
+                      color: _fieldErrors['licensing'] != null
+                          ? AppColors.error
+                          : const Color(0xFFE0E8F3),
+                      width: 1,
+                    ),
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    borderSide: BorderSide(
+                      color: _fieldErrors['licensing'] != null
+                          ? AppColors.error
+                          : const Color(0xFFE0E8F3),
+                      width: 1,
+                    ),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    borderSide: BorderSide(
+                      color: _fieldErrors['licensing'] != null
+                          ? AppColors.error
+                          : AppColors.primary,
+                      width: 1.5,
+                    ),
+                  ),
+                  disabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(SizeConfig.radius),
+                    borderSide: const BorderSide(
+                      color: Color(0xFFE0E8F3),
+                      width: 1,
+                    ),
+                  ),
+                ),
+              );
+            },
+            optionsViewBuilder: (context, onSelected, options) {
+              final optionList = options.toList();
+              if (optionList.isEmpty) return const SizedBox.shrink();
+              final rowHeight = SizeConfig.r(52);
+              return Align(
+                alignment: Alignment.topLeft,
+                child: Material(
+                  elevation: 6,
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(SizeConfig.radius),
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width -
+                          (SizeConfig.hPad * 2),
+                      maxHeight: rowHeight * 3,
+                    ),
+                    child: ListView.builder(
+                      primary: false,
+                      padding: EdgeInsets.zero,
+                      physics: const ClampingScrollPhysics(),
+                      shrinkWrap: true,
+                      itemCount: optionList.length,
+                      itemBuilder: (context, index) {
+                        final type = optionList[index];
+                        final isSelected = type == _selectedLicensing ||
+                            type.toLowerCase() ==
+                                _licensingCtrl.text.trim().toLowerCase();
+                        return SizedBox(
+                          height: rowHeight,
+                          child: ListTile(
+                            dense: true,
+                            title: Text(
+                              type,
+                              style: TextStyle(
+                                fontSize: SizeConfig.sp(14),
+                                color: AppColors.textDark,
+                              ),
+                            ),
+                            trailing: isSelected
+                                ? const Icon(
+                                    Icons.check,
+                                    color: AppColors.primary,
+                                  )
+                                : null,
+                            onTap: () => onSelected(type),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ),
               );
             },
           ),

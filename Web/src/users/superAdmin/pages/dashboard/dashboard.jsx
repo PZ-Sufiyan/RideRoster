@@ -16,6 +16,12 @@ import {
 } from '../../../../services/dashboardService'
 import { ShimmerBlock } from '../../../../utils/Shimmer'
 
+const truncateText = (text, maxLength = 40) => {
+    if (!text) return '—'
+    const value = String(text)
+    return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value
+}
+
 const Dashboard = () => {
     const [loading, setLoading] = useState(true)
     const [error, setError] = useState(null)
@@ -56,8 +62,9 @@ const Dashboard = () => {
                 if (!isMounted) return
                 setError(e?.message || 'Failed to load dashboard data.')
             } finally {
-                if (!isMounted) return
-                setLoading(false)
+                if (isMounted) {
+                    setLoading(false)
+                }
             }
         }
 
@@ -110,7 +117,7 @@ const Dashboard = () => {
         const s = String(value).trim()
         if (!s) return '—'
         const first = s.split('-')[0]
-        return first || s
+        return (first || s).toUpperCase()
     }
 
     const lineChartPoints = useMemo(() => {
@@ -443,15 +450,15 @@ const Dashboard = () => {
                     </Link>
                 </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
+                    <table className="w-full text-sm text-left table-fixed">
                         <thead className="bg-gray-50 text-gray-500 font-medium">
                             <tr>
-                                <th className="px-6 py-3">Company ID</th>
-                                <th className="px-6 py-3">Company Name</th>
-                                <th className="px-6 py-3">Submitted On</th>
-                                <th className="px-6 py-3">Location</th>
-                                <th className="px-6 py-3">Status</th>
-                                <th className="px-6 py-3 text-right">Actions</th>
+                                <th className="px-6 py-3 w-[12%]">Company ID</th>
+                                <th className="px-6 py-3 w-[22%]">Company Name</th>
+                                <th className="px-6 py-3 w-[14%]">Submitted On</th>
+                                <th className="px-6 py-3 w-[24%]">Location</th>
+                                <th className="px-6 py-3 w-[14%]">Status</th>
+                                <th className="px-6 py-3 text-right w-[14%]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50" aria-busy={loading} aria-label={loading ? 'Loading pending approvals' : undefined}>
@@ -464,14 +471,29 @@ const Dashboard = () => {
                                     <td className="px-6 py-4"><ShimmerBlock className="h-6 w-20 rounded-full" rounded="rounded-full" /></td>
                                     <td className="px-6 py-4 text-right"><ShimmerBlock className="ml-auto h-3.5 w-12 rounded-md" /></td>
                                 </tr>
-                            )) : pendingApprovals.map((row, idx) => (
+                            )) : pendingApprovals.map((row, idx) => {
+                                const companyName = row.company_name || '—'
+                                const location = row.company_operating_address || row.company_address || '—'
+                                const companyId = shortenUuid(row.id)
+
+                                return (
                                 <tr key={idx} className="hover:bg-gray-50/50 transition-colors">
-                                    <td className="px-6 py-4 text-gray-500">{shortenUuid(row.id)}</td>
-                                    <td className="px-6 py-4 font-medium text-gray-900">{row.company_name || '—'}</td>
-                                    <td className="px-6 py-4 text-gray-500">{formatDate(row.created_at)}</td>
-                                    <td className="px-6 py-4 text-gray-500">{row.company_operating_address || row.company_address || '—'}</td>
+                                    <td className="px-6 py-4 text-gray-500 font-medium uppercase whitespace-nowrap" title={row.id}>
+                                        {companyId}
+                                    </td>
+                                    <td className="px-6 py-4 font-medium text-gray-900 max-w-0">
+                                        <span className="block truncate" title={companyName}>
+                                            {truncateText(companyName, 40)}
+                                        </span>
+                                    </td>
+                                    <td className="px-6 py-4 text-gray-500 whitespace-nowrap">{formatDate(row.created_at)}</td>
+                                    <td className="px-6 py-4 text-gray-500 max-w-0">
+                                        <span className="block truncate" title={location}>
+                                            {truncateText(location, 45)}
+                                        </span>
+                                    </td>
                                     <td className="px-6 py-4">
-                                        <span className="px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-xs font-medium border border-yellow-100">
+                                        <span className="px-3 py-1 bg-yellow-50 text-yellow-700 rounded-full text-xs font-medium border border-yellow-100 capitalize">
                                             {row.status || 'pending'}
                                         </span>
                                     </td>
@@ -481,7 +503,8 @@ const Dashboard = () => {
                                         </Link>
                                     </td>
                                 </tr>
-                            ))}
+                                )
+                            })}
                             {!loading && pendingApprovals.length === 0 && (
                                 <tr>
                                     <td className="px-6 py-6 text-gray-500" colSpan={6}>

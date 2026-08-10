@@ -1,7 +1,6 @@
 ﻿import React, { useEffect, useState } from 'react';
 import {
     MdSearch,
-    MdFilterList,
     MdMoreHoriz,
     MdChevronLeft,
     MdChevronRight,
@@ -17,6 +16,12 @@ import {
     updateCompaniesStatusByIds
 } from '../../../../services/companyService';
 import { ShimmerBlock } from '../../../../utils/Shimmer';
+
+const truncateText = (text, maxLength = 40) => {
+    if (!text) return '';
+    const value = String(text);
+    return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+};
 
 const PendingCompanies = () => {
     const [companies, setCompanies] = useState([]);
@@ -147,7 +152,7 @@ const PendingCompanies = () => {
                 {/* Controls Toolbar */}
                 <div className="p-4 border-b border-gray-100 flex flex-col lg:flex-row gap-4 justify-between lg:items-center">
 
-                    {/* Search & Filter */}
+                    {/* Search */}
                     <div className="flex flex-col sm:flex-row gap-3 flex-1">
                         <div className="relative max-w-sm w-full">
                             <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
@@ -161,12 +166,6 @@ const PendingCompanies = () => {
                                 className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50"
                             />
                         </div>
-
-                        <button className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50">
-                            <MdFilterList className="text-gray-500" />
-                            Filter
-                            <MdArrowDropDown className="text-gray-400" />
-                        </button>
                     </div>
 
                     {/* Actions */}
@@ -212,7 +211,7 @@ const PendingCompanies = () => {
 
                 {/* Table Container - Horizontal Scroll on Mobile */}
                 <div className="overflow-x-auto min-h-100">
-                    <table className="w-full text-sm text-left whitespace-nowrap">
+                    <table className="w-full text-sm text-left table-fixed">
                         <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                             <tr>
                                 <th className="px-6 py-4 w-10">
@@ -224,7 +223,7 @@ const PendingCompanies = () => {
                                         )}
                                     </div>
                                 </th>
-                                <th className="px-6 py-4 cursor-pointer hover:text-gray-700 group">
+                                <th className="px-6 py-4 w-[22%] cursor-pointer hover:text-gray-700 group">
                                     <div className="flex items-center gap-1">
                                         Company Name
                                         <div className="flex flex-col text-gray-400">
@@ -242,8 +241,8 @@ const PendingCompanies = () => {
                                         </div>
                                     </div>
                                 </th>
-                                <th className="px-6 py-4">Contact Person</th>
-                                <th className="px-6 py-4">Location</th>
+                                <th className="px-6 py-4 w-[18%]">Contact Person</th>
+                                <th className="px-6 py-4 w-[22%]">Location</th>
                                 <th className="px-6 py-4">Status</th>
                                 <th className="px-6 py-4 text-right">Actions</th>
                             </tr>
@@ -291,30 +290,40 @@ const PendingCompanies = () => {
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4">
+                                        <td className="px-6 py-4 max-w-0">
                                             <Link
                                                 to={`/platform/companies/review/${company.id}`}
-                                                className="font-bold text-gray-900 hover:text-blue-600 hover:underline"
+                                                className="font-bold text-gray-900 hover:text-blue-600 hover:underline block truncate"
+                                                title={company.name}
                                             >
-                                                {company.name}
+                                                {truncateText(company.name, 40)}
                                             </Link>
                                         </td>
-                                        <td className="px-6 py-4 text-gray-500">{company.submitted}</td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
+                                        <td className="px-6 py-4 text-gray-500 whitespace-nowrap">{company.submitted}</td>
+                                        <td className="px-6 py-4 max-w-0">
+                                            <div className="flex items-center gap-3 min-w-0">
                                                 {company.contact.avatar ? (
                                                     <img
                                                         src={company.contact.avatar}
                                                         alt={company.contact.name}
-                                                        className="w-8 h-8 rounded-full object-cover border border-gray-100"
+                                                        className="w-8 h-8 shrink-0 rounded-full object-cover border border-gray-100"
                                                     />
                                                 ) : (
-                                                    <div className="w-8 h-8 rounded-full border border-gray-100 bg-gray-100" />
+                                                    <div className="w-8 h-8 shrink-0 rounded-full border border-gray-100 bg-gray-100" />
                                                 )}
-                                                <span className="text-gray-700 font-medium">{company.contact.name}</span>
+                                                <span
+                                                    className="text-gray-700 font-medium truncate"
+                                                    title={company.contact.name}
+                                                >
+                                                    {truncateText(company.contact.name, 35)}
+                                                </span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-gray-500">{company.location}</td>
+                                        <td className="px-6 py-4 text-gray-500 max-w-0">
+                                            <span className="block truncate" title={company.location}>
+                                                {truncateText(company.location, 45)}
+                                            </span>
+                                        </td>
                                         <td className="px-6 py-4">
                                             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-yellow-50 text-yellow-700 border border-yellow-100 capitalize">
                                                 {company.status}

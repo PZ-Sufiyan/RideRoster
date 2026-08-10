@@ -15,6 +15,7 @@ import {
 import { updatePassenger } from '../../../../../services/passengerService';
 import { usePassengersList } from '../../../../../hooks/usePassengersList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
+import { truncateText } from '../../../../../utils/truncateText';
 
 const STATUS_STYLES = {
     Active:   'text-blue-600 font-bold text-[11px] uppercase tracking-wide',
@@ -309,7 +310,7 @@ const PassengersPage = () => {
                     </div>
                 )}
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left text-[13px]">
+                    <table className="w-full text-left text-[13px] table-fixed">
                         <thead className="border-b border-gray-100">
                             <tr>
                                 <th className="px-4 py-3.5 w-10">
@@ -319,14 +320,14 @@ const PassengersPage = () => {
                                             : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                     </div>
                                 </th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Passenger Name</th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Pickup</th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Time</th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">W/C</th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Drop-off</th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider">Actions</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[16%]">Passenger Name</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Contact</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[16%]">Pickup</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[8%]">Time</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[6%]">W/C</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[16%]">Drop-off</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[10%]">Status</th>
+                                <th className="px-4 py-3.5 text-[11px] font-semibold text-gray-500 uppercase tracking-wider w-[8%]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50" aria-busy={isLoading}>
@@ -360,26 +361,28 @@ const PassengersPage = () => {
                                     </td>
 
                                     {/* Name */}
-                                    <td className="px-4 py-4">
+                                    <td className="px-4 py-4 max-w-0">
                                         <div
-                                            className="flex items-center gap-3 cursor-pointer group"
+                                            className="flex items-center gap-3 cursor-pointer group min-w-0"
                                             onClick={() => navigate(`/portal/users/passengers/${p.id}`)}
                                         >
                                             <img src={p.avatar} alt={p.name}
                                                 className="w-8 h-8 rounded-full object-cover border border-gray-100 shrink-0" />
-                                            <span className="font-medium text-gray-900 whitespace-nowrap group-hover:text-[#004D6D] transition-colors">
-                                                {p.name}
+                                            <span className="font-medium text-gray-900 truncate group-hover:text-[#004D6D] transition-colors" title={p.name}>
+                                                {truncateText(p.name, 35)}
                                             </span>
                                         </div>
                                     </td>
 
                                     {/* Contact */}
-                                    <td className="px-4 py-4 text-gray-500 whitespace-nowrap">{p.contact}</td>
+                                    <td className="px-4 py-4 text-gray-500 max-w-0">
+                                        <span className="block truncate" title={p.contact}>{truncateText(p.contact, 25)}</span>
+                                    </td>
 
                                     {/* Pickup */}
-                                    <td className="px-4 py-4">
-                                        <div className="font-medium text-gray-800">{p.pickupPostcode}</div>
-                                        <div className="text-[11px] text-gray-400 mt-0.5">{p.pickupAddress}</div>
+                                    <td className="px-4 py-4 max-w-0">
+                                        <div className="font-medium text-gray-800 truncate" title={p.pickupPostcode}>{truncateText(p.pickupPostcode, 20)}</div>
+                                        <div className="text-[11px] text-gray-400 mt-0.5 truncate" title={p.pickupAddress}>{truncateText(p.pickupAddress, 40)}</div>
                                     </td>
 
                                     {/* Time */}
@@ -393,9 +396,9 @@ const PassengersPage = () => {
                                     </td>
 
                                     {/* Drop-off */}
-                                    <td className="px-4 py-4">
-                                        <div className="font-medium text-gray-800">{p.dropoffPostcode}</div>
-                                        <div className="text-[11px] text-gray-400 mt-0.5">{p.dropoffAddress}</div>
+                                    <td className="px-4 py-4 max-w-0">
+                                        <div className="font-medium text-gray-800 truncate" title={p.dropoffPostcode}>{truncateText(p.dropoffPostcode, 20)}</div>
+                                        <div className="text-[11px] text-gray-400 mt-0.5 truncate" title={p.dropoffAddress}>{truncateText(p.dropoffAddress, 40)}</div>
                                     </td>
 
                                     {/* Status */}

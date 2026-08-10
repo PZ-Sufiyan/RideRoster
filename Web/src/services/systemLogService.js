@@ -6,7 +6,7 @@ import { supabase } from '../lib/supabaseClient'
  *  - userId, userName (matches user_name), status ('Success'|'Failure')
  *  - actionType (prefix match on action), search (matches action)
  *  - from, to (ISO dates)
- *  - limit, offset, orderBy ('timestamp'), order ('desc'|'asc')
+ *  - limit, offset, orderBy ('created_at'), order ('desc'|'asc')
  */
 export const getSystemLogs = async ({
   userId = null,
@@ -18,7 +18,7 @@ export const getSystemLogs = async ({
   to = null,
   limit = 100,
   offset = 0,
-  orderBy = 'timestamp',
+  orderBy = 'created_at',
   order = 'desc'
 } = {}) => {
   let query = supabase.from('system_logs').select('*')
@@ -28,8 +28,8 @@ export const getSystemLogs = async ({
   if (status) query = query.eq('status', status)
   if (actionType) query = query.ilike('action', `${actionType}%`)
   if (search) query = query.ilike('action', `%${search}%`)
-  if (from) query = query.gte('timestamp', from)
-  if (to) query = query.lte('timestamp', to)
+  if (from) query = query.gte('created_at', from)
+  if (to) query = query.lte('created_at', to)
 
   query = query.order(orderBy, { ascending: order.toLowerCase() === 'asc' })
     .range(offset, Math.max(0, offset + (limit - 1)))
@@ -53,7 +53,7 @@ export const getSystemLogsPage = async ({
   to = null,
   limit = 25,
   offset = 0,
-  orderBy = 'timestamp',
+  orderBy = 'created_at',
   order = 'desc'
 } = {}) => {
   let query = supabase.from('system_logs').select('*', { count: 'exact' })
@@ -63,8 +63,8 @@ export const getSystemLogsPage = async ({
   if (status) query = query.eq('status', status)
   if (actionType) query = query.ilike('action', `${actionType}%`)
   if (search) query = query.ilike('action', `%${search}%`)
-  if (from) query = query.gte('timestamp', from)
-  if (to) query = query.lte('timestamp', to)
+  if (from) query = query.gte('created_at', from)
+  if (to) query = query.lte('created_at', to)
 
   query = query.order(orderBy, { ascending: order.toLowerCase() === 'asc' })
     .range(offset, Math.max(0, offset + (limit - 1)))

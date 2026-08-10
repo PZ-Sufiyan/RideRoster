@@ -276,34 +276,34 @@ const CompanyReview = () => {
                 </div>
 
                 {/* Right Column: Info & Verification */}
-                <div className="space-y-6">
+                <div className="space-y-6 min-w-0">
                     {/* Company Details Card */}
-                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6">
+                    <div className="bg-white rounded-lg shadow-sm border border-gray-200 p-6 min-w-0">
                         <h2 className="text-lg font-semibold text-gray-800 mb-4">Company Details</h2>
                         <div className="space-y-4">
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Company Name</label>
-                                <p className="text-sm text-gray-900 font-medium">{company?.company_name || '—'}</p>
+                                <p className="text-sm text-gray-900 font-medium break-words whitespace-normal">{company?.company_name || '—'}</p>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Primary Contact</label>
-                                <p className="text-sm text-gray-900 font-medium">{company?.company_admins?.[0]?.full_name || '—'}</p>
+                                <p className="text-sm text-gray-900 font-medium break-words whitespace-normal">{company?.company_admins?.[0]?.full_name || '—'}</p>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Email Address</label>
-                                <p className="text-sm text-blue-600 font-medium hover:underline cursor-pointer">{company?.company_email || '—'}</p>
+                                <p className="text-sm text-blue-600 font-medium hover:underline cursor-pointer break-words whitespace-normal">{company?.company_email || '—'}</p>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Phone Number</label>
-                                <p className="text-sm text-gray-900 font-medium">{company?.company_phone || '—'}</p>
+                                <p className="text-sm text-gray-900 font-medium break-words whitespace-normal">{company?.company_phone || '—'}</p>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Address</label>
-                                <p className="text-sm text-gray-900 font-medium">{company?.company_address || '—'}</p>
+                                <p className="text-sm text-gray-900 font-medium break-words whitespace-normal">{company?.company_address || '—'}</p>
                             </div>
                             <div>
                                 <label className="text-xs font-semibold text-gray-400 uppercase tracking-wider block mb-1">Country</label>
-                                <p className="text-sm text-gray-900 font-medium">{company?.company_country || 'United Kingdom'}</p>
+                                <p className="text-sm text-gray-900 font-medium break-words whitespace-normal">{company?.company_country || 'United Kingdom'}</p>
                             </div>
                         </div>
                     </div>

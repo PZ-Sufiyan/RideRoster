@@ -16,6 +16,7 @@ import {
 } from '../../../../../services/passengerAsssistantService';
 import { usePAList } from '../../../../../hooks/usePAList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
+import { truncateText } from '../../../../../utils/truncateText';
 import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
 /** DB `passenger_assistant.status` values (lowercase) */
@@ -340,7 +341,7 @@ const PAListPage = () => {
 
                 {/* Table */}
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
+                    <table className="w-full text-sm text-left table-fixed">
                         <thead className="border-b border-gray-100 bg-gray-50/30">
                             <tr>
                                 <th className="px-4 py-3.5 w-10">
@@ -350,12 +351,12 @@ const PAListPage = () => {
                                             : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                     </div>
                                 </th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Name</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact Info</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Assigned Jobs</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date Added</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[22%]">Name</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[24%]">Contact Info</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Assigned Jobs</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Status</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[14%]">Date Added</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-[10%]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50" aria-busy={isLoading} aria-label={isLoading ? 'Loading passenger assistants' : undefined}>
@@ -406,9 +407,9 @@ const PAListPage = () => {
                                         </div>
                                     </td>
                                     {/* Name + PA ID */}
-                                    <td className="px-4 py-3.5">
+                                    <td className="px-4 py-3.5 max-w-0">
                                         <div
-                                            className="flex items-center gap-3 cursor-pointer group"
+                                            className="flex items-center gap-3 cursor-pointer group min-w-0"
                                             onClick={() => navigate(`/team/users/pa/${pa.id}`)}
                                         >
                                             <img
@@ -416,8 +417,10 @@ const PAListPage = () => {
                                                 alt={pa.name}
                                                 className="w-9 h-9 rounded-full object-cover border border-gray-100 shrink-0"
                                             />
-                                            <div>
-                                                <p className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors whitespace-nowrap">{pa.name}</p>
+                                            <div className="min-w-0">
+                                                <p className="font-medium text-gray-900 group-hover:text-blue-600 transition-colors truncate" title={pa.name}>
+                                                    {truncateText(pa.name, 40)}
+                                                </p>
                                             </div>
                                         </div>
                                     </td>
@@ -425,9 +428,9 @@ const PAListPage = () => {
                                     
 
                                     {/* Contact Info */}
-                                    <td className="px-4 py-3.5">
-                                        <p className="text-gray-700 text-sm">{pa.email}</p>
-                                        <p className="text-gray-400 text-xs mt-0.5">{pa.phone}</p>
+                                    <td className="px-4 py-3.5 max-w-0">
+                                        <p className="text-gray-700 text-sm truncate" title={pa.email}>{truncateText(pa.email, 35)}</p>
+                                        <p className="text-gray-400 text-xs mt-0.5 truncate" title={pa.phone}>{truncateText(pa.phone, 25)}</p>
                                     </td>
 
                                     {/* Assigned Jobs */}

@@ -28,6 +28,7 @@ import {
     removeJobAssignedPa,
 } from '../../../../services/jobService';
 import { ShimmerBlock } from '../../../../utils/Shimmer';
+import { truncateText } from '../../../../utils/truncateText';
 import { useSubAdminPermissions } from '../../../../context/subAdminPermissionsContext';
 import { useJobsListRealtimeSync } from '../../../../hooks/useJobsListRealtimeSync';
 import { useJobsList } from '../../../../hooks/useJobsList';
@@ -397,19 +398,19 @@ const ActiveJobs = () => {
 
             <div className={`bg-white rounded-3xl border border-gray-100 shadow-sm overflow-hidden ${loading ? 'opacity-70 pointer-events-none' : ''}`}>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left whitespace-nowrap">
+                    <table className="w-full text-left table-fixed">
                         <thead className="bg-[#F9FAFB] border-b border-gray-100">
                             <tr>
                                 <th className="px-6 py-4 w-10">
                                     <input type="checkbox" className="w-4 h-4 rounded border-gray-300 text-[#004D6D] focus:ring-[#004D6D] cursor-pointer" />
                                 </th>
-                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider">Job ID / Route</th>
-                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Schedule</th>
-                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Driver & Vehicle</th>
-                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Driver Status</th>
-                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Passengers</th>
-                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center">Status</th>
-                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-right pr-8">Actions</th>
+                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider w-[22%]">Job ID / Route</th>
+                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center w-[14%]">Schedule</th>
+                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider w-[18%]">Driver & Vehicle</th>
+                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center w-[14%]">Driver Status</th>
+                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center w-[10%]">Passengers</th>
+                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-center w-[12%]">Status</th>
+                                <th className="px-6 py-4 text-[11px] font-bold text-gray-500 uppercase tracking-wider text-right pr-8 w-[8%]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50" aria-busy={loading}>
@@ -454,38 +455,40 @@ const ActiveJobs = () => {
                                             className="w-4 h-4 rounded border-gray-300 text-[#004D6D] focus:ring-[#004D6D] cursor-pointer"
                                         />
                                     </td>
-                                    <td className="px-6 py-5">
+                                    <td className="px-6 py-5 max-w-0">
                                         <Link
                                             to={`/team/jobs/${job.id}`}
-                                            className="block max-w-md rounded-lg -m-1 p-1 text-left focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004D6D]/30"
+                                            className="block rounded-lg -m-1 p-1 text-left min-w-0 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#004D6D]/30"
                                         >
-                                            <p className="text-[14px] font-bold text-gray-900 hover:text-[#004D6D] transition-colors">
-                                                {job.displayId}
+                                            <p className="text-[14px] font-bold text-gray-900 hover:text-[#004D6D] transition-colors truncate" title={job.displayId}>
+                                                {truncateText(job.displayId, 35)}
                                             </p>
-                                            <p className="text-[12px] text-gray-400 mt-0.5 font-medium hover:text-gray-600 transition-colors line-clamp-2">
-                                                {job.route}
+                                            <p className="text-[12px] text-gray-400 mt-0.5 font-medium hover:text-gray-600 transition-colors truncate" title={job.route}>
+                                                {truncateText(job.route, 45)}
                                             </p>
                                         </Link>
                                     </td>
-                                    <td className="px-6 py-5 text-center">
+                                    <td className="px-6 py-5 text-center whitespace-nowrap">
                                         <p className="text-[13px] font-bold text-gray-800">{job.startTime} - {job.endTime}</p>
                                         <p className="text-[11px] text-gray-400 mt-0.5 font-medium">{job.duration}</p>
                                     </td>
-                                    <td className="px-6 py-5 text-center">
+                                    <td className="px-6 py-5 max-w-0">
                                         {job.driver ? (
-                                            <div className="flex items-center justify-center gap-3">
-                                                <img src={job.driver.avatar} className="w-9 h-9 rounded-full object-cover border border-gray-100" alt="" />
-                                                <div className="text-left">
-                                                    <p className="text-[13px] font-bold text-gray-800">{job.driver.name}</p>
-                                                    <p className="text-[11px] text-gray-400 mt-0.5 font-medium uppercase tracking-wider">
-                                                        {job.vehicle || '—'}
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <img src={job.driver.avatar} className="w-9 h-9 rounded-full object-cover border border-gray-100 shrink-0" alt="" />
+                                                <div className="text-left min-w-0 overflow-hidden">
+                                                    <p className="text-[13px] font-bold text-gray-800 truncate" title={job.driver.name}>
+                                                        {truncateText(job.driver.name, 30)}
+                                                    </p>
+                                                    <p className="text-[11px] text-gray-400 mt-0.5 font-medium uppercase tracking-wider truncate" title={job.vehicle || '—'}>
+                                                        {truncateText(job.vehicle || '—', 18)}
                                                     </p>
                                                 </div>
                                             </div>
                                         ) : can('edit_jobs') ? (
                                             <button
                                                 onClick={() => handleAssignDriver(job)}
-                                                className="mx-auto px-4 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-[11px] font-bold border border-orange-100 hover:bg-orange-100 transition-all"
+                                                className="px-4 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-[11px] font-bold border border-orange-100 hover:bg-orange-100 transition-all"
                                             >
                                                 Assign Driver
                                             </button>
@@ -493,7 +496,7 @@ const ActiveJobs = () => {
                                             <span className="text-[11px] text-gray-400 font-medium">—</span>
                                         )}
                                     </td>
-                                    <td className="px-6 py-5 text-center">
+                                    <td className="px-6 py-5 text-center max-w-0">
                                         {(() => {
                                             const statusNorm = String(job.driverApprovalStatus || '').trim().toLowerCase();
                                             const isCounter = ['counter request', 'counter requested'].includes(statusNorm);
@@ -503,15 +506,15 @@ const ActiveJobs = () => {
                                                     <button
                                                         type="button"
                                                         onClick={() => navigate(`/team/jobs/${job.id}/counter-offer`)}
-                                                        className="inline-flex flex-col items-center gap-1 group"
+                                                        className="inline-flex flex-col items-center gap-1 group max-w-full"
                                                     >
                                                         <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-[11px] font-bold text-amber-600 group-hover:bg-amber-100 transition-colors">
                                                             <MdWarning size={12} />
                                                             Counter Request
                                                         </span>
                                                         {job.driverCounterOfferLabel && (
-                                                            <span className="text-[11px] font-semibold text-amber-600">
-                                                                {job.driverCounterOfferLabel}
+                                                            <span className="text-[11px] font-semibold text-amber-600 truncate max-w-full" title={job.driverCounterOfferLabel}>
+                                                                {truncateText(job.driverCounterOfferLabel, 30)}
                                                             </span>
                                                         )}
                                                         <span className="text-[10px] text-[#004D6D] font-semibold underline underline-offset-2 group-hover:no-underline">
@@ -522,9 +525,9 @@ const ActiveJobs = () => {
                                             }
 
                                             return (
-                                                <div className="flex flex-col items-center">
-                                                    <span className="text-[12px] font-semibold text-gray-700 uppercase tracking-wide">
-                                                        {job.driverApprovalStatus}
+                                                <div className="flex flex-col items-center min-w-0">
+                                                    <span className="text-[12px] font-semibold text-gray-700 uppercase tracking-wide truncate max-w-full" title={job.driverApprovalStatus}>
+                                                        {truncateText(job.driverApprovalStatus, 25)}
                                                     </span>
                                                 </div>
                                             );
@@ -642,12 +645,14 @@ const ActiveJobs = () => {
                                                 isCurrent ? 'bg-[#F4F9FF] border-[#004D6D]/20' : 'bg-white border-gray-100 hover:border-gray-200'
                                             }`}
                                         >
-                                            <div className="flex items-center gap-4">
-                                                <img src={driver.avatar} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" />
-                                                <div>
-                                                    <p className="text-[14px] font-bold text-gray-900">{driver.name}</p>
-                                                    <p className="text-[12px] text-gray-400 font-medium mt-0.5">
-                                                        {driver.vehicleLabel} • {driver.vehicleCode}
+                                            <div className="flex items-center gap-4 min-w-0 flex-1 overflow-hidden">
+                                                <img src={driver.avatar} className="w-10 h-10 rounded-full object-cover border border-gray-100 shrink-0" alt="" />
+                                                <div className="min-w-0 overflow-hidden">
+                                                    <p className="text-[14px] font-bold text-gray-900 truncate" title={driver.name}>
+                                                        {truncateText(driver.name, 40)}
+                                                    </p>
+                                                    <p className="text-[12px] text-gray-400 font-medium mt-0.5 truncate" title={`${driver.vehicleLabel} • ${driver.vehicleCode}`}>
+                                                        {truncateText(`${driver.vehicleLabel} • ${driver.vehicleCode}`, 40)}
                                                     </p>
                                                 </div>
                                             </div>
@@ -657,7 +662,7 @@ const ActiveJobs = () => {
                                                     assignDriverToJob(selectedJob.id, driver);
                                                 }}
                                                 disabled={isLoading}
-                                                className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all min-w-[72px] text-center ${
+                                                className={`shrink-0 px-4 py-2 rounded-xl text-[12px] font-bold transition-all min-w-[72px] text-center ${
                                                     isCurrent
                                                         ? 'border border-[#004D6D]/30 text-[#004D6D] bg-white cursor-default'
                                                         : isLoading

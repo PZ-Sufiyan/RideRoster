@@ -17,6 +17,7 @@ import {
 } from '../../../../../services/driverVehicleService';
 import { useDriversList } from '../../../../../hooks/useDriversList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
+import { truncateText } from '../../../../../utils/truncateText';
 
 const STATUS_COLORS = {
     approved: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
@@ -364,7 +365,7 @@ const DriversPage = () => {
                 </div>
 
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left">
+                    <table className="w-full text-sm text-left table-fixed">
                         <thead className="border-b border-gray-100">
                             <tr>
                                 <th className="px-4 py-4 w-10">
@@ -376,12 +377,12 @@ const DriversPage = () => {
                                         )}
                                     </div>
                                 </th>
-                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Driver Name</th>
-                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Contact</th>
-                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">License No.</th>
-                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Status</th>
-                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider">Date Added</th>
-                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right">Actions</th>
+                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[22%]">Driver Name</th>
+                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[18%]">Contact</th>
+                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[16%]">License No.</th>
+                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Status</th>
+                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[14%]">Date Added</th>
+                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-[10%]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50" aria-busy={loading} aria-label={loading ? 'Loading drivers' : undefined}>
@@ -436,9 +437,9 @@ const DriversPage = () => {
                                         </div>
                                     </td>
                                     {/* Name + Avatar */}
-                                    <td className="px-4 py-3.5">
+                                    <td className="px-4 py-3.5 max-w-0">
                                         <div
-                                            className="flex items-center gap-3 cursor-pointer group"
+                                            className="flex items-center gap-3 cursor-pointer group min-w-0"
                                             onClick={() => navigate(`/portal/users/drivers/${driver.id}`)}
                                         >
                                             <img
@@ -446,15 +447,25 @@ const DriversPage = () => {
                                                 alt=""
                                                 className="w-9 h-9 rounded-full object-cover border border-gray-100 shrink-0"
                                             />
-                                            <span className="font-medium text-gray-900 whitespace-nowrap group-hover:text-blue-600 transition-colors">{displayName}</span>
+                                            <span className="font-medium text-gray-900 truncate group-hover:text-blue-600 transition-colors" title={displayName}>
+                                                {truncateText(displayName, 40)}
+                                            </span>
                                         </div>
                                     </td>
 
                                     {/* Contact */}
-                                    <td className="px-4 py-3.5 text-gray-500 whitespace-nowrap">{formatUsPhone(driver.phone)}</td>
+                                    <td className="px-4 py-3.5 text-gray-500 max-w-0">
+                                        <span className="block truncate" title={formatUsPhone(driver.phone)}>
+                                            {truncateText(formatUsPhone(driver.phone), 25)}
+                                        </span>
+                                    </td>
 
                                     {/* License */}
-                                    <td className="px-4 py-3.5 text-gray-500 whitespace-nowrap font-mono text-xs">{driver.license_no || '—'}</td>
+                                    <td className="px-4 py-3.5 text-gray-500 font-mono text-xs max-w-0">
+                                        <span className="block truncate" title={driver.license_no || '—'}>
+                                            {truncateText(driver.license_no || '—', 25)}
+                                        </span>
+                                    </td>
 
                                     {/* Status Badge */}
                                     <td className="px-4 py-3.5">

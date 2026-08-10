@@ -11,6 +11,12 @@ import { exportToExcel } from '../../../../utils/exportUtils';
 import { getSystemLogs, getSystemLogsPage } from '../../../../services/systemLogService';
 import { ShimmerBlock } from '../../../../utils/Shimmer';
 
+const truncateText = (text, maxLength = 40) => {
+    if (!text) return '';
+    const value = String(text);
+    return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+};
+
 const SystemLogs = () => {
     const itemsPerPage = 6;
 
@@ -45,7 +51,7 @@ const SystemLogs = () => {
         return { from: start.toISOString(), to: end.toISOString() };
     };
 
-    const formatTimestampUtc = (iso) => {
+    const formatTimestampLocal = (iso) => {
         if (!iso) return '';
         const d = new Date(iso);
         if (Number.isNaN(d.getTime())) return String(iso);
@@ -57,10 +63,9 @@ const SystemLogs = () => {
             minute: '2-digit',
             second: '2-digit',
             hour12: false,
-            timeZone: 'UTC'
         }).formatToParts(d);
         const get = (type) => parts.find(p => p.type === type)?.value || '';
-        return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')} UTC`;
+        return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
     };
 
     const parseAction = (action) => {
@@ -104,7 +109,7 @@ const SystemLogs = () => {
                     ...queryParams,
                     limit: itemsPerPage,
                     offset,
-                    orderBy: 'timestamp',
+                    orderBy: 'created_at',
                     order: 'desc'
                 });
 
@@ -114,7 +119,7 @@ const SystemLogs = () => {
                     const parsed = parseAction(row.action);
                     return {
                         id: row.id,
-                        timestamp: formatTimestampUtc(row.timestamp),
+                        timestamp: formatTimestampLocal(row.created_at || row.timestamp),
                         user: {
                             name: row.user_name || 'System',
                             avatar: null
@@ -155,11 +160,11 @@ const SystemLogs = () => {
                     // For export we pull a bigger chunk (adjust if you expect more).
                     limit: 5000,
                     offset: 0,
-                    orderBy: 'timestamp',
+                    orderBy: 'created_at',
                     order: 'desc'
                 });
                 const exportRows = (rows || []).map((row) => ({
-                    timestamp: row.timestamp,
+                    timestamp: formatTimestampLocal(row.created_at || row.timestamp),
                     user_name: row.user_name || 'System',
                     action: row.action,
                     status: row.status,
@@ -286,15 +291,15 @@ const SystemLogs = () => {
 
                 {/* Table */}
                 <div className="grow overflow-x-auto">
-                    <table className="w-full text-sm text-left whitespace-nowrap">
+                    <table className="w-full text-sm text-left table-fixed">
                         <thead className="bg-gray-50 text-xs font-bold text-gray-500 uppercase tracking-wider border-b border-gray-100">
                             <tr>
-                                <th className="px-6 py-4">Timestamp</th>
-                                <th className="px-6 py-4">User</th>
-                                <th className="px-6 py-4">Action</th>
-                                <th className="px-6 py-4">Status</th>
-                                <th className="px-6 py-4">IP Address</th>
-                                <th className="px-6 py-4 text-right">Details</th>
+                                <th className="px-6 py-4 w-[16%]">Timestamp</th>
+                                <th className="px-6 py-4 w-[18%]">User</th>
+                                <th className="px-6 py-4 w-[28%]">Action</th>
+                                <th className="px-6 py-4 w-[12%]">Status</th>
+                                <th className="px-6 py-4 w-[16%]">IP Address</th>
+                                <th className="px-6 py-4 text-right w-[10%]">Details</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50" aria-busy={loading} aria-label={loading ? 'Loading system logs' : undefined}>
@@ -313,22 +318,33 @@ const SystemLogs = () => {
                                     <td className="px-6 py-4 text-right"><ShimmerBlock className="ml-auto h-3.5 w-12 rounded-md" /></td>
                                 </tr>
                             )) : logs.length > 0 ? (
-                                logs.map((log) => (
+                                logs.map((log) => {
+                                    const actionFull = [log.actionType, log.actionDetail].filter(Boolean).join(' ');
+                                    return (
                                     <tr key={log.id} className="hover:bg-gray-50/60 transition-colors">
-                                        <td className="px-6 py-4 text-gray-500 font-medium font-mono text-xs">
+                                        <td className="px-6 py-4 text-gray-500 font-medium font-mono text-xs whitespace-nowrap">
                                             {log.timestamp}
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <div className="flex items-center gap-3">
-                                                <div className="w-8 h-8 rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center text-xs font-bold text-gray-700">
+                                        <td className="px-6 py-4 max-w-0">
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className="w-8 h-8 shrink-0 rounded-full border border-gray-200 bg-gray-50 flex items-center justify-center text-xs font-bold text-gray-700">
                                                     {(log.user.name || 'S').trim().slice(0, 1).toUpperCase()}
                                                 </div>
-                                                <span className="font-semibold text-gray-900">{log.user.name}</span>
+                                                <span className="font-semibold text-gray-900 truncate" title={log.user.name}>
+                                                    {truncateText(log.user.name, 35)}
+                                                </span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-gray-600">
-                                            <span className="font-bold text-gray-800 uppercase text-xs">{log.actionType}</span>{" "}
-                                            <span className="text-gray-500">{log.actionDetail}</span>
+                                        <td className="px-6 py-4 text-gray-600 max-w-0">
+                                            <span className="block truncate" title={actionFull}>
+                                                <span className="font-bold text-gray-800 uppercase text-xs">{truncateText(log.actionType, 20)}</span>
+                                                {log.actionDetail ? (
+                                                    <>
+                                                        {' '}
+                                                        <span className="text-gray-500">{truncateText(log.actionDetail, 40)}</span>
+                                                    </>
+                                                ) : null}
+                                            </span>
                                         </td>
                                         <td className="px-6 py-4">
                                             {log.status === 'Success' ? (
@@ -341,8 +357,10 @@ const SystemLogs = () => {
                                                 </span>
                                             )}
                                         </td>
-                                        <td className="px-6 py-4 text-gray-500 font-mono text-xs">
-                                            {log.ip}
+                                        <td className="px-6 py-4 text-gray-500 font-mono text-xs max-w-0">
+                                            <span className="block truncate" title={log.ip}>
+                                                {truncateText(log.ip, 40)}
+                                            </span>
                                         </td>
                                         <td className="px-6 py-4 text-right">
                                             <button className="text-blue-600 hover:text-blue-800 font-medium text-xs hover:underline">
@@ -350,7 +368,8 @@ const SystemLogs = () => {
                                             </button>
                                         </td>
                                     </tr>
-                                ))
+                                    );
+                                })
                             ) : (
                                 <tr>
                                     <td colSpan="6" className="px-6 py-20 text-center text-gray-500">

@@ -14,11 +14,13 @@ import {
     mapLoginError,
     requireConfirmedEmailOrSignOut,
 } from '../../../../utils/authEmailGuards';
+import ForgotPasswordPanel from '../../../../components/ForgotPasswordPanel';
 
 const SubAdminLogin = () => {
     const navigate = useNavigate();
     const [searchParams] = useSearchParams();
     const [showPassword, setShowPassword] = useState(false);
+    const [showForgotPassword, setShowForgotPassword] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [isLoading, setIsLoading] = useState(false);
@@ -114,6 +116,13 @@ const SubAdminLogin = () => {
                         <div className="flex justify-center md:hidden mb-10">
                             <img src={logo} alt="Logo" className="h-12 w-auto object-contain" />
                         </div>
+                        {showForgotPassword ? (
+                            <ForgotPasswordPanel
+                                variant="admin"
+                                onBack={() => setShowForgotPassword(false)}
+                            />
+                        ) : (
+                            <>
                         <h2 className="text-[24px] md:text-[26px] font-semibold text-gray-900 mb-3 text-center md:text-left">
                             Company Sub Admin Login
                         </h2>
@@ -161,6 +170,10 @@ const SubAdminLogin = () => {
                                     </label>
                                     <button
                                         type="button"
+                                        onClick={() => {
+                                            setLoginError('');
+                                            setShowForgotPassword(true);
+                                        }}
                                         className="text-[14px] font-semibold text-[#005C7A] hover:underline"
                                     >
                                         Forgot Password?
@@ -211,6 +224,8 @@ const SubAdminLogin = () => {
                                 <span>{isLoading ? 'Signing in...' : 'Login'}</span>
                             </button>
                         </form>
+                            </>
+                        )}
 
                         {/* Footer */}
                         <div className="mt-8 text-center">

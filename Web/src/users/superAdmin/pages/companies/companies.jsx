@@ -1,17 +1,20 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import {
     MdSearch,
-    MdFilterList,
-    MdAdd,
     MdMoreVert,
     MdChevronLeft,
     MdChevronRight,
-    MdArrowDropDown,
     MdCheckBoxOutlineBlank,
     MdCheckBox
 } from 'react-icons/md';
 import { getAllCompanies } from '../../../../services/companyService' // added
 import { ShimmerBlock } from '../../../../utils/Shimmer';
+
+const truncateText = (text, maxLength = 40) => {
+    if (!text) return '';
+    const value = String(text);
+    return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+};
 
 const Companies = () => {
     // replaced hardcoded dummy -> fetch from backend
@@ -20,7 +23,6 @@ const Companies = () => {
 
     const [selectedRows, setSelectedRows] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
-    const [statusFilter, setStatusFilter] = useState('All');
     const [activeActionId, setActiveActionId] = useState(null);
 
     // Pagination State
@@ -76,12 +78,10 @@ const Companies = () => {
 
     // Filter Logic
     const filteredCompanies = useMemo(() => {
-        return companies.filter(company => {
-            const matchesSearch = company.name.toLowerCase().includes(searchQuery.toLowerCase());
-            const matchesStatus = statusFilter === 'All' || company.status === statusFilter;
-            return matchesSearch && matchesStatus;
-        });
-    }, [companies, searchQuery, statusFilter]);
+        return companies.filter(company =>
+            company.name.toLowerCase().includes(searchQuery.toLowerCase())
+        );
+    }, [companies, searchQuery]);
 
     // Derived Pagination Values
     const totalItems = filteredCompanies.length;
@@ -90,7 +90,7 @@ const Companies = () => {
     // Reset page when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchQuery, statusFilter]);
+    }, [searchQuery]);
 
     // Get Current Page Data
     const pagedCompanies = useMemo(() => {
@@ -137,7 +137,7 @@ const Companies = () => {
             <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4">
                 <div>
                     <h1 className="text-2xl font-bold text-gray-900">All Companies</h1>
-                    <p className="text-sm text-gray-500 mt-1">Manage, search, and filter all registered companies.</p>
+                    <p className="text-sm text-gray-500 mt-1">Manage and search all registered companies.</p>
                 </div>
             </div>
 
@@ -145,50 +145,23 @@ const Companies = () => {
                 className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col"
                 style={{ minHeight: '500px' }}
             >
-                <div className="p-4 border-b border-gray-100 flex flex-col lg:flex-row gap-4 justify-between lg:items-center">
-                    <div className="flex flex-col sm:flex-row gap-3 flex-1">
-                        <div className="relative max-w-sm w-full sm:w-64">
-                            <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                                <MdSearch className="h-5 w-5 text-gray-400" />
-                            </div>
-                            <input
-                                type="text"
-                                placeholder="Search by name..."
-                                value={searchQuery}
-                                onChange={(e) => setSearchQuery(e.target.value)}
-                                className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50"
-                            />
+                <div className="p-4 border-b border-gray-100">
+                    <div className="relative max-w-sm w-full sm:w-64">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                            <MdSearch className="h-5 w-5 text-gray-400" />
                         </div>
-
-                        <div className="relative group">
-                            <button className="w-full sm:w-auto flex items-center justify-between gap-8 px-3 py-2 bg-gray-50 border border-gray-200 rounded-lg text-sm text-gray-700">
-                                <span>Status: {statusFilter}</span>
-                                <MdArrowDropDown className="text-gray-500" />
-                            </button>
-                            <div className="absolute top-full left-0 mt-1 w-full sm:w-48 bg-white border border-gray-100 rounded-lg shadow-lg z-10 hidden group-hover:block hover:block">
-                                <div className="py-1">
-                                    {['All', 'Active', 'Pending', 'Rejected', 'Inactive'].map((status) => (
-                                        <button
-                                            key={status}
-                                            onClick={() => setStatusFilter(status)}
-                                            className={`block w-full text-left px-4 py-2 text-sm ${statusFilter === status ? 'bg-blue-50 text-blue-700' : 'text-gray-700 hover:bg-gray-50'}`}
-                                        >
-                                            {status}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-                        </div>
+                        <input
+                            type="text"
+                            placeholder="Search by name..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50"
+                        />
                     </div>
-
-                    <button className="flex items-center gap-2 px-3 py-2 bg-white border border-gray-200 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition-colors">
-                        <MdFilterList className="text-gray-500" />
-                        Filters
-                    </button>
                 </div>
 
                 <div className="grow overflow-x-auto" style={{ minHeight: '400px' }}>
-                    <table className="w-full text-sm text-left whitespace-nowrap">
+                    <table className="w-full text-sm text-left table-fixed">
                         <thead className="bg-gray-50 text-xs font-semibold text-gray-500 uppercase tracking-wider">
                             <tr>
                                 <th className="px-6 py-4 w-10">
@@ -200,9 +173,9 @@ const Companies = () => {
                                         )}
                                     </div>
                                 </th>
-                                <th className="px-6 py-4">Company</th>
-                                <th className="px-6 py-4">Contact</th>
-                                <th className="px-6 py-4">Location</th>
+                                <th className="px-6 py-4 w-[22%]">Company</th>
+                                <th className="px-6 py-4 w-[18%]">Contact</th>
+                                <th className="px-6 py-4 w-[22%]">Location</th>
                                 <th className="px-6 py-4 text-center">Status</th>
                                 <th className="px-6 py-4">Date Joined</th>
                                 <th className="px-6 py-4 text-center">Actions</th>
@@ -253,16 +226,26 @@ const Companies = () => {
                                                 )}
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 font-medium text-gray-900">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`w-8 h-8 rounded flex items-center justify-center font-bold text-xs ${company.initialsColor} ${company.bgColor}`}>
+                                        <td className="px-6 py-4 font-medium text-gray-900 max-w-0">
+                                            <div className="flex items-center gap-3 min-w-0">
+                                                <div className={`w-8 h-8 shrink-0 rounded flex items-center justify-center font-bold text-xs ${company.initialsColor} ${company.bgColor}`}>
                                                     {company.initials}
                                                 </div>
-                                                {company.name}
+                                                <span className="truncate" title={company.name}>
+                                                    {truncateText(company.name, 40)}
+                                                </span>
                                             </div>
                                         </td>
-                                        <td className="px-6 py-4 text-gray-600">{company.contact}</td>
-                                        <td className="px-6 py-4 text-gray-500 text-xs">{company.location}</td>
+                                        <td className="px-6 py-4 text-gray-600 max-w-0">
+                                            <span className="block truncate" title={company.contact}>
+                                                {truncateText(company.contact, 35)}
+                                            </span>
+                                        </td>
+                                        <td className="px-6 py-4 text-gray-500 text-xs max-w-0">
+                                            <span className="block truncate" title={company.location}>
+                                                {truncateText(company.location, 45)}
+                                            </span>
+                                        </td>
                                         <td className="px-6 py-4 text-center">
                                             <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[11px] font-bold ${getStatusStyle(company.status)}`}>
                                                 {company.status}
@@ -297,7 +280,7 @@ const Companies = () => {
                                     <td colSpan="7" className="px-6 py-20 text-center text-gray-500">
                                         <div className="flex flex-col items-center gap-2">
                                             <span className="text-lg font-medium text-gray-900">No companies found</span>
-                                            <p className="text-sm">Try adjusting your filters or search terms.</p>
+                                            <p className="text-sm">Try adjusting your search terms.</p>
                                         </div>
                                     </td>
                                 </tr>

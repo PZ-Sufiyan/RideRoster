@@ -7,9 +7,11 @@ import {
     mapLoginError,
     requireConfirmedEmailOrSignOut,
 } from '../../../../utils/authEmailGuards';
+import ForgotPasswordPanel from '../../../../components/ForgotPasswordPanel';
 
 const Login = () => {
     const [showPassword, setShowPassword] = useState(false);
+    const [showForgotPassword, setShowForgotPassword] = useState(false);
     const [email, setEmail] = useState('');
     const [password, setPassword] = useState('');
     const [emailError, setEmailError] = useState('');
@@ -102,6 +104,13 @@ const Login = () => {
             {/* Right Panel */}
             <div className="flex flex-col justify-center items-center w-full lg:w-[50%] p-8 lg:p-16">
                 <div className="w-full max-w-[420px]">
+                    {showForgotPassword ? (
+                        <ForgotPasswordPanel
+                            variant="superadmin"
+                            onBack={() => setShowForgotPassword(false)}
+                        />
+                    ) : (
+                        <>
                     <div className="text-center mb-10">
                         <h2 className="text-[28px] font-bold text-[#1F2937] mb-2">Super Admin Login</h2>
                         <p className="text-[#6B7280] text-[15px]">Welcome back! Please enter your credentials.</p>
@@ -132,7 +141,15 @@ const Login = () => {
                         <div>
                             <div className="flex justify-between items-center mb-2">
                                 <label className="text-sm font-semibold text-[#374151]">Password</label>
-                                <button type="button" className="text-sm font-semibold text-[#40829B] hover:underline">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setLoginError('');
+                                        setEmailError('');
+                                        setShowForgotPassword(true);
+                                    }}
+                                    className="text-sm font-semibold text-[#40829B] hover:underline"
+                                >
                                     Forgot Password?
                                 </button>
                             </div>
@@ -186,6 +203,8 @@ const Login = () => {
                             {isLoading ? 'Signing in...' : 'Sign In'}
                         </button>
                     </form>
+                        </>
+                    )}
 
                     <div className="mt-12 text-center">
                         <p className="text-sm text-[#9CA3AF]">

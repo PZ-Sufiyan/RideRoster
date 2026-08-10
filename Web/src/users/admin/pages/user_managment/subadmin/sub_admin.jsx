@@ -20,6 +20,7 @@ import {
 } from '../../../../../services/subAdminService';
 import { useSubAdminsList } from '../../../../../hooks/useSubAdminsList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
+import { truncateText } from '../../../../../utils/truncateText';
 
 const STATUS_COLORS = {
     Active: 'bg-green-50 text-green-700 border border-green-200',
@@ -327,7 +328,7 @@ const SubAdminList = () => {
 
                 {/* Table */}
                 <div className="overflow-x-auto">
-                    <table className="w-full text-sm text-left whitespace-nowrap">
+                    <table className="w-full text-sm text-left table-fixed">
                         <thead className="border-b border-gray-100 bg-gray-50/50">
                             <tr>
                                 <th className="px-4 py-3.5 w-10">
@@ -337,11 +338,11 @@ const SubAdminList = () => {
                                             : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                     </div>
                                 </th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center shrink-0 w-24 sm:text-left sm:w-auto">Name</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Permissions</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Status</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center">Last updated</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right pr-6">Actions</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center shrink-0 w-[28%] sm:text-left">Name</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center w-[28%]">Permissions</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center w-[12%]">Status</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-center w-[16%]">Last updated</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right pr-6 w-[10%]">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50" aria-busy={isLoading} aria-label={isLoading ? 'Loading sub-admins' : undefined}>
@@ -390,9 +391,9 @@ const SubAdminList = () => {
                                                         : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                                 </div>
                                             </td>
-                                            <td className="px-4 py-4 sm:pl-4">
+                                            <td className="px-4 py-4 sm:pl-4 max-w-0">
                                                 <div
-                                                    className="flex flex-col sm:flex-row items-center sm:items-start sm:gap-3 cursor-pointer group"
+                                                    className="flex flex-col sm:flex-row items-center sm:items-start sm:gap-3 cursor-pointer group min-w-0"
                                                     onClick={() => navigate(`/portal/users/subadmins/${sa.id}`)}
                                                 >
                                                     <img
@@ -401,14 +402,20 @@ const SubAdminList = () => {
                                                         className="w-9 h-9 sm:w-10 sm:h-10 rounded-full object-cover border border-gray-100 shrink-0 mb-2 sm:mb-0"
                                                     />
                                                     <div className="text-center sm:text-left min-w-0">
-                                                        <p className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors text-xs sm:text-sm">{sa.name}</p>
-                                                        <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 break-all">{secondaryLine}</p>
+                                                        <p className="font-semibold text-gray-900 group-hover:text-blue-600 transition-colors text-xs sm:text-sm truncate" title={sa.name}>
+                                                            {truncateText(sa.name, 40)}
+                                                        </p>
+                                                        <p className="text-gray-500 text-[10px] sm:text-xs mt-0.5 truncate" title={secondaryLine}>
+                                                            {truncateText(secondaryLine, 35)}
+                                                        </p>
                                                     </div>
                                                 </div>
                                             </td>
 
-                                            <td className="px-4 py-4 text-gray-600 text-center whitespace-normal max-w-xs">
-                                                {sa.permissions}
+                                            <td className="px-4 py-4 text-gray-600 text-center max-w-0">
+                                                <span className="block truncate" title={sa.permissions}>
+                                                    {truncateText(sa.permissions, 45)}
+                                                </span>
                                             </td>
 
                                             <td className="px-4 py-4 text-center">
