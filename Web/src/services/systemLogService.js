@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
+import { toUtcIso } from '../utils/dateTime'
 
 /**
  * Fetch system logs with optional filters, pagination and sorting.
@@ -93,7 +94,7 @@ export const createSystemLog = async (payload) => {
   const { data, error } = await supabase
     .from('system_logs')
     .insert({
-      timestamp: payload.timestamp || new Date().toISOString(),
+      timestamp: payload.timestamp || toUtcIso(),
       user_id: payload.user_id || null,
       user_name: payload.user_name || null,
       action: payload.action,

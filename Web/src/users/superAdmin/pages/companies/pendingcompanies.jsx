@@ -13,9 +13,11 @@ import {
 import { Link } from 'react-router-dom';
 import {
     getPendingCompaniesWithAdminNames,
-    updateCompaniesStatusByIds
+    updateCompaniesStatusByIds,
+    toShortCompanyId
 } from '../../../../services/companyService';
 import { ShimmerBlock } from '../../../../utils/Shimmer';
+import { formatLocalDate } from '../../../../utils/dateTime';
 
 const truncateText = (text, maxLength = 40) => {
     if (!text) return '';
@@ -41,9 +43,7 @@ const PendingCompanies = () => {
             const mappedCompanies = (data || []).map((company) => ({
                 id: company.id,
                 name: company.company_name || '',
-                submitted: company.created_at
-                    ? new Date(company.created_at).toISOString().split('T')[0]
-                    : '',
+                submitted: formatLocalDate(company.created_at) || '',
                 contact: {
                     name:
                         company.admin_full_names?.[0] ||
@@ -292,7 +292,7 @@ const PendingCompanies = () => {
                                         </td>
                                         <td className="px-6 py-4 max-w-0">
                                             <Link
-                                                to={`/platform/companies/review/${company.id}`}
+                                                to={`/platform/companies/review/${toShortCompanyId(company.id)}`}
                                                 className="font-bold text-gray-900 hover:text-blue-600 hover:underline block truncate"
                                                 title={company.name}
                                             >

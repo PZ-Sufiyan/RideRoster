@@ -13,6 +13,7 @@ import {
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { getDriverEditData, updateDriverWithRecords } from '../../../../../services/driverEditService';
+import { getVehicleTypeOptions } from '../../../../../services/vehicleCategoriesService';
 import { ToastStack } from '../../../../../utils/Toast';
 import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
@@ -202,18 +203,6 @@ const SectionHeading = ({ title }) => (
     <h2 className="text-lg font-bold text-gray-900 mb-5">{title}</h2>
 );
 
-const VEHICLE_TYPES = [
-    { value: 'Car - 4 seater', seats: '4', wheelchairAccessible: false },
-    { value: 'People Carrier - 6 passenger', seats: '6', wheelchairAccessible: false },
-    { value: 'People Carrier - 7 passenger', seats: '7', wheelchairAccessible: false },
-    { value: 'Minibus - 8 passenger', seats: '8', wheelchairAccessible: false },
-    { value: 'Minibus - Wheelchair ramp', seats: '8', wheelchairAccessible: true },
-    { value: 'Minibus - Wheelchair tail lift', seats: '8', wheelchairAccessible: true },
-    { value: 'Hackney - 5 passenger', seats: '5', wheelchairAccessible: false },
-    { value: 'Hackney - 6 passenger', seats: '6', wheelchairAccessible: false },
-    { value: 'Hackney - Wheelchair', seats: '5', wheelchairAccessible: true },
-];
-
 const initialFilesState = {
     passport: null,
     driving_license_front: null,
@@ -244,6 +233,9 @@ const EditDriver = () => {
     const [submitAttempted, setSubmitAttempted] = useState(false);
     const [missingKeys, setMissingKeys] = useState([]);
     const [toasts, setToasts] = useState([]);
+    const [vehicleTypes, setVehicleTypes] = useState([]);
+    const [vehicleTypesLoading, setVehicleTypesLoading] = useState(true);
+    const [vehicleTypesError, setVehicleTypesError] = useState('');
 
     const [existingDriverDocs, setExistingDriverDocs] = useState({});
     const [existingVehicleDocs, setExistingVehicleDocs] = useState({});
@@ -314,6 +306,27 @@ const EditDriver = () => {
             { id: `${Date.now()}-${Math.random()}`, type, message, autoClose: true, duration: 3500 },
         ]);
     };
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadVehicleTypes = async () => {
+            setVehicleTypesLoading(true);
+            setVehicleTypesError('');
+            try {
+                const options = await getVehicleTypeOptions();
+                if (!cancelled) setVehicleTypes(options);
+            } catch (_) {
+                if (!cancelled) {
+                    setVehicleTypes([]);
+                    setVehicleTypesError('Could not load vehicle types.');
+                }
+            } finally {
+                if (!cancelled) setVehicleTypesLoading(false);
+            }
+        };
+        loadVehicleTypes();
+        return () => { cancelled = true; };
+    }, []);
 
     useEffect(() => {
         if (!driverId) return;
@@ -846,9 +859,10 @@ const EditDriver = () => {
                                 </label>
                                 <select
                                     value={form.bodyStyle}
+                                    disabled={vehicleTypesLoading}
                                     onChange={(e) => {
                                         const next = e.target.value;
-                                        const meta = VEHICLE_TYPES.find((x) => x.value === next);
+                                        const meta = vehicleTypes.find((x) => x.value === next);
                                         setForm((prev) => ({
                                             ...prev,
                                             bodyStyle: next,
@@ -858,12 +872,19 @@ const EditDriver = () => {
                                     }}
                                     className={`w-full px-3.5 py-3 border rounded-xl text-sm bg-white ${showMissing('bodyStyle') ? 'border-red-400' : 'border-gray-200'}`}
                                 >
-                                    <option value="">Select vehicle type</option>
-                                    {VEHICLE_TYPES.map((t) => (
+                                    <option value="">
+                                        {vehicleTypesLoading ? 'Loading vehicle types...' : 'Select vehicle type'}
+                                    </option>
+                                    {form.bodyStyle &&
+                                        !vehicleTypes.some((t) => t.value === form.bodyStyle) && (
+                                            <option value={form.bodyStyle}>{form.bodyStyle}</option>
+                                        )}
+                                    {vehicleTypes.map((t) => (
                                         <option key={t.value} value={t.value}>{t.value}</option>
                                     ))}
                                 </select>
                                 {showMissing('bodyStyle') && <p className="text-xs text-red-600 font-medium">This field is required.</p>}
+                                {vehicleTypesError && <p className="text-xs text-red-600 font-medium">{vehicleTypesError}</p>}
                             </div>
                             <div className="flex items-end">
                                 <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600">

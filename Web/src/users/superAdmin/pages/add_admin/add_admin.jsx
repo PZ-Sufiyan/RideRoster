@@ -7,6 +7,7 @@ import {
     createAuthUserRequiringEmailConfirm,
     mapDuplicateAuthError,
 } from '../../../../utils/authEmailGuards';
+import { toUtcIso } from '../../../../utils/dateTime';
 
 const AddAdmin = () => {
     const [formData, setFormData] = useState({
@@ -56,7 +57,7 @@ const AddAdmin = () => {
                 }
 
                 const normalizedEmail = created.email;
-                const nowIso = new Date().toISOString();
+                const nowIso = toUtcIso();
 
                 // Step 2: Create the linked company_admins record with auth.user.id as FK.
                 // Keep optional fields empty during super admin registration.

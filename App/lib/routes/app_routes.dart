@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../repositories/local_job_repository.dart';
 import '../users/auth/pages/choose_account_type.dart';
+import '../users/auth/pages/forgot_password.dart';
 import '../users/auth/pages/login.dart';
 import '../users/auth/pages/register.dart';
 import '../users/auth/pages/register_passenger_assistant.dart';
@@ -30,6 +31,7 @@ import '../users/driver/pages/sos/sos.dart';
 class AppRoutes {
   // Route name constants
   static const String login = '/login';
+  static const String forgotPassword = '/forgot-password';
   static const String chooseAccountType = '/choose-account-type';
   static const String driverRegister = '/driver/register';
   static const String passengerAssistantRegister =
@@ -64,6 +66,9 @@ class AppRoutes {
     switch (settings.name) {
       case login:
         return MaterialPageRoute(builder: (_) => const LoginPage());
+
+      case forgotPassword:
+        return MaterialPageRoute(builder: (_) => const ForgotPasswordPage());
 
       case chooseAccountType:
         return MaterialPageRoute(builder: (_) => const ChooseAccountTypePage());

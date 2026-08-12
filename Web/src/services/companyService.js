@@ -1,14 +1,25 @@
 import { supabase } from '../lib/supabaseClient'
 import { getSubAdminById } from './subAdminService'
+import { toUtcIso } from '../utils/dateTime'
+
+const COMPANY_SELECT = `
+  *,
+  company_admins(*),
+  company_documents(*)
+`
+
+const FULL_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** First 8 chars of a UUID for shorter review URLs */
+export const toShortCompanyId = (id) => {
+  if (!id) return id
+  return String(id).split('-')[0]
+}
 
 export const getAllCompanies = async () => {
   const { data, error } = await supabase
     .from('companies')
-    .select(`
-      *,
-      company_admins(*),
-      company_documents(*)
-    `)
+    .select(COMPANY_SELECT)
     .order('created_at', { ascending: false })
 
   if (error) {
@@ -19,21 +30,31 @@ export const getAllCompanies = async () => {
 }
 
 export const getCompanyById = async (companyId) => {
-  const { data, error } = await supabase
-    .from('companies')
-    .select(`
-      *,
-      company_admins(*),
-      company_documents(*)
-    `)
-    .eq('id', companyId)
-    .single()
+  const id = String(companyId || '').trim()
+  if (!id) throw new Error('Company id is required')
 
-  if (error) {
-    throw error
+  if (FULL_UUID_RE.test(id)) {
+    const { data, error } = await supabase
+      .from('companies')
+      .select(COMPANY_SELECT)
+      .eq('id', id)
+      .single()
+
+    if (error) throw error
+    return data
   }
 
-  return data
+  // Resolve short id (first UUID segment, e.g. d741ca3f)
+  const shortId = id.slice(0, 8).toLowerCase()
+  const { data, error } = await supabase
+    .from('companies')
+    .select(COMPANY_SELECT)
+    .gte('id', `${shortId}-0000-0000-0000-000000000000`)
+    .lte('id', `${shortId}-ffff-ffff-ffff-ffffffffffff`)
+
+  if (error) throw error
+  if (!data?.length) throw Object.assign(new Error('Company not found'), { code: 'PGRST116' })
+  return data[0]
 }
 
 // Companies - create / update / delete
@@ -51,7 +72,7 @@ export const createCompany = async (companyPayload) => {
 export const updateCompany = async (companyId, updates) => {
   const { data, error } = await supabase
     .from('companies')
-    .update({ ...updates, updated_at: new Date().toISOString() })
+    .update({ ...updates, updated_at: toUtcIso() })
     .eq('id', companyId)
     .select()
     .single()
@@ -280,7 +301,7 @@ export const updateCompaniesStatusByIds = async (companyIds, status) => {
 
   const { data, error } = await supabase
     .from('companies')
-    .update({ status, updated_at: new Date().toISOString() })
+    .update({ status, updated_at: toUtcIso() })
     .in('id', ids)
     .select('id, status')
 

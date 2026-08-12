@@ -20,7 +20,6 @@ const DOCUMENT_TYPE_LABELS = {
 };
 
 const toDocumentLabel = (doc) => {
-    if (doc?.file_name?.trim()) return doc.file_name;
     return DOCUMENT_TYPE_LABELS[doc?.document_type] || 'Company Document';
 };
 
@@ -97,11 +96,11 @@ const CompanyReview = () => {
             setNoteError('Note cannot be empty or only spaces.');
             return;
         }
-        if (!companyId) return;
+        if (!company?.id) return;
 
         try {
             setIsSavingNote(true);
-            const updatedCompany = await updateCompany(companyId, { notes: trimmedNote });
+            const updatedCompany = await updateCompany(company.id, { notes: trimmedNote });
             setCompany(prev => ({ ...prev, ...updatedCompany }));
             setNote(updatedCompany?.notes || trimmedNote);
         } catch (error) {
@@ -128,13 +127,13 @@ const CompanyReview = () => {
     };
 
     const handleConfirmAction = async () => {
-        if (!companyId || !modalAction) return;
+        if (!company?.id || !modalAction) return;
         const nextStatus = modalAction === 'approve' ? 'approved' : 'rejected';
         setActionError('');
 
         try {
             setIsStatusUpdating(true);
-            const updatedCompany = await updateCompany(companyId, { status: nextStatus });
+            const updatedCompany = await updateCompany(company.id, { status: nextStatus });
             setCompany(prev => ({ ...prev, ...updatedCompany }));
             closeModal();
         } catch (error) {

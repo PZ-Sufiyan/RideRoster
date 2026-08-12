@@ -6,6 +6,7 @@ import 'dart:convert';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
+import '../utils/driver_register_validators.dart';
 import 'api_service.dart';
 import 'auth_result.dart';
 import 'connectivity_service.dart';
@@ -241,15 +242,85 @@ class AuthService extends ApiService {
     return 'Unable to sign in right now. Please try again.';
   }
 
-  /// Send password-reset email.
+  /// Send password-reset OTP email (same flow as Web).
   Future<AuthResult> driverForgotPassword({required String email}) async {
-    if (!email.contains('@')) {
+    final normalized = email.trim().toLowerCase();
+    if (!normalized.contains('@')) {
       return AuthResult.failure('Please enter a valid email address.');
     }
     try {
-      await _supabase.auth.resetPasswordForEmail(email);
-      return AuthResult.success(message: 'Password reset link sent to $email');
+      await _supabase.auth.resetPasswordForEmail(normalized);
+      return AuthResult.success(
+        message: 'A verification code has been sent to $normalized',
+      );
     } on AuthException catch (e) {
+      return AuthResult.failure(_friendlyLoginError(e.message));
+    } on SocketException {
+      return AuthResult.failure(
+        'Connection problem. Check your internet and try again.',
+      );
+    } on TimeoutException {
+      return AuthResult.failure(
+        'Connection problem. Check your internet and try again.',
+      );
+    } catch (e) {
+      return AuthResult.failure(_friendlyLoginError(e.toString()));
+    }
+  }
+
+  /// Verify recovery OTP, set new password, then sign out.
+  Future<AuthResult> resetPasswordWithCode({
+    required String email,
+    required String code,
+    required String password,
+    required String confirmPassword,
+  }) async {
+    final normalized = email.trim().toLowerCase();
+    final token = code.trim();
+
+    if (!normalized.contains('@')) {
+      return AuthResult.failure('Please enter a valid email address.');
+    }
+    if (token.isEmpty) {
+      return AuthResult.failure('Please enter the code from your email.');
+    }
+
+    final passwordError = DriverRegisterValidators.passwordValue(password);
+    if (passwordError != null) {
+      return AuthResult.failure(passwordError);
+    }
+
+    final matchError = DriverRegisterValidators.confirmPasswordValue(
+      password,
+      confirmPassword,
+    );
+    if (matchError != null) {
+      return AuthResult.failure(matchError);
+    }
+
+    try {
+      await _supabase.auth.verifyOTP(
+        email: normalized,
+        token: token,
+        type: OtpType.recovery,
+      );
+
+      await _supabase.auth.updateUser(
+        UserAttributes(password: password),
+      );
+
+      await _supabase.auth.signOut();
+      return AuthResult.success(message: 'Password updated successfully.');
+    } on AuthException catch (e) {
+      final message = e.message.toLowerCase();
+      if (message.contains('otp') ||
+          message.contains('token') ||
+          message.contains('expired') ||
+          message.contains('invalid')) {
+        return AuthResult.failure(
+          'Invalid or expired code. Please try again or resend.',
+        );
+      }
       return AuthResult.failure(_friendlyLoginError(e.message));
     } on SocketException {
       return AuthResult.failure(

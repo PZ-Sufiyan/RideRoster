@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import {
     MdSearch,
     MdMoreVert,
@@ -7,8 +8,9 @@ import {
     MdCheckBoxOutlineBlank,
     MdCheckBox
 } from 'react-icons/md';
-import { getAllCompanies } from '../../../../services/companyService' // added
+import { getAllCompanies, toShortCompanyId } from '../../../../services/companyService'
 import { ShimmerBlock } from '../../../../utils/Shimmer';
+import { formatLocalDate } from '../../../../utils/dateTime';
 
 const truncateText = (text, maxLength = 40) => {
     if (!text) return '';
@@ -45,7 +47,7 @@ const Companies = () => {
                     contact: c.company_email || '',
                     location: c.company_address || '',
                     status: capitalizeStatus(c.status || ''),
-                    dateJoined: formatDate(c.created_at)
+                    dateJoined: formatLocalDate(c.created_at) || ''
                 }))
                 setCompanies(mapped)
             } catch (err) {
@@ -63,12 +65,6 @@ const Companies = () => {
         if (parts.length === 0) return ''
         if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
         return (parts[0][0] + parts[1][0]).toUpperCase()
-    }
-    const formatDate = (d) => {
-        if (!d) return ''
-        const dt = new Date(d)
-        if (Number.isNaN(dt.getTime())) return ''
-        return dt.toISOString().slice(0, 10) // YYYY-MM-DD
     }
     const capitalizeStatus = (s) => {
         if (!s) return ''
@@ -227,14 +223,17 @@ const Companies = () => {
                                             </div>
                                         </td>
                                         <td className="px-6 py-4 font-medium text-gray-900 max-w-0">
-                                            <div className="flex items-center gap-3 min-w-0">
+                                            <Link
+                                                to={`/platform/companies/review/${toShortCompanyId(company.id)}`}
+                                                className="flex items-center gap-3 min-w-0 hover:text-blue-600"
+                                            >
                                                 <div className={`w-8 h-8 shrink-0 rounded flex items-center justify-center font-bold text-xs ${company.initialsColor} ${company.bgColor}`}>
                                                     {company.initials}
                                                 </div>
-                                                <span className="truncate" title={company.name}>
+                                                <span className="truncate hover:underline" title={company.name}>
                                                     {truncateText(company.name, 40)}
                                                 </span>
-                                            </div>
+                                            </Link>
                                         </td>
                                         <td className="px-6 py-4 text-gray-600 max-w-0">
                                             <span className="block truncate" title={company.contact}>
@@ -261,6 +260,13 @@ const Companies = () => {
                                             </button>
                                             {activeActionId === company.id && (
                                                 <div className="absolute right-12 top-0 w-32 bg-white rounded-md shadow-xl border border-gray-100 z-50 py-1 overflow-hidden">
+                                                    <Link
+                                                        to={`/platform/companies/review/${toShortCompanyId(company.id)}`}
+                                                        className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700"
+                                                        onClick={() => setActiveActionId(null)}
+                                                    >
+                                                        View
+                                                    </Link>
                                                     {['Active', 'Inactive', 'Pending'].map(s => (
                                                         <button
                                                             key={s}

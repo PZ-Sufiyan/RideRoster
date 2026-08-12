@@ -29,6 +29,11 @@ const formatRelativeTime = (isoString) => {
   return `${days} day${days === 1 ? '' : 's'} ago`
 }
 
+const toShortVehicleId = (id) => {
+  if (!id) return '—'
+  return String(id).split('-')[0].toUpperCase()
+}
+
 const createSosIcon = ({ selected = false } = {}) => {
   const scale = selected ? 1.2 : 1
   return L.divIcon({
@@ -186,7 +191,7 @@ const SOSPage = () => {
               >
                 <Popup>
                   <div className="text-xs" style={{ minWidth: 160 }}>
-                    <div className="font-semibold text-gray-900">{`Vehicle #${alert.vehicle_id}`}</div>
+                    <div className="font-semibold text-gray-900">{`Vehicle #${toShortVehicleId(alert.vehicle_id)}`}</div>
                     <div className="text-gray-600">{alert.company_name || '—'}</div>
                     <div className="text-gray-500 mt-1">{formatRelativeTime(alert.created_at)}</div>
                   </div>
@@ -318,7 +323,7 @@ const SOSPage = () => {
                   }`}
                 >
                   <div className="flex justify-between items-start mb-1">
-                    <h3 className="font-semibold text-gray-900 text-sm">{`Vehicle #${alert.vehicle_id} - SOS Emergency`}</h3>
+                    <h3 className="font-semibold text-gray-900 text-sm">{`Vehicle #${toShortVehicleId(alert.vehicle_id)} - SOS Emergency`}</h3>
                     <span className="text-xs font-medium text-red-500 whitespace-nowrap">
                       {formatRelativeTime(alert.created_at)}
                     </span>

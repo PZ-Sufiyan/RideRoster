@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabaseClient'
+import { toUtcIso } from '../utils/dateTime'
 
 const formatDriverLabel = (driver) => {
   if (!driver) return null
@@ -284,7 +285,7 @@ export const resolveSosForCompany = async (sosId, companyId) => {
 
   const { data, error } = await supabase
     .from('sos')
-    .update({ status: 'resolved', updated_at: new Date().toISOString() })
+    .update({ status: 'resolved', updated_at: toUtcIso() })
     .eq('id', sosId)
     .eq('company_id', companyId)
     .select('id, status')
@@ -307,7 +308,7 @@ export const updateSosNotesForCompany = async (sosId, companyId, notes) => {
     .from('sos')
     .update({
       notes: normalizedNotes || null,
-      updated_at: new Date().toISOString(),
+      updated_at: toUtcIso(),
     })
     .eq('id', sosId)
     .eq('company_id', companyId)

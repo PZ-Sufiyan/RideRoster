@@ -10,6 +10,7 @@ import {
 import { exportToExcel } from '../../../../utils/exportUtils';
 import { getSystemLogs, getSystemLogsPage } from '../../../../services/systemLogService';
 import { ShimmerBlock } from '../../../../utils/Shimmer';
+import { formatLocalDateTime, localDayToUtcRange } from '../../../../utils/dateTime';
 
 const truncateText = (text, maxLength = 40) => {
     if (!text) return '';
@@ -41,32 +42,9 @@ const SystemLogs = () => {
         setCurrentPage(1);
     }, [searchUser, filterAction, filterStatus, dateRange]);
 
-    const getIsoRangeFromDateInput = (value) => {
-        const trimmed = (value || '').trim();
-        if (!trimmed) return { from: null, to: null };
-        // Expecting YYYY-MM-DD (local timezone). Convert to ISO range for that day.
-        const start = new Date(`${trimmed}T00:00:00`);
-        if (Number.isNaN(start.getTime())) return { from: null, to: null };
-        const end = new Date(`${trimmed}T23:59:59.999`);
-        return { from: start.toISOString(), to: end.toISOString() };
-    };
+    const getIsoRangeFromDateInput = (value) => localDayToUtcRange(value);
 
-    const formatTimestampLocal = (iso) => {
-        if (!iso) return '';
-        const d = new Date(iso);
-        if (Number.isNaN(d.getTime())) return String(iso);
-        const parts = new Intl.DateTimeFormat('en-GB', {
-            year: 'numeric',
-            month: '2-digit',
-            day: '2-digit',
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false,
-        }).formatToParts(d);
-        const get = (type) => parts.find(p => p.type === type)?.value || '';
-        return `${get('year')}-${get('month')}-${get('day')} ${get('hour')}:${get('minute')}:${get('second')}`;
-    };
+    const formatTimestampLocal = (iso) => formatLocalDateTime(iso);
 
     const parseAction = (action) => {
         const raw = (action || '').trim();

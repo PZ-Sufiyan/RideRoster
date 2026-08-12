@@ -4,6 +4,7 @@ import { MdArrowBack, MdCloudUpload, MdVisibility, MdDeleteOutline, MdFileUpload
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { registerDriverWithAuthAndRecords } from '../../../../../services/driverRegistrationService';
+import { getVehicleTypeOptions } from '../../../../../services/vehicleCategoriesService';
 import { ToastStack } from '../../../../../utils/Toast';
 
 // ─── Reusable: Text Input ─────────────────────────────────────
@@ -211,18 +212,6 @@ const SectionHeading = ({ title }) => (
     <h2 className="text-lg font-bold text-gray-900 mb-5">{title}</h2>
 );
 
-const VEHICLE_TYPES = [
-    { value: 'Car - 4 seater', seats: '4', wheelchairAccessible: false },
-    { value: 'People Carrier - 6 passenger', seats: '6', wheelchairAccessible: false },
-    { value: 'People Carrier - 7 passenger', seats: '7', wheelchairAccessible: false },
-    { value: 'Minibus - 8 passenger', seats: '8', wheelchairAccessible: false },
-    { value: 'Minibus - Wheelchair ramp', seats: '8', wheelchairAccessible: true },
-    { value: 'Minibus - Wheelchair tail lift', seats: '8', wheelchairAccessible: true },
-    { value: 'Hackney - 5 passenger', seats: '5', wheelchairAccessible: false },
-    { value: 'Hackney - 6 passenger', seats: '6', wheelchairAccessible: false },
-    { value: 'Hackney - Wheelchair', seats: '5', wheelchairAccessible: true },
-];
-
 // ─── Main Component ───────────────────────────────────────────
 const initialFilesState = {
     passport: null,
@@ -282,6 +271,9 @@ const AddNewDriver = () => {
     const [toasts, setToasts] = useState([]);
     const [submitAttempted, setSubmitAttempted] = useState(false);
     const [missingKeys, setMissingKeys] = useState([]);
+    const [vehicleTypes, setVehicleTypes] = useState([]);
+    const [vehicleTypesLoading, setVehicleTypesLoading] = useState(true);
+    const [vehicleTypesError, setVehicleTypesError] = useState('');
 
     const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
     const setExpiry = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
@@ -302,6 +294,27 @@ const AddNewDriver = () => {
         return () => {
             if (avatarBlobRef.current) URL.revokeObjectURL(avatarBlobRef.current);
         };
+    }, []);
+
+    useEffect(() => {
+        let cancelled = false;
+        const loadVehicleTypes = async () => {
+            setVehicleTypesLoading(true);
+            setVehicleTypesError('');
+            try {
+                const options = await getVehicleTypeOptions();
+                if (!cancelled) setVehicleTypes(options);
+            } catch (_) {
+                if (!cancelled) {
+                    setVehicleTypes([]);
+                    setVehicleTypesError('Could not load vehicle types.');
+                }
+            } finally {
+                if (!cancelled) setVehicleTypesLoading(false);
+            }
+        };
+        loadVehicleTypes();
+        return () => { cancelled = true; };
     }, []);
 
     const pushToast = (type, message) => {
@@ -791,9 +804,10 @@ const AddNewDriver = () => {
                                 <label className="text-xs font-semibold text-gray-600">Vehicle Type<span className="text-red-500 ml-0.5">*</span></label>
                                 <select
                                     value={form.bodyStyle}
+                                    disabled={vehicleTypesLoading}
                                     onChange={(e) => {
                                         const next = e.target.value;
-                                        const meta = VEHICLE_TYPES.find((x) => x.value === next);
+                                        const meta = vehicleTypes.find((x) => x.value === next);
                                         setForm((prev) => ({
                                             ...prev,
                                             bodyStyle: next,
@@ -803,10 +817,15 @@ const AddNewDriver = () => {
                                     }}
                                     className={`w-full px-3.5 py-3 border rounded-xl text-sm bg-white ${showMissing('bodyStyle') ? 'border-red-400' : 'border-gray-200'}`}
                                 >
-                                    <option value="">Select vehicle type</option>
-                                    {VEHICLE_TYPES.map((t) => <option key={t.value} value={t.value}>{t.value}</option>)}
+                                    <option value="">
+                                        {vehicleTypesLoading ? 'Loading vehicle types...' : 'Select vehicle type'}
+                                    </option>
+                                    {vehicleTypes.map((t) => (
+                                        <option key={t.value} value={t.value}>{t.value}</option>
+                                    ))}
                                 </select>
                                 {showMissing('bodyStyle') && <p className="text-xs text-red-600 font-medium">This field is required.</p>}
+                                {vehicleTypesError && <p className="text-xs text-red-600 font-medium">{vehicleTypesError}</p>}
                             </div>
                             <div className="flex items-end">
                                 <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600">

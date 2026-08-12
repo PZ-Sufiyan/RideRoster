@@ -43,7 +43,10 @@ class _LoginPageState extends State<LoginPage> {
     Navigator.pushReplacementNamed(context, route);
   }
 
-  void _onForgotPassword() {}
+  void _onForgotPassword() {
+    context.read<AuthProvider>().clearError();
+    Navigator.pushNamed(context, AppRoutes.forgotPassword);
+  }
 
   void _onSignUp() {
     Navigator.pushNamed(context, AppRoutes.chooseAccountType);

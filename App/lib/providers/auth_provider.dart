@@ -109,10 +109,34 @@ class AuthProvider extends ChangeNotifier {
   // Forgot password
   // ---------------------------------------------------------------------------
   Future<String?> driverForgotPassword({required String email}) async {
+    _errorMessage = null;
     _setStatus(AuthStatus.loading);
     final result = await _authService.driverForgotPassword(email: email);
     _setStatus(AuthStatus.unauthenticated);
     if (result.success) return null;
+    _errorMessage = result.error;
+    notifyListeners();
+    return result.error;
+  }
+
+  Future<String?> resetPasswordWithCode({
+    required String email,
+    required String code,
+    required String password,
+    required String confirmPassword,
+  }) async {
+    _errorMessage = null;
+    _setStatus(AuthStatus.loading);
+    final result = await _authService.resetPasswordWithCode(
+      email: email,
+      code: code,
+      password: password,
+      confirmPassword: confirmPassword,
+    );
+    _setStatus(AuthStatus.unauthenticated);
+    if (result.success) return null;
+    _errorMessage = result.error;
+    notifyListeners();
     return result.error;
   }
 

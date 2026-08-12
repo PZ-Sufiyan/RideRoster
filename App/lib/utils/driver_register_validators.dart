@@ -39,10 +39,15 @@ class DriverRegisterValidators {
     return null;
   }
 
+  static const String passwordRulesHint =
+      'Password must be 8–12 characters and include at least one uppercase letter, one lowercase letter, one number, and one symbol.';
+
   static String? passwordValue(String? value) {
     final v = value ?? '';
     if (v.isEmpty) return 'Password is required.';
-    if (v.length < 8) return 'Password must be at least 8 characters.';
+    if (v.length < 8 || v.length > 12) {
+      return 'Password must be between 8 and 12 characters.';
+    }
     if (!_hasLower.hasMatch(v)) {
       return 'Password must include at least one lowercase letter.';
     }
@@ -53,7 +58,7 @@ class DriverRegisterValidators {
       return 'Password must include at least one number.';
     }
     if (!_hasSpecial.hasMatch(v)) {
-      return 'Password must include at least one special character.';
+      return 'Password must include at least one symbol.';
     }
     return null;
   }

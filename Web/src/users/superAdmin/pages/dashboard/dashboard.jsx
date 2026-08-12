@@ -14,7 +14,9 @@ import {
     getCompanyGrowthByMonth,
     getCompanyTypeBreakdown,
 } from '../../../../services/dashboardService'
+import { toShortCompanyId } from '../../../../services/companyService'
 import { ShimmerBlock } from '../../../../utils/Shimmer'
+import { formatLocalDate } from '../../../../utils/dateTime'
 
 const truncateText = (text, maxLength = 40) => {
     if (!text) return '—'
@@ -105,12 +107,7 @@ const Dashboard = () => {
         },
     ]), [loading, statsData])
 
-    const formatDate = (isoString) => {
-        if (!isoString) return '—'
-        const d = new Date(isoString)
-        if (Number.isNaN(d.getTime())) return '—'
-        return d.toISOString().slice(0, 10)
-    }
+    const formatDate = (isoString) => formatLocalDate(isoString) || '—'
 
     const shortenUuid = (value) => {
         if (value == null) return '—'
@@ -498,7 +495,7 @@ const Dashboard = () => {
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-right">
-                                        <Link to={`/platform/companies/review/${row.id}`} className="text-blue-600 hover:text-blue-800 font-medium text-xs">
+                                        <Link to={`/platform/companies/review/${toShortCompanyId(row.id)}`} className="text-blue-600 hover:text-blue-800 font-medium text-xs">
                                             Review
                                         </Link>
                                     </td>
