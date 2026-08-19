@@ -506,6 +506,8 @@ class AuthService extends ApiService {
                 ? null
                 : dbsServiceUpdateId?.trim(),
             'status': 'pending',
+            'fleet': 'private',
+            'vehicle_assigned': true,
           })
           .select('id')
           .single();
@@ -657,6 +659,7 @@ class AuthService extends ApiService {
                 : licensingType.trim(),
             'body_style': bodyStyle.trim().isEmpty ? null : bodyStyle.trim(),
             'wheelchair_accessible': wheelchairAccessible,
+            'fleet': 'private',
           })
           .select('id')
           .single();

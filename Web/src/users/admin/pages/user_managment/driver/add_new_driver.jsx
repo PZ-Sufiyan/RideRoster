@@ -4,7 +4,7 @@ import { MdArrowBack, MdCloudUpload, MdVisibility, MdDeleteOutline, MdFileUpload
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { registerDriverWithAuthAndRecords } from '../../../../../services/driverRegistrationService';
-import { getVehicleTypeOptions } from '../../../../../services/vehicleCategoriesService';
+import { invalidateDriversListCache } from '../../../../../hooks/useDriversList';
 import { ToastStack } from '../../../../../utils/Toast';
 
 // ─── Reusable: Text Input ─────────────────────────────────────
@@ -185,28 +185,6 @@ const ExpiryDateField = ({ value, onChange, className = '', showError = false, e
     </div>
 );
 
-// ─── Seating Capacity Dropdown ────────────────────────────────
-const SeatingCapacity = ({ value, onChange, showError = false, errorText = 'Seating capacity is required.' }) => (
-    <div className="flex flex-col gap-2">
-        <label className="text-xs font-semibold text-gray-700">Seating Capacity</label>
-        <select
-            value={value}
-            onChange={onChange}
-            className={`w-full sm:w-56 px-3.5 py-3 border rounded-xl text-sm focus:outline-none focus:ring-1 bg-white appearance-none cursor-pointer ${
-                showError
-                    ? 'border-red-400 text-red-700 focus:border-red-500 focus:ring-red-500'
-                    : 'border-gray-200 text-gray-600 focus:border-[#005580] focus:ring-[#005580]'
-            }`}
-        >
-            <option value="">Seating Capacity</option>
-            {[4, 5, 6, 7, 8, 9, 10, 12, 14, 16].map((n) => (
-                <option key={n} value={n}>{n} Passengers</option>
-            ))}
-        </select>
-        {showError && <p className="text-xs text-red-600 font-medium">{errorText}</p>}
-    </div>
-);
-
 // ─── Section Heading ──────────────────────────────────────────
 const SectionHeading = ({ title }) => (
     <h2 className="text-lg font-bold text-gray-900 mb-5">{title}</h2>
@@ -222,12 +200,6 @@ const initialFilesState = {
     dbs_certificate_front: null,
     dbs_certificate_back: null,
     safeguarding_certificate: null,
-    v5_front: null,
-    v5_inside: null,
-    mot_certificate: null,
-    taxi_license_plate: null,
-    insurance_certificate: null,
-    vehicle_photo: null,
 };
 
 const AddNewDriver = () => {
@@ -250,30 +222,13 @@ const AddNewDriver = () => {
         taxiBadgeExpiry: '',
         dbsExpiry: '',
         safeguardingExpiry: '',
-        motExpiry: '',
-        taxiPlateExpiry: '',
-        insuranceExpiry: '',
-        seatingCapacity: '',
         dbsUpdateId: '',
-        taxiLicensePlate: '',
-        registrationNumber: '',
-        taxiPlateNumber: '',
-        make: '',
-        model: '',
-        vehicleColour: '',
-        yearOfFirstRegistration: '',
-        licensingType: '',
-        bodyStyle: '',
-        wheelchairAccessible: false,
     });
     const [otherCertificates, setOtherCertificates] = useState([]);
     const [files, setFiles] = useState(() => ({ ...initialFilesState }));
     const [toasts, setToasts] = useState([]);
     const [submitAttempted, setSubmitAttempted] = useState(false);
     const [missingKeys, setMissingKeys] = useState([]);
-    const [vehicleTypes, setVehicleTypes] = useState([]);
-    const [vehicleTypesLoading, setVehicleTypesLoading] = useState(true);
-    const [vehicleTypesError, setVehicleTypesError] = useState('');
 
     const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
     const setExpiry = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
@@ -294,27 +249,6 @@ const AddNewDriver = () => {
         return () => {
             if (avatarBlobRef.current) URL.revokeObjectURL(avatarBlobRef.current);
         };
-    }, []);
-
-    useEffect(() => {
-        let cancelled = false;
-        const loadVehicleTypes = async () => {
-            setVehicleTypesLoading(true);
-            setVehicleTypesError('');
-            try {
-                const options = await getVehicleTypeOptions();
-                if (!cancelled) setVehicleTypes(options);
-            } catch (_) {
-                if (!cancelled) {
-                    setVehicleTypes([]);
-                    setVehicleTypesError('Could not load vehicle types.');
-                }
-            } finally {
-                if (!cancelled) setVehicleTypesLoading(false);
-            }
-        };
-        loadVehicleTypes();
-        return () => { cancelled = true; };
     }, []);
 
     const pushToast = (type, message) => {
@@ -350,19 +284,7 @@ const AddNewDriver = () => {
         if (!form.licenseExpiry) missingFields.push('licenseExpiry');
         if (!form.taxiBadgeExpiry) missingFields.push('taxiBadgeExpiry');
         if (!form.dbsExpiry) missingFields.push('dbsExpiry');
-        if (!form.motExpiry) missingFields.push('motExpiry');
-        if (!form.taxiPlateExpiry) missingFields.push('taxiPlateExpiry');
-        if (!form.insuranceExpiry) missingFields.push('insuranceExpiry');
         if (!form.dbsUpdateId?.trim()) missingFields.push('dbsUpdateId');
-        if (!form.taxiLicensePlate?.trim()) missingFields.push('taxiLicensePlate');
-        if (!form.registrationNumber?.trim()) missingFields.push('registrationNumber');
-        if (!form.taxiPlateNumber?.trim()) missingFields.push('taxiPlateNumber');
-        if (!form.make?.trim()) missingFields.push('make');
-        if (!form.model?.trim()) missingFields.push('model');
-        if (!form.vehicleColour?.trim()) missingFields.push('vehicleColour');
-        if (!form.yearOfFirstRegistration) missingFields.push('yearOfFirstRegistration');
-        if (!form.licensingType?.trim()) missingFields.push('licensingType');
-        if (!form.bodyStyle?.trim()) missingFields.push('bodyStyle');
 
         if (!files.driving_license_front) missingFields.push('driving_license_front');
         if (!files.driving_license_back) missingFields.push('driving_license_back');
@@ -370,12 +292,6 @@ const AddNewDriver = () => {
         if (!files.taxi_badge_back) missingFields.push('taxi_badge_back');
         if (!files.dbs_certificate_front) missingFields.push('dbs_certificate_front');
         if (!files.dbs_certificate_back) missingFields.push('dbs_certificate_back');
-        if (!files.v5_front) missingFields.push('v5_front');
-        if (!files.v5_inside) missingFields.push('v5_inside');
-        if (!files.mot_certificate) missingFields.push('mot_certificate');
-        if (!files.taxi_license_plate) missingFields.push('taxi_license_plate');
-        if (!files.insurance_certificate) missingFields.push('insurance_certificate');
-        if (!files.vehicle_photo) missingFields.push('vehicle_photo');
 
         setMissingKeys(missingFields);
 
@@ -433,9 +349,6 @@ const AddNewDriver = () => {
                     taxiBadge: form.taxiBadgeExpiry,
                     dbs: form.dbsExpiry,
                     safeguarding: form.safeguardingExpiry,
-                    mot: form.motExpiry,
-                    taxiPlate: form.taxiPlateExpiry,
-                    insurance: form.insuranceExpiry,
                 },
                 driverFiles: {
                     ...(files.passport ? { passport: files.passport } : {}),
@@ -450,28 +363,8 @@ const AddNewDriver = () => {
                         : {}),
                     other_certificates: otherCertificates,
                 },
-                vehicleFiles: {
-                    v5_front: files.v5_front,
-                    v5_inside: files.v5_inside,
-                    mot_certificate: files.mot_certificate,
-                    taxi_license_plate: files.taxi_license_plate,
-                    insurance_certificate: files.insurance_certificate,
-                    vehicle_photo: files.vehicle_photo,
-                },
-                vehicle: {
-                    taxiLicensePlate: form.taxiLicensePlate,
-                    seatingCapacity: form.seatingCapacity,
-                    registrationNumber: form.registrationNumber,
-                    taxiPlateNumber: form.taxiPlateNumber,
-                    make: form.make,
-                    model: form.model,
-                    vehicleColour: form.vehicleColour,
-                    yearOfFirstRegistration: form.yearOfFirstRegistration,
-                    licensingType: form.licensingType,
-                    bodyStyle: form.bodyStyle,
-                    wheelchairAccessible: form.wheelchairAccessible,
-                },
             });
+            invalidateDriversListCache();
             navigate('/portal/users/drivers');
         } catch (e) {
             const msg = e?.message || 'Could not register driver.';
@@ -490,7 +383,7 @@ const AddNewDriver = () => {
             {/* Page heading */}
             <div className="mb-8">
                 <h1 className="text-3xl font-bold tracking-tight text-gray-900">Add New Driver</h1>
-                <p className="text-sm text-gray-500 mt-2">Add a new driver to your company's roster.</p>
+                <p className="text-sm text-gray-500 mt-2">Add a company driver. Assign a vehicle from the Vehicles page afterwards.</p>
             </div>
 
             {/* ── Card ── */}
@@ -761,152 +654,6 @@ const AddNewDriver = () => {
                                 <button type="button" className="text-red-600" onClick={() => setOtherCertificates((prev) => prev.filter((_, i) => i !== idx))}>Remove</button>
                             </div>
                         ))}
-                    </div>
-                </div>
-
-                {/* ── Vehicle Information ── */}
-                <div className="rounded-xl border border-gray-100 bg-gray-50/40 p-4 sm:p-5 lg:p-6">
-                    <SectionHeading title="Vehicle Information" />
-                    <div className="space-y-6">
-
-                        {/* V5 Document */}
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                            <UploadBox
-                                label="V5 Document (Front)"
-                                required
-                                file={files.v5_front}
-                                onFileChange={setFile('v5_front')}
-                                showError={showMissing('v5_front')}
-                            />
-                            <UploadBox
-                                label="V5 Document (Inside)"
-                                required
-                                file={files.v5_inside}
-                                onFileChange={setFile('v5_inside')}
-                                showError={showMissing('v5_inside')}
-                            />
-                        </div>
-
-                        {/* MOT + Taxi License Plate + Insurance */}
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                            <FormField label="Registration Number (Plate)" required placeholder="e.g. ABC 1234" value={form.registrationNumber} onChange={set('registrationNumber')} showError={showMissing('registrationNumber')} />
-                            <FormField label="Vehicle Taxi Plate Number" required placeholder="e.g. ABC 1234" value={form.taxiPlateNumber} onChange={set('taxiPlateNumber')} showError={showMissing('taxiPlateNumber')} />
-                            <FormField label="Make" required placeholder="e.g. Toyota" value={form.make} onChange={set('make')} showError={showMissing('make')} />
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                            <FormField label="Model" required placeholder="e.g. Prius" value={form.model} onChange={set('model')} showError={showMissing('model')} />
-                            <FormField label="Vehicle Colour" required placeholder="e.g. Black" value={form.vehicleColour} onChange={set('vehicleColour')} showError={showMissing('vehicleColour')} />
-                            <FormField label="Year of First Registration" required type="date" value={form.yearOfFirstRegistration} onChange={set('yearOfFirstRegistration')} showError={showMissing('yearOfFirstRegistration')} />
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                            <FormField label="Licensing Type" required placeholder="e.g. Nottingham City Council" value={form.licensingType} onChange={set('licensingType')} showError={showMissing('licensingType')} />
-                            <div className="flex flex-col gap-2">
-                                <label className="text-xs font-semibold text-gray-600">Vehicle Type<span className="text-red-500 ml-0.5">*</span></label>
-                                <select
-                                    value={form.bodyStyle}
-                                    disabled={vehicleTypesLoading}
-                                    onChange={(e) => {
-                                        const next = e.target.value;
-                                        const meta = vehicleTypes.find((x) => x.value === next);
-                                        setForm((prev) => ({
-                                            ...prev,
-                                            bodyStyle: next,
-                                            seatingCapacity: meta?.seats || '',
-                                            wheelchairAccessible: !!meta?.wheelchairAccessible,
-                                        }));
-                                    }}
-                                    className={`w-full px-3.5 py-3 border rounded-xl text-sm bg-white ${showMissing('bodyStyle') ? 'border-red-400' : 'border-gray-200'}`}
-                                >
-                                    <option value="">
-                                        {vehicleTypesLoading ? 'Loading vehicle types...' : 'Select vehicle type'}
-                                    </option>
-                                    {vehicleTypes.map((t) => (
-                                        <option key={t.value} value={t.value}>{t.value}</option>
-                                    ))}
-                                </select>
-                                {showMissing('bodyStyle') && <p className="text-xs text-red-600 font-medium">This field is required.</p>}
-                                {vehicleTypesError && <p className="text-xs text-red-600 font-medium">{vehicleTypesError}</p>}
-                            </div>
-                            <div className="flex items-end">
-                                <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600">
-                                    <input type="checkbox" checked={form.wheelchairAccessible} onChange={(e) => setForm((prev) => ({ ...prev, wheelchairAccessible: e.target.checked }))} />
-                                    Wheelchair Accessible
-                                </label>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                            <div>
-                                <UploadBox
-                                    label="MOT Certificate"
-                                    required
-                                    file={files.mot_certificate}
-                                    onFileChange={setFile('mot_certificate')}
-                                    showError={showMissing('mot_certificate')}
-                                />
-                                <ExpiryDateField
-                                    className="mt-2"
-                                    value={form.motExpiry}
-                                    onChange={setExpiry('motExpiry')}
-                                    showError={showMissing('motExpiry')}
-                                />
-                            </div>
-                            <div>
-                                <UploadBox
-                                    label="Taxi License Plate"
-                                    required
-                                    file={files.taxi_license_plate}
-                                    onFileChange={setFile('taxi_license_plate')}
-                                    showError={showMissing('taxi_license_plate')}
-                                />
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-4">
-                                    <FormField
-                                        label="Taxi License Plate Number"
-                                        required
-                                        placeholder="Taxi License Plate Number"
-                                        value={form.taxiLicensePlate}
-                                        onChange={set('taxiLicensePlate')}
-                                        showError={showMissing('taxiLicensePlate')}
-                                    />
-                                    <ExpiryDateField
-                                        value={form.taxiPlateExpiry}
-                                        onChange={setExpiry('taxiPlateExpiry')}
-                                        showError={showMissing('taxiPlateExpiry')}
-                                    />
-                                </div>
-                            </div>
-                            <div>
-                                <UploadBox
-                                    label="Insurance Certificate"
-                                    required
-                                    file={files.insurance_certificate}
-                                    onFileChange={setFile('insurance_certificate')}
-                                    showError={showMissing('insurance_certificate')}
-                                />
-                                <ExpiryDateField
-                                    className="mt-2"
-                                    value={form.insuranceExpiry}
-                                    onChange={setExpiry('insuranceExpiry')}
-                                    showError={showMissing('insuranceExpiry')}
-                                />
-                            </div>
-                        </div>
-
-                        {/* Vehicle Photo */}
-                        <UploadBox
-                            label="Vehicle Photo"
-                            required
-                            file={files.vehicle_photo}
-                            onFileChange={setFile('vehicle_photo')}
-                            accept="image/jpeg,image/png"
-                            showError={showMissing('vehicle_photo')}
-                        />
-
-                        {/* Seating Capacity */}
-                        <SeatingCapacity
-                            value={form.seatingCapacity}
-                            onChange={set('seatingCapacity')}
-                            showError={showMissing('seatingCapacity')}
-                        />
                     </div>
                 </div>
             </div>

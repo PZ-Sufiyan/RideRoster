@@ -13,6 +13,8 @@ const SIDEBAR_PATHS = new Set([
     '/portal/dashboard',
     '/portal/users/drivers',
     '/portal/users/drivers/add',
+    '/portal/users/vehicles',
+    '/portal/users/vehicles/add',
     '/portal/users/pa',
     '/portal/users/pa/add',
     '/portal/users/subadmins',
@@ -30,6 +32,8 @@ const SIDEBAR_PATHS = new Set([
     '/team/approvals',
     '/team/users/drivers',
     '/team/users/drivers/add',
+    '/team/users/vehicles',
+    '/team/users/vehicles/add',
     '/team/users/pa',
     '/team/users/pa/add',
     '/team/users/passengers',
@@ -81,11 +85,15 @@ const jobDetailCrumbLabel = (id) => {
 
 const formatJobCrumbId = (id) => `J#${shortenUuid(decodeURIComponent(id))}`;
 
+const vehicleCrumbLabel = (segment) => {
+    const action = decodeURIComponent(segment || '').trim().toLowerCase();
+    if (action === 'add') return 'Add Vehicle';
+    return 'Vehicle Detail';
+};
+
 const HIDDEN_BREADCRUMB_PATTERNS = [
     /^\/portal\/users\/passengers\/add$/,
     /^\/team\/users\/passengers\/add$/,
-    /^\/portal\/users\/passengers\/[^/]+\/edit$/,
-    /^\/team\/users\/passengers\/[^/]+\/edit$/,
 ];
 
 const ROUTE_CRUMB_MAP = [
@@ -121,6 +129,15 @@ const ROUTE_CRUMB_MAP = [
 
     // ─── ADMIN ────────────────────────────────────────────────────
     {
+        match: /^\/portal\/users\/drivers\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'User Management' },
+            { label: 'Drivers', to: '/portal/users/drivers' },
+            { label: 'Driver Detail', to: `/portal/users/drivers/${id}` },
+            { label: 'Edit Driver' },
+        ],
+    },
+    {
         match: /^\/portal\/users\/drivers\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },
@@ -129,11 +146,46 @@ const ROUTE_CRUMB_MAP = [
         ],
     },
     {
+        match: /^\/portal\/users\/vehicles\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'User Management' },
+            { label: 'Vehicles', to: '/portal/users/vehicles' },
+            { label: 'Vehicle Detail', to: `/portal/users/vehicles/${id}` },
+            { label: 'Edit Vehicle' },
+        ],
+    },
+    {
+        match: /^\/portal\/users\/vehicles\/([^/]+)$/,
+        crumbs: (_, [action]) => [
+            { label: 'User Management' },
+            { label: 'Vehicles', to: '/portal/users/vehicles' },
+            { label: vehicleCrumbLabel(action) },
+        ],
+    },
+    {
+        match: /^\/portal\/users\/pa\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'User Management' },
+            { label: 'PA', to: '/portal/users/pa' },
+            { label: 'PA Detail', to: `/portal/users/pa/${id}` },
+            { label: 'Edit PA' },
+        ],
+    },
+    {
         match: /^\/portal\/users\/pa\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },
             { label: 'PA', to: '/portal/users/pa' },
             { label: paCrumbLabel(action) },
+        ],
+    },
+    {
+        match: /^\/portal\/users\/subadmins\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'User Management' },
+            { label: 'Subadmins', to: '/portal/users/subadmins' },
+            { label: 'Sub-Admin Profile', to: `/portal/users/subadmins/${id}` },
+            { label: 'Edit Sub-Admin' },
         ],
     },
     {
@@ -167,7 +219,7 @@ const ROUTE_CRUMB_MAP = [
         crumbs: (_, [id]) => [
             { label: 'User Management' },
             { label: 'Passengers', to: '/portal/users/passengers' },
-            { label: decodeURIComponent(id), to: `/portal/users/passengers/${id}` },
+            { label: 'Passenger Detail', to: `/portal/users/passengers/${id}` },
             { label: 'Edit Passenger' },
         ],
     },
@@ -239,11 +291,46 @@ const ROUTE_CRUMB_MAP = [
 
     // ─── SUBADMIN (mirrors admin paths under /subadmin) ───────────
     {
+        match: /^\/team\/users\/drivers\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'User Management' },
+            { label: 'Drivers', to: '/team/users/drivers' },
+            { label: 'Driver Detail', to: `/team/users/drivers/${id}` },
+            { label: 'Edit Driver' },
+        ],
+    },
+    {
         match: /^\/team\/users\/drivers\/([^/]+)$/,
         crumbs: (_, [action]) => [
             { label: 'User Management' },
             { label: 'Drivers', to: '/team/users/drivers' },
             { label: driverCrumbLabel(action) },
+        ],
+    },
+    {
+        match: /^\/team\/users\/vehicles\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'User Management' },
+            { label: 'Vehicles', to: '/team/users/vehicles' },
+            { label: 'Vehicle Detail', to: `/team/users/vehicles/${id}` },
+            { label: 'Edit Vehicle' },
+        ],
+    },
+    {
+        match: /^\/team\/users\/vehicles\/([^/]+)$/,
+        crumbs: (_, [action]) => [
+            { label: 'User Management' },
+            { label: 'Vehicles', to: '/team/users/vehicles' },
+            { label: vehicleCrumbLabel(action) },
+        ],
+    },
+    {
+        match: /^\/team\/users\/pa\/([^/]+)\/edit$/,
+        crumbs: (_, [id]) => [
+            { label: 'User Management' },
+            { label: 'PA', to: '/team/users/pa' },
+            { label: 'PA Detail', to: `/team/users/pa/${id}` },
+            { label: 'Edit PA' },
         ],
     },
     {
@@ -277,7 +364,7 @@ const ROUTE_CRUMB_MAP = [
         crumbs: (_, [id]) => [
             { label: 'User Management' },
             { label: 'Passengers', to: '/team/users/passengers' },
-            { label: decodeURIComponent(id), to: `/team/users/passengers/${id}` },
+            { label: 'Passenger Detail', to: `/team/users/passengers/${id}` },
             { label: 'Edit Passenger' },
         ],
     },

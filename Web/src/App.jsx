@@ -17,6 +17,10 @@ import Admin_Drivers from './users/admin/pages/user_managment/driver/drivers';
 import Admin_DriverDetail from './users/admin/pages/user_managment/driver/driver_detail';
 import Admin_AddDriver from './users/admin/pages/user_managment/driver/add_new_driver';
 import Admin_EditDriver from './users/admin/pages/user_managment/driver/edit_driver';
+import Admin_Vehicles from './users/admin/pages/user_managment/vehicle/vehicles';
+import Admin_AddVehicle from './users/admin/pages/user_managment/vehicle/add_new_vehicle';
+import Admin_VehicleDetail from './users/admin/pages/user_managment/vehicle/vehicle_detail';
+import Admin_EditVehicle from './users/admin/pages/user_managment/vehicle/edit_vehicle';
 import Admin_PAList from './users/admin/pages/user_managment/PA/pa_list';
 import Admin_PADetail from './users/admin/pages/user_managment/PA/pa_detail';
 import Admin_AddPA from './users/admin/pages/user_managment/PA/add_new_pa';
@@ -56,6 +60,10 @@ import SubAdmin_Drivers from './users/subAdmin/pages/user_managment/driver/drive
 import SubAdmin_AddDriver from './users/subAdmin/pages/user_managment/driver/add_new_driver';
 import SubAdmin_DriverDetail from './users/subAdmin/pages/user_managment/driver/driver_detail';
 import SubAdmin_EditDriver from './users/subAdmin/pages/user_managment/driver/edit_driver';
+import SubAdmin_Vehicles from './users/subAdmin/pages/user_managment/vehicle/vehicles';
+import SubAdmin_AddVehicle from './users/subAdmin/pages/user_managment/vehicle/add_new_vehicle';
+import SubAdmin_VehicleDetail from './users/subAdmin/pages/user_managment/vehicle/vehicle_detail';
+import SubAdmin_EditVehicle from './users/subAdmin/pages/user_managment/vehicle/edit_vehicle';
 import SubAdmin_PAList from './users/subAdmin/pages/user_managment/PA/pa_list';
 import SubAdmin_AddPA from './users/subAdmin/pages/user_managment/PA/add_new_pa';
 import SubAdmin_PADetail from './users/subAdmin/pages/user_managment/PA/pa_detail';
@@ -151,6 +159,10 @@ function App() {
                 <Route path="/portal/users/drivers/add" element={<Admin_AddDriver />} />
                 <Route path="/portal/users/drivers/:driverId/edit" element={<Admin_EditDriver />} />
                 <Route path="/portal/users/drivers/:id" element={<Admin_DriverDetail />} />
+                <Route path="/portal/users/vehicles" element={<Admin_Vehicles />} />
+                <Route path="/portal/users/vehicles/add" element={<Admin_AddVehicle />} />
+                <Route path="/portal/users/vehicles/:vehicleId/edit" element={<Admin_EditVehicle />} />
+                <Route path="/portal/users/vehicles/:id" element={<Admin_VehicleDetail />} />
                 <Route path="/portal/users/pa" element={<Admin_PAList />} />
                 <Route path="/portal/users/pa/add" element={<Admin_AddPA />} />
                 <Route path="/portal/users/pa/:id/edit" element={<Admin_EditPA />} />
@@ -222,6 +234,38 @@ function App() {
                 element={
                   <SubAdminProtectedPage permission="edit_profiles">
                     <SubAdmin_EditDriver />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/team/users/vehicles"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_Vehicles />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/team/users/vehicles/add"
+                element={
+                  <SubAdminProtectedPage permission="add_users">
+                    <SubAdmin_AddVehicle />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/team/users/vehicles/:id"
+                element={
+                  <SubAdminProtectedPage permission="view_users">
+                    <SubAdmin_VehicleDetail />
+                  </SubAdminProtectedPage>
+                }
+              />
+              <Route
+                path="/team/users/vehicles/:vehicleId/edit"
+                element={
+                  <SubAdminProtectedPage permission="edit_profiles">
+                    <SubAdmin_EditVehicle />
                   </SubAdminProtectedPage>
                 }
               />

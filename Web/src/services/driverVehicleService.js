@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabaseClient'
+import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { getCompanyAdminById } from './companyService'
+import { normalizeVehicleStatus } from '../utils/vehicleStatus'
 
 /** Canonical `drivers.status` values stored in the database */
 export const DRIVER_DB_STATUS = {
@@ -242,6 +244,19 @@ export const updateVehicle = async (vehicleId, updates) => {
   return data
 }
 
+export const updateVehicleStatus = async (vehicleId, status) => {
+  if (!vehicleId) throw new Error('Vehicle ID is required.')
+  const nextStatus = normalizeVehicleStatus(status)
+  const { data, error } = await supabaseAdmin
+    .from('vehicles')
+    .update({ status: nextStatus, updated_at: new Date().toISOString() })
+    .eq('id', vehicleId)
+    .select()
+    .single()
+  if (error) throw error
+  return data
+}
+
 export const deleteVehicle = async (vehicleId) => {
   const { data, error } = await supabase
     .from('vehicles')
@@ -259,6 +274,46 @@ export const getVehiclesByCompany = async (companyId) => {
 
 export const getVehiclesByDriver = async (driverId) => {
   return getAllVehicles({ driverId })
+}
+
+export const getVehiclesForCurrentAdmin = async () => {
+  const {
+    data: { session },
+  } = await supabase.auth.getSession()
+  const uid = session?.user?.id
+  if (!uid) {
+    const err = new Error('Not authenticated')
+    err.code = 'AUTH'
+    throw err
+  }
+  const admin = await getCompanyAdminById(uid)
+  if (!admin?.company_id) {
+    const err = new Error('No company linked to your account')
+    err.code = 'NO_COMPANY'
+    throw err
+  }
+  return getAllVehiclesWithDriver({ companyId: admin.company_id })
+}
+
+export const getAllVehiclesWithDriver = async ({ companyId = null } = {}) => {
+  let query = supabase
+    .from('vehicles')
+    .select('*, driver:drivers(id, first_name, last_name, status, fleet, vehicle_assigned, phone, license_no)')
+    .order('created_at', { ascending: false })
+  if (companyId) query = query.eq('company_id', companyId)
+  const { data, error } = await query
+  if (error) throw error
+  return data
+}
+
+export const getVehicleByIdWithDriver = async (vehicleId) => {
+  const { data, error } = await supabase
+    .from('vehicles')
+    .select('*, driver:drivers(id, first_name, last_name, status, fleet, vehicle_assigned, phone, license_no, email, profile_picture_url)')
+    .eq('id', vehicleId)
+    .maybeSingle()
+  if (error) throw error
+  return data
 }
 
 /* Vehicle Documents CRUD */

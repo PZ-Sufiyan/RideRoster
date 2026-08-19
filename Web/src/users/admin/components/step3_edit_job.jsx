@@ -512,14 +512,14 @@ const Step3EditJob = ({ setToasts }) => {
                     query={driverQuery}
                     onQueryChange={setDriverQuery}
                     searchPlaceholder="Search driver by name or license..."
-                    infoNote="Drivers already assigned to other jobs are hidden. Seat capacity and wheelchair access are validated when you select."
+                    infoNote="Only approved drivers with a vehicle assigned are shown. Drivers already on other jobs are hidden. Seat capacity and wheelchair access are validated when you select."
                     rows={filteredDriverRows}
                     currentId={draftDriverId}
                     loadingId={pickingDriverId}
                     onPick={handlePickDriver}
                     onClose={() => setShowDriverModal(false)}
                     disabled={saveInProgress}
-                    emptyText="No drivers available (all assigned to other jobs)."
+                    emptyText="No drivers available. Drivers must be approved, have a vehicle assigned, and not already be on another job."
                     renderSub={(row) => row.sub}
                 />
             )}

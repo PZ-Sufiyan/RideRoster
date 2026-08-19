@@ -640,7 +640,7 @@ const ActiveJobs = () => {
                             <div className="flex items-start gap-2 px-4 py-3 bg-blue-50 border border-blue-100 rounded-xl text-[12px] text-blue-700">
                                 <MdWarning size={16} className="shrink-0 mt-0.5 text-blue-400" />
                                 <span>
-                                    Drivers already assigned to other jobs are hidden. Assignment will be blocked if the vehicle has insufficient seats or lacks wheelchair access for passengers who need it.
+                                    Drivers must be approved and already have a vehicle assigned. Drivers on other jobs are hidden. Assignment will be blocked if the vehicle has insufficient seats or lacks wheelchair access.
                                 </span>
                             </div>
 
@@ -660,7 +660,7 @@ const ActiveJobs = () => {
                             <div className="space-y-3 max-h-72 overflow-y-auto pr-1">
                                 {filteredDriverRows.length === 0 && (
                                     <div className="px-4 py-6 text-center text-[13px] text-gray-500 font-medium border border-dashed border-gray-200 rounded-2xl">
-                                        No available drivers found.{driverQuery ? ' Try clearing your search.' : ' All drivers may be assigned to other jobs.'}
+                                        No available drivers found.{driverQuery ? ' Try clearing your search.' : ' Drivers must be approved, have a vehicle assigned, and not already be on another job.'}
                                     </div>
                                 )}
                                 {filteredDriverRows.map((driver) => {

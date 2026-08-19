@@ -18,6 +18,7 @@ import {
 import { useDriversList } from '../../../../../hooks/useDriversList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
 import { truncateText } from '../../../../../utils/truncateText';
+import FleetBadge from '../../../../../components/FleetBadge';
 
 const STATUS_COLORS = {
     approved: 'bg-emerald-50 text-emerald-700 border border-emerald-200',
@@ -88,16 +89,19 @@ const DriversPage = () => {
     const { drivers, loading, error: loadError, reload, setDrivers } = useDriversList();
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
+    const [fleetFilter, setFleetFilter] = useState('All');
     const [selectedRows, setSelectedRows] = useState([]);
     /** Fixed-position menu (portal) so it is not clipped by table overflow */
     const [openMenu, setOpenMenu] = useState(null);
     const [isStatusDropdownOpen, setIsStatusDropdownOpen] = useState(false);
+    const [isFleetDropdownOpen, setIsFleetDropdownOpen] = useState(false);
     const [isBulkOpen, setIsBulkOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [actionError, setActionError] = useState(null);
     const [actionBusyId, setActionBusyId] = useState(null);
     const menuRef = useRef(null);
     const statusRef = useRef(null);
+    const fleetRef = useRef(null);
     const bulkRef = useRef(null);
 
     const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended'];
@@ -112,6 +116,9 @@ const DriversPage = () => {
             setOpenMenu(null);
             if (statusRef.current && !statusRef.current.contains(e.target)) {
                 setIsStatusDropdownOpen(false);
+            }
+            if (fleetRef.current && !fleetRef.current.contains(e.target)) {
+                setIsFleetDropdownOpen(false);
             }
             if (bulkRef.current && !bulkRef.current.contains(e.target)) {
                 setIsBulkOpen(false);
@@ -146,7 +153,11 @@ const DriversPage = () => {
         const matchStatus =
             statusFilter === 'All' ||
             st.toLowerCase() === statusFilter.toLowerCase();
-        return matchSearch && matchStatus;
+        const fleet = (d.fleet || 'company').trim().toLowerCase();
+        const matchFleet =
+            fleetFilter === 'All' ||
+            fleet === fleetFilter.toLowerCase();
+        return matchSearch && matchStatus && matchFleet;
     });
 
     const totalPages = Math.ceil(filtered.length / ITEMS_PER_PAGE);
@@ -323,6 +334,29 @@ const DriversPage = () => {
                                     </div>
                                 )}
                             </div>
+
+                            <div className="relative" ref={fleetRef}>
+                                <button
+                                    onClick={() => setIsFleetDropdownOpen((o) => !o)}
+                                    className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 bg-white hover:bg-gray-50 transition-colors whitespace-nowrap"
+                                >
+                                    {fleetFilter === 'All' ? 'All fleets' : fleetFilter}
+                                    <MdKeyboardArrowDown className="text-gray-400" size={16} />
+                                </button>
+                                {isFleetDropdownOpen && (
+                                    <div className="absolute left-0 top-full mt-1 w-44 bg-white border border-gray-100 rounded-lg shadow-lg z-20">
+                                        {['All', 'Company', 'Private'].map((s) => (
+                                            <button
+                                                key={s}
+                                                onClick={() => { setFleetFilter(s); setIsFleetDropdownOpen(false); setCurrentPage(1); }}
+                                                className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg ${fleetFilter === s ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
+                                            >
+                                                {s}
+                                            </button>
+                                        ))}
+                                    </div>
+                                )}
+                            </div>
                         </div>
 
                         <div className="relative" ref={bulkRef}>
@@ -379,8 +413,10 @@ const DriversPage = () => {
                                 </th>
                                 <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[22%]">Driver Name</th>
                                 <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[18%]">Contact</th>
-                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[16%]">License No.</th>
-                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Status</th>
+                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[14%]">License No.</th>
+                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[10%]">Fleet</th>
+                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Vehicle</th>
+                                <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[10%]">Status</th>
                                 <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[14%]">Date Added</th>
                                 <th className="px-4 py-4 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-[10%]">Actions</th>
                             </tr>
@@ -412,6 +448,12 @@ const DriversPage = () => {
                                             </td>
                                             <td className="px-4 py-3.5">
                                                 <ShimmerBlock className="h-6 w-20 rounded-full" rounded="rounded-full" />
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                <ShimmerBlock className="h-6 w-20 rounded-full" rounded="rounded-full" />
+                                            </td>
+                                            <td className="px-4 py-3.5">
+                                                <ShimmerBlock className="h-3.5 w-20 rounded-md" />
                                             </td>
                                             <td className="px-4 py-3.5">
                                                 <ShimmerBlock className="h-3.5 w-24 rounded-md" />
@@ -467,6 +509,12 @@ const DriversPage = () => {
                                         </span>
                                     </td>
 
+                                    <td className="px-4 py-3.5">
+                                        <FleetBadge fleet={driver.fleet} />
+                                    </td>
+                                    <td className="px-4 py-3.5 text-gray-500">
+                                        {driver.vehicle_assigned ? 'Assigned' : <span className="text-gray-400">Unassigned</span>}
+                                    </td>
                                     {/* Status Badge */}
                                     <td className="px-4 py-3.5">
                                         <span className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${statusPillClass(driver.status)}`}>
@@ -495,7 +543,7 @@ const DriversPage = () => {
                                 );
                             }) : (
                                 <tr>
-                                    <td colSpan="8" className="px-6 py-16 text-center text-gray-400 text-sm">
+                                    <td colSpan="9" className="px-6 py-16 text-center text-gray-400 text-sm">
                                         No drivers found matching your search.
                                     </td>
                                 </tr>

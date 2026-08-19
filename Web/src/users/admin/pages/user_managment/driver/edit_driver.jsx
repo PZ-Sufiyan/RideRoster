@@ -13,7 +13,6 @@ import {
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { getDriverEditData, updateDriverWithRecords } from '../../../../../services/driverEditService';
-import { getVehicleTypeOptions } from '../../../../../services/vehicleCategoriesService';
 import { ToastStack } from '../../../../../utils/Toast';
 import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
 
@@ -220,12 +219,6 @@ const initialFilesState = {
     dbs_certificate_front: null,
     dbs_certificate_back: null,
     safeguarding_certificate: null,
-    v5_front: null,
-    v5_inside: null,
-    mot_certificate: null,
-    taxi_license_plate: null,
-    insurance_certificate: null,
-    vehicle_photo: null,
 };
 
 // ─── Main Component ───────────────────────────────────────────
@@ -240,18 +233,12 @@ const EditDriver = () => {
     const [submitAttempted, setSubmitAttempted] = useState(false);
     const [missingKeys, setMissingKeys] = useState([]);
     const [toasts, setToasts] = useState([]);
-    const [vehicleTypes, setVehicleTypes] = useState([]);
-    const [vehicleTypesLoading, setVehicleTypesLoading] = useState(true);
-    const [vehicleTypesError, setVehicleTypesError] = useState('');
 
     // Existing DB rows for documents (for update/replace logic)
     const [existingDriverDocs, setExistingDriverDocs] = useState({});
-    const [existingVehicleDocs, setExistingVehicleDocs] = useState({});
-    const [vehicleId, setVehicleId] = useState(null);
 
     // Existing URLs (shown in UploadBox as "already uploaded")
     const [existingUrls, setExistingUrls] = useState({});
-    const [existingVehiclePhotoUrl, setExistingVehiclePhotoUrl] = useState(null);
     const [existingAvatarUrl, setExistingAvatarUrl] = useState(null);
 
     const avatarRef = useRef();
@@ -268,21 +255,7 @@ const EditDriver = () => {
         taxiBadgeExpiry: '',
         dbsExpiry: '',
         safeguardingExpiry: '',
-        motExpiry: '',
-        taxiPlateExpiry: '',
-        insuranceExpiry: '',
-        seatingCapacity: '',
         dbsUpdateId: '',
-        taxiLicensePlate: '',
-        registrationNumber: '',
-        taxiPlateNumber: '',
-        make: '',
-        model: '',
-        vehicleColour: '',
-        yearOfFirstRegistration: '',
-        licensingType: '',
-        bodyStyle: '',
-        wheelchairAccessible: false,
     });
 
     const [files, setFiles] = useState(() => ({ ...initialFilesState }));
@@ -317,62 +290,30 @@ const EditDriver = () => {
     };
 
     useEffect(() => {
-        let cancelled = false;
-        const loadVehicleTypes = async () => {
-            setVehicleTypesLoading(true);
-            setVehicleTypesError('');
-            try {
-                const options = await getVehicleTypeOptions();
-                if (!cancelled) setVehicleTypes(options);
-            } catch (_) {
-                if (!cancelled) {
-                    setVehicleTypes([]);
-                    setVehicleTypesError('Could not load vehicle types.');
-                }
-            } finally {
-                if (!cancelled) setVehicleTypesLoading(false);
-            }
-        };
-        loadVehicleTypes();
-        return () => { cancelled = true; };
-    }, []);
-
-    // ── Load existing data ────────────────────────────────────
-    useEffect(() => {
         if (!driverId) return;
 
         const load = async () => {
             setLoading(true);
             setLoadError('');
             try {
-                const { driver, vehicle, driverDocsByType, vehicleDocsByType } =
-                    await getDriverEditData(driverId);
+                const { driver, driverDocsByType } = await getDriverEditData(driverId);
 
-                setVehicleId(vehicle?.id || null);
                 setExistingDriverDocs(driverDocsByType);
-                setExistingVehicleDocs(vehicleDocsByType);
 
-                // Build existing URL map for UploadBoxes
                 const urls = {};
                 for (const [type, doc] of Object.entries(driverDocsByType)) {
                     if (doc?.file_url) urls[type] = doc.file_url;
                 }
-                for (const [type, doc] of Object.entries(vehicleDocsByType)) {
-                    if (doc?.file_url) urls[type] = doc.file_url;
-                }
                 setExistingUrls(urls);
-                setExistingVehiclePhotoUrl(vehicle?.vehicle_photo_url || null);
                 setExistingAvatarUrl(driver.profile_picture_url || null);
 
-                // Helper: get expiry from a doc type (prefer front side)
                 const driverExp = (type) => driverDocsByType[type]?.expiry_date?.slice(0, 10) || '';
-                const vehicleExp = (type) => vehicleDocsByType[type]?.expiry_date?.slice(0, 10) || '';
 
                 setForm({
                     firstName: driver.first_name || '',
                     lastName: driver.last_name || '',
                     email: driver.email || '',
-                    phone: driver.phone?.replace(/^\+\d{1,3}/, '') || driver.phone || '',
+                    phone: driver.phone || '',
                     address: driver.residential_address || '',
                     emergencyName: driver.emergency_contact_name || '',
                     emergencyPhone: driver.emergency_contact_phone || '',
@@ -386,20 +327,6 @@ const EditDriver = () => {
                     taxiBadgeExpiry: driverExp('taxi_badge_front'),
                     dbsExpiry: driverExp('dbs_certificate_front'),
                     safeguardingExpiry: driverExp('safeguarding_certificate'),
-                    motExpiry: vehicleExp('mot_certificate'),
-                    taxiPlateExpiry: vehicleExp('taxi_license_plate'),
-                    insuranceExpiry: vehicleExp('insurance_certificate'),
-                    taxiLicensePlate: vehicle?.taxi_license_plate_number || '',
-                    registrationNumber: vehicle?.registration_number || '',
-                    taxiPlateNumber: vehicle?.taxi_license_plate_number || '',
-                    make: vehicle?.make || '',
-                    model: vehicle?.model || '',
-                    vehicleColour: vehicle?.vehicle_colour || '',
-                    yearOfFirstRegistration: vehicle?.year_of_first_registration?.slice(0, 10) || '',
-                    licensingType: vehicle?.licensing_type || '',
-                    bodyStyle: vehicle?.body_style || '',
-                    wheelchairAccessible: vehicle?.wheelchair_accessible || false,
-                    seatingCapacity: vehicle?.seating_capacity ? String(vehicle.seating_capacity) : '',
                 });
             } catch (err) {
                 setLoadError(err?.message || 'Failed to load driver data.');
@@ -434,27 +361,12 @@ const EditDriver = () => {
         if (!form.licenseExpiry) missing.push('licenseExpiry');
         if (!form.taxiBadgeExpiry) missing.push('taxiBadgeExpiry');
         if (!form.dbsExpiry) missing.push('dbsExpiry');
-        if (!form.motExpiry) missing.push('motExpiry');
-        if (!form.taxiPlateExpiry) missing.push('taxiPlateExpiry');
-        if (!form.insuranceExpiry) missing.push('insuranceExpiry');
         if (!form.dbsUpdateId?.trim()) missing.push('dbsUpdateId');
-        if (!form.taxiLicensePlate?.trim()) missing.push('taxiLicensePlate');
-        if (!form.registrationNumber?.trim()) missing.push('registrationNumber');
-        if (!form.taxiPlateNumber?.trim()) missing.push('taxiPlateNumber');
-        if (!form.make?.trim()) missing.push('make');
-        if (!form.model?.trim()) missing.push('model');
-        if (!form.vehicleColour?.trim()) missing.push('vehicleColour');
-        if (!form.yearOfFirstRegistration) missing.push('yearOfFirstRegistration');
-        if (!form.licensingType?.trim()) missing.push('licensingType');
-        if (!form.bodyStyle?.trim()) missing.push('bodyStyle');
 
         const requiredDocs = [
             'driving_license_front', 'driving_license_back',
             'taxi_badge_front', 'taxi_badge_back',
             'dbs_certificate_front', 'dbs_certificate_back',
-            'v5_front', 'v5_inside',
-            'mot_certificate', 'taxi_license_plate',
-            'insurance_certificate', 'vehicle_photo',
         ];
         for (const key of requiredDocs) {
             if (!hasDoc(key)) missing.push(key);
@@ -489,7 +401,6 @@ const EditDriver = () => {
             await updateDriverWithRecords({
                 driverId,
                 companyId: admin.company_id,
-                vehicleId,
                 avatarFile: avatarFile || null,
                 existingAvatarUrl,
                 personal: {
@@ -511,9 +422,6 @@ const EditDriver = () => {
                     taxiBadge: form.taxiBadgeExpiry,
                     dbs: form.dbsExpiry,
                     safeguarding: form.safeguardingExpiry,
-                    mot: form.motExpiry,
-                    taxiPlate: form.taxiPlateExpiry,
-                    insurance: form.insuranceExpiry,
                 },
                 driverFiles: {
                     passport: files.passport,
@@ -526,30 +434,7 @@ const EditDriver = () => {
                     safeguarding_certificate: files.safeguarding_certificate,
                     other_certificates: otherCertificates,
                 },
-                vehicleFiles: {
-                    v5_front: files.v5_front,
-                    v5_inside: files.v5_inside,
-                    mot_certificate: files.mot_certificate,
-                    taxi_license_plate: files.taxi_license_plate,
-                    insurance_certificate: files.insurance_certificate,
-                    vehicle_photo: files.vehicle_photo,
-                },
-                vehicle: {
-                    taxiLicensePlate: form.taxiLicensePlate,
-                    seatingCapacity: form.seatingCapacity,
-                    registrationNumber: form.registrationNumber,
-                    taxiPlateNumber: form.taxiPlateNumber,
-                    make: form.make,
-                    model: form.model,
-                    vehicleColour: form.vehicleColour,
-                    yearOfFirstRegistration: form.yearOfFirstRegistration,
-                    licensingType: form.licensingType,
-                    bodyStyle: form.bodyStyle,
-                    wheelchairAccessible: form.wheelchairAccessible,
-                    _existingPhotoUrl: existingVehiclePhotoUrl,
-                },
                 existingDriverDocs,
-                existingVehicleDocs,
             });
 
             pushToast('success', 'Driver details updated successfully.');
@@ -569,7 +454,7 @@ const EditDriver = () => {
             <LoadingStatus label="Loading driver edit form" className="space-y-6">
                 <div className="space-y-3">
                     <h1 className="text-3xl font-bold tracking-tight text-gray-900">Edit Driver</h1>
-                    <p className="text-sm text-gray-500">Update driver details, documents, and vehicle information.</p>
+                    <p className="text-sm text-gray-500">Update driver details and documents.</p>
                 </div>
                 <div className="bg-white border border-gray-100 rounded-2xl p-5 sm:p-7 lg:p-8 space-y-8">
                     <ShimmerBlock className="h-8 w-56 rounded-lg" />
@@ -618,7 +503,7 @@ const EditDriver = () => {
             <div className="mb-8">
                 <h1 className="text-3xl font-bold tracking-tight text-gray-900">Edit Driver</h1>
                 <p className="text-sm text-gray-500 mt-2">
-                    Update driver details, documents, and vehicle information.
+                    Update driver details and documents.
                 </p>
             </div>
 
@@ -837,129 +722,6 @@ const EditDriver = () => {
                                 </button>
                             </div>
                         ))}
-                    </div>
-                </div>
-
-                {/* ── Vehicle Information ── */}
-                <div className="rounded-xl border border-gray-100 bg-gray-50/40 p-4 sm:p-5 lg:p-6">
-                    <SectionHeading title="Vehicle Information" />
-                    <div className="space-y-6">
-
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                            <UploadBox label="V5 Document (Front)" required
-                                file={files.v5_front} existingUrl={existingUrls.v5_front}
-                                onFileChange={setFile('v5_front')} showError={showMissing('v5_front')} />
-                            <UploadBox label="V5 Document (Inside)" required
-                                file={files.v5_inside} existingUrl={existingUrls.v5_inside}
-                                onFileChange={setFile('v5_inside')} showError={showMissing('v5_inside')} />
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                            <FormField label="Registration Number (Plate)" required placeholder="e.g. ABC 1234"
-                                value={form.registrationNumber} onChange={set('registrationNumber')} showError={showMissing('registrationNumber')} />
-                            <FormField label="Vehicle Taxi Plate Number" required placeholder="e.g. ABC 1234"
-                                value={form.taxiPlateNumber} onChange={set('taxiPlateNumber')} showError={showMissing('taxiPlateNumber')} />
-                            <FormField label="Make" required placeholder="e.g. Toyota"
-                                value={form.make} onChange={set('make')} showError={showMissing('make')} />
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                            <FormField label="Model" required placeholder="e.g. Prius"
-                                value={form.model} onChange={set('model')} showError={showMissing('model')} />
-                            <FormField label="Vehicle Colour" required placeholder="e.g. Black"
-                                value={form.vehicleColour} onChange={set('vehicleColour')} showError={showMissing('vehicleColour')} />
-                            <FormField label="Year of First Registration" required type="date"
-                                value={form.yearOfFirstRegistration} onChange={set('yearOfFirstRegistration')} showError={showMissing('yearOfFirstRegistration')} />
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                            <FormField label="Licensing Type" required placeholder="e.g. Nottingham City Council"
-                                value={form.licensingType} onChange={set('licensingType')} showError={showMissing('licensingType')} />
-                            <div className="flex flex-col gap-2">
-                                <label className="text-xs font-semibold text-gray-600">
-                                    Vehicle Type<span className="text-red-500 ml-0.5">*</span>
-                                </label>
-                                <select
-                                    value={form.bodyStyle}
-                                    disabled={vehicleTypesLoading}
-                                    onChange={(e) => {
-                                        const next = e.target.value;
-                                        const meta = vehicleTypes.find((x) => x.value === next);
-                                        setForm((prev) => ({
-                                            ...prev,
-                                            bodyStyle: next,
-                                            seatingCapacity: meta?.seats || '',
-                                            wheelchairAccessible: !!meta?.wheelchairAccessible,
-                                        }));
-                                    }}
-                                    className={`w-full px-3.5 py-3 border rounded-xl text-sm bg-white ${showMissing('bodyStyle') ? 'border-red-400' : 'border-gray-200'}`}
-                                >
-                                    <option value="">
-                                        {vehicleTypesLoading ? 'Loading vehicle types...' : 'Select vehicle type'}
-                                    </option>
-                                    {form.bodyStyle &&
-                                        !vehicleTypes.some((t) => t.value === form.bodyStyle) && (
-                                            <option value={form.bodyStyle}>{form.bodyStyle}</option>
-                                        )}
-                                    {vehicleTypes.map((t) => (
-                                        <option key={t.value} value={t.value}>{t.value}</option>
-                                    ))}
-                                </select>
-                                {showMissing('bodyStyle') && <p className="text-xs text-red-600 font-medium">This field is required.</p>}
-                                {vehicleTypesError && <p className="text-xs text-red-600 font-medium">{vehicleTypesError}</p>}
-                            </div>
-                            <div className="flex items-end">
-                                <label className="inline-flex items-center gap-2 text-xs font-semibold text-gray-600">
-                                    <input
-                                        type="checkbox"
-                                        checked={form.wheelchairAccessible}
-                                        onChange={(e) => setForm((prev) => ({ ...prev, wheelchairAccessible: e.target.checked }))}
-                                    />
-                                    Wheelchair Accessible
-                                </label>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-5">
-                            <div>
-                                <UploadBox label="MOT Certificate" required
-                                    file={files.mot_certificate} existingUrl={existingUrls.mot_certificate}
-                                    onFileChange={setFile('mot_certificate')} showError={showMissing('mot_certificate')} />
-                                <ExpiryDateField className="mt-2" value={form.motExpiry} onChange={setExpiry('motExpiry')} showError={showMissing('motExpiry')} />
-                            </div>
-                            <div>
-                                <UploadBox label="Taxi License Plate" required
-                                    file={files.taxi_license_plate} existingUrl={existingUrls.taxi_license_plate}
-                                    onFileChange={setFile('taxi_license_plate')} showError={showMissing('taxi_license_plate')} />
-                                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 mt-4">
-                                    <FormField label="Taxi License Plate Number" required placeholder="Taxi License Plate Number"
-                                        value={form.taxiLicensePlate} onChange={set('taxiLicensePlate')} showError={showMissing('taxiLicensePlate')} />
-                                    <ExpiryDateField value={form.taxiPlateExpiry} onChange={setExpiry('taxiPlateExpiry')} showError={showMissing('taxiPlateExpiry')} />
-                                </div>
-                            </div>
-                            <div>
-                                <UploadBox label="Insurance Certificate" required
-                                    file={files.insurance_certificate} existingUrl={existingUrls.insurance_certificate}
-                                    onFileChange={setFile('insurance_certificate')} showError={showMissing('insurance_certificate')} />
-                                <ExpiryDateField className="mt-2" value={form.insuranceExpiry} onChange={setExpiry('insuranceExpiry')} showError={showMissing('insuranceExpiry')} />
-                            </div>
-                        </div>
-
-                        <UploadBox label="Vehicle Photo" required accept="image/jpeg,image/png"
-                            file={files.vehicle_photo}
-                            existingUrl={existingVehiclePhotoUrl}
-                            onFileChange={setFile('vehicle_photo')}
-                            showError={showMissing('vehicle_photo')} />
-
-                        {/* Seating Capacity — read-only, driven by vehicle type selection */}
-                        {form.seatingCapacity && (
-                            <div className="flex flex-col gap-2">
-                                <label className="text-xs font-semibold text-gray-700">Seating Capacity</label>
-                                <p className="text-sm text-gray-600 px-3.5 py-3 border border-gray-100 rounded-xl bg-gray-50">
-                                    {form.seatingCapacity} Passengers
-                                </p>
-                            </div>
-                        )}
                     </div>
                 </div>
             </div>

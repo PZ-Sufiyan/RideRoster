@@ -7,6 +7,7 @@ import {
   uploadDriverProfileImage,
   removeCompanyDocument,
 } from './storageService'
+import { FLEET } from '../utils/fleet'
 
 function cleanString(v) {
   if (v === null || v === undefined) return ''
@@ -22,18 +23,6 @@ function toDateOrNull(v) {
   const s = cleanString(v)
   if (!s) return null
   return s
-}
-
-function toSeatingCapacity(v) {
-  if (v === null || v === undefined || v === '') return null
-  const n = Number(v)
-  return Number.isFinite(n) ? Math.trunc(n) : null
-}
-
-function toBoolean(v) {
-  if (typeof v === 'boolean') return v
-  const s = cleanString(v).toLowerCase()
-  return s === 'true' || s === 'yes' || s === '1'
 }
 
 function sanitizeSegment(v) {
@@ -54,26 +43,9 @@ export const REQUIRED_DRIVER_DOC_TYPES = [
   'dbs_certificate_back',
 ]
 
-export const REQUIRED_VEHICLE_DOC_TYPES = [
-  'v5_front',
-  'v5_inside',
-  'mot_certificate',
-  'taxi_license_plate',
-  'insurance_certificate',
-]
-
 /**
- * Registers a driver in Auth, then persists drivers + driver_documents + vehicles + vehicle_documents.
- * Uses the service-role client for auth.admin.createUser and inserts so the company admin session is unchanged.
- *
- * @param {object} params
- * @param {string} params.companyId
- * @param {object} params.personal
- * @param {object} params.expiry — optional ISO date strings (YYYY-MM-DD) per doc group
- * @param {File} params.avatarFile — required profile picture
- * @param {Record<string, File|undefined>} params.driverFiles — may include optional `passport`
- * @param {Record<string, File|undefined>} params.vehicleFiles — must include `vehicle_photo` File
- * @param {object} params.vehicle — taxiLicensePlate, seatingCapacity
+ * Registers a company driver in Auth, then persists drivers + driver_documents.
+ * Web portal registrations are fleet=company, status=approved, vehicle_assigned=false.
  */
 export async function registerDriverWithAuthAndRecords({
   companyId,
@@ -81,8 +53,6 @@ export async function registerDriverWithAuthAndRecords({
   expiry = {},
   avatarFile = null,
   driverFiles = {},
-  vehicleFiles = {},
-  vehicle = {},
 }) {
   const email = cleanString(personal?.email).toLowerCase()
   const password = personal?.password
@@ -108,22 +78,12 @@ export async function registerDriverWithAuthAndRecords({
   for (const key of REQUIRED_DRIVER_DOC_TYPES) {
     if (!driverFiles[key]) throw new Error(`Missing required document: ${key.replace(/_/g, ' ')}`)
   }
-  for (const key of REQUIRED_VEHICLE_DOC_TYPES) {
-    if (!vehicleFiles[key]) throw new Error(`Missing required document: ${key.replace(/_/g, ' ')}`)
-  }
-  if (!vehicleFiles.vehicle_photo) {
-    throw new Error('Vehicle photo is required.')
-  }
-
-  const taxiPlate = cleanString(vehicle?.taxiLicensePlate)
-  if (!taxiPlate) throw new Error('Taxi license plate number is required.')
 
   const licenseNo = cleanString(personal?.licenseNo)
   if (!licenseNo) throw new Error('Driving license number is required.')
 
   const uploadedForRollback = []
   let authUserId = null
-  let vehicleId = null
 
   const pushUpload = (meta) => {
     if (meta?.file_path) uploadedForRollback.push(meta)
@@ -166,36 +126,13 @@ export async function registerDriverWithAuthAndRecords({
       license_no: licenseNo,
       dbs_service_update_id: toNullableString(personal?.dbsUpdateId),
       profile_picture_url: profileMeta.file_url,
-      status: 'pending',
+      status: 'approved',
+      fleet: FLEET.COMPANY,
+      vehicle_assigned: false,
     }
 
     const { error: driverErr } = await supabaseAdmin.from('drivers').insert(driverPayload)
     if (driverErr) throw driverErr
-
-    const { data: vehicleRow, error: vehicleErr } = await supabaseAdmin
-      .from('vehicles')
-      .insert({
-        company_id: companyId,
-        driver_id: authUserId,
-        taxi_license_plate_number: toNullableString(vehicle?.taxiPlateNumber) || taxiPlate,
-        seating_capacity: toSeatingCapacity(vehicle?.seatingCapacity),
-        vehicle_photo_url: null,
-        name: cleanString(`${vehicle?.make || ''} ${vehicle?.model || ''}`) || null,
-        registration_number: toNullableString(vehicle?.registrationNumber),
-        make: toNullableString(vehicle?.make),
-        model: toNullableString(vehicle?.model),
-        vehicle_colour: toNullableString(vehicle?.vehicleColour),
-        year_of_first_registration: toDateOrNull(vehicle?.yearOfFirstRegistration),
-        licensing_type: toNullableString(vehicle?.licensingType),
-        body_style: toNullableString(vehicle?.bodyStyle),
-        wheelchair_accessible: toBoolean(vehicle?.wheelchairAccessible),
-      })
-      .select('id')
-      .single()
-
-    if (vehicleErr) throw vehicleErr
-    vehicleId = vehicleRow?.id
-    if (!vehicleId) throw new Error('Vehicle record was not created.')
 
     const driverDocRows = []
 
@@ -291,74 +228,20 @@ export async function registerDriverWithAuthAndRecords({
     const { error: insertDriverDocsErr } = await supabaseAdmin.from('driver_documents').insert(driverDocRows)
     if (insertDriverDocsErr) throw insertDriverDocsErr
 
-    const photoMeta = await uploadDriverVehicleDocument({
-      companyId,
-      kind: 'vehicle',
-      scopeId: vehicleId,
-      documentType: 'vehicle_photo',
-      file: vehicleFiles.vehicle_photo,
-    })
-    pushUpload(photoMeta)
-
-    const { error: vehiclePhotoErr } = await supabaseAdmin
-      .from('vehicles')
-      .update({
-        vehicle_photo_url: photoMeta.file_url,
-        updated_at: new Date().toISOString(),
-      })
-      .eq('id', vehicleId)
-
-    if (vehiclePhotoErr) throw vehiclePhotoErr
-
-    const vehicleDocRows = []
-
-    for (const documentType of REQUIRED_VEHICLE_DOC_TYPES) {
-      const file = vehicleFiles[documentType]
-      let expiryDate = null
-      if (documentType === 'mot_certificate') expiryDate = toDateOrNull(expiry.mot)
-      if (documentType === 'taxi_license_plate') expiryDate = toDateOrNull(expiry.taxiPlate)
-      if (documentType === 'insurance_certificate') expiryDate = toDateOrNull(expiry.insurance)
-
-      const meta = await uploadDriverVehicleDocument({
-        companyId,
-        kind: 'vehicle',
-        scopeId: vehicleId,
-        documentType,
-        file,
-      })
-      pushUpload(meta)
-
-      vehicleDocRows.push({
-        company_id: companyId,
-        vehicle_id: vehicleId,
-        document_type: documentType,
-        file_url: meta.file_url,
-        expiry_date: expiryDate,
-      })
-    }
-
-    const { error: insertVehicleDocsErr } = await supabaseAdmin.from('vehicle_documents').insert(vehicleDocRows)
-    if (insertVehicleDocsErr) throw insertVehicleDocsErr
-
     return {
       userId: authUserId,
-      vehicleId,
       email,
     }
   } catch (err) {
     await rollbackDriverRegistration({
       authUserId,
-      vehicleId,
       uploadedMeta: uploadedForRollback,
     })
     throw err
   }
 }
 
-async function rollbackDriverRegistration({ authUserId, vehicleId, uploadedMeta }) {
-  if (vehicleId) {
-    await supabaseAdmin.from('vehicles').delete().eq('id', vehicleId)
-  }
+async function rollbackDriverRegistration({ authUserId, uploadedMeta }) {
   if (authUserId) {
     await supabaseAdmin.from('drivers').delete().eq('id', authUserId)
     try {

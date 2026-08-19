@@ -33,6 +33,7 @@ export const SIDEBAR_MENU_CONFIGS = {
                 icon: <MdPeople size={20} />,
                 children: [
                     { name: 'Drivers', path: '/portal/users/drivers' },
+                    { name: 'Vehicles', path: '/portal/users/vehicles' },
                     { name: 'PA', path: '/portal/users/pa' },
                     { name: 'Subadmins', path: '/portal/users/subadmins' },
                     { name: 'Passengers', path: '/portal/users/passengers' },
@@ -61,6 +62,7 @@ export const SIDEBAR_MENU_CONFIGS = {
                 perm: { allOf: ['view_users'] },
                 children: [
                     { name: 'Drivers', path: '/team/users/drivers' },
+                    { name: 'Vehicles', path: '/team/users/vehicles' },
                     { name: 'PA', path: '/team/users/pa' },
                     { name: 'Passengers', path: '/team/users/passengers' },
                 ],

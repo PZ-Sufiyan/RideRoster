@@ -839,20 +839,23 @@ export async function removePassengerRouteFromJob(jobId, passengerId) {
 
 // ── Driver assignment ─────────────────────────────────────────────────────────
 
-export async function validateDriverAssignment(jobId, driverId, companyId) {
+export async function validateDriverAssignment(jobId, driverId, companyId, { ignoreJobIds = [] } = {}) {
   if (!jobId || !driverId || !companyId) throw new Error('Job, driver, and company are required.')
+
+  const ignore = new Set((ignoreJobIds || []).filter(Boolean))
+  ignore.add(jobId)
 
   const { data: conflictingJobs, error: conflictErr } = await supabase
     .from('jobs')
     .select('id, job_name')
     .eq('assigned_driver_id', driverId)
-    .neq('id', jobId)
     .neq('status', 'cancelled')
 
   if (conflictErr) throw conflictErr
 
-  if (conflictingJobs && conflictingJobs.length > 0) {
-    const conflictName = conflictingJobs[0].job_name || 'another job'
+  const realConflicts = (conflictingJobs || []).filter((j) => !ignore.has(j.id))
+  if (realConflicts.length > 0) {
+    const conflictName = realConflicts[0].job_name || 'another job'
     throw new Error(
       `This driver is already assigned to "${conflictName}". Remove them from that job first.`
     )
@@ -897,10 +900,25 @@ export async function validateDriverAssignment(jobId, driverId, companyId) {
   const passengerCount  = passengerMap.size
   const needsWheelchair = [...passengerMap.values()].some((p) => p?.wheelchair_required === true)
 
+  const { data: driverRow, error: driverErr } = await supabase
+    .from('drivers')
+    .select('id, status, vehicle_assigned')
+    .eq('id', driverId)
+    .eq('company_id', companyId)
+    .maybeSingle()
+  if (driverErr) throw driverErr
+  if (!driverRow) throw new Error('Driver not found.')
+  if (String(driverRow.status || '').trim().toLowerCase() !== 'approved') {
+    throw new Error('Only approved drivers can be assigned to a job.')
+  }
+  if (driverRow.vehicle_assigned !== true) {
+    throw new Error('This driver has no vehicle assigned. Assign a vehicle first.')
+  }
+
   const vehicle = vehicleRes.data
   if (!vehicle) {
     throw new Error(
-      'This driver has no vehicle registered. Please add a vehicle for this driver before assigning.'
+      'This driver has no vehicle assigned. Please assign a vehicle before assigning the job.'
     )
   }
 
@@ -1291,9 +1309,12 @@ export async function fetchJobsListPageDataForCurrentAdmin() {
 }
 
 export function driversAvailableForAssignment(allDrivers, jobsMinimal, forJobId) {
-  return allDrivers.filter((d) =>
-    !jobsMinimal.some((j) => j.id !== forJobId && j.assigned_driver_id && j.assigned_driver_id === d.id)
-  )
+  return allDrivers.filter((d) => {
+    const status = String(d.status || '').trim().toLowerCase()
+    if (status !== 'approved') return false
+    if (d.vehicle_assigned !== true) return false
+    return !jobsMinimal.some((j) => j.id !== forJobId && j.assigned_driver_id && j.assigned_driver_id === d.id)
+  })
 }
 
 export function passengerAssistantsAvailableForAssignment(allPAs, jobsMinimal, forJobId) {

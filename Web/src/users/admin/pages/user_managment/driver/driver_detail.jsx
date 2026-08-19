@@ -6,6 +6,8 @@ import {
     MdMessage,
     MdVisibility,
     MdCheckCircle,
+    MdChevronLeft,
+    MdChevronRight,
 } from 'react-icons/md';
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
@@ -13,12 +15,12 @@ import {
     getDriverByIdMaybe,
     getDriverDocumentsByDriver,
     getVehiclesByDriver,
-    getVehicleDocuments,
     getJobsByAssignedDriver,
     getJobSessionsByDriver,
 } from '../../../../../services/driverVehicleService';
 import SendUserMessageModal from '../../../../../components/SendDriverMessageModal';
 import SessionNoteModal from '../../../../../components/SessionNoteModal';
+import FleetBadge from '../../../../../components/FleetBadge';
 
 /** Labels aligned with `add_new_driver.jsx` / DB document_type enums */
 const DRIVER_DOCUMENT_LABELS = {
@@ -31,14 +33,6 @@ const DRIVER_DOCUMENT_LABELS = {
     safeguarding_certificate: 'Certificate',
 };
 
-const VEHICLE_DOCUMENT_LABELS = {
-    v5_front: 'V5 Front',
-    v5_inside: 'V5 Inside',
-    mot_certificate: 'MOT Certificate',
-    taxi_license_plate: 'Taxi License Plate',
-    insurance_certificate: 'Insurance Certificate',
-};
-
 const DRIVER_DOC_ORDER = [
     'driving_license_front',
     'driving_license_back',
@@ -49,7 +43,7 @@ const DRIVER_DOC_ORDER = [
     'safeguarding_certificate',
 ];
 
-const VEHICLE_DOC_ORDER = ['v5_front', 'v5_inside', 'mot_certificate', 'taxi_license_plate', 'insurance_certificate'];
+const JOB_HISTORY_PAGE_SIZE = 6;
 
 function formatDate(isoOrDate) {
     if (!isoOrDate) return '—';
@@ -119,7 +113,7 @@ function shortenUuid(value) {
     const s = String(value).trim();
     if (!s) return '—';
     const first = s.split('-')[0];
-    return first || s;
+    return (first || s).toUpperCase();
 }
 
 function formatTime(iso) {
@@ -161,9 +155,9 @@ const DriverDetail = () => {
     const [driver, setDriver] = useState(null);
     const [driverDocs, setDriverDocs] = useState([]);
     const [vehicle, setVehicle] = useState(null);
-    const [vehicleDocs, setVehicleDocs] = useState([]);
     const [jobs, setJobs] = useState([]);
     const [jobSessions, setJobSessions] = useState([]);
+    const [jobHistoryPage, setJobHistoryPage] = useState(1);
     const [showMessageModal, setShowMessageModal] = useState(false);
     const [noteModal, setNoteModal] = useState({ open: false, note: '', label: '' });
 
@@ -190,7 +184,6 @@ const DriverDetail = () => {
                 setDriver(null);
                 setDriverDocs([]);
                 setVehicle(null);
-                setVehicleDocs([]);
                 setJobs([]);
                 setJobSessions([]);
                 setLoading(false);
@@ -208,15 +201,10 @@ const DriverDetail = () => {
             ]);
 
             const v = vehicles?.[0] || null;
-            let vDocs = [];
-            if (v?.id) {
-                vDocs = await getVehicleDocuments({ vehicleId: v.id });
-            }
 
             setDriver(d);
             setDriverDocs(sortDocsByOrder(docs, DRIVER_DOC_ORDER));
             setVehicle(v);
-            setVehicleDocs(sortDocsByOrder(vDocs, VEHICLE_DOC_ORDER));
             setJobs(jobRows || []);
             setJobSessions(sessionRows || []);
         } catch (e) {
@@ -231,6 +219,10 @@ const DriverDetail = () => {
         load();
     }, [load]);
 
+    useEffect(() => {
+        setJobHistoryPage(1);
+    }, [jobSessions]);
+
     const displayName = useMemo(() => {
         if (!driver) return '';
         return [driver.first_name, driver.last_name].filter(Boolean).join(' ').trim() || 'Driver';
@@ -241,9 +233,12 @@ const DriverDetail = () => {
         return `https://ui-avatars.com/api/?name=${encodeURIComponent(displayName)}&background=e5e7eb&color=374151&size=128`;
     }, [driver, displayName]);
 
-    const jobSessionsToShow = useMemo(() => jobSessions, [jobSessions]);
+    const jobHistoryTotalPages = Math.max(1, Math.ceil(jobSessions.length / JOB_HISTORY_PAGE_SIZE));
+    const jobSessionsToShow = useMemo(() => {
+        const start = (jobHistoryPage - 1) * JOB_HISTORY_PAGE_SIZE;
+        return jobSessions.slice(start, start + JOB_HISTORY_PAGE_SIZE);
+    }, [jobSessions, jobHistoryPage]);
     const driverDocByType = useMemo(() => Object.fromEntries(driverDocs.map((d) => [d.document_type, d])), [driverDocs]);
-    const vehicleDocByType = useMemo(() => Object.fromEntries(vehicleDocs.map((d) => [d.document_type, d])), [vehicleDocs]);
     const otherCertificateDocs = useMemo(
         () => driverDocs.filter((d) => d?.document_type === 'other_certificate'),
         [driverDocs]
@@ -251,10 +246,6 @@ const DriverDetail = () => {
     const hasExpiredDriverDocs = useMemo(
         () => driverDocs.some((d) => d?.expiry_date && isExpiredDate(d.expiry_date)),
         [driverDocs]
-    );
-    const hasExpiredVehicleDocs = useMemo(
-        () => vehicleDocs.some((d) => d?.expiry_date && isExpiredDate(d.expiry_date)),
-        [vehicleDocs]
     );
 
     const openInNewTab = (url) => {
@@ -348,6 +339,7 @@ const DriverDetail = () => {
                             <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full ${statusPillClass(driver.status)}`}>
                                 {formatStatusLabel(driver.status)}
                             </span>
+                            <FleetBadge fleet={driver.fleet} />
                         </div>
                     </div>
                 </div>
@@ -493,34 +485,23 @@ const DriverDetail = () => {
 
                     <div className="border border-gray-200 rounded-lg p-3">
                         <div className="flex items-center justify-between">
-                            <p className="text-sm font-semibold text-gray-800">Vehicle Details</p>
-                            <span
-                                className={`text-[11px] px-2 py-0.5 rounded-full ${
-                                    hasExpiredVehicleDocs ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
-                                }`}
-                            >
-                                {hasExpiredVehicleDocs ? 'Expired' : 'Complete'}
+                            <p className="text-sm font-semibold text-gray-800">Assigned vehicle</p>
+                            <span className={`text-[11px] px-2 py-0.5 rounded-full ${vehicle ? 'bg-emerald-50 text-emerald-600' : 'bg-gray-100 text-gray-500'}`}>
+                                {vehicle ? 'Assigned' : 'Unassigned'}
                             </span>
                         </div>
-                        <p className="text-[12px] text-gray-600 mt-1">V5 Registration</p>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
-                            <DocumentThumb doc={vehicleDocByType.v5_front} label={VEHICLE_DOCUMENT_LABELS.v5_front} />
-                            <DocumentThumb doc={vehicleDocByType.v5_inside} label={VEHICLE_DOCUMENT_LABELS.v5_inside} />
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-3 gap-2 mt-2">
-                            <DocumentThumb doc={vehicleDocByType.mot_certificate} label={VEHICLE_DOCUMENT_LABELS.mot_certificate} />
-                            <DocumentThumb doc={vehicleDocByType.taxi_license_plate} label={VEHICLE_DOCUMENT_LABELS.taxi_license_plate} />
-                            <DocumentThumb doc={vehicleDocByType.insurance_certificate} label={VEHICLE_DOCUMENT_LABELS.insurance_certificate} />
-                        </div>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
-                            <DocumentThumb doc={vehicle?.vehicle_photo_url ? { file_url: vehicle.vehicle_photo_url } : null} label="Vehicle Photo" />
-                            <div className="border border-gray-200 rounded-lg px-3 py-3 bg-gray-50/50 min-h-[78px]">
-                                <p className="text-[11px] text-gray-600">Seating Capacity</p>
-                                <p className="text-[13px] text-gray-800 font-semibold mt-0.5">
-                                    {vehicle?.seating_capacity != null ? `${vehicle.seating_capacity} Passengers` : '—'}
-                                </p>
-                            </div>
-                        </div>
+                        {vehicle ? (
+                            <button
+                                type="button"
+                                onClick={() => navigate(`/portal/users/vehicles/${vehicle.id}`)}
+                                className="mt-3 w-full text-left rounded-lg border border-gray-100 p-3 hover:bg-gray-50"
+                            >
+                                <p className="text-sm font-medium text-gray-900">{[vehicle.make, vehicle.model].filter(Boolean).join(' ') || vehicle.taxi_license_plate_number || 'Vehicle'}</p>
+                                <p className="text-xs text-gray-500 mt-1">{vehicle.taxi_license_plate_number || vehicle.registration_number || 'View vehicle'}</p>
+                            </button>
+                        ) : (
+                            <p className="text-sm text-gray-500 mt-2">No vehicle assigned. Assign one from the Vehicles page.</p>
+                        )}
                     </div>
                 </div>
             </div>
@@ -574,7 +555,7 @@ const DriverDetail = () => {
                         <tbody className="divide-y divide-gray-100">
                             {jobSessionsToShow.length === 0 ? (
                                 <tr>
-                                    <td colSpan={7} className="px-5 py-6 text-center text-sm text-gray-500">
+                                    <td colSpan={8} className="px-5 py-6 text-center text-sm text-gray-500">
                                         No job sessions yet.
                                     </td>
                                 </tr>
@@ -636,6 +617,50 @@ const DriverDetail = () => {
                         </tbody>
                     </table>
                 </div>
+                {jobSessions.length > JOB_HISTORY_PAGE_SIZE && (
+                    <div className="px-5 py-3.5 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 text-sm">
+                        <span className="text-gray-500">
+                            Showing{' '}
+                            <span className="font-medium text-gray-900">{(jobHistoryPage - 1) * JOB_HISTORY_PAGE_SIZE + 1}</span>
+                            {' '}to{' '}
+                            <span className="font-medium text-gray-900">{Math.min(jobHistoryPage * JOB_HISTORY_PAGE_SIZE, jobSessions.length)}</span>
+                            {' '}of{' '}
+                            <span className="font-medium text-gray-900">{jobSessions.length}</span> sessions
+                        </span>
+                        <div className="flex items-center gap-1">
+                            <button
+                                type="button"
+                                onClick={() => setJobHistoryPage((p) => Math.max(1, p - 1))}
+                                disabled={jobHistoryPage === 1}
+                                className="p-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500 disabled:opacity-40"
+                            >
+                                <MdChevronLeft size={18} />
+                            </button>
+                            {Array.from({ length: jobHistoryTotalPages }, (_, i) => i + 1).map((page) => (
+                                <button
+                                    key={page}
+                                    type="button"
+                                    onClick={() => setJobHistoryPage(page)}
+                                    className={`min-w-8 h-8 flex items-center justify-center rounded-lg text-xs font-medium border ${
+                                        jobHistoryPage === page
+                                            ? 'bg-[#005580] text-white border-[#005580]'
+                                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    {page}
+                                </button>
+                            ))}
+                            <button
+                                type="button"
+                                onClick={() => setJobHistoryPage((p) => Math.min(jobHistoryTotalPages, p + 1))}
+                                disabled={jobHistoryPage === jobHistoryTotalPages}
+                                className="p-1.5 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500 disabled:opacity-40"
+                            >
+                                <MdChevronRight size={18} />
+                            </button>
+                        </div>
+                    </div>
+                )}
             </div>
             <SendUserMessageModal
                 open={showMessageModal}
