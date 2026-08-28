@@ -17,12 +17,12 @@ import { subscribeAdminNotificationRealtime } from '../../../../services/adminNo
 import {
     NOTIFICATION_ROLES,
     NOTIFICATION_TABS,
-    fetchSubAdminNotifications,
     filterNotificationsByTab,
     groupNotificationsByDate,
     markAllNotificationsRead,
     markNotificationsRead,
 } from '../../../../services/adminNotificationService';
+import { useNotificationsList } from '../../../../hooks/useNotificationsList';
 import { ToastStack } from '../../../../utils/Toast';
 
 const TABS = Object.values(NOTIFICATION_TABS);
@@ -87,13 +87,18 @@ const NotificationItem = ({ item, onOpen }) => {
 const SubAdmin_Notifications = () => {
     const navigate = useNavigate();
     const [activeTab, setActiveTab] = useState(NOTIFICATION_TABS.ALL);
-    const [notifications, setNotifications] = useState([]);
     const [currentPage, setCurrentPage] = useState(1);
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [userId, setUserId] = useState(null);
-    const [companyId, setCompanyId] = useState(null);
     const [toasts, setToasts] = useState([]);
+    const {
+        notifications,
+        userId,
+        companyId,
+        loading,
+        error,
+        reload,
+        refresh,
+        setNotifications,
+    } = useNotificationsList(ROLE);
 
     const pushToast = useCallback((type, message) => {
         setToasts((prev) => [
@@ -108,37 +113,13 @@ const SubAdmin_Notifications = () => {
         ]);
     }, []);
 
-    const loadNotifications = useCallback(async ({ silent = false } = {}) => {
-        if (!silent) {
-            setLoading(true);
-            setError(null);
-        }
-        try {
-            const { notifications: rows, userId: uid, companyId: cid } = await fetchSubAdminNotifications();
-            setNotifications(rows);
-            setUserId(uid);
-            setCompanyId(cid);
-        } catch (err) {
-            if (!silent) {
-                setError(err?.message || 'Failed to load notifications.');
-                setNotifications([]);
-            }
-        } finally {
-            if (!silent) setLoading(false);
-        }
-    }, []);
-
-    useEffect(() => {
-        loadNotifications();
-    }, [loadNotifications]);
-
     useEffect(() => {
         if (!companyId) return undefined;
 
         return subscribeAdminNotificationRealtime(companyId, () => {
-            loadNotifications({ silent: true });
+            refresh();
         });
-    }, [companyId, loadNotifications]);
+    }, [companyId, refresh]);
 
     const filtered = useMemo(
         () => filterNotificationsByTab(notifications, activeTab),
@@ -244,18 +225,18 @@ const SubAdmin_Notifications = () => {
                 </div>
 
                 <div className="divide-y divide-gray-50">
-                    {loading && (
+                    {loading && notifications.length === 0 && (
                         <div className="py-16 text-center text-sm text-gray-400">
                             Loading notifications…
                         </div>
                     )}
 
-                    {!loading && error && (
+                    {error && notifications.length === 0 && (
                         <div className="py-16 text-center">
                             <p className="text-sm text-red-500">{error}</p>
                             <button
                                 type="button"
-                                onClick={loadNotifications}
+                                onClick={reload}
                                 className="mt-3 text-sm font-semibold text-[#005C7A] hover:underline"
                             >
                                 Try again
@@ -269,7 +250,7 @@ const SubAdmin_Notifications = () => {
                         </div>
                     )}
 
-                    {!loading && !error && grouped.map((group) => (
+                    {paginated.length > 0 && grouped.map((group) => (
                         <div key={group.label}>
                             <div className="px-5 py-2.5 bg-gray-50 border-b border-gray-100">
                                 <h2 className="text-xs font-bold text-gray-500">{group.label}</h2>

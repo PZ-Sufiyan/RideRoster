@@ -253,11 +253,11 @@ export async function updateDriverWithRecords({
     const existingDoc = existingDriverDocs[documentType]
     if (!existingDoc?.id) continue
     if (existingDoc.expiry_date === expiryDate) continue // no change
-    await supabaseAdmin
+    const { error: expiryUpdateErr } = await supabaseAdmin
       .from('driver_documents')
       .update({ expiry_date: expiryDate })
       .eq('id', existingDoc.id)
-      .catch(() => {}) // non-fatal
+    if (expiryUpdateErr) throw expiryUpdateErr
   }
 
   return { driverId }

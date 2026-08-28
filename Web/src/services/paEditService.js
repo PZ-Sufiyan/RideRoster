@@ -215,11 +215,11 @@ export async function updatePAWithRecords({
     } else if (existingDoc?.id) {
       // No new file — but update expiry if it changed
       if (existingDoc.expiry_date !== expiryValue) {
-        await supabaseAdmin
+        const { error: expiryUpdateErr } = await supabaseAdmin
           .from('passenger_assistant_documents')
           .update({ expiry_date: expiryValue })
           .eq('id', existingDoc.id)
-          .catch(() => {}) // non-fatal
+        if (expiryUpdateErr) throw expiryUpdateErr
       }
     }
     // else: no existing doc, no new file — nothing to do

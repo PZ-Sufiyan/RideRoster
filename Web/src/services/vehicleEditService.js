@@ -189,11 +189,11 @@ export async function updateVehicleWithRecords({
     const existingDoc = existingVehicleDocs[documentType]
     if (!existingDoc?.id) continue
     if (existingDoc.expiry_date === expiryDate) continue
-    await supabaseAdmin
+    const { error: expiryUpdateErr } = await supabaseAdmin
       .from('vehicle_documents')
       .update({ expiry_date: expiryDate })
       .eq('id', existingDoc.id)
-      .catch(() => {})
+    if (expiryUpdateErr) throw expiryUpdateErr
   }
 
   return { vehicleId }

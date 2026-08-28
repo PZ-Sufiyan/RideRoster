@@ -8,6 +8,7 @@ import { clearPassengersListCache } from '../hooks/usePassengersList';
 import { clearSubAdminsListCache } from '../hooks/useSubAdminsList';
 import { clearLeaveRequestsListCache } from '../hooks/useLeaveRequestsList';
 import { clearJobsListCache } from '../hooks/useJobsList';
+import { clearNotificationsListCache } from '../hooks/useNotificationsList';
 import { useSubAdminPermissions } from '../context/subAdminPermissionsContext';
 import { SIDEBAR_MENU_CONFIGS } from './sidebarMenuConfig';
 import {
@@ -177,6 +178,7 @@ const Sidebar = ({ isOpen, onClose }) => {
                                 clearSubAdminsListCache();
                                 clearLeaveRequestsListCache();
                                 clearJobsListCache();
+                                clearNotificationsListCache();
                                 await supabase.auth.signOut();
                                 localStorage.clear();
                                 navigate('/home');
