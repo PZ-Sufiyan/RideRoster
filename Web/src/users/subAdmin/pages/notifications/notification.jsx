@@ -11,6 +11,7 @@ import {
     MdDirectionsBus,
     MdPersonOff,
     MdTimer,
+    MdDirectionsCar,
 } from 'react-icons/md';
 import { subscribeAdminNotificationRealtime } from '../../../../services/adminNotificationRealtimeService';
 import {
@@ -36,6 +37,7 @@ const ICON_MAP = {
     MdDirectionsBus,
     MdPersonOff,
     MdTimer,
+    MdDirectionsCar,
 };
 
 const NotificationItem = ({ item, onOpen }) => {

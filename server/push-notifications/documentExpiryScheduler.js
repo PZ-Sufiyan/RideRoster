@@ -172,6 +172,8 @@ async function processDocument({
   }
 
   const daysLeft = daysBetween(today, expiry)
+  // Already expired: fleet MOT / insurance / taxi plate Off-Road is handled by
+  // vehicleDocumentExpiryOffRoadScheduler. Reminders only fire before expiry.
   if (daysLeft < 0) {
     summary.skipped += 1
     return

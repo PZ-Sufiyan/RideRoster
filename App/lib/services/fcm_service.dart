@@ -237,7 +237,11 @@ class FcmService {
     if (type == 'message' ||
         type == 'leave_status' ||
         type == 'job_assignment' ||
-        type == 'document_expiry') {
+        type == 'document_expiry' ||
+        type == 'vehicle_assigned' ||
+        type == 'vehicle_unassigned' ||
+        type == 'vehicle_off_road' ||
+        type == 'job_removed') {
       final user = Supabase.instance.client.auth.currentUser;
       final meta = user?.userMetadata ?? user?.appMetadata;
       final role = meta?['role']?.toString();

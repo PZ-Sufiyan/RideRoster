@@ -1,6 +1,11 @@
 import { supabase } from '../lib/supabaseClient'
+import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { getCompanyAdminById } from './companyService'
 import { notifyPaJobAssignment } from './userNotificationService'
+import {
+  privateDriverBlockedByExpiredVehicleDocs,
+  privateVehicleDocsBlockedMessage,
+} from './vehicleDocumentComplianceService'
 
 export const JOB_DRAFT_STORAGE_KEY = 'rideRoster_adminJobDraft_v1'
 
@@ -839,23 +844,20 @@ export async function removePassengerRouteFromJob(jobId, passengerId) {
 
 // ── Driver assignment ─────────────────────────────────────────────────────────
 
-export async function validateDriverAssignment(jobId, driverId, companyId, { ignoreJobIds = [] } = {}) {
+export async function validateDriverAssignment(jobId, driverId, companyId) {
   if (!jobId || !driverId || !companyId) throw new Error('Job, driver, and company are required.')
-
-  const ignore = new Set((ignoreJobIds || []).filter(Boolean))
-  ignore.add(jobId)
 
   const { data: conflictingJobs, error: conflictErr } = await supabase
     .from('jobs')
     .select('id, job_name')
     .eq('assigned_driver_id', driverId)
+    .neq('id', jobId)
     .neq('status', 'cancelled')
 
   if (conflictErr) throw conflictErr
 
-  const realConflicts = (conflictingJobs || []).filter((j) => !ignore.has(j.id))
-  if (realConflicts.length > 0) {
-    const conflictName = realConflicts[0].job_name || 'another job'
+  if (conflictingJobs && conflictingJobs.length > 0) {
+    const conflictName = conflictingJobs[0].job_name || 'another job'
     throw new Error(
       `This driver is already assigned to "${conflictName}". Remove them from that job first.`
     )
@@ -864,7 +866,7 @@ export async function validateDriverAssignment(jobId, driverId, companyId, { ign
   const [vehicleRes, passengerRes] = await Promise.all([
     supabase
       .from('vehicles')
-      .select('seating_capacity, wheelchair_accessible')
+      .select('id, fleet, seating_capacity, wheelchair_accessible, taxi_license_plate_number, make, model, status')
       .eq('driver_id', driverId)
       .eq('company_id', companyId)
       .limit(1)
@@ -920,6 +922,15 @@ export async function validateDriverAssignment(jobId, driverId, companyId, { ign
     throw new Error(
       'This driver has no vehicle assigned. Please assign a vehicle before assigning the job.'
     )
+  }
+
+  const compliance = await privateDriverBlockedByExpiredVehicleDocs({
+    companyId,
+    driverId,
+    vehicle,
+  })
+  if (compliance.blocked) {
+    throw new Error(privateVehicleDocsBlockedMessage(compliance.expiredDocs))
   }
 
   const seatCapacity = vehicle.seating_capacity
@@ -989,6 +1000,22 @@ export async function updateJobAssignedDriver(jobId, driverId) {
     })
     .eq('id', jobId).select().single()
   if (error) throw error
+
+  try {
+    const { error: resolveErr } = await supabaseAdmin
+      .from('private_driver_job_removal_alerts')
+      .update({
+        status: 'resolved',
+        resolved_at: new Date().toISOString(),
+      })
+      .eq('job_id', jobId)
+      .eq('status', 'open')
+    if (resolveErr) {
+      console.warn('Failed to resolve private driver job removal alerts:', resolveErr.message)
+    }
+  } catch (resolveErr) {
+    console.warn('Failed to resolve private driver job removal alerts:', resolveErr?.message || resolveErr)
+  }
 
   const pushResult = await sendJobAssignmentNotification(jobId)
   return { job: data, pushResult }
@@ -1262,7 +1289,10 @@ export async function fetchJobsListPageData(companyId) {
       .order('created_at',     { ascending: false }),
     supabase.from('drivers').select('*').eq('company_id', companyId).order('last_name',  { ascending: true }),
     supabase.from('passenger_assistant').select('*').eq('company_id', companyId).order('surname', { ascending: true }),
-    supabase.from('vehicles').select('driver_id, seating_capacity, wheelchair_accessible').eq('company_id', companyId),
+    supabase
+      .from('vehicles')
+      .select('id, driver_id, seating_capacity, wheelchair_accessible, fleet')
+      .eq('company_id', companyId),
   ])
 
   if (jobsRes.error)     throw jobsRes.error
@@ -1272,14 +1302,45 @@ export async function fetchJobsListPageData(companyId) {
 
   const jobsRaw         = jobsRes.data || []
   const passengerCounts = await countPassengersByJobId(jobsRaw.map((j) => j.id))
-  const drivers         = driversRes.data || []
+  const vehicles        = vehiclesRes.data || []
+  const privateVehicleIds = vehicles
+    .filter((v) => String(v.fleet || '').toLowerCase() === 'private' && v.id)
+    .map((v) => v.id)
+
+  const expiredPrivateVehicleIds = new Set()
+  if (privateVehicleIds.length) {
+    const today = new Date()
+    const todayYmd = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`
+    const { data: expiredDocs, error: expiredErr } = await supabase
+      .from('vehicle_documents')
+      .select('vehicle_id')
+      .in('vehicle_id', privateVehicleIds)
+      .in('document_type', ['mot_certificate', 'insurance_certificate', 'taxi_license_plate'])
+      .not('expiry_date', 'is', null)
+      .lte('expiry_date', todayYmd)
+    if (expiredErr) throw expiredErr
+    for (const row of expiredDocs || []) {
+      if (row.vehicle_id) expiredPrivateVehicleIds.add(row.vehicle_id)
+    }
+  }
+
+  const blockedDriverIds = new Set(
+    vehicles
+      .filter((v) => v.driver_id && expiredPrivateVehicleIds.has(v.id))
+      .map((v) => v.driver_id),
+  )
+
+  const drivers = (driversRes.data || []).map((d) => ({
+    ...d,
+    privateVehicleDocsExpired: blockedDriverIds.has(d.id),
+  }))
   const pas             = pasRes.data || []
   const { jobs, jobsMinimal } = mapRawJobsToListRows(
     jobsRaw,
     passengerCounts,
     drivers,
     pas,
-    vehiclesRes.data || []
+    vehicles
   )
 
   return { jobs, jobsMinimal, drivers, passengerAssistants: pas }
@@ -1313,6 +1374,7 @@ export function driversAvailableForAssignment(allDrivers, jobsMinimal, forJobId)
     const status = String(d.status || '').trim().toLowerCase()
     if (status !== 'approved') return false
     if (d.vehicle_assigned !== true) return false
+    if (d.privateVehicleDocsExpired === true) return false
     return !jobsMinimal.some((j) => j.id !== forJobId && j.assigned_driver_id && j.assigned_driver_id === d.id)
   })
 }

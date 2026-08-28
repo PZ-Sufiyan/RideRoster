@@ -8,6 +8,7 @@ import {
   isPrivateFleet,
 } from '../utils/fleet'
 import { isVehicleOffRoad } from '../utils/vehicleStatus'
+import { notifyVehicleAssigned, notifyVehicleUnassigned } from './vehicleNotificationService'
 
 function isCancelledJobStatus(status) {
   const s = String(status || '').trim().toLowerCase()
@@ -160,6 +161,11 @@ export async function assignDriverToVehicle({ companyId, vehicleId, driverId }) 
     throw err
   }
 
+  if (previousDriverId && previousDriverId !== driverId) {
+    await notifyVehicleUnassigned({ companyId, vehicle, driverId: previousDriverId })
+  }
+  await notifyVehicleAssigned({ companyId, vehicle, driverId })
+
   return { vehicleId, driverId, previousDriverId: previousDriverId || null }
 }
 
@@ -195,6 +201,8 @@ export async function unassignDriverFromVehicle({ companyId, vehicleId }) {
       .eq('id', vehicleId)
     throw err
   }
+
+  await notifyVehicleUnassigned({ companyId, vehicle, driverId: previousDriverId })
 
   return { vehicleId, previousDriverId }
 }

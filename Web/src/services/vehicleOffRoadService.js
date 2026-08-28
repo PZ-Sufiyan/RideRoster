@@ -6,10 +6,9 @@ import {
   getCurrentCompanyId,
 } from './vehicleAssignmentService'
 import {
-  cancelJobById,
-  updateJobAssignedDriver,
-  validateDriverAssignment,
-} from './jobService'
+  notifyVehicleAssigned,
+  notifyVehicleOffRoadThenUnassign,
+} from './vehicleNotificationService'
 
 function nowIso() {
   return new Date().toISOString()
@@ -106,6 +105,13 @@ export async function requestVehicleOffRoad({ companyId, vehicleId }) {
   }
 
   const result = await applyOffRoad({ vehicle, unassignDriver: true })
+  if (result.unassignedDriverId) {
+    await notifyVehicleOffRoadThenUnassign({
+      companyId,
+      vehicle,
+      driverId: result.unassignedDriverId,
+    })
+  }
   return { blocked: false, action: 'marked', ...result }
 }
 
@@ -125,52 +131,6 @@ export async function getReplacementVehicles({ companyId, excludeVehicleId }) {
   const { data, error } = await query
   if (error) throw error
   return data || []
-}
-
-export async function getReplacementDrivers({ companyId, excludeDriverId }) {
-  if (!companyId) return []
-
-  const [driversRes, vehiclesRes, jobsRes] = await Promise.all([
-    supabaseAdmin
-      .from('drivers')
-      .select('id, first_name, last_name, license_no, status, fleet, vehicle_assigned, profile_picture_url, phone')
-      .eq('company_id', companyId)
-      .eq('fleet', FLEET.COMPANY)
-      .eq('status', 'approved')
-      .eq('vehicle_assigned', true)
-      .order('last_name', { ascending: true }),
-    supabaseAdmin
-      .from('vehicles')
-      .select('id, driver_id, status, taxi_license_plate_number, make, model, seating_capacity, wheelchair_accessible')
-      .eq('company_id', companyId),
-    supabaseAdmin
-      .from('jobs')
-      .select('assigned_driver_id, status')
-      .eq('company_id', companyId)
-      .not('assigned_driver_id', 'is', null),
-  ])
-
-  if (driversRes.error) throw driversRes.error
-  if (vehiclesRes.error) throw vehiclesRes.error
-  if (jobsRes.error) throw jobsRes.error
-
-  const activeByDriver = new Map()
-  for (const v of vehiclesRes.data || []) {
-    if (!v.driver_id) continue
-    if (!isVehicleActive(v.status)) continue
-    activeByDriver.set(v.driver_id, v)
-  }
-
-  const busy = new Set(
-    (jobsRes.data || [])
-      .filter((j) => String(j.status || '').trim().toLowerCase() !== 'cancelled' && String(j.status || '').trim().toLowerCase() !== 'canceled')
-      .map((j) => j.assigned_driver_id)
-      .filter(Boolean)
-  )
-
-  return (driversRes.data || [])
-    .filter((d) => d.id !== excludeDriverId && activeByDriver.has(d.id) && !busy.has(d.id))
-    .map((d) => ({ ...d, vehicle: activeByDriver.get(d.id) }))
 }
 
 export async function swapReplacementAndMarkOffRoad({ companyId, brokenVehicleId, replacementVehicleId }) {
@@ -239,6 +199,17 @@ export async function swapReplacementAndMarkOffRoad({ companyId, brokenVehicleId
     .eq('id', brokenVehicleId)
     .maybeSingle()
 
+  await notifyVehicleOffRoadThenUnassign({
+    companyId,
+    vehicle: broken,
+    driverId,
+  })
+  await notifyVehicleAssigned({
+    companyId,
+    vehicle: replacement,
+    driverId,
+  })
+
   return {
     action: 'swapped',
     vehicle: updated || { ...broken, driver_id: null, status: VEHICLE_STATUS.OFF_ROAD },
@@ -246,45 +217,6 @@ export async function swapReplacementAndMarkOffRoad({ companyId, brokenVehicleId
     driverId,
     unassignedDriverId: null,
   }
-}
-
-export async function reassignJobsAndMarkOffRoad({ companyId, vehicleId, newDriverId }) {
-  if (!companyId || !vehicleId || !newDriverId) {
-    throw new Error('Company, vehicle, and replacement driver are required.')
-  }
-
-  const vehicle = await loadVehicleInCompany(vehicleId, companyId)
-  if (!vehicle.driver_id) throw new Error('This vehicle has no driver on a job.')
-  if (vehicle.driver_id === newDriverId) throw new Error('Choose a different driver.')
-
-  const jobs = await getBlockingJobsForDriver(companyId, vehicle.driver_id)
-  if (!jobs.length) throw new Error('This driver is not assigned to a job.')
-
-  const jobIds = jobs.map((j) => j.id)
-  for (const job of jobs) {
-    await validateDriverAssignment(job.id, newDriverId, companyId, { ignoreJobIds: jobIds })
-  }
-  for (const job of jobs) {
-    await updateJobAssignedDriver(job.id, newDriverId)
-  }
-
-  const result = await applyOffRoad({ vehicle, unassignDriver: true })
-  return { action: 'reassigned', jobs, ...result }
-}
-
-export async function cancelJobsAndMarkOffRoad({ companyId, vehicleId }) {
-  if (!companyId || !vehicleId) throw new Error('Company and vehicle are required.')
-
-  const vehicle = await loadVehicleInCompany(vehicleId, companyId)
-  if (vehicle.driver_id) {
-    const jobs = await getBlockingJobsForDriver(companyId, vehicle.driver_id)
-    for (const job of jobs) {
-      await cancelJobById(job.id, companyId)
-    }
-  }
-
-  const result = await applyOffRoad({ vehicle, unassignDriver: true })
-  return { action: 'cancelled', ...result }
 }
 
 export { getCurrentCompanyId, vehicleLabel }

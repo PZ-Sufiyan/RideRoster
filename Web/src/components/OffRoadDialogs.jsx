@@ -1,6 +1,6 @@
 import React from 'react';
 import { MdClose, MdSearch, MdWarning } from 'react-icons/md';
-import { AlertDialog, AssignDriverPickerModal, ConfirmDialog } from './AssignDriverDialogs';
+import { AlertDialog } from './AssignDriverDialogs';
 import { isPrivateFleet } from '../utils/fleet';
 import { summarizeBlockingJobs } from '../services/vehicleOffRoadService';
 
@@ -10,8 +10,6 @@ export function OffRoadChoiceDialog({
     jobs,
     busy,
     onSwap,
-    onReassign,
-    onStop,
     onClose,
 }) {
     if (!open) return null;
@@ -28,7 +26,7 @@ export function OffRoadChoiceDialog({
                     <h2 className="text-[18px] font-bold text-gray-900">Vehicle is on a {jobWord}</h2>
                 </div>
                 <p className="text-[13px] text-gray-600 mb-5">
-                    This vehicle is assigned to a driver on {jobLabel}. Marking it Off Road means it is broken and cannot stay as the job vehicle. Choose one:
+                    This vehicle is assigned to a driver on {jobLabel}. Marking it Off Road means it is broken and cannot stay as the job vehicle. Assign another Active company vehicle to this driver so they can finish the {jobWord}.
                 </p>
                 <div className="space-y-2">
                     <button
@@ -37,33 +35,11 @@ export function OffRoadChoiceDialog({
                         onClick={onSwap}
                         className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:bg-gray-50 disabled:opacity-50 disabled:hover:bg-white"
                     >
-                        <p className="text-sm font-semibold text-gray-900">Swap vehicle</p>
+                        <p className="text-sm font-semibold text-gray-900">Assign other vehicle</p>
                         <p className="text-[12px] text-gray-500 mt-0.5">
                             {privateVehicle
                                 ? 'Private vehicles cannot be swapped from the portal.'
                                 : 'Give this driver another Active company vehicle so they can finish the job.'}
-                        </p>
-                    </button>
-                    <button
-                        type="button"
-                        disabled={busy}
-                        onClick={onReassign}
-                        className="w-full text-left px-4 py-3 rounded-xl border border-gray-200 hover:bg-gray-50 disabled:opacity-50"
-                    >
-                        <p className="text-sm font-semibold text-gray-900">Reassign {jobWord}</p>
-                        <p className="text-[12px] text-gray-500 mt-0.5">
-                            Move {jobWord === 'jobs' ? 'these jobs' : 'the job'} to another approved driver who already has an Active vehicle.
-                        </p>
-                    </button>
-                    <button
-                        type="button"
-                        disabled={busy}
-                        onClick={onStop}
-                        className="w-full text-left px-4 py-3 rounded-xl border border-red-200 hover:bg-red-50 disabled:opacity-50"
-                    >
-                        <p className="text-sm font-semibold text-red-600">Stop {jobWord}</p>
-                        <p className="text-[12px] text-red-500/80 mt-0.5">
-                            Cancel {jobWord === 'jobs' ? 'these jobs' : 'the job'} if it cannot continue.
                         </p>
                     </button>
                 </div>
@@ -82,7 +58,7 @@ export function OffRoadChoiceDialog({
 
 export function AssignVehiclePickerModal({
     open,
-    title = 'Swap vehicle',
+    title = 'Assign other vehicle',
     query,
     onQueryChange,
     rows,
@@ -150,7 +126,7 @@ export function AssignVehiclePickerModal({
                                         onClick={() => onPick(row)}
                                         className="shrink-0 px-4 py-2 rounded-xl text-[12px] font-bold border border-gray-200 text-gray-700 hover:bg-gray-50 disabled:opacity-50"
                                     >
-                                        {isLoading ? 'Swapping…' : 'Use this vehicle'}
+                                        {isLoading ? 'Assigning…' : 'Use this vehicle'}
                                     </button>
                                 </div>
                             );
@@ -163,9 +139,6 @@ export function AssignVehiclePickerModal({
 }
 
 export function VehicleOffRoadDialogs({ flow }) {
-    const jobLabel = summarizeBlockingJobs(flow.jobs);
-    const jobWord = (flow.jobs || []).length > 1 ? 'jobs' : 'job';
-
     return (
         <>
             <OffRoadChoiceDialog
@@ -174,8 +147,6 @@ export function VehicleOffRoadDialogs({ flow }) {
                 jobs={flow.jobs}
                 busy={flow.busy}
                 onSwap={flow.openSwap}
-                onReassign={flow.openReassign}
-                onStop={flow.requestStop}
                 onClose={flow.closeAll}
             />
             <AssignVehiclePickerModal
@@ -186,30 +157,6 @@ export function VehicleOffRoadDialogs({ flow }) {
                 loadingId={flow.loadingId}
                 onPick={flow.pickReplacementVehicle}
                 onClose={flow.closePickers}
-            />
-            <AssignDriverPickerModal
-                open={flow.driverPickerOpen}
-                title="Reassign job"
-                query={flow.query}
-                onQueryChange={flow.setQuery}
-                rows={flow.mappedDrivers}
-                loadingId={flow.loadingId}
-                onPick={flow.pickReplacementDriver}
-                onClose={flow.closePickers}
-                banner="Only approved company drivers with an Active vehicle, who are not already on a job, are shown."
-                emptyText="No approved drivers with an Active vehicle are available."
-                pickLabel="Reassign"
-                pickingLabel="Reassigning…"
-            />
-            <ConfirmDialog
-                open={flow.confirmStop}
-                title={`Stop ${jobWord}`}
-                message={`This will cancel ${jobLabel}. The vehicle will then be marked Off Road.`}
-                confirmLabel={jobWord === 'jobs' ? 'Cancel jobs' : 'Cancel job'}
-                danger
-                busy={flow.busy}
-                onConfirm={flow.confirmStopJobs}
-                onClose={flow.cancelStop}
             />
             <AlertDialog
                 open={Boolean(flow.alert)}

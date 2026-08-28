@@ -15,6 +15,7 @@ export const NOTIFICATION_TABS = {
   JOBS: 'Job Updates',
   LEAVE: 'Staff Day of Requests',
   DOCUMENTS: 'Documents',
+  VEHICLES: 'Vehicles',
 }
 
 export const NOTIFICATION_CATEGORIES = {
@@ -22,6 +23,7 @@ export const NOTIFICATION_CATEGORIES = {
   JOB: 'job',
   LEAVE: 'leave',
   DOCUMENT: 'document',
+  VEHICLE: 'vehicle',
 }
 
 const JOB_RESPONSE_STATUSES = new Set(['accepted', 'rejected', 'counter request', 'counter requested'])
@@ -37,6 +39,7 @@ const NOTIFICATION_ROUTES = {
     sos: (id) => `/portal/sos/${id}`,
     driverDetail: (id) => `/portal/users/drivers/${id}`,
     paDetail: (id) => `/portal/users/pa/${id}`,
+    vehicleDetail: (id) => `/portal/users/vehicles/${id}`,
   },
   [NOTIFICATION_ROLES.SUBADMIN]: {
     leaveRequests: '/team/approvals',
@@ -45,6 +48,7 @@ const NOTIFICATION_ROUTES = {
     sos: (id) => `/team/sos/${id}`,
     driverDetail: (id) => `/team/users/drivers/${id}`,
     paDetail: (id) => `/team/users/pa/${id}`,
+    vehicleDetail: (id) => `/team/users/vehicles/${id}`,
   },
 }
 
@@ -737,6 +741,72 @@ function formatDocumentTypeLabel(documentType, documentSource) {
   return DRIVER_DOCUMENT_LABELS[key] ?? key.replace(/_/g, ' ')
 }
 
+function buildVehicleEventNotification(row) {
+  if (!row?.id) return null
+
+  const eventType = String(row.event_type || '')
+  const isAssign = eventType === 'vehicle_assigned'
+  const isUnassign = eventType === 'vehicle_unassigned'
+  const isOffRoad = eventType === 'vehicle_off_road'
+  const isDocExpired = eventType === 'vehicle_document_expired'
+  const iconColor = isAssign
+    ? 'text-green-500 bg-green-50'
+    : isUnassign || isOffRoad || isDocExpired
+      ? 'text-orange-500 bg-orange-50'
+      : 'text-[#005580] bg-blue-50'
+  const toastType = isAssign
+    ? 'success'
+    : isUnassign || isOffRoad || isDocExpired
+      ? 'warning'
+      : 'info'
+  const toastTitle = isAssign
+    ? 'Vehicle Assigned'
+    : isUnassign
+      ? 'Driver Unassigned'
+      : isOffRoad
+        ? 'Vehicle Set to Off Road'
+        : isDocExpired
+          ? 'Vehicle Document Expired'
+          : 'Vehicle Set to Active'
+
+  return {
+    key: `vehicle-event:${row.id}`,
+    category: isDocExpired ? NOTIFICATION_CATEGORIES.DOCUMENT : NOTIFICATION_CATEGORIES.VEHICLE,
+    tab: isDocExpired ? NOTIFICATION_TABS.DOCUMENTS : NOTIFICATION_TABS.VEHICLES,
+    createdAt: row.created_at,
+    isNew: false,
+    IconName: isDocExpired ? 'MdDescription' : 'MdDirectionsCar',
+    iconColor,
+    title: row.title,
+    content: row.body,
+    linkText: 'View Vehicle',
+    linkTo: row.vehicle_id ? activeNotificationRoutes.vehicleDetail(row.vehicle_id) : null,
+    toastType,
+    toastTitle,
+  }
+}
+
+function buildPrivateDriverJobRemovalAlert(row) {
+  if (!row?.id) return null
+  const createdAt = row.last_notified_at || row.created_at
+  return {
+    key: `private-job-removal:${row.id}:${createdAt || ''}`,
+    category: NOTIFICATION_CATEGORIES.JOB,
+    tab: NOTIFICATION_TABS.JOBS,
+    createdAt,
+    isNew: false,
+    IconName: 'MdWarning',
+    iconColor: 'text-red-500 bg-red-50',
+    title: row.title || 'Driver Removed from Job:',
+    content: row.body,
+    linkText: 'View Job',
+    linkTo: row.job_id ? activeNotificationRoutes.job(row.job_id) : null,
+    toastType: 'error',
+    toastTitle: 'Priority: Driver Removed from Job',
+    priority: true,
+  }
+}
+
 function formatDocumentExpiryDate(ymd) {
   if (!ymd) return '—'
   const d = new Date(`${String(ymd).slice(0, 10)}T12:00:00`)
@@ -1095,6 +1165,37 @@ async function fetchDocumentExpiryNotifications(companyId, profileByUserId) {
   return notifications
 }
 
+async function fetchVehicleEventNotifications(companyId) {
+  const { data, error } = await supabase
+    .from('vehicle_event_notifications')
+    .select('id, company_id, vehicle_id, driver_id, event_type, title, body, payload, created_at')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  if (error) {
+    console.warn('Vehicle event notifications unavailable:', error.message)
+    return []
+  }
+  return (data || []).map(buildVehicleEventNotification).filter(Boolean)
+}
+
+async function fetchPrivateDriverJobRemovalAlerts(companyId) {
+  const { data, error } = await supabase
+    .from('private_driver_job_removal_alerts')
+    .select('id, company_id, driver_id, vehicle_id, job_id, title, body, payload, status, created_at, last_notified_at, resolved_at')
+    .eq('company_id', companyId)
+    .eq('status', 'open')
+    .order('last_notified_at', { ascending: false })
+    .limit(100)
+
+  if (error) {
+    console.warn('Private driver job removal alerts unavailable:', error.message)
+    return []
+  }
+  return (data || []).map(buildPrivateDriverJobRemovalAlert).filter(Boolean)
+}
+
 /**
  * Fetch company-scoped notifications for admin or sub-admin.
  */
@@ -1103,7 +1204,16 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
   const { companyId, userId } = await getCompanyContextForRole(role)
   const { profileByUserId, companyUserIds } = await fetchCompanyUserProfiles(companyId)
 
-  const [sosItems, leaveItems, jobItems, sessionItems, sessionPassengerItems, documentItems] =
+  const [
+    sosItems,
+    leaveItems,
+    jobItems,
+    sessionItems,
+    sessionPassengerItems,
+    documentItems,
+    vehicleItems,
+    privateJobRemovalItems,
+  ] =
     await Promise.all([
     fetchSosNotifications(companyId),
     fetchLeaveNotifications(companyId, profileByUserId, companyUserIds),
@@ -1111,6 +1221,8 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     fetchJobSessionNotifications(companyId),
     fetchJobSessionPassengerNotifications(companyId),
     fetchDocumentExpiryNotifications(companyId, profileByUserId),
+    fetchVehicleEventNotifications(companyId),
+    fetchPrivateDriverJobRemovalAlerts(companyId),
   ])
 
   const readIds = await getReadNotificationIds(userId, role)
@@ -1121,6 +1233,8 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     ...sessionItems,
     ...sessionPassengerItems,
     ...documentItems,
+    ...vehicleItems,
+    ...privateJobRemovalItems,
   ]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
     .map((n) => ({
@@ -1165,6 +1279,9 @@ export function filterNotificationsByTab(notifications, activeTab) {
   }
   if (activeTab === NOTIFICATION_TABS.DOCUMENTS) {
     return notifications.filter((n) => n.category === NOTIFICATION_CATEGORIES.DOCUMENT)
+  }
+  if (activeTab === NOTIFICATION_TABS.VEHICLES) {
+    return notifications.filter((n) => n.category === NOTIFICATION_CATEGORIES.VEHICLE)
   }
   return notifications
 }
@@ -1258,4 +1375,12 @@ export function buildNotificationFromDocumentExpiryRow(row, profile = {}, docume
     staffRole,
     staffUserId: row.user_id,
   })
+}
+
+export function buildNotificationFromVehicleEventRow(row) {
+  return buildVehicleEventNotification(row)
+}
+
+export function buildNotificationFromPrivateDriverJobRemovalAlert(row) {
+  return buildPrivateDriverJobRemovalAlert(row)
 }

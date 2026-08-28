@@ -1,7 +1,8 @@
 import { supabase } from '../lib/supabaseClient'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { getCompanyAdminById } from './companyService'
-import { normalizeVehicleStatus } from '../utils/vehicleStatus'
+import { VEHICLE_STATUS, normalizeVehicleStatus } from '../utils/vehicleStatus'
+import { notifyVehicleSetActive } from './vehicleNotificationService'
 
 /** Canonical `drivers.status` values stored in the database */
 export const DRIVER_DB_STATUS = {
@@ -247,6 +248,15 @@ export const updateVehicle = async (vehicleId, updates) => {
 export const updateVehicleStatus = async (vehicleId, status) => {
   if (!vehicleId) throw new Error('Vehicle ID is required.')
   const nextStatus = normalizeVehicleStatus(status)
+
+  const { data: existing, error: existingErr } = await supabaseAdmin
+    .from('vehicles')
+    .select('*')
+    .eq('id', vehicleId)
+    .maybeSingle()
+  if (existingErr) throw existingErr
+  if (!existing) throw new Error('Vehicle not found.')
+
   const { data, error } = await supabaseAdmin
     .from('vehicles')
     .update({ status: nextStatus, updated_at: new Date().toISOString() })
@@ -254,6 +264,12 @@ export const updateVehicleStatus = async (vehicleId, status) => {
     .select()
     .single()
   if (error) throw error
+
+  const wasActive = normalizeVehicleStatus(existing.status) === VEHICLE_STATUS.ACTIVE
+  if (nextStatus === VEHICLE_STATUS.ACTIVE && !wasActive) {
+    await notifyVehicleSetActive({ companyId: data.company_id, vehicle: data })
+  }
+
   return data
 }
 

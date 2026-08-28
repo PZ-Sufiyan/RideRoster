@@ -7,6 +7,7 @@ import {
   buildNotificationFromSessionPassengerRow,
   buildNotificationFromSessionRow,
   buildNotificationFromSosRow,
+  buildNotificationFromVehicleEventRow,
   detectSessionPassengerEventType,
   enrichSessionContext,
   enrichSessionPassengerContext,
@@ -16,6 +17,7 @@ import {
   NOTIFICATION_ROLES,
   resolveLeaveRequestProfile,
   setNotificationRole,
+  buildNotificationFromPrivateDriverJobRemovalAlert,
 } from '../services/adminNotificationService'
 import {
   getCompanyNotificationContext,
@@ -280,6 +282,25 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
 
       if (event.source === 'document_expiry' && payload.new) {
         await enrichAndToastDocumentExpiry(payload.new)
+        return
+      }
+
+      if (event.source === 'vehicle_event' && payload.new) {
+        maybeToast(buildNotificationFromVehicleEventRow(payload.new))
+        return
+      }
+
+      if (event.source === 'private_driver_job_removal' && payload.new) {
+        if (payload.new.status && payload.new.status !== 'open') return
+        // Toast on insert, and on hourly reminder updates (last_notified_at change).
+        if (
+          payload.eventType === 'UPDATE'
+          && payload.old?.last_notified_at
+          && payload.new.last_notified_at === payload.old.last_notified_at
+        ) {
+          return
+        }
+        maybeToast(buildNotificationFromPrivateDriverJobRemovalAlert(payload.new))
       }
     },
     [
@@ -289,6 +310,7 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
       enrichAndToastSession,
       enrichAndToastSessionPassenger,
       enrichAndToastSos,
+      maybeToast,
       toastNewFromFetch,
       role,
     ],

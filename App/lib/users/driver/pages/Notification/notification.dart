@@ -17,7 +17,7 @@ class _DriverNotificationColors {
   static const Color iconRedBg = Color(0xFFFEE2E2);
 }
 
-enum _NotificationFilter { all, leaveStatus, message, document, unread }
+enum _NotificationFilter { all, leaveStatus, message, document, vehicle, unread }
 
 class DriverNotificationsPage extends StatefulWidget {
   const DriverNotificationsPage({super.key});
@@ -89,7 +89,22 @@ class _DriverNotificationsPageState extends State<DriverNotificationsPage> {
       case _NotificationFilter.message:
         return _items.where((n) => n.notificationType == 'message').toList();
       case _NotificationFilter.document:
-        return _items.where((n) => n.notificationType == 'document_expiry').toList();
+        return _items
+            .where(
+              (n) =>
+                  n.notificationType == 'document_expiry' ||
+                  n.notificationType == 'job_removed',
+            )
+            .toList();
+      case _NotificationFilter.vehicle:
+        return _items
+            .where(
+              (n) =>
+                  n.notificationType == 'vehicle_assigned' ||
+                  n.notificationType == 'vehicle_unassigned' ||
+                  n.notificationType == 'vehicle_off_road',
+            )
+            .toList();
       case _NotificationFilter.unread:
         return _items.where((n) => n.isUnread).toList();
       case _NotificationFilter.all:
@@ -217,7 +232,19 @@ class _DriverNotificationsPageState extends State<DriverNotificationsPage> {
                   .where((n) => n.notificationType == 'leave_status')
                   .length,
               documentCount: _items
-                  .where((n) => n.notificationType == 'document_expiry')
+                  .where(
+                    (n) =>
+                        n.notificationType == 'document_expiry' ||
+                        n.notificationType == 'job_removed',
+                  )
+                  .length,
+              vehicleCount: _items
+                  .where(
+                    (n) =>
+                        n.notificationType == 'vehicle_assigned' ||
+                        n.notificationType == 'vehicle_unassigned' ||
+                        n.notificationType == 'vehicle_off_road',
+                  )
                   .length,
               onSelected: (f) => setState(() => _selectedFilter = f),
             ),
@@ -429,8 +456,8 @@ class _NotificationsSummaryCard extends StatelessWidget {
                 SizedBox(height: SizeConfig.r(6)),
                 Text(
                   totalCount > 0
-                      ? '$totalCount total notification${totalCount == 1 ? '' : 's'} — leave updates, messages, and documents.'
-                      : 'New leave updates, messages, and document alerts will appear here.',
+                      ? '$totalCount total notification${totalCount == 1 ? '' : 's'} — leave updates, messages, documents, and vehicle alerts.'
+                      : 'New leave updates, messages, document, and vehicle alerts will appear here.',
                   style: TextStyle(
                     fontSize: SizeConfig.sp(12),
                     height: 1.4,
@@ -452,6 +479,7 @@ class _FilterChips extends StatelessWidget {
   final int messageCount;
   final int leaveCount;
   final int documentCount;
+  final int vehicleCount;
   final ValueChanged<_NotificationFilter> onSelected;
 
   const _FilterChips({
@@ -460,6 +488,7 @@ class _FilterChips extends StatelessWidget {
     required this.messageCount,
     required this.leaveCount,
     required this.documentCount,
+    required this.vehicleCount,
     required this.onSelected,
   });
 
@@ -495,6 +524,13 @@ class _FilterChips extends StatelessWidget {
             badge: documentCount > 0 ? '$documentCount' : null,
             isSelected: selectedFilter == _NotificationFilter.document,
             onTap: () => onSelected(_NotificationFilter.document),
+          ),
+          SizedBox(width: SizeConfig.r(10)),
+          _FilterChip(
+            label: 'Vehicle',
+            badge: vehicleCount > 0 ? '$vehicleCount' : null,
+            isSelected: selectedFilter == _NotificationFilter.vehicle,
+            onTap: () => onSelected(_NotificationFilter.vehicle),
           ),
           SizedBox(width: SizeConfig.r(10)),
           _FilterChip(
@@ -594,11 +630,39 @@ class _NotificationCard extends StatelessWidget {
   });
 
   ({IconData icon, Color iconColor, Color iconBg}) get _style {
+    if (item.notificationType == 'vehicle_assigned') {
+      return (
+        icon: Icons.directions_car_outlined,
+        iconColor: _DriverNotificationColors.iconGreen,
+        iconBg: _DriverNotificationColors.iconGreenBg,
+      );
+    }
+    if (item.notificationType == 'vehicle_unassigned') {
+      return (
+        icon: Icons.link_off_outlined,
+        iconColor: _DriverNotificationColors.iconOrange,
+        iconBg: _DriverNotificationColors.iconOrangeBg,
+      );
+    }
+    if (item.notificationType == 'vehicle_off_road') {
+      return (
+        icon: Icons.car_repair_outlined,
+        iconColor: _DriverNotificationColors.iconRed,
+        iconBg: _DriverNotificationColors.iconRedBg,
+      );
+    }
     if (item.notificationType == 'document_expiry') {
       return (
         icon: Icons.description_outlined,
         iconColor: _DriverNotificationColors.iconOrange,
         iconBg: _DriverNotificationColors.iconOrangeBg,
+      );
+    }
+    if (item.notificationType == 'job_removed') {
+      return (
+        icon: Icons.work_off_outlined,
+        iconColor: _DriverNotificationColors.iconRed,
+        iconBg: _DriverNotificationColors.iconRedBg,
       );
     }
     if (item.notificationType == 'message') {
@@ -749,6 +813,10 @@ class _NotificationDetailDialog extends StatelessWidget {
     final isMessage = item.notificationType == 'message';
     final isLeave = item.notificationType == 'leave_status';
     final isDocument = item.notificationType == 'document_expiry';
+    final isJobRemoved = item.notificationType == 'job_removed';
+    final isVehicle = item.notificationType == 'vehicle_assigned' ||
+        item.notificationType == 'vehicle_unassigned' ||
+        item.notificationType == 'vehicle_off_road';
 
     return AlertDialog(
       shape: RoundedRectangleBorder(
@@ -829,6 +897,26 @@ class _NotificationDetailDialog extends StatelessWidget {
                 ),
               ),
             ],
+            if (isJobRemoved) ...[
+              Text(
+                item.fullMessage.isNotEmpty ? item.fullMessage : item.body,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(14),
+                  color: AppColors.textMedium,
+                  height: 1.5,
+                ),
+              ),
+            ],
+            if (isVehicle) ...[
+              Text(
+                item.body,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(14),
+                  color: AppColors.textMedium,
+                  height: 1.5,
+                ),
+              ),
+            ],
           ],
         ),
       ),
@@ -897,6 +985,8 @@ class _EmptyState extends StatelessWidget {
       message = 'No leave status updates yet.';
     } else if (filter == _NotificationFilter.document) {
       message = 'No document expiry notices yet.';
+    } else if (filter == _NotificationFilter.vehicle) {
+      message = 'No vehicle notifications yet.';
     }
 
     return Center(

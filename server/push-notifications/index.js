@@ -4,6 +4,8 @@ import express from 'express'
 import ws from 'ws'
 import { sendJobAssignmentPush, sendUserNotificationPush } from './fcm.js'
 import { startDocumentExpiryScheduler } from './documentExpiryScheduler.js'
+import { startVehicleDocumentExpiryOffRoadScheduler } from './vehicleDocumentExpiryOffRoadScheduler.js'
+import { startPrivateVehicleDocumentExpiryScheduler } from './privateVehicleDocumentExpiryScheduler.js'
 import { startJobScheduler } from './jobScheduler.js'
 import {
   createSupabaseAdminClient,
@@ -264,4 +266,6 @@ app.listen(port, '0.0.0.0', () => {
   const supabaseAdmin = createSupabaseAdminClient()
   startJobScheduler(supabaseAdmin)
   startDocumentExpiryScheduler(supabaseAdmin)
+  startVehicleDocumentExpiryOffRoadScheduler(supabaseAdmin)
+  startPrivateVehicleDocumentExpiryScheduler(supabaseAdmin)
 })

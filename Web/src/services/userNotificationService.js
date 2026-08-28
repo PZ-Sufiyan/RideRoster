@@ -6,6 +6,10 @@ export const NOTIFICATION_TYPE_MESSAGE = 'message'
 export const NOTIFICATION_TYPE_LEAVE_STATUS = 'leave_status'
 export const NOTIFICATION_TYPE_JOB_ASSIGNMENT = 'job_assignment'
 export const NOTIFICATION_TYPE_DOCUMENT_EXPIRY = 'document_expiry'
+export const NOTIFICATION_TYPE_VEHICLE_ASSIGNED = 'vehicle_assigned'
+export const NOTIFICATION_TYPE_VEHICLE_UNASSIGNED = 'vehicle_unassigned'
+export const NOTIFICATION_TYPE_VEHICLE_OFF_ROAD = 'vehicle_off_road'
+export const NOTIFICATION_TYPE_JOB_REMOVED = 'job_removed'
 
 const MAX_PREVIEW_LEN = 160
 
@@ -91,7 +95,7 @@ async function sendUserNotificationPush({ userId, title, body, data }) {
  * @param {{
  *   userId: string,
  *   companyId?: string|null,
- *   notificationType: 'message'|'leave_status',
+ *   notificationType: 'message'|'leave_status'|'job_assignment'|'document_expiry'|'vehicle_assigned'|'vehicle_unassigned'|'vehicle_off_road'|'job_removed',
  *   title: string,
  *   body: string,
  *   payload?: object,
