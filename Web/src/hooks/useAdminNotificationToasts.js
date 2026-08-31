@@ -7,6 +7,7 @@ import {
   buildNotificationFromSessionPassengerRow,
   buildNotificationFromSessionRow,
   buildNotificationFromSosRow,
+  buildNotificationFromDriverEventRow,
   buildNotificationFromVehicleEventRow,
   detectSessionPassengerEventType,
   enrichSessionContext,
@@ -17,6 +18,7 @@ import {
   NOTIFICATION_ROLES,
   resolveLeaveRequestProfile,
   setNotificationRole,
+  buildNotificationFromJobReassignmentAlert,
   buildNotificationFromPrivateDriverJobRemovalAlert,
 } from '../services/adminNotificationService'
 import {
@@ -290,17 +292,14 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
         return
       }
 
-      if (event.source === 'private_driver_job_removal' && payload.new) {
-        if (payload.new.status && payload.new.status !== 'open') return
-        // Toast on insert, and on hourly reminder updates (last_notified_at change).
-        if (
-          payload.eventType === 'UPDATE'
-          && payload.old?.last_notified_at
-          && payload.new.last_notified_at === payload.old.last_notified_at
-        ) {
-          return
-        }
-        maybeToast(buildNotificationFromPrivateDriverJobRemovalAlert(payload.new))
+      if (event.source === 'driver_event' && payload.new) {
+        maybeToast(buildNotificationFromDriverEventRow(payload.new))
+        return
+      }
+
+      if ((event.source === 'job_reassignment' || event.source === 'private_driver_job_removal') && payload.new) {
+        if (payload.new.record_type && payload.new.record_type !== 'notification') return
+        maybeToast(buildNotificationFromJobReassignmentAlert(payload.new))
       }
     },
     [

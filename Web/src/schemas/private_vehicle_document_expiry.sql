@@ -1,6 +1,6 @@
--- Private vehicle document expiry → keep vehicle assignment, remove driver from jobs.
+-- Private vehicle document expiry → off-road + suspend driver, keep vehicle assignment, remove from jobs.
 -- Run in Supabase SQL Editor (safe to re-run).
--- Does not change the company-fleet Off-Road expiry scheduler.
+-- Job reassignment alerts use job_reassignment_alerts.sql (not private_driver_job_removal_alerts).
 
 -- ── Dedup: one private expiry pass per document per expiry date ───────────────
 

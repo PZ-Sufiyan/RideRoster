@@ -6,6 +6,7 @@ import {
   privateDriverBlockedByExpiredVehicleDocs,
   privateVehicleDocsBlockedMessage,
 } from './vehicleDocumentComplianceService'
+import { resolveJobReassignmentOnDriverAssign } from './jobReassignmentService'
 
 export const JOB_DRAFT_STORAGE_KEY = 'rideRoster_adminJobDraft_v1'
 
@@ -1002,19 +1003,9 @@ export async function updateJobAssignedDriver(jobId, driverId) {
   if (error) throw error
 
   try {
-    const { error: resolveErr } = await supabaseAdmin
-      .from('private_driver_job_removal_alerts')
-      .update({
-        status: 'resolved',
-        resolved_at: new Date().toISOString(),
-      })
-      .eq('job_id', jobId)
-      .eq('status', 'open')
-    if (resolveErr) {
-      console.warn('Failed to resolve private driver job removal alerts:', resolveErr.message)
-    }
+    await resolveJobReassignmentOnDriverAssign(jobId, driverId)
   } catch (resolveErr) {
-    console.warn('Failed to resolve private driver job removal alerts:', resolveErr?.message || resolveErr)
+    console.warn('Failed to resolve job reassignment alerts:', resolveErr?.message || resolveErr)
   }
 
   const pushResult = await sendJobAssignmentNotification(jobId)

@@ -1,9 +1,17 @@
 import cron from 'node-cron'
 import { sendUserNotificationPush } from './fcm.js'
+import {
+  REASSIGNMENT_REASON,
+  createJobReassignmentAlert,
+  loadDriverJobsForRemoval,
+  removeDriverFromJobs,
+  setVehicleOffRoad,
+  suspendApprovedDriver,
+} from './jobReassignmentAlerts.js'
 import { getZonedNow } from './scheduleResolver.js'
 import { resolveTimezone } from './timezone.js'
 
-/** Private vehicle documents that block jobs when expired. */
+/** Private vehicle documents that trigger off-road + suspend when expired. */
 const EXPIRY_DOCUMENT_TYPES = [
   'mot_certificate',
   'insurance_certificate',
@@ -15,8 +23,6 @@ const DOCUMENT_LABELS = {
   insurance_certificate: 'Insurance Certificate',
   taxi_license_plate: 'Taxi License Plate',
 }
-
-const REMIND_AFTER_MS = 60 * 60 * 1000
 
 function parseYmd(ymd) {
   const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number)
@@ -64,27 +70,15 @@ function formatDriverName(driver) {
   return [driver?.first_name, driver?.last_name].filter(Boolean).join(' ').trim() || 'Private driver'
 }
 
-function buildAdminDocumentExpiredBody({ driverName, label, removedJobs }) {
+function buildAdminDocumentExpiredBody({ removedJobs }) {
   if (removedJobs.length) {
-    const jobNames = removedJobs.map((j) => j.job_name || 'a job').join(', ')
-    return `The vehicle document for ${driverName} / ${label} has expired. The driver has been removed from ${jobNames} and requires document renewal.`
+    return 'Vehicle has been set to Off-Road because a vehicle document expired. The assigned driver has been suspended. The driver was removed from the job.'
   }
-  return `The vehicle document for ${driverName} / ${label} has expired. The driver requires document renewal before they can be assigned to jobs.`
+  return 'Vehicle has been set to Off-Road because a vehicle document expired. The assigned driver has been suspended.'
 }
 
 function operatingTimezone() {
   return resolveTimezone(process.env.DOCUMENT_EXPIRY_TIMEZONE || 'Europe/London')
-}
-
-function isCancelledJobStatus(status) {
-  const s = String(status || '').trim().toLowerCase()
-  return s === 'cancelled' || s === 'canceled'
-}
-
-function isActiveOrUpcomingJob(job, todayYmd) {
-  if (!job || isCancelledJobStatus(job.status)) return false
-  if (job.semester_end && String(job.semester_end).slice(0, 10) < todayYmd) return false
-  return true
 }
 
 async function claimProcessed(supabase, record) {
@@ -228,7 +222,7 @@ async function loadDriver(supabase, driverId) {
   if (!driverId) return null
   const { data, error } = await supabase
     .from('drivers')
-    .select('id, first_name, last_name, fleet, company_id')
+    .select('id, first_name, last_name, fleet, company_id, status')
     .eq('id', driverId)
     .maybeSingle()
   if (error) throw error
@@ -296,257 +290,39 @@ async function resolveVehicleDriverId(supabase, vehicle) {
   return data?.driver_id || null
 }
 
-async function loadDriverJobsForRemoval(supabase, driverId, todayYmd) {
-  if (!driverId) return []
-  const { data, error } = await supabase
-    .from('jobs')
-    .select('id, job_name, status, semester_start, semester_end, company_id, assigned_driver_id, internal_job_id, driver_approval_status')
-    .eq('assigned_driver_id', driverId)
-    .neq('status', 'cancelled')
-
-  if (error) throw error
-  return (data || []).filter((job) => isActiveOrUpcomingJob(job, todayYmd))
-}
-
-async function loadDriverActiveUpcomingJobs(supabase, { companyId, driverId, todayYmd }) {
-  // Prefer driver-wide lookup (assigned_driver_id is globally unique).
-  // companyId kept for callers; no longer required to find jobs.
-  void companyId
-  return loadDriverJobsForRemoval(supabase, driverId, todayYmd)
-}
-
-async function removeDriverFromJob(supabase, jobId) {
-  const now = new Date().toISOString()
-  const { data, error } = await supabase
-    .from('jobs')
-    .update({
-      assigned_driver_id: null,
-      driver_approval_status: null,
-      driver_counter_offer_pay: null,
-      updated_at: now,
+async function createJobReassignmentAlertsForRemovedJobs({
+  supabase,
+  removedJobs,
+  companyId,
+  driverId,
+  vehicle,
+  driverName,
+  docNames,
+  payloadBase,
+}) {
+  for (const job of removedJobs) {
+    const alertTitle = 'Driver Removed from Job'
+    const alertBody = `${driverName} was removed from "${job.job_name || 'a job'}" because the vehicle document (${docNames}) expired. Please assign a new driver.`
+    const alert = await createJobReassignmentAlert(supabase, {
+      companyId: job.company_id || companyId,
+      driverId,
+      vehicleId: vehicle.id,
+      job,
+      reason: REASSIGNMENT_REASON.PRIVATE_VEHICLE_DOCUMENT,
+      fleet: 'private',
+      title: alertTitle,
+      body: alertBody,
+      payload: payloadBase,
     })
-    .eq('id', jobId)
-    .select('id, job_name, company_id, internal_job_id')
 
-  if (error) throw error
-  if (!data?.length) {
-    console.warn('private vehicle expiry: job removal updated 0 rows', { jobId })
-    return null
-  }
-  return data[0]
-}
-
-async function removeDriverFromJobs(supabase, jobs) {
-  const removed = []
-  for (const job of jobs) {
-    const updated = await removeDriverFromJob(supabase, job.id)
-    if (updated) removed.push(updated)
-  }
-  return removed
-}
-
-async function createPriorityAlert(supabase, row) {
-  const { data, error } = await supabase
-    .from('private_driver_job_removal_alerts')
-    .insert(row)
-    .select('id')
-    .single()
-
-  if (error?.code === '23505') {
-    const { data: existing, error: existingErr } = await supabase
-      .from('private_driver_job_removal_alerts')
-      .select('id')
-      .eq('job_id', row.job_id)
-      .eq('driver_id', row.driver_id)
-      .eq('status', 'open')
-      .maybeSingle()
-    if (existingErr) throw existingErr
-    return existing
-  }
-  if (error) throw error
-  return data
-}
-
-async function resolveOpenAlerts(supabase) {
-  const { data: openAlerts, error } = await supabase
-    .from('private_driver_job_removal_alerts')
-    .select('id, job_id')
-    .eq('status', 'open')
-
-  if (error) throw error
-  if (!openAlerts?.length) return 0
-
-  const jobIds = [...new Set(openAlerts.map((a) => a.job_id).filter(Boolean))]
-  const { data: jobs, error: jobsErr } = await supabase
-    .from('jobs')
-    .select('id, assigned_driver_id, status, semester_end')
-    .in('id', jobIds)
-  if (jobsErr) throw jobsErr
-
-  const todayYmd = getZonedNow(operatingTimezone()).date
-  const jobById = new Map((jobs || []).map((j) => [j.id, j]))
-  const now = new Date().toISOString()
-  let resolved = 0
-
-  for (const alert of openAlerts) {
-    const job = jobById.get(alert.job_id)
-    const shouldResolve = !job
-      || Boolean(job.assigned_driver_id)
-      || isCancelledJobStatus(job.status)
-      || (job.semester_end && String(job.semester_end).slice(0, 10) < todayYmd)
-
-    if (!shouldResolve) continue
-
-    const { error: updateErr } = await supabase
-      .from('private_driver_job_removal_alerts')
-      .update({ status: 'resolved', resolved_at: now })
-      .eq('id', alert.id)
-      .eq('status', 'open')
-    if (updateErr) {
-      console.warn('failed to resolve private driver job removal alert', {
-        alertId: alert.id,
-        error: updateErr.message,
-      })
-      continue
-    }
-    resolved += 1
-  }
-
-  return resolved
-}
-
-async function remindOpenAlerts(supabase, summary) {
-  const cutoff = new Date(Date.now() - REMIND_AFTER_MS).toISOString()
-  const { data: alerts, error } = await supabase
-    .from('private_driver_job_removal_alerts')
-    .select('id, company_id, driver_id, vehicle_id, job_id, title, body, payload, last_notified_at')
-    .eq('status', 'open')
-    .lte('last_notified_at', cutoff)
-
-  if (error) throw error
-  if (!alerts?.length) return
-
-  for (const alert of alerts) {
-    try {
-      const title = `Reminder: ${String(alert.title || '').replace(/:$/, '')}`
-      const body = alert.body
-      await notifyPortalUsersPush(supabase, {
-        companyId: alert.company_id,
-        title,
-        body,
-        type: 'private_driver_job_removal',
-        notificationId: alert.id,
-        referenceId: alert.job_id,
-      })
-
-      const { error: updateErr } = await supabase
-        .from('private_driver_job_removal_alerts')
-        .update({ last_notified_at: new Date().toISOString() })
-        .eq('id', alert.id)
-        .eq('status', 'open')
-      if (updateErr) throw updateErr
-
-      summary.reminded += 1
-    } catch (err) {
-      console.warn('private driver job removal reminder failed', {
-        alertId: alert.id,
-        error: err instanceof Error ? err.message : err,
-      })
-    }
-  }
-}
-
-/**
- * Safety net: if a private driver is still on a job while required vehicle docs are expired,
- * remove them and open a priority alert (without re-firing document-expiry driver pushes).
- */
-async function reconcileExpiredPrivateDriversStillOnJobs(supabase, todayYmd, summary) {
-  const rows = await loadExpiredPrivateVehicleDocuments(supabase, todayYmd)
-  const driverIds = new Set()
-
-  for (const row of rows) {
-    const fromJoin = row.vehicles?.driver_id
-    if (fromJoin) driverIds.add(fromJoin)
-    const resolved = await resolveVehicleDriverId(supabase, row.vehicles || { id: row.vehicle_id })
-    if (resolved) driverIds.add(resolved)
-  }
-
-  for (const driverId of driverIds) {
-    const jobs = await loadDriverJobsForRemoval(supabase, driverId, todayYmd)
-    if (!jobs.length) continue
-
-    const driver = await loadDriver(supabase, driverId)
-    const driverName = formatDriverName(driver)
-    const vehicleRow = rows.find((r) => r.vehicles?.driver_id === driverId || r.vehicle_id)?.vehicles
-      || rows.find((r) => r.vehicle_id)?.vehicles
-    const label = formatVehicleLabel(vehicleRow || {})
-    const expiredTypes = rows
-      .filter((r) => {
-        const vDriver = r.vehicles?.driver_id
-        return vDriver === driverId || (vehicleRow?.id && r.vehicles?.id === vehicleRow.id)
-      })
-      .map((r) => r.document_type)
-    const docNames = joinDocNames(expiredTypes)
-    const companyId = vehicleRow?.company_id || rows.find((r) => r.vehicles?.driver_id === driverId)?.company_id || driver?.company_id || null
-
-    const removedJobs = await removeDriverFromJobs(supabase, jobs)
-    summary.jobsRemoved += removedJobs.length
-    if (!removedJobs.length) continue
-
-    for (const job of removedJobs) {
-      const alertTitle = 'Driver Removed from Job:'
-      const alertBody = `Private driver ${driverName} was removed from "${job.job_name || 'a job'}" because a required vehicle document (${docNames}) expired. Please assign a new eligible driver.`
-      const alert = await createPriorityAlert(supabase, {
-        company_id: job.company_id || companyId,
-        driver_id: driverId,
-        vehicle_id: vehicleRow?.id || rows.find((r) => r.vehicle_id)?.vehicle_id,
-        job_id: job.id,
-        title: alertTitle,
-        body: alertBody,
-        payload: {
-          reason: 'document_expiry',
-          fleet: 'private',
-          event: 'private_driver_job_removal',
-          vehicle_id: vehicleRow?.id || null,
-          vehicle_label: label,
-          driver_id: driverId,
-          driver_name: driverName,
-          job_id: job.id,
-          job_name: job.job_name || null,
-          requires_reassignment: true,
-        },
-        status: 'open',
-        last_notified_at: new Date().toISOString(),
-      })
-
-      await notifyPortalUsersPush(supabase, {
-        companyId: job.company_id || companyId,
-        title: 'Priority: Driver Removed from Job',
-        body: alertBody,
-        type: 'private_driver_job_removal',
-        notificationId: alert?.id,
-        referenceId: job.id,
-      })
-    }
-
-    if (companyId) {
-      await notifyDriverInAppAndPush(supabase, {
-        driverId,
-        companyId,
-        notificationType: 'job_removed',
-        title: 'Removed from Job',
-        body: 'You have been removed from your assigned job. Please update your vehicle documents before accepting new jobs.',
-        referenceId: removedJobs[0].id,
-        payload: {
-          event: 'job_removed',
-          reason: 'document_expiry',
-          fleet: 'private',
-          job_ids: removedJobs.map((j) => j.id),
-          job_names: removedJobs.map((j) => j.job_name || 'Job'),
-          full_message: `You have been removed from your assigned job because a required vehicle document expired. Please update your vehicle documents before accepting new jobs.`,
-        },
-      })
-    }
+    await notifyPortalUsersPush(supabase, {
+      companyId: job.company_id || companyId,
+      title: alertTitle,
+      body: alertBody,
+      type: 'job_reassignment',
+      notificationId: alert.notification?.id,
+      referenceId: job.id,
+    })
   }
 }
 
@@ -575,7 +351,6 @@ async function processPrivateVehicleExpiry({ supabase, vehicle, documents, today
   const driverName = formatDriverName(driver)
   const label = formatVehicleLabel(vehicle)
   const docNames = joinDocNames(claimed.map((d) => d.document_type))
-  const expiryLabel = formatDisplayDate(claimed[0].expiry_date)
   const payloadBase = {
     reason: 'document_expiry',
     fleet: 'private',
@@ -590,17 +365,20 @@ async function processPrivateVehicleExpiry({ supabase, vehicle, documents, today
   }
 
   let removedJobs = []
+  let suspended = false
+
   try {
+    await setVehicleOffRoad(supabase, vehicle.id, true)
+
+    if (driverId && String(driver?.status || '').toLowerCase() === 'approved') {
+      const updated = await suspendApprovedDriver(supabase, driverId)
+      suspended = Boolean(updated)
+      if (updated) summary.suspended = (summary.suspended || 0) + 1
+    }
+
     if (driverId) {
       const jobs = await loadDriverJobsForRemoval(supabase, driverId, todayYmd)
       removedJobs = await removeDriverFromJobs(supabase, jobs)
-      if (jobs.length && !removedJobs.length) {
-        console.warn('private vehicle expiry: expected job removals but none updated', {
-          vehicleId: vehicle.id,
-          driverId,
-          jobIds: jobs.map((j) => j.id),
-        })
-      }
     }
   } catch (err) {
     for (const document of claimed) {
@@ -609,49 +387,65 @@ async function processPrivateVehicleExpiry({ supabase, vehicle, documents, today
     throw err
   }
 
+  const driverBody = removedJobs.length
+    ? 'Your vehicle document has expired. You have been suspended and removed from your job.'
+    : 'Your vehicle document has expired. Your vehicle has been set to Off-Road and your account has been suspended.'
+
+  const adminBody = buildAdminDocumentExpiredBody({ removedJobs })
+
   try {
     if (driverId) {
       await notifyDriverInAppAndPush(supabase, {
         driverId,
         companyId,
-        notificationType: 'document_expiry',
-        title: 'Vehicle Document Expired',
-        body: 'Your vehicle document has expired.',
+        notificationType: removedJobs.length ? 'job_removed' : 'document_expiry',
+        title: removedJobs.length ? 'Removed from Job' : 'Vehicle Document Expired',
+        body: driverBody,
         referenceId: vehicle.id,
         payload: {
           ...payloadBase,
-          event: 'document_expiry',
-          full_message: `Your ${docNames} expired on ${expiryLabel}. Please renew your vehicle documents before accepting new jobs.`,
-          document_name: docNames,
-          expiry_date: claimed[0].expiry_date,
+          event: removedJobs.length ? 'job_removed' : 'document_expiry',
+          suspended,
+          job_ids: removedJobs.map((j) => j.id),
         },
       })
-
-      if (removedJobs.length) {
-        const jobNames = removedJobs.map((j) => j.job_name || 'a job')
-        const jobList = jobNames.length === 1
-          ? `"${jobNames[0]}"`
-          : jobNames.map((n) => `"${n}"`).join(', ')
-        await notifyDriverInAppAndPush(supabase, {
-          driverId,
-          companyId,
-          notificationType: 'job_removed',
-          title: 'Removed from Job',
-          body: 'You have been removed from your assigned job. Please update your vehicle documents before accepting new jobs.',
-          referenceId: removedJobs[0].id,
-          payload: {
-            ...payloadBase,
-            event: 'job_removed',
-            job_ids: removedJobs.map((j) => j.id),
-            job_names: jobNames,
-            full_message: `You have been removed from ${jobList} because a required vehicle document expired. Please update your vehicle documents before accepting new jobs.`,
-          },
-        })
-      }
     }
 
     if (companyId) {
-      const normalBody = buildAdminDocumentExpiredBody({ driverName, label, removedJobs })
+      await insertPortalEvent(supabase, {
+        company_id: companyId,
+        vehicle_id: vehicle.id,
+        driver_id: driverId,
+        actor_id: null,
+        event_type: 'vehicle_off_road',
+        title: 'Vehicle Set to Off Road:',
+        body: 'Vehicle has been set to Off-Road because a vehicle document expired.',
+        payload: {
+          ...payloadBase,
+          event: 'vehicle_off_road',
+        },
+      })
+
+      await notifyPortalUsersPush(supabase, {
+        companyId,
+        title: 'Vehicle Set to Off Road',
+        body: 'Vehicle has been set to Off-Road because a vehicle document expired.',
+        type: 'vehicle_off_road',
+        notificationId: null,
+        referenceId: vehicle.id,
+      })
+
+      if (driverId && suspended) {
+        await notifyPortalUsersPush(supabase, {
+          companyId,
+          title: 'Driver Suspended',
+          body: 'The assigned driver has been suspended.',
+          type: 'document_expiry',
+          notificationId: null,
+          referenceId: driverId,
+        })
+      }
+
       await insertPortalEvent(supabase, {
         company_id: companyId,
         vehicle_id: vehicle.id,
@@ -659,68 +453,121 @@ async function processPrivateVehicleExpiry({ supabase, vehicle, documents, today
         actor_id: null,
         event_type: 'vehicle_document_expired',
         title: 'Vehicle Document Expired:',
-        body: normalBody,
+        body: adminBody,
         payload: {
           ...payloadBase,
           event: 'vehicle_document_expired',
           removed_job_ids: removedJobs.map((j) => j.id),
-          removed_job_names: removedJobs.map((j) => j.job_name || 'Job'),
         },
       })
 
       await notifyPortalUsersPush(supabase, {
         companyId,
         title: 'Vehicle Document Expired',
-        body: normalBody,
+        body: adminBody,
         type: 'vehicle_document_expired',
         notificationId: null,
         referenceId: vehicle.id,
       })
 
-      for (const job of removedJobs) {
-        const alertTitle = 'Driver Removed from Job:'
-        const alertBody = `Private driver ${driverName} was removed from "${job.job_name || 'a job'}" because a required vehicle document (${docNames}) expired. Please assign a new eligible driver.`
-        const alertPayload = {
-          ...payloadBase,
-          event: 'private_driver_job_removal',
-          job_id: job.id,
-          job_name: job.job_name || null,
-          internal_job_id: job.internal_job_id || null,
-          requires_reassignment: true,
-        }
-
-        const alert = await createPriorityAlert(supabase, {
-          company_id: companyId,
-          driver_id: driverId,
-          vehicle_id: vehicle.id,
-          job_id: job.id,
-          title: alertTitle,
-          body: alertBody,
-          payload: alertPayload,
-          status: 'open',
-          last_notified_at: new Date().toISOString(),
-        })
-
-        await notifyPortalUsersPush(supabase, {
-          companyId,
-          title: 'Priority: Driver Removed from Job',
-          body: alertBody,
-          type: 'private_driver_job_removal',
-          notificationId: alert?.id,
-          referenceId: job.id,
-        })
-      }
+      await createJobReassignmentAlertsForRemovedJobs({
+        supabase,
+        removedJobs,
+        companyId,
+        driverId,
+        vehicle,
+        driverName,
+        docNames,
+        payloadBase,
+      })
     }
 
     summary.processed += 1
-    summary.jobsRemoved += removedJobs.length
+    summary.jobsRemoved = (summary.jobsRemoved || 0) + removedJobs.length
   } catch (err) {
-    console.error('private vehicle document expiry notify failed after job removal', {
+    console.error('private vehicle document expiry notify failed', {
       vehicleId: vehicle.id,
       error: err instanceof Error ? err.message : err,
     })
     summary.processed += 1
-    summary.jobsRemoved += removedJobs.length
+    summary.jobsRemoved = (summary.jobsRemoved || 0) + removedJobs.length
+  }
+}
+
+/**
+ * Safety net: if a private driver is still on a job while required vehicle docs are expired,
+ * remove them and open reassignment alerts (without re-firing full expiry notifications).
+ */
+async function reconcileExpiredPrivateDriversStillOnJobs(supabase, todayYmd, summary) {
+  const rows = await loadExpiredPrivateVehicleDocuments(supabase, todayYmd)
+  const driverIds = new Set()
+
+  for (const row of rows) {
+    const fromJoin = row.vehicles?.driver_id
+    if (fromJoin) driverIds.add(fromJoin)
+    const resolved = await resolveVehicleDriverId(supabase, row.vehicles || { id: row.vehicle_id })
+    if (resolved) driverIds.add(resolved)
+  }
+
+  for (const driverId of driverIds) {
+    const jobs = await loadDriverJobsForRemoval(supabase, driverId, todayYmd)
+    if (!jobs.length) continue
+
+    const driver = await loadDriver(supabase, driverId)
+    const driverName = formatDriverName(driver)
+    const vehicleRow = rows.find((r) => r.vehicles?.driver_id === driverId)?.vehicles
+      || rows.find((r) => r.vehicle_id)?.vehicles
+    const label = formatVehicleLabel(vehicleRow || {})
+    const expiredTypes = rows
+      .filter((r) => {
+        const vDriver = r.vehicles?.driver_id
+        return vDriver === driverId || (vehicleRow?.id && r.vehicles?.id === vehicleRow.id)
+      })
+      .map((r) => r.document_type)
+    const docNames = joinDocNames(expiredTypes)
+    const companyId = vehicleRow?.company_id || driver?.company_id || null
+
+    const removedJobs = await removeDriverFromJobs(supabase, jobs)
+    summary.jobsRemoved = (summary.jobsRemoved || 0) + removedJobs.length
+    if (!removedJobs.length || !vehicleRow?.id) continue
+
+    const payloadBase = {
+      reason: 'document_expiry',
+      fleet: 'private',
+      vehicle_id: vehicleRow.id,
+      vehicle_label: label,
+      driver_id: driverId,
+      driver_name: driverName,
+      document_labels: docNames,
+      event: 'job_reassignment',
+    }
+
+    await createJobReassignmentAlertsForRemovedJobs({
+      supabase,
+      removedJobs,
+      companyId,
+      driverId,
+      vehicle: vehicleRow,
+      driverName,
+      docNames,
+      payloadBase,
+    })
+
+    if (companyId) {
+      await notifyDriverInAppAndPush(supabase, {
+        driverId,
+        companyId,
+        notificationType: 'job_removed',
+        title: 'Removed from Job',
+        body: 'Your vehicle document has expired. You have been suspended and removed from your job.',
+        referenceId: removedJobs[0].id,
+        payload: {
+          ...payloadBase,
+          event: 'job_removed',
+          job_ids: removedJobs.map((j) => j.id),
+        },
+      })
+    }
   }
 }
 
@@ -735,17 +582,8 @@ export async function runPrivateVehicleDocumentExpiryTick(supabase) {
     vehicles: 0,
     processed: 0,
     jobsRemoved: 0,
+    suspended: 0,
     skipped: 0,
-    reminded: 0,
-    resolved: 0,
-  }
-
-  try {
-    summary.resolved = await resolveOpenAlerts(supabase)
-  } catch (err) {
-    console.error('resolve private driver job removal alerts failed', {
-      error: err instanceof Error ? err.message : err,
-    })
   }
 
   const rows = await loadExpiredPrivateVehicleDocuments(supabase, todayYmd)
@@ -785,15 +623,7 @@ export async function runPrivateVehicleDocumentExpiryTick(supabase) {
     })
   }
 
-  try {
-    await remindOpenAlerts(supabase, summary)
-  } catch (err) {
-    console.error('private driver job removal remind failed', {
-      error: err instanceof Error ? err.message : err,
-    })
-  }
-
-  if (summary.processed > 0 || summary.reminded > 0 || summary.resolved > 0) {
+  if (summary.processed > 0) {
     console.info('private vehicle document expiry tick', {
       utcAt: new Date().toISOString(),
       ...summary,

@@ -6,7 +6,7 @@ import {
 
 const POLL_MS = 12000
 
-/** @typedef {'sos' | 'leave' | 'job' | 'job_session' | 'job_session_passenger' | 'document_expiry' | 'vehicle_event' | 'private_driver_job_removal' | 'poll' | 'system'} AdminNotificationRealtimeSource */
+/** @typedef {'sos' | 'leave' | 'job' | 'job_session' | 'job_session_passenger' | 'document_expiry' | 'vehicle_event' | 'driver_event' | 'job_reassignment' | 'private_driver_job_removal' | 'poll' | 'system'} AdminNotificationRealtimeSource */
 
 /** @typedef {Object} AdminNotificationRealtimeEvent
  * @property {AdminNotificationRealtimeSource} source
@@ -201,16 +201,27 @@ function ensureChannel(companyId) {
     {
       event: 'INSERT',
       schema: 'public',
-      table: 'private_driver_job_removal_alerts',
+      table: 'driver_event_notifications',
       filter: `company_id=eq.${companyId}`,
     },
-    forward('private_driver_job_removal'),
+    forward('driver_event'),
   )
 
   channel.on(
     'postgres_changes',
     {
-      event: 'UPDATE',
+      event: 'INSERT',
+      schema: 'public',
+      table: 'job_reassignment_alerts',
+      filter: `company_id=eq.${companyId}`,
+    },
+    forward('job_reassignment'),
+  )
+
+  channel.on(
+    'postgres_changes',
+    {
+      event: 'INSERT',
       schema: 'public',
       table: 'private_driver_job_removal_alerts',
       filter: `company_id=eq.${companyId}`,

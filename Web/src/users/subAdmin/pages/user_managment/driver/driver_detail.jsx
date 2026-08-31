@@ -66,6 +66,13 @@ function isExpiredDate(expiryDate) {
     return dt.getTime() < Date.now();
 }
 
+function isSectionExpired(driverDocByType, documentTypes) {
+    return documentTypes.some((type) => {
+        const doc = driverDocByType[type];
+        return doc?.expiry_date && isExpiredDate(doc.expiry_date);
+    });
+}
+
 function sortDocsByOrder(docs, order, typeKey = 'document_type') {
     const idx = (t) => {
         const i = order.indexOf(t);
@@ -245,9 +252,21 @@ const DriverDetail = () => {
         () => driverDocs.filter((d) => d?.document_type === 'other_certificate'),
         [driverDocs]
     );
-    const hasExpiredDriverDocs = useMemo(
-        () => driverDocs.some((d) => d?.expiry_date && isExpiredDate(d.expiry_date)),
-        [driverDocs]
+    const licenseSectionExpired = useMemo(
+        () => isSectionExpired(driverDocByType, ['driving_license_front', 'driving_license_back']),
+        [driverDocByType]
+    );
+    const taxiBadgeSectionExpired = useMemo(
+        () => isSectionExpired(driverDocByType, ['taxi_badge_front', 'taxi_badge_back']),
+        [driverDocByType]
+    );
+    const dbsSectionExpired = useMemo(
+        () => isSectionExpired(driverDocByType, ['dbs_certificate_front', 'dbs_certificate_back']),
+        [driverDocByType]
+    );
+    const safeguardingSectionExpired = useMemo(
+        () => isSectionExpired(driverDocByType, ['safeguarding_certificate']),
+        [driverDocByType]
     );
 
     const openInNewTab = (url) => {
@@ -420,10 +439,10 @@ const DriverDetail = () => {
                             <p className="text-sm font-semibold text-gray-800">Driving License</p>
                             <span
                                 className={`text-[11px] px-2 py-0.5 rounded-full ${
-                                    hasExpiredDriverDocs ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
+                                    licenseSectionExpired ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
                                 }`}
                             >
-                                {hasExpiredDriverDocs ? 'Expired' : 'Verified'}
+                                {licenseSectionExpired ? 'Expired' : 'Verified'}
                             </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
@@ -437,10 +456,10 @@ const DriverDetail = () => {
                             <p className="text-sm font-semibold text-gray-800">Taxi Badge</p>
                             <span
                                 className={`text-[11px] px-2 py-0.5 rounded-full ${
-                                    hasExpiredDriverDocs ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
+                                    taxiBadgeSectionExpired ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
                                 }`}
                             >
-                                {hasExpiredDriverDocs ? 'Expired' : 'Verified'}
+                                {taxiBadgeSectionExpired ? 'Expired' : 'Verified'}
                             </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
@@ -454,10 +473,10 @@ const DriverDetail = () => {
                             <p className="text-sm font-semibold text-gray-800">DBS Check</p>
                             <span
                                 className={`text-[11px] px-2 py-0.5 rounded-full ${
-                                    hasExpiredDriverDocs ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
+                                    dbsSectionExpired ? 'bg-red-50 text-red-600' : 'bg-emerald-50 text-emerald-600'
                                 }`}
                             >
-                                {hasExpiredDriverDocs ? 'Expired' : 'Verified'}
+                                {dbsSectionExpired ? 'Expired' : 'Verified'}
                             </span>
                         </div>
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mt-2">
@@ -475,16 +494,12 @@ const DriverDetail = () => {
                             <p className="text-sm font-semibold text-gray-800">Derby City Safeguarding Certificate</p>
                             <span
                                 className={`text-[11px] px-2 py-0.5 rounded-full ${
-                                    driverDocByType.safeguarding_certificate?.expiry_date &&
-                                    isExpiredDate(driverDocByType.safeguarding_certificate.expiry_date)
+                                    safeguardingSectionExpired
                                         ? 'bg-red-50 text-red-600'
                                         : 'bg-emerald-50 text-emerald-600'
                                 }`}
                             >
-                                {driverDocByType.safeguarding_certificate?.expiry_date &&
-                                isExpiredDate(driverDocByType.safeguarding_certificate.expiry_date)
-                                    ? 'Expired'
-                                    : 'Valid'}
+                                {safeguardingSectionExpired ? 'Expired' : 'Valid'}
                             </span>
                         </div>
                         <div className="mt-2">

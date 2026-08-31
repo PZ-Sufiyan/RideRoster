@@ -6,8 +6,9 @@ import {
   getCurrentCompanyId,
 } from './vehicleAssignmentService'
 import {
-  notifyVehicleAssigned,
+  notifyVehicleOffRoadForAdmins,
   notifyVehicleOffRoadThenUnassign,
+  notifyVehicleSwapped,
 } from './vehicleNotificationService'
 
 function nowIso() {
@@ -96,6 +97,7 @@ export async function requestVehicleOffRoad({ companyId, vehicleId }) {
 
   if (!vehicle.driver_id) {
     const result = await applyOffRoad({ vehicle, unassignDriver: false })
+    await notifyVehicleOffRoadForAdmins({ companyId, vehicle })
     return { blocked: false, action: 'marked', ...result }
   }
 
@@ -111,6 +113,7 @@ export async function requestVehicleOffRoad({ companyId, vehicleId }) {
       vehicle,
       driverId: result.unassignedDriverId,
     })
+    await notifyVehicleOffRoadForAdmins({ companyId, vehicle })
   }
   return { blocked: false, action: 'marked', ...result }
 }
@@ -199,16 +202,13 @@ export async function swapReplacementAndMarkOffRoad({ companyId, brokenVehicleId
     .eq('id', brokenVehicleId)
     .maybeSingle()
 
-  await notifyVehicleOffRoadThenUnassign({
+  await notifyVehicleSwapped({
     companyId,
-    vehicle: broken,
+    fromVehicle: broken,
+    toVehicle: replacement,
     driverId,
   })
-  await notifyVehicleAssigned({
-    companyId,
-    vehicle: replacement,
-    driverId,
-  })
+  await notifyVehicleOffRoadForAdmins({ companyId, vehicle: broken })
 
   return {
     action: 'swapped',

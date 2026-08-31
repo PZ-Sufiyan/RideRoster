@@ -11,6 +11,7 @@ export const PORTAL_VEHICLE_EVENT = {
   ASSIGNED: 'vehicle_assigned',
   UNASSIGNED: 'vehicle_unassigned',
   SET_ACTIVE: 'vehicle_set_active',
+  OFF_ROAD: 'vehicle_off_road',
 }
 
 export function formatVehicleLabel(vehicle) {
@@ -143,7 +144,13 @@ export async function notifyVehicleAssigned({ companyId, vehicle, driverId, driv
 /**
  * Full unassign flow: driver push + in-app, portal in-app for admins / sub-admins.
  */
-export async function notifyVehicleUnassigned({ companyId, vehicle, driverId, driver = null }) {
+export async function notifyVehicleUnassigned({
+  companyId,
+  vehicle,
+  driverId,
+  driver = null,
+  driverBody = null,
+}) {
   try {
     const driverRow = driver?.id ? driver : await loadDriver(driverId)
     if (!driverRow?.id || !vehicle?.id) return
@@ -162,7 +169,7 @@ export async function notifyVehicleUnassigned({ companyId, vehicle, driverId, dr
       companyId,
       notificationType: NOTIFICATION_TYPE_VEHICLE_UNASSIGNED,
       title: 'Vehicle Unassigned',
-      body: `You have been unassigned from ${label}.`,
+      body: driverBody || `You have been unassigned from ${label}.`,
       vehicleId: vehicle.id,
       payload,
     })
@@ -182,32 +189,101 @@ export async function notifyVehicleUnassigned({ companyId, vehicle, driverId, dr
 }
 
 /**
- * Off-road notice to the assigned driver, then the full unassign notification flow.
+ * Driver unassign notification when vehicle is set Off Road (company fleet).
  */
 export async function notifyVehicleOffRoadThenUnassign({ companyId, vehicle, driverId, driver = null }) {
-  try {
-    const driverRow = driver?.id ? driver : await loadDriver(driverId)
-    if (!driverRow?.id || !vehicle?.id) return
+  await notifyVehicleUnassigned({
+    companyId,
+    vehicle,
+    driverId,
+    driver,
+    driverBody: 'You have been unassigned from this vehicle.',
+  })
+}
 
+/**
+ * Portal in-app for admins / sub-admins when a vehicle is set Off Road.
+ */
+export async function notifyVehicleOffRoadForAdmins({ companyId, vehicle }) {
+  try {
+    if (!vehicle?.id || !companyId) return
     const label = formatVehicleLabel(vehicle)
-    await notifyDriver({
-      driverId: driverRow.id,
+    await insertPortalEvent({
       companyId,
-      notificationType: NOTIFICATION_TYPE_VEHICLE_OFF_ROAD,
-      title: 'Vehicle Set to Off Road',
-      body: `${label} has been set to Off Road. You will be unassigned from this vehicle.`,
       vehicleId: vehicle.id,
+      driverId: vehicle.driver_id || null,
+      eventType: PORTAL_VEHICLE_EVENT.OFF_ROAD,
+      title: 'Vehicle Set to Off Road:',
+      body: `${label} has been set to Off Road.`,
       payload: {
-        event: 'vehicle_off_road',
+        event: PORTAL_VEHICLE_EVENT.OFF_ROAD,
         vehicle_label: label,
         taxi_license_plate_number: vehicle.taxi_license_plate_number || null,
       },
     })
   } catch (err) {
-    warn('Vehicle off-road notification failed', err)
+    warn('Vehicle off-road admin notification failed', err)
   }
+}
 
-  await notifyVehicleUnassigned({ companyId, vehicle, driverId, driver })
+/**
+ * Driver notified once when swapped from one vehicle to another; admins get assign/unassign events.
+ */
+export async function notifyVehicleSwapped({ companyId, fromVehicle, toVehicle, driverId, driver = null }) {
+  try {
+    const driverRow = driver?.id ? driver : await loadDriver(driverId)
+    if (!driverRow?.id || !fromVehicle?.id || !toVehicle?.id) return
+
+    const fromLabel = formatVehicleLabel(fromVehicle)
+    const toLabel = formatVehicleLabel(toVehicle)
+    const driverName = formatDriverName(driverRow)
+
+    await notifyDriver({
+      driverId: driverRow.id,
+      companyId,
+      notificationType: NOTIFICATION_TYPE_VEHICLE_ASSIGNED,
+      title: 'Vehicle Changed',
+      body: `You have been removed from ${fromLabel} and assigned to ${toLabel}.`,
+      vehicleId: toVehicle.id,
+      payload: {
+        event: PORTAL_VEHICLE_EVENT.ASSIGNED,
+        from_vehicle_id: fromVehicle.id,
+        from_vehicle_label: fromLabel,
+        vehicle_label: toLabel,
+        driver_name: driverName,
+      },
+    })
+
+    await insertPortalEvent({
+      companyId,
+      vehicleId: fromVehicle.id,
+      driverId: driverRow.id,
+      eventType: PORTAL_VEHICLE_EVENT.UNASSIGNED,
+      title: 'Driver Unassigned:',
+      body: `${driverName} was unassigned from ${fromLabel}.`,
+      payload: {
+        event: PORTAL_VEHICLE_EVENT.UNASSIGNED,
+        vehicle_label: fromLabel,
+        driver_name: driverName,
+      },
+    })
+
+    await insertPortalEvent({
+      companyId,
+      vehicleId: toVehicle.id,
+      driverId: driverRow.id,
+      eventType: PORTAL_VEHICLE_EVENT.ASSIGNED,
+      title: 'Vehicle Assigned:',
+      body: `${driverName} was assigned to ${toLabel}.`,
+      payload: {
+        event: PORTAL_VEHICLE_EVENT.ASSIGNED,
+        vehicle_label: toLabel,
+        driver_name: driverName,
+      },
+    })
+  } catch (err) {
+    warn('Vehicle swap notification failed', err)
+  }
 }
 
 /**

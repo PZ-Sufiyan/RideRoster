@@ -1,5 +1,11 @@
 import cron from 'node-cron'
 import { sendUserNotificationPush } from './fcm.js'
+import {
+  REASSIGNMENT_REASON,
+  createJobReassignmentAlert,
+  loadDriverJobsForRemoval,
+  removeDriverFromJobs,
+} from './jobReassignmentAlerts.js'
 import { getZonedNow } from './scheduleResolver.js'
 import { resolveTimezone } from './timezone.js'
 
@@ -302,7 +308,56 @@ async function applyOffRoadAndUnassign(supabase, vehicle) {
   return previousDriverId
 }
 
-async function processVehicleExpiry({ supabase, vehicle, documents, summary }) {
+async function processJobRemovalsAndAlerts({
+  supabase,
+  driverId,
+  vehicle,
+  companyId,
+  docNames,
+  removedJobs,
+  summary,
+}) {
+  if (!removedJobs.length) return
+
+  summary.jobsRemoved = (summary.jobsRemoved || 0) + removedJobs.length
+  const driver = driverId ? await loadDriver(supabase, driverId) : null
+  const driverName = formatDriverName(driver)
+  const label = formatVehicleLabel(vehicle)
+
+  for (const job of removedJobs) {
+    const alertTitle = 'Driver Removed from Job'
+    const alertBody = `${driverName} was removed from "${job.job_name || 'a job'}" because the vehicle document (${docNames}) for ${label} expired. Please assign a new driver.`
+    const alert = await createJobReassignmentAlert(supabase, {
+      companyId: job.company_id || companyId,
+      driverId,
+      vehicleId: vehicle.id,
+      job,
+      reason: REASSIGNMENT_REASON.COMPANY_VEHICLE_DOCUMENT,
+      fleet: 'company',
+      title: alertTitle,
+      body: alertBody,
+      payload: {
+        event: 'job_reassignment',
+        vehicle_id: vehicle.id,
+        vehicle_label: label,
+        driver_id: driverId,
+        driver_name: driverName,
+        document_labels: docNames,
+      },
+    })
+
+    await notifyPortalUsersPush(supabase, {
+      companyId: job.company_id || companyId,
+      title: alertTitle,
+      body: alertBody,
+      type: 'job_reassignment',
+      notificationId: alert.notification?.id,
+      referenceId: job.id,
+    })
+  }
+}
+
+async function processVehicleExpiry({ supabase, vehicle, documents, todayYmd, summary }) {
   const alreadyOffRoad = String(vehicle.status || '').toLowerCase() === 'off_road'
   const claimed = []
   for (const document of documents) {
@@ -331,10 +386,17 @@ async function processVehicleExpiry({ supabase, vehicle, documents, summary }) {
       }))
 
   let previousDriverId = null
+  let removedJobs = []
+
   try {
     previousDriverId = alreadyOffRoad && !vehicle.driver_id
       ? null
       : await applyOffRoadAndUnassign(supabase, vehicle)
+
+    if (previousDriverId) {
+      const jobs = await loadDriverJobsForRemoval(supabase, previousDriverId, todayYmd)
+      removedJobs = await removeDriverFromJobs(supabase, jobs)
+    }
   } catch (err) {
     for (const document of claimed) {
       await unclaimProcessed(supabase, document.id, document.expiry_date)
@@ -347,11 +409,11 @@ async function processVehicleExpiry({ supabase, vehicle, documents, summary }) {
   const driverName = formatDriverName(driver)
   const label = formatVehicleLabel(vehicle)
   const docNames = joinDocNames(docsForMessage.map((d) => d.document_type))
-  const expiryLabel = formatDisplayDate(docsForMessage[0].expiry_date)
   const companyId = vehicle.company_id || docsForMessage[0].company_id || null
   const payload = {
     event: 'vehicle_off_road',
     reason: 'document_expiry',
+    fleet: 'company',
     vehicle_id: vehicle.id,
     vehicle_label: label,
     document_types: docsForMessage.map((d) => d.document_type),
@@ -361,33 +423,30 @@ async function processVehicleExpiry({ supabase, vehicle, documents, summary }) {
   }
 
   const offRoadTitle = 'Vehicle Set to Off Road'
-  const offRoadDriverBody = driverId
-    ? `${label} has been set to Off Road because its ${docNames} expired on ${expiryLabel}. You will be unassigned from this vehicle.`
-    : `${label} has been set to Off Road because its ${docNames} expired on ${expiryLabel}.`
-  const offRoadAdminBody = `${label} was set to Off Road because its ${docNames} expired on ${expiryLabel}.`
+  const offRoadAdminBody = 'Vehicle has been set to Off-Road because a vehicle document has expired.'
+  const unassignAdminBody = driverId
+    ? `${driverName} was unassigned from ${label} because a vehicle document expired.`
+    : `The driver was unassigned from ${label} because a vehicle document expired.`
+
+  const driverBody = removedJobs.length
+    ? 'Your vehicle document has expired. You have been unassigned from this vehicle and removed from your job.'
+    : driverId
+      ? 'Your vehicle document has expired. You have been unassigned from this vehicle.'
+      : null
 
   try {
-    if (driverId) {
+    if (driverId && driverBody) {
       await notifyDriverInAppAndPush(supabase, {
         driverId,
         companyId,
-        notificationType: 'vehicle_off_road',
-        title: offRoadTitle,
-        body: offRoadDriverBody,
-        vehicleId: vehicle.id,
-        payload,
-      })
-
-      await notifyDriverInAppAndPush(supabase, {
-        driverId,
-        companyId,
-        notificationType: 'vehicle_unassigned',
-        title: 'Vehicle Unassigned',
-        body: `You have been unassigned from ${label}.`,
+        notificationType: removedJobs.length ? 'job_removed' : 'vehicle_unassigned',
+        title: removedJobs.length ? 'Removed from Job' : 'Vehicle Document Expired',
+        body: driverBody,
         vehicleId: vehicle.id,
         payload: {
           ...payload,
-          event: 'vehicle_unassigned',
+          event: removedJobs.length ? 'job_removed' : 'vehicle_unassigned',
+          job_ids: removedJobs.map((j) => j.id),
         },
       })
     }
@@ -421,18 +480,38 @@ async function processVehicleExpiry({ supabase, vehicle, documents, summary }) {
           actor_id: null,
           event_type: 'vehicle_unassigned',
           title: 'Driver Unassigned:',
-          body: `${driverName} was unassigned from ${label}.`,
+          body: unassignAdminBody,
           payload: {
             ...payload,
             event: 'vehicle_unassigned',
             driver_name: driverName,
           },
         })
+
+        await notifyPortalUsersPush(supabase, {
+          companyId,
+          title: 'Driver Unassigned',
+          body: unassignAdminBody,
+          type: 'vehicle_unassigned',
+          notificationId: null,
+          referenceId: vehicle.id,
+        })
       }
+
+      await processJobRemovalsAndAlerts({
+        supabase,
+        driverId,
+        vehicle,
+        companyId,
+        docNames,
+        removedJobs,
+        summary,
+      })
     }
 
     summary.processed += 1
     if (driverId) summary.unassigned += 1
+    summary.jobsRemoved = (summary.jobsRemoved || 0) + removedJobs.length
   } catch (err) {
     console.error('vehicle document expiry off-road notify failed after status update', {
       vehicleId: vehicle.id,
@@ -440,6 +519,7 @@ async function processVehicleExpiry({ supabase, vehicle, documents, summary }) {
     })
     summary.processed += 1
     if (driverId) summary.unassigned += 1
+    summary.jobsRemoved = (summary.jobsRemoved || 0) + removedJobs.length
   }
 }
 
@@ -447,7 +527,20 @@ export async function runVehicleDocumentExpiryOffRoadTick(supabase) {
   const timeZone = operatingTimezone()
   const todayYmd = getZonedNow(timeZone).date
 
+  const summary = {
+    timezone: timeZone,
+    today: todayYmd,
+    documents: 0,
+    vehicles: 0,
+    processed: 0,
+    unassigned: 0,
+    jobsRemoved: 0,
+    skipped: 0,
+  }
+
   const rows = await loadExpiredFleetVehicleDocuments(supabase, todayYmd)
+  summary.documents = rows.length
+
   const byVehicle = new Map()
   for (const row of rows) {
     const vehicle = row.vehicles
@@ -455,20 +548,11 @@ export async function runVehicleDocumentExpiryOffRoadTick(supabase) {
     list.documents.push(row)
     byVehicle.set(vehicle.id, list)
   }
-
-  const summary = {
-    timezone: timeZone,
-    today: todayYmd,
-    documents: rows.length,
-    vehicles: byVehicle.size,
-    processed: 0,
-    unassigned: 0,
-    skipped: 0,
-  }
+  summary.vehicles = byVehicle.size
 
   for (const { vehicle, documents } of byVehicle.values()) {
     try {
-      await processVehicleExpiry({ supabase, vehicle, documents, summary })
+      await processVehicleExpiry({ supabase, vehicle, documents, todayYmd, summary })
     } catch (err) {
       console.error('vehicle document expiry off-road failed', {
         vehicleId: vehicle.id,

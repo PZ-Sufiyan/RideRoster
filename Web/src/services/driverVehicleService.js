@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabaseClient'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { getCompanyAdminById } from './companyService'
 import { VEHICLE_STATUS, normalizeVehicleStatus } from '../utils/vehicleStatus'
+import { notifyDriverStatusChange } from './driverNotificationService'
 import { notifyVehicleSetActive } from './vehicleNotificationService'
 
 /** Canonical `drivers.status` values stored in the database */
@@ -120,6 +121,12 @@ export const createDriver = async (driverPayload) => {
 }
 
 export const updateDriver = async (driverId, updates) => {
+  const statusChanging = updates?.status != null
+  let previous = null
+  if (statusChanging) {
+    previous = await getDriverByIdMaybe(driverId)
+  }
+
   const { data, error } = await supabase
     .from('drivers')
     .update({ ...updates, updated_at: new Date().toISOString() })
@@ -127,6 +134,11 @@ export const updateDriver = async (driverId, updates) => {
     .select()
     .single()
   if (error) throw error
+
+  if (statusChanging && previous && String(previous.status || '').toLowerCase() !== String(data.status || '').toLowerCase()) {
+    await notifyDriverStatusChange({ driver: data, previousStatus: previous.status })
+  }
+
   return data
 }
 

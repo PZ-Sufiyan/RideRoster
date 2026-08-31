@@ -6,6 +6,8 @@ import { sendJobAssignmentPush, sendUserNotificationPush } from './fcm.js'
 import { startDocumentExpiryScheduler } from './documentExpiryScheduler.js'
 import { startVehicleDocumentExpiryOffRoadScheduler } from './vehicleDocumentExpiryOffRoadScheduler.js'
 import { startPrivateVehicleDocumentExpiryScheduler } from './privateVehicleDocumentExpiryScheduler.js'
+import { startDriverDocumentExpirySuspendScheduler } from './driverDocumentExpirySuspendScheduler.js'
+import { startJobReassignmentReminderScheduler } from './jobReassignmentReminderScheduler.js'
 import { startJobScheduler } from './jobScheduler.js'
 import {
   createSupabaseAdminClient,
@@ -268,4 +270,6 @@ app.listen(port, '0.0.0.0', () => {
   startDocumentExpiryScheduler(supabaseAdmin)
   startVehicleDocumentExpiryOffRoadScheduler(supabaseAdmin)
   startPrivateVehicleDocumentExpiryScheduler(supabaseAdmin)
+  startDriverDocumentExpirySuspendScheduler(supabaseAdmin)
+  startJobReassignmentReminderScheduler(supabaseAdmin)
 })

@@ -741,6 +741,80 @@ function formatDocumentTypeLabel(documentType, documentSource) {
   return DRIVER_DOCUMENT_LABELS[key] ?? key.replace(/_/g, ' ')
 }
 
+function buildDriverEventNotification(row) {
+  if (!row?.id) return null
+
+  const eventType = String(row.event_type || '')
+  const isApproved = eventType === 'driver_approved'
+  const isRejected = eventType === 'driver_rejected'
+  const isSuspended = eventType === 'driver_suspended'
+  const isDocExpired = eventType === 'driver_document_expired'
+  const isActive = eventType === 'driver_active'
+
+  const iconColor = isApproved || isActive
+    ? 'text-green-500 bg-green-50'
+    : isRejected || isSuspended || isDocExpired
+      ? 'text-orange-500 bg-orange-50'
+      : 'text-[#005580] bg-blue-50'
+
+  const toastType = isApproved || isActive
+    ? 'success'
+    : isRejected || isSuspended || isDocExpired
+      ? 'warning'
+      : 'info'
+
+  const toastTitle = isApproved
+    ? 'Driver Approved'
+    : isRejected
+      ? 'Driver Rejected'
+      : isSuspended
+        ? 'Driver Suspended'
+        : isDocExpired
+          ? 'Driver Document Expired'
+          : isActive
+            ? 'Driver Active'
+            : 'Driver Update'
+
+  const isDocRelated = isDocExpired
+    || (isSuspended && String(row.payload?.reason || '').toLowerCase() === 'document_expiry')
+
+  return {
+    key: `driver-event:${row.id}`,
+    category: isDocRelated ? NOTIFICATION_CATEGORIES.DOCUMENT : NOTIFICATION_CATEGORIES.VEHICLE,
+    tab: isDocRelated ? NOTIFICATION_TABS.DOCUMENTS : NOTIFICATION_TABS.ALL,
+    createdAt: row.created_at,
+    isNew: false,
+    IconName: isDocExpired ? 'MdDescription' : 'MdPerson',
+    iconColor,
+    title: row.title || toastTitle,
+    content: row.body,
+    linkText: 'View Driver',
+    linkTo: row.driver_id ? activeNotificationRoutes.driverDetail(row.driver_id) : null,
+    toastType,
+    toastTitle,
+  }
+}
+
+function formatVehicleEventContent(row) {
+  const body = String(row?.body || '').trim()
+  const driverName = String(row?.payload?.driver_name || '').trim()
+  const vehicleLabel = String(row?.payload?.vehicle_label || '').trim()
+  const eventType = String(row?.event_type || '')
+
+  if (eventType === 'vehicle_unassigned' && driverName) {
+    if (
+      body === 'The driver has been unassigned from the vehicle.'
+      || body === 'The vehicle was unassigned from the driver.'
+    ) {
+      return vehicleLabel
+        ? `${driverName} was unassigned from ${vehicleLabel}.`
+        : `${driverName} was unassigned from the vehicle.`
+    }
+  }
+
+  return body
+}
+
 function buildVehicleEventNotification(row) {
   if (!row?.id) return null
 
@@ -778,32 +852,39 @@ function buildVehicleEventNotification(row) {
     IconName: isDocExpired ? 'MdDescription' : 'MdDirectionsCar',
     iconColor,
     title: row.title,
-    content: row.body,
-    linkText: 'View Vehicle',
-    linkTo: row.vehicle_id ? activeNotificationRoutes.vehicleDetail(row.vehicle_id) : null,
+    content: formatVehicleEventContent(row),
+    linkText: row.driver_id ? 'View Driver' : 'View Vehicle',
+    linkTo: row.driver_id
+      ? activeNotificationRoutes.driverDetail(row.driver_id)
+      : (row.vehicle_id ? activeNotificationRoutes.vehicleDetail(row.vehicle_id) : null),
     toastType,
     toastTitle,
   }
 }
 
-function buildPrivateDriverJobRemovalAlert(row) {
+function buildJobReassignmentAlert(row) {
   if (!row?.id) return null
-  const createdAt = row.last_notified_at || row.created_at
+  const createdAt = row.created_at
+  const isResolved = row.payload?.event === 'job_reassignment_resolved'
+    || row.payload?.is_resolved === true
+  const isReminder = !isResolved && Boolean(row.payload?.is_hourly_reminder)
   return {
-    key: `private-job-removal:${row.id}:${createdAt || ''}`,
+    key: `job-reassignment:${row.id}:${createdAt || ''}`,
     category: NOTIFICATION_CATEGORIES.JOB,
     tab: NOTIFICATION_TABS.JOBS,
-    createdAt,
+    createdAt: isResolved ? (row.resolved_at || createdAt) : createdAt,
     isNew: false,
-    IconName: 'MdWarning',
-    iconColor: 'text-red-500 bg-red-50',
-    title: row.title || 'Driver Removed from Job:',
+    IconName: isResolved ? 'MdCheckCircle' : 'MdWarning',
+    iconColor: isResolved ? 'text-green-600 bg-green-50' : 'text-red-500 bg-red-50',
+    title: row.title || (isResolved ? 'Job Reassignment Resolved' : 'Job Reassignment Required'),
     content: row.body,
     linkText: 'View Job',
     linkTo: row.job_id ? activeNotificationRoutes.job(row.job_id) : null,
-    toastType: 'error',
-    toastTitle: 'Priority: Driver Removed from Job',
-    priority: true,
+    toastType: isResolved ? 'success' : 'error',
+    toastTitle: isResolved
+      ? 'Job Reassignment Resolved'
+      : (isReminder ? 'Job Reassignment Reminder' : 'Driver Removed from Job'),
+    priority: !isReminder && !isResolved,
   }
 }
 
@@ -1165,6 +1246,21 @@ async function fetchDocumentExpiryNotifications(companyId, profileByUserId) {
   return notifications
 }
 
+async function fetchDriverEventNotifications(companyId) {
+  const { data, error } = await supabase
+    .from('driver_event_notifications')
+    .select('id, company_id, driver_id, vehicle_id, event_type, title, body, payload, created_at')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  if (error) {
+    console.warn('Driver event notifications unavailable:', error.message)
+    return []
+  }
+  return (data || []).map(buildDriverEventNotification).filter(Boolean)
+}
+
 async function fetchVehicleEventNotifications(companyId) {
   const { data, error } = await supabase
     .from('vehicle_event_notifications')
@@ -1180,20 +1276,20 @@ async function fetchVehicleEventNotifications(companyId) {
   return (data || []).map(buildVehicleEventNotification).filter(Boolean)
 }
 
-async function fetchPrivateDriverJobRemovalAlerts(companyId) {
+async function fetchJobReassignmentAlerts(companyId) {
   const { data, error } = await supabase
-    .from('private_driver_job_removal_alerts')
-    .select('id, company_id, driver_id, vehicle_id, job_id, title, body, payload, status, created_at, last_notified_at, resolved_at')
+    .from('job_reassignment_alerts')
+    .select('id, company_id, driver_id, vehicle_id, job_id, reason, fleet, record_type, title, body, payload, status, created_at, last_notified_at, resolved_at, resolved_by_id, resolved_by_name, new_driver_id')
     .eq('company_id', companyId)
-    .eq('status', 'open')
-    .order('last_notified_at', { ascending: false })
-    .limit(100)
+    .eq('record_type', 'notification')
+    .order('created_at', { ascending: false })
+    .limit(200)
 
   if (error) {
-    console.warn('Private driver job removal alerts unavailable:', error.message)
+    console.warn('Job reassignment alerts unavailable:', error.message)
     return []
   }
-  return (data || []).map(buildPrivateDriverJobRemovalAlert).filter(Boolean)
+  return (data || []).map(buildJobReassignmentAlert).filter(Boolean)
 }
 
 /**
@@ -1212,6 +1308,7 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     sessionPassengerItems,
     documentItems,
     vehicleItems,
+    driverEventItems,
     privateJobRemovalItems,
   ] =
     await Promise.all([
@@ -1222,7 +1319,8 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     fetchJobSessionPassengerNotifications(companyId),
     fetchDocumentExpiryNotifications(companyId, profileByUserId),
     fetchVehicleEventNotifications(companyId),
-    fetchPrivateDriverJobRemovalAlerts(companyId),
+    fetchDriverEventNotifications(companyId),
+    fetchJobReassignmentAlerts(companyId),
   ])
 
   const readIds = await getReadNotificationIds(userId, role)
@@ -1234,6 +1332,7 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     ...sessionPassengerItems,
     ...documentItems,
     ...vehicleItems,
+    ...driverEventItems,
     ...privateJobRemovalItems,
   ]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -1377,10 +1476,19 @@ export function buildNotificationFromDocumentExpiryRow(row, profile = {}, docume
   })
 }
 
+export function buildNotificationFromDriverEventRow(row) {
+  return buildDriverEventNotification(row)
+}
+
 export function buildNotificationFromVehicleEventRow(row) {
   return buildVehicleEventNotification(row)
 }
 
+export function buildNotificationFromJobReassignmentAlert(row) {
+  return buildJobReassignmentAlert(row)
+}
+
+/** @deprecated use buildNotificationFromJobReassignmentAlert */
 export function buildNotificationFromPrivateDriverJobRemovalAlert(row) {
-  return buildPrivateDriverJobRemovalAlert(row)
+  return buildJobReassignmentAlert(row)
 }
