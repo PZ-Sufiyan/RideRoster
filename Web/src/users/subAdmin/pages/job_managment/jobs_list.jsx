@@ -17,7 +17,7 @@ import {
     MdWarning,
     MdPersonRemove,
 } from 'react-icons/md';
-import { ToastStack } from '../../../../utils/Toast';
+import { useAppToast } from '../../../../context/toastContext';
 import {
     driversAvailableForAssignment,
     passengerAssistantsAvailableForAssignment,
@@ -86,7 +86,7 @@ const ActiveJobs = () => {
     const [showAssignDriver, setShowAssignDriver] = useState(false);
     const [showAssignPA, setShowAssignPA] = useState(false);
     const [selectedJob, setSelectedJob] = useState(null);
-    const [toasts, setToasts] = useState([]);
+    const { pushToast } = useAppToast();
     const [driverQuery, setDriverQuery] = useState('');
     const [paQuery, setPaQuery] = useState('');
     const [assigningDriverId, setAssigningDriverId] = useState(null);
@@ -151,13 +151,6 @@ const ActiveJobs = () => {
         } catch (e) {
             pushToast('error', e?.message || 'Could not refresh.');
         }
-    };
-
-    const pushToast = (type, message) => {
-        setToasts((prev) => [
-            ...prev,
-            { id: `${Date.now()}-${Math.random()}`, type, message, autoClose: true, duration: 5000 },
-        ]);
     };
 
     useEffect(() => {
@@ -238,8 +231,14 @@ const ActiveJobs = () => {
         setAssigningDriverId(driverRow.id);
         try {
             await validateDriverAssignment(jobId, driverRow.id, companyId);
-            await updateJobAssignedDriver(jobId, driverRow.id);
-            pushToast('success', `Driver assigned to ${formatShortJobLabel(jobId)}.`);
+            const { approvalStatus } = await updateJobAssignedDriver(jobId, driverRow.id);
+            const jobLabel = formatShortJobLabel(jobId);
+            pushToast(
+                'success',
+                approvalStatus === 'accepted'
+                    ? `Driver assigned to ${jobLabel}.`
+                    : `Job request sent to driver for ${jobLabel}.`,
+            );
             setShowAssignDriver(false);
             await reloadData();
         } catch (e) {
@@ -319,8 +318,6 @@ const ActiveJobs = () => {
 
     return (
         <div className="space-y-6">
-            <ToastStack toasts={toasts} onClose={(id) => setToasts((prev) => prev.filter((t) => t.id !== id))} />
-
             <ConfirmDialog
                 open={confirmDialog.open}
                 title={confirmDialog.type === 'driver' ? 'Remove Driver?' : 'Remove Passenger Assistant?'}

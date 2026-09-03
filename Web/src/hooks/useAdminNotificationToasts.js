@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { supabase } from '../lib/supabaseClient'
 import {
   buildNotificationFromDocumentExpiryRow,
@@ -19,12 +19,14 @@ import {
   resolveLeaveRequestProfile,
   setNotificationRole,
   buildNotificationFromJobReassignmentAlert,
+  buildNotificationFromJobEventRow,
   buildNotificationFromPrivateDriverJobRemovalAlert,
 } from '../services/adminNotificationService'
 import {
   getCompanyNotificationContext,
   subscribeAdminNotificationRealtime,
 } from '../services/adminNotificationRealtimeService'
+import { useAppToast } from '../context/toastContext'
 
 const JOB_RESPONSE_STATUSES = new Set(['accepted', 'rejected', 'counter request', 'counter requested'])
 
@@ -39,29 +41,21 @@ function notificationEventKey(notification) {
 }
 
 export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.ADMIN) {
-  const [toasts, setToasts] = useState([])
+  const { pushToast: pushAppToast } = useAppToast()
   const seenEventKeysRef = useRef(new Set())
   const companyUserIdsRef = useRef(new Set())
   const companyIdRef = useRef(null)
   const readyRef = useRef(false)
 
-  const dismissToast = useCallback((id) => {
-    setToasts((prev) => prev.filter((t) => t.id !== id))
-  }, [])
-
   const pushToast = useCallback((notification) => {
-    setToasts((prev) => [
-      ...prev,
-      {
-        id: `${notification.key}-${Date.now()}-${Math.random()}`,
-        type: notification.toastType || 'info',
-        title: notification.toastTitle || notification.title,
-        message: toastMessage(notification),
-        autoClose: true,
-        duration: 7000,
-      },
-    ])
-  }, [])
+    pushAppToast({
+      type: notification.toastType || 'info',
+      title: notification.toastTitle || notification.title,
+      message: toastMessage(notification),
+      autoClose: true,
+      duration: 7000,
+    })
+  }, [pushAppToast])
 
   const maybeToast = useCallback(
     (notification) => {
@@ -297,6 +291,11 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
         return
       }
 
+      if (event.source === 'job_event' && payload.new) {
+        maybeToast(buildNotificationFromJobEventRow(payload.new))
+        return
+      }
+
       if ((event.source === 'job_reassignment' || event.source === 'private_driver_job_removal') && payload.new) {
         if (payload.new.record_type && payload.new.record_type !== 'notification') return
         maybeToast(buildNotificationFromJobReassignmentAlert(payload.new))
@@ -362,8 +361,6 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
       unsubscribe()
     }
   }, [enabled, role, handleRealtimeEvent, seedSeenKeys])
-
-  return { toasts, dismissToast }
 }
 
 async function supabaseLookupVehicle(vehicleId) {
@@ -377,7 +374,7 @@ async function supabaseLookupVehicle(vehicleId) {
 async function supabaseLookupDriver(driverId) {
   return supabase
     .from('drivers')
-    .select('id, first_name, last_name')
+    .select('id, first_name, last_name, fleet')
     .eq('id', driverId)
     .maybeSingle()
 }

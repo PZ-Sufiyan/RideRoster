@@ -17,7 +17,7 @@ class _DriverNotificationColors {
   static const Color iconRedBg = Color(0xFFFEE2E2);
 }
 
-enum _NotificationFilter { all, leaveStatus, message, document, vehicle, unread }
+enum _NotificationFilter { all, leaveStatus, message, newJobs, document, vehicle, unread }
 
 class DriverNotificationsPage extends StatefulWidget {
   const DriverNotificationsPage({super.key});
@@ -88,6 +88,8 @@ class _DriverNotificationsPageState extends State<DriverNotificationsPage> {
         return _items.where((n) => n.notificationType == 'leave_status').toList();
       case _NotificationFilter.message:
         return _items.where((n) => n.notificationType == 'message').toList();
+      case _NotificationFilter.newJobs:
+        return _items.where((n) => n.notificationType == 'job_assignment').toList();
       case _NotificationFilter.document:
         return _items
             .where(
@@ -230,6 +232,9 @@ class _DriverNotificationsPageState extends State<DriverNotificationsPage> {
                   _items.where((n) => n.notificationType == 'message').length,
               leaveCount: _items
                   .where((n) => n.notificationType == 'leave_status')
+                  .length,
+              jobCount: _items
+                  .where((n) => n.notificationType == 'job_assignment')
                   .length,
               documentCount: _items
                   .where(
@@ -478,6 +483,7 @@ class _FilterChips extends StatelessWidget {
   final int unreadCount;
   final int messageCount;
   final int leaveCount;
+  final int jobCount;
   final int documentCount;
   final int vehicleCount;
   final ValueChanged<_NotificationFilter> onSelected;
@@ -487,6 +493,7 @@ class _FilterChips extends StatelessWidget {
     required this.unreadCount,
     required this.messageCount,
     required this.leaveCount,
+    required this.jobCount,
     required this.documentCount,
     required this.vehicleCount,
     required this.onSelected,
@@ -517,6 +524,13 @@ class _FilterChips extends StatelessWidget {
             badge: messageCount > 0 ? '$messageCount' : null,
             isSelected: selectedFilter == _NotificationFilter.message,
             onTap: () => onSelected(_NotificationFilter.message),
+          ),
+          SizedBox(width: SizeConfig.r(10)),
+          _FilterChip(
+            label: 'Jobs',
+            badge: jobCount > 0 ? '$jobCount' : null,
+            isSelected: selectedFilter == _NotificationFilter.newJobs,
+            onTap: () => onSelected(_NotificationFilter.newJobs),
           ),
           SizedBox(width: SizeConfig.r(10)),
           _FilterChip(
@@ -630,6 +644,13 @@ class _NotificationCard extends StatelessWidget {
   });
 
   ({IconData icon, Color iconColor, Color iconBg}) get _style {
+    if (item.notificationType == 'job_assignment') {
+      return (
+        icon: Icons.route_outlined,
+        iconColor: _DriverNotificationColors.primary,
+        iconBg: _DriverNotificationColors.iconBlueBg,
+      );
+    }
     if (item.notificationType == 'vehicle_assigned') {
       return (
         icon: Icons.directions_car_outlined,
@@ -812,6 +833,7 @@ class _NotificationDetailDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final isMessage = item.notificationType == 'message';
     final isLeave = item.notificationType == 'leave_status';
+    final isJob = item.notificationType == 'job_assignment';
     final isDocument = item.notificationType == 'document_expiry';
     final isJobRemoved = item.notificationType == 'job_removed';
     final isVehicle = item.notificationType == 'vehicle_assigned' ||
@@ -880,6 +902,20 @@ class _NotificationDetailDialog extends StatelessWidget {
                   ),
                 ),
               ],
+            ],
+            if (isJob) ...[
+              if (item.jobName != null)
+                _DetailRow(label: 'Job', value: item.jobName!),
+              if (item.jobSchool != null && item.jobSchool!.isNotEmpty)
+                _DetailRow(label: 'School', value: item.jobSchool!),
+              Text(
+                item.body,
+                style: TextStyle(
+                  fontSize: SizeConfig.sp(14),
+                  color: AppColors.textMedium,
+                  height: 1.5,
+                ),
+              ),
             ],
             if (isDocument) ...[
               if (item.documentName != null)
@@ -983,6 +1019,8 @@ class _EmptyState extends StatelessWidget {
       message = 'No messages yet.';
     } else if (filter == _NotificationFilter.leaveStatus) {
       message = 'No leave status updates yet.';
+    } else if (filter == _NotificationFilter.newJobs) {
+      message = 'No job assignment notices yet.';
     } else if (filter == _NotificationFilter.document) {
       message = 'No document expiry notices yet.';
     } else if (filter == _NotificationFilter.vehicle) {

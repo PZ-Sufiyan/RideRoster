@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabaseClient'
 import { getCompanyAdminById } from './companyService'
 import { getSubAdminById } from './subAdminService'
 import { formatRelativeTime } from './dashboardService'
+import { isCompanyFleet } from '../utils/fleet'
 
 export const NOTIFICATION_ROLES = {
   ADMIN: 'admin',
@@ -573,7 +574,7 @@ export async function enrichSessionContext(sessionRow, companyId) {
   if (driverId) {
     const { data, error } = await supabase
       .from('drivers')
-      .select('id, first_name, last_name')
+      .select('id, first_name, last_name, fleet')
       .eq('id', driverId)
       .maybeSingle()
     if (error) throw error
@@ -639,6 +640,7 @@ function buildJobNotification(job, driverById) {
   }
 
   if (status === 'accepted') {
+    if (isCompanyFleet(driver?.fleet)) return null
     return {
       key: `job:${job.id}`,
       category: NOTIFICATION_CATEGORIES.JOB,
@@ -885,6 +887,29 @@ function buildJobReassignmentAlert(row) {
       ? 'Job Reassignment Resolved'
       : (isReminder ? 'Job Reassignment Reminder' : 'Driver Removed from Job'),
     priority: !isReminder && !isResolved,
+  }
+}
+
+function buildJobEventNotification(row) {
+  if (!row?.id) return null
+  const eventType = String(row.event_type || '')
+  const isAssigned = eventType === 'job_driver_assigned'
+  const isRemoved = eventType === 'job_driver_removed'
+
+  return {
+    key: `job-event:${row.id}`,
+    category: NOTIFICATION_CATEGORIES.JOB,
+    tab: NOTIFICATION_TABS.JOBS,
+    createdAt: row.created_at,
+    isNew: false,
+    IconName: isAssigned ? 'MdCheckCircle' : 'MdDescription',
+    iconColor: isAssigned ? 'text-green-500 bg-green-50' : 'text-orange-500 bg-orange-50',
+    title: row.title,
+    content: row.body,
+    linkText: 'View Job',
+    linkTo: row.job_id ? activeNotificationRoutes.job(row.job_id) : null,
+    toastType: isAssigned ? 'success' : isRemoved ? 'warning' : 'info',
+    toastTitle: isAssigned ? 'Driver Assigned' : isRemoved ? 'Driver Removed' : 'Job Update',
   }
 }
 
@@ -1142,7 +1167,7 @@ async function fetchJobNotifications(companyId) {
   if (driverIds.length) {
     const { data: drivers, error: driverErr } = await supabase
       .from('drivers')
-      .select('id, first_name, last_name')
+      .select('id, first_name, last_name, fleet')
       .in('id', driverIds)
     if (driverErr) throw driverErr
     driverById = new Map((drivers || []).map((d) => [d.id, d]))
@@ -1276,6 +1301,21 @@ async function fetchVehicleEventNotifications(companyId) {
   return (data || []).map(buildVehicleEventNotification).filter(Boolean)
 }
 
+async function fetchJobEventNotifications(companyId) {
+  const { data, error } = await supabase
+    .from('job_event_notifications')
+    .select('id, company_id, job_id, driver_id, event_type, title, body, payload, created_at')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  if (error) {
+    console.warn('Job event notifications unavailable:', error.message)
+    return []
+  }
+  return (data || []).map(buildJobEventNotification).filter(Boolean)
+}
+
 async function fetchJobReassignmentAlerts(companyId) {
   const { data, error } = await supabase
     .from('job_reassignment_alerts')
@@ -1309,6 +1349,7 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     documentItems,
     vehicleItems,
     driverEventItems,
+    jobEventItems,
     privateJobRemovalItems,
   ] =
     await Promise.all([
@@ -1320,6 +1361,7 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     fetchDocumentExpiryNotifications(companyId, profileByUserId),
     fetchVehicleEventNotifications(companyId),
     fetchDriverEventNotifications(companyId),
+    fetchJobEventNotifications(companyId),
     fetchJobReassignmentAlerts(companyId),
   ])
 
@@ -1333,6 +1375,7 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     ...documentItems,
     ...vehicleItems,
     ...driverEventItems,
+    ...jobEventItems,
     ...privateJobRemovalItems,
   ]
     .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt))
@@ -1486,6 +1529,10 @@ export function buildNotificationFromVehicleEventRow(row) {
 
 export function buildNotificationFromJobReassignmentAlert(row) {
   return buildJobReassignmentAlert(row)
+}
+
+export function buildNotificationFromJobEventRow(row) {
+  return buildJobEventNotification(row)
 }
 
 /** @deprecated use buildNotificationFromJobReassignmentAlert */

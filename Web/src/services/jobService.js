@@ -1,12 +1,17 @@
 import { supabase } from '../lib/supabaseClient'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { getCompanyAdminById } from './companyService'
-import { notifyPaJobAssignment } from './userNotificationService'
+import { notifyDriverJobAssignment, notifyPaJobAssignment } from './userNotificationService'
+import {
+  notifyManualDriverJobRemoval,
+  notifyPortalCompanyDriverAssigned,
+} from './jobNotificationService'
 import {
   privateDriverBlockedByExpiredVehicleDocs,
   privateVehicleDocsBlockedMessage,
 } from './vehicleDocumentComplianceService'
 import { resolveJobReassignmentOnDriverAssign } from './jobReassignmentService'
+import { isCompanyFleet } from '../utils/fleet'
 
 export const JOB_DRAFT_STORAGE_KEY = 'rideRoster_adminJobDraft_v1'
 
@@ -948,54 +953,23 @@ export async function validateDriverAssignment(jobId, driverId, companyId) {
   }
 }
 
-async function sendJobAssignmentNotification(jobId) {
-  try {
-    const pushApiUrl = (import.meta.env.VITE_PUSH_API_URL || '').replace(/\/$/, '')
-    const { data: { session } } = await supabase.auth.getSession()
-    const accessToken = session?.access_token
-
-    if (!accessToken) {
-      console.warn('Push notification skipped: admin session not available.')
-      return { ok: false, skipped: 'no_admin_session' }
-    }
-
-    if (!pushApiUrl) {
-      console.warn('Push notification skipped: VITE_PUSH_API_URL is not set.')
-      return { ok: false, skipped: 'push_api_url_missing' }
-    }
-
-    const res = await fetch(`${pushApiUrl}/notify/job-assignment`, {
-      method: 'POST',
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ job_id: jobId }),
-    })
-
-    const body = await res.json().catch(async () => {
-      const text = await res.text()
-      return { error: text || res.statusText }
-    })
-
-    if (!res.ok) {
-      console.warn('Push notification failed:', body)
-      return { ok: false, error: body?.error || res.statusText, details: body }
-    }
-
-    console.info('Push notification result:', body)
-    return { ok: true, ...body }
-  } catch (err) {
-    console.warn('Push notification failed:', err?.message || err)
-    return { ok: false, error: err?.message || String(err) }
-  }
+async function resolveDriverApprovalStatusForAssignment(driverId) {
+  const { data: driver, error } = await supabase
+    .from('drivers')
+    .select('fleet')
+    .eq('id', driverId)
+    .maybeSingle()
+  if (error) throw error
+  if (!driver) throw new Error('Driver not found.')
+  return isCompanyFleet(driver.fleet) ? 'accepted' : 'pending'
 }
 
 export async function updateJobAssignedDriver(jobId, driverId) {
+  const approvalStatus = await resolveDriverApprovalStatusForAssignment(driverId)
   const { data, error } = await supabase
     .from('jobs').update({
       assigned_driver_id:     driverId,
-      driver_approval_status: 'pending',
+      driver_approval_status: approvalStatus,
       driver_counter_offer_pay: null,
       updated_at:             new Date().toISOString(),
     })
@@ -1008,12 +982,39 @@ export async function updateJobAssignedDriver(jobId, driverId) {
     console.warn('Failed to resolve job reassignment alerts:', resolveErr?.message || resolveErr)
   }
 
-  const pushResult = await sendJobAssignmentNotification(jobId)
-  return { job: data, pushResult }
+  let notifyResult = null
+  try {
+    notifyResult = await notifyDriverJobAssignment(data, approvalStatus)
+  } catch (notifyErr) {
+    console.warn('Driver job assignment notification failed:', notifyErr?.message || notifyErr)
+  }
+
+  if (approvalStatus === 'accepted') {
+    try {
+      await notifyPortalCompanyDriverAssigned({
+        job: data,
+        driverId,
+      })
+    } catch (portalErr) {
+      console.warn('Portal company assignment notification failed:', portalErr?.message || portalErr)
+    }
+  }
+
+  return { job: data, notifyResult, approvalStatus }
 }
 
 export async function removeJobAssignedDriver(jobId) {
   if (!jobId) throw new Error('Job id is required.')
+
+  const { data: existing, error: loadErr } = await supabase
+    .from('jobs')
+    .select('id, company_id, job_name, client_school_name, internal_job_id, assigned_driver_id')
+    .eq('id', jobId)
+    .maybeSingle()
+  if (loadErr) throw loadErr
+
+  const previousDriverId = existing?.assigned_driver_id || null
+
   const { data, error } = await supabase
     .from('jobs').update({
       assigned_driver_id:     null,
@@ -1023,6 +1024,18 @@ export async function removeJobAssignedDriver(jobId) {
     })
     .eq('id', jobId).select().single()
   if (error) throw error
+
+  if (previousDriverId && existing) {
+    try {
+      await notifyManualDriverJobRemoval({
+        job: existing,
+        driverId: previousDriverId,
+      })
+    } catch (notifyErr) {
+      console.warn('Driver removal notification failed:', notifyErr?.message || notifyErr)
+    }
+  }
+
   return data
 }
 
@@ -1459,22 +1472,9 @@ export async function acceptCounterOffer(jobId, counterOfferPay) {
 * - Clears driver_approval_status
 * - Clears driver_counter_offer_pay
 * - driver_pay remains untouched
+* - Notifies portal + driver (via removeJobAssignedDriver)
 */
 export async function rejectCounterOffer(jobId) {
   if (!jobId) throw new Error('Job id is required.');
-
-  const { data, error } = await supabase
-      .from('jobs')
-      .update({
-          assigned_driver_id: null,
-          driver_approval_status: null,
-          driver_counter_offer_pay: null,
-          updated_at: new Date().toISOString(),
-      })
-      .eq('id', jobId)
-      .select()
-      .single();
-
-  if (error) throw error;
-  return data;
+  return removeJobAssignedDriver(jobId);
 }

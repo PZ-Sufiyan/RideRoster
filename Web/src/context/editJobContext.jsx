@@ -10,8 +10,10 @@ import {
     fetchJobDetailBundle,
     fetchJobSchedulePassengers,
     fetchJobsListPageData,
+    removeJobAssignedDriver,
     timeInputFromDb,
     toPgTime,
+    updateJobAssignedDriver,
 } from '../services/jobService';
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -348,9 +350,12 @@ export function EditJobProvider({ children }) {
         // list or vehicle may have changed since the modal was opened.
         await validateDriverConstraints(jobId, draftDriverId, companyId, selectedPassengers);
 
+        const previousDriverId = bundle?.job?.assigned_driver_id ?? null;
+        const driverChanged = (draftDriverId || null) !== (previousDriverId || null);
+
         setSaveInProgress(true);
         try {
-            // 1 ── Update jobs row
+            // 1 ── Update jobs row (driver assignment handled separately below)
             const { error: jobErr } = await supabase
                 .from('jobs')
                 .update({
@@ -367,7 +372,6 @@ export function EditJobProvider({ children }) {
                     evening_start_time:      toPgTime(step3Draft.eveningStartTime) || null,
                     driver_pay:              parseMoneyInput(step3Draft.driverPay),
                     passenger_assistant_pay: parseMoneyInput(step3Draft.passengerAssistantPay),
-                    assigned_driver_id:      draftDriverId || null,
                     assigned_pa_id:          draftPaId     || null,
                     updated_at:              new Date().toISOString(),
                 })
@@ -375,6 +379,15 @@ export function EditJobProvider({ children }) {
                 .eq('company_id', companyId);
 
             if (jobErr) throw jobErr;
+
+            // 1b ── Driver assignment (company = auto-accepted, private = request flow)
+            if (driverChanged) {
+                if (!draftDriverId) {
+                    await removeJobAssignedDriver(jobId);
+                } else {
+                    await updateJobAssignedDriver(jobId, draftDriverId);
+                }
+            }
 
             // 2 ── Delete only BASE schedule rows (exception_date IS NULL).
             //      Exception rows set by admin are intentionally preserved.
@@ -436,6 +449,7 @@ export function EditJobProvider({ children }) {
         step1Draft, step3Draft,
         selectedPassengers,
         draftDriverId, draftPaId,
+        bundle,
         load,
     ]);
 

@@ -13,6 +13,7 @@ import 'providers/auth_provider.dart';
 import 'providers/leave_provider.dart';
 import 'providers/driver_profile_provider.dart';
 import 'providers/job_provider.dart';
+import 'providers/driver_assigned_jobs_provider.dart';
 import 'providers/pa_job_provider.dart';
 import 'providers/pa_profile_provider.dart';
 import 'repositories/cache_repository.dart';
@@ -144,6 +145,9 @@ class RideRosterApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => PaAssignedJobsProvider(localRepo: localRepo),
         ),
+        ChangeNotifierProvider(
+          create: (_) => DriverAssignedJobsProvider(localRepo: localRepo),
+        ),
         ChangeNotifierProvider(create: (_) => DriverProfileProvider()),
         ChangeNotifierProvider(create: (_) => PaProfileProvider()),
         ChangeNotifierProvider(create: (_) => DriverLeaveProvider()),
@@ -196,6 +200,7 @@ class _SessionBindingsState extends State<_SessionBindings> {
         context.read<JobProvider>().reset();
         context.read<PaJobProvider>().reset();
         context.read<PaAssignedJobsProvider>().reset();
+        context.read<DriverAssignedJobsProvider>().reset();
         clearDriverDashboardSessionCaches();
       });
     });

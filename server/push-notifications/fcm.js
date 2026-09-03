@@ -225,13 +225,27 @@ export async function sendJobAssignmentPush({ job, tokens, supabaseAdmin }) {
     return { ok: true, skipped: 'no_assigned_driver' }
   }
 
-  if (job.driver_approval_status !== 'pending') {
-    return { ok: true, skipped: 'not_pending_approval' }
+  const isPending = job.driver_approval_status === 'pending'
+  const isAccepted = job.driver_approval_status === 'accepted'
+  if (!isPending && !isAccepted) {
+    return { ok: true, skipped: 'not_assignable_approval_status' }
   }
 
   const payLabel = formatPay(job.driver_pay)
-  const title = 'New Job Assignment'
-  const body = `${job.job_name} at ${job.client_school_name} — ${payLabel}/week. Tap to review and accept.`
+  const jobName = job.job_name || 'New job'
+  const school = job.client_school_name || ''
+  const title = isAccepted ? 'Job Assigned' : 'New Job Assignment'
+  let body
+  if (isAccepted) {
+    body = school
+      ? `You have been assigned to ${jobName} at ${school}.`
+      : `You have been assigned to ${jobName}.`
+  } else {
+    body = school
+      ? `New job request for ${jobName} at ${school}. Review it.`
+      : `New job request for ${jobName}. Review it.`
+    if (payLabel && payLabel !== '—') body = `${body} ${payLabel}/week.`
+  }
 
   return sendToTokens({
     tokens,
@@ -239,10 +253,11 @@ export async function sendJobAssignmentPush({ job, tokens, supabaseAdmin }) {
     body,
     data: {
       type: 'job_assignment',
+      assignment_mode: isAccepted ? 'direct' : 'request',
       job_id: String(job.id),
       job_name: String(job.job_name ?? ''),
       client_school_name: String(job.client_school_name ?? ''),
-      driver_pay: String(job.driver_pay ?? ''),
+      ...(isAccepted ? {} : { driver_pay: String(job.driver_pay ?? '') }),
     },
     driverId: job.assigned_driver_id,
     supabaseAdmin,

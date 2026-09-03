@@ -4,18 +4,18 @@ import '../repositories/local_job_repository.dart';
 
 class DashboardStats {
   final int jobsToday;
-  final int pendingRequests;
+  final int notCompleted;
   final int completedJobs;
 
   const DashboardStats({
     required this.jobsToday,
-    required this.pendingRequests,
+    required this.notCompleted,
     required this.completedJobs,
   });
 
   static const empty = DashboardStats(
     jobsToday: 0,
-    pendingRequests: 0,
+    notCompleted: 0,
     completedJobs: 0,
   );
 }
@@ -37,10 +37,10 @@ class DashboardStatsService {
     try {
       final results = await Future.wait<dynamic>([
         _supabase
-            .from('jobs')
+            .from('job_sessions')
             .select('id')
-            .eq('assigned_driver_id', userId)
-            .eq('driver_approval_status', 'pending'),
+            .eq('driver_id', userId)
+            .inFilter('status', ['skipped', 'incomplete']),
         _supabase
             .from('job_sessions')
             .select('id')
@@ -50,14 +50,16 @@ class DashboardStatsService {
 
       return DashboardStats(
         jobsToday: jobsToday,
-        pendingRequests: (results[0] as List).length,
+        notCompleted: (results[0] as List).length,
         completedJobs: (results[1] as List).length,
       );
     } catch (_) {
+      // Offline / network failure — use local session write table.
+      final local = await _localRepo.countDriverSessionStats(userId);
       return DashboardStats(
         jobsToday: jobsToday,
-        pendingRequests: 0,
-        completedJobs: 0,
+        notCompleted: local.notCompleted,
+        completedJobs: local.completed,
       );
     }
   }

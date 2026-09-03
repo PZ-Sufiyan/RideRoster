@@ -224,6 +224,60 @@ export async function notifyPaJobAssignment(job) {
   })
 }
 
+/**
+ * In-app + push notification for a driver when admin assigns a job.
+ * Company drivers (accepted) get a direct-assignment message;
+ * private drivers (pending) get a request-to-review message.
+ * @param {object} job — updated jobs row (must include assigned_driver_id)
+ * @param {'accepted'|'pending'} [approvalStatus]
+ */
+export async function notifyDriverJobAssignment(job, approvalStatus = null) {
+  const driverId = job?.assigned_driver_id
+  if (!driverId) return null
+
+  const status = String(approvalStatus || job.driver_approval_status || '')
+    .trim()
+    .toLowerCase()
+  const isDirect = status === 'accepted'
+  const jobName = job.job_name?.trim() || 'New job'
+  const school = job.client_school_name?.trim() || ''
+  const payNum = job.driver_pay == null || job.driver_pay === '' ? null : Number(job.driver_pay)
+  const payLabel = Number.isFinite(payNum) ? `£${payNum.toFixed(2)}/week` : null
+
+  const title = isDirect ? 'Job Assigned' : 'New Job Assignment'
+  let body
+  if (isDirect) {
+    // Company drivers: no pay in notification copy
+    body = school
+      ? `You have been assigned to ${jobName} at ${school}.`
+      : `You have been assigned to ${jobName}.`
+  } else {
+    body = school
+      ? `New job request for ${jobName} at ${school}. Review it.`
+      : `New job request for ${jobName}. Review it.`
+    if (payLabel) body = `${body} ${payLabel}.`
+  }
+
+  return createUserNotification({
+    userId: driverId,
+    companyId: job.company_id ?? null,
+    notificationType: NOTIFICATION_TYPE_JOB_ASSIGNMENT,
+    title,
+    body: truncatePreview(body),
+    referenceId: job.id,
+    sendPush: true,
+    payload: {
+      job_id: job.id,
+      job_name: jobName,
+      client_school_name: school || null,
+      internal_job_id: job.internal_job_id ?? null,
+      assignment_mode: isDirect ? 'direct' : 'request',
+      driver_approval_status: status || null,
+      ...(isDirect ? {} : { driver_pay: job.driver_pay ?? null }),
+    },
+  })
+}
+
 export async function sendPaMessage({ paId, message }) {
   const text = String(message || '').trim()
   if (!text) throw new Error('Message cannot be empty.')

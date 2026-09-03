@@ -4,16 +4,17 @@ import Sidebar from '../components/Sidebar';
 import Header from '../components/Header';
 import Breadcrumbs from '../components/Breadcrumbs';
 import { SubAdminPermissionsProvider } from '../context/subAdminPermissionsContext';
+import { ToastProvider } from '../context/toastContext';
 import { useAdminNotificationToasts } from '../hooks/useAdminNotificationToasts';
-import { ToastStack } from '../utils/Toast';
 
-const DashboardLayout = () => {
+function DashboardShell() {
     const [isSidebarOpen, setSidebarOpen] = useState(false);
     const location = useLocation();
     const isSubAdmin = location.pathname.startsWith('/team');
     const isAdmin = location.pathname.startsWith('/portal');
     const notificationRole = isSubAdmin ? 'subadmin' : 'admin';
-    const { toasts, dismissToast } = useAdminNotificationToasts(isAdmin || isSubAdmin, notificationRole);
+
+    useAdminNotificationToasts(isAdmin || isSubAdmin, notificationRole);
 
     useEffect(() => {
         setSidebarOpen(false);
@@ -36,10 +37,15 @@ const DashboardLayout = () => {
 
     return (
         <div className="min-h-screen bg-gray-50 flex">
-            <ToastStack toasts={toasts} onClose={dismissToast} />
             {isSubAdmin ? <SubAdminPermissionsProvider>{shell}</SubAdminPermissionsProvider> : shell}
         </div>
     );
-};
+}
+
+const DashboardLayout = () => (
+    <ToastProvider placement="top-right">
+        <DashboardShell />
+    </ToastProvider>
+);
 
 export default DashboardLayout;

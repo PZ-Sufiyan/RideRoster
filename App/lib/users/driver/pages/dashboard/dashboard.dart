@@ -699,8 +699,8 @@ class _StatsGridState extends State<_StatsGrid> {
       _StatData(
         icon: Icons.assignment_outlined,
         iconColor: AppColors.warning,
-        count: '${stats.pendingRequests}',
-        label: 'Pending Requests',
+        count: '${stats.notCompleted}',
+        label: 'Not Completed',
       ),
       _StatData(
         icon: Icons.format_list_bulleted,
@@ -1167,30 +1167,12 @@ class _JobRequestCard extends StatelessWidget {
 class _QuickActionsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    final jobProvider = context.watch<JobProvider>();
-    final checklistDone = jobProvider.checklistCompletedToday;
-    final sessionActive = jobProvider.sessionStarted;
-    // Mirrors the gate used on the Current Job card's "Start Run" button:
-    // pre-ride actions are blocked until today's checklist is complete,
-    // unless a session is already in progress.
-    final preRideBlocked = !checklistDone && !sessionActive;
-
-    void openChecklist() {
-      _pushVehicleChecklist(context).then((_) {
-        if (!context.mounted) return;
-        context.read<JobProvider>().loadJob(silent: true);
-      });
-    }
-
     final actions = [
       _QuickActionData(
-        icon: Icons.play_arrow_rounded,
-        label: 'Start Ride',
+        icon: Icons.person_outline,
+        label: 'Profile',
         iconBgColor: AppColors.success,
-        blocked: preRideBlocked,
-        onTap: preRideBlocked
-            ? openChecklist
-            : () => Navigator.pushNamed(context, AppRoutes.routeDetail),
+        onTap: () => Navigator.pushNamed(context, AppRoutes.driverProfile),
       ),
       _QuickActionData(
         icon: Icons.assignment_outlined,
@@ -1199,24 +1181,17 @@ class _QuickActionsSection extends StatelessWidget {
         onTap: () => _pushVehicleChecklist(context),
       ),
       _QuickActionData(
-        icon: Icons.alt_route,
-        label: 'View Routes',
+        icon: Icons.work_outline,
+        label: 'Assigned Job',
         iconBgColor: const Color(0xFF7C3AED),
-        blocked: preRideBlocked,
-        onTap: preRideBlocked ? openChecklist : null,
+        onTap: () => Navigator.pushNamed(context, AppRoutes.jobDetail),
       ),
       _QuickActionData(
-        icon: Icons.warning_amber_rounded,
-        label: 'Report\nIssue',
+        icon: Icons.notifications_outlined,
+        label: 'Notification',
         iconBgColor: AppColors.warning,
-        onTap: null,
-        // onTap: () async {
-        //   await context.read<LocalJobRepository>().clearAllLocalData();
-        //   if (!context.mounted) return;
-        //   ScaffoldMessenger.of(
-        //     context,
-        //   ).showSnackBar(const SnackBar(content: Text('Local DB cleared')));
-        // },
+        onTap: () =>
+            Navigator.pushNamed(context, AppRoutes.driverNotifications),
       ),
       _QuickActionData(
         icon: Icons.phone,
@@ -1244,25 +1219,31 @@ class _QuickActionsSection extends StatelessWidget {
           ),
         ),
         SizedBox(height: SizeConfig.r(10)),
-        Row(
-          children: List.generate(3, (i) {
-            return Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(right: i < 2 ? SizeConfig.r(10) : 0),
-                child: _QuickActionCard(data: actions[i]),
-              ),
-            );
-          }),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: List.generate(3, (i) {
+              return Expanded(
+                child: Padding(
+                  padding: EdgeInsets.only(right: i < 2 ? SizeConfig.r(10) : 0),
+                  child: _QuickActionCard(data: actions[i]),
+                ),
+              );
+            }),
+          ),
         ),
         SizedBox(height: SizeConfig.r(10)),
-        Row(
-          children: [
-            Expanded(child: _QuickActionCard(data: actions[3])),
-            SizedBox(width: SizeConfig.r(10)),
-            Expanded(child: _QuickActionCard(data: actions[4])),
-            SizedBox(width: SizeConfig.r(10)),
-            Expanded(child: _QuickActionCard(data: actions[5])),
-          ],
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _QuickActionCard(data: actions[3])),
+              SizedBox(width: SizeConfig.r(10)),
+              Expanded(child: _QuickActionCard(data: actions[4])),
+              SizedBox(width: SizeConfig.r(10)),
+              Expanded(child: _QuickActionCard(data: actions[5])),
+            ],
+          ),
         ),
       ],
     );
@@ -1274,14 +1255,12 @@ class _QuickActionData {
   final String label;
   final Color iconBgColor;
   final VoidCallback? onTap;
-  final bool blocked;
 
   const _QuickActionData({
     required this.icon,
     required this.label,
     required this.iconBgColor,
     this.onTap,
-    this.blocked = false,
   });
 }
 
@@ -1291,15 +1270,19 @@ class _QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final blocked = data.blocked;
-    final circleColor = blocked
-        ? AppColors.textLight.withValues(alpha: 0.18)
-        : data.iconBgColor.withValues(alpha: 0.12);
-    final iconColor = blocked ? AppColors.textLight : data.iconBgColor;
+    final labelStyle = TextStyle(
+      fontSize: SizeConfig.sp(11),
+      fontWeight: FontWeight.w600,
+      color: AppColors.textDark,
+      height: 1.3,
+    );
+    // Reserve space for 2 lines so all cards share the same height.
+    final labelHeight = SizeConfig.sp(11) * 1.3 * 2;
 
     return GestureDetector(
       onTap: data.onTap,
       child: Container(
+        width: double.infinity,
         padding: EdgeInsets.symmetric(
           vertical: SizeConfig.r(14),
           horizontal: SizeConfig.r(8),
@@ -1316,61 +1299,30 @@ class _QuickActionCard extends StatelessWidget {
           ],
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            SizedBox(
+            Container(
               width: SizeConfig.r(44),
               height: SizeConfig.r(44),
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Container(
-                    width: SizeConfig.r(44),
-                    height: SizeConfig.r(44),
-                    decoration: BoxDecoration(
-                      color: circleColor,
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      data.icon,
-                      color: iconColor,
-                      size: SizeConfig.r(22),
-                    ),
-                  ),
-                  if (blocked)
-                    Positioned(
-                      right: -SizeConfig.r(2),
-                      top: -SizeConfig.r(2),
-                      child: Container(
-                        width: SizeConfig.r(18),
-                        height: SizeConfig.r(18),
-                        decoration: BoxDecoration(
-                          color: AppColors.warning,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: AppColors.background,
-                            width: SizeConfig.r(1.5),
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.lock,
-                          size: SizeConfig.r(10),
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                ],
+              decoration: BoxDecoration(
+                color: data.iconBgColor.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(
+                data.icon,
+                color: data.iconBgColor,
+                size: SizeConfig.r(22),
               ),
             ),
             SizedBox(height: SizeConfig.r(8)),
-            Text(
-              data.label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(11),
-                fontWeight: FontWeight.w600,
-                color: blocked ? AppColors.textMedium : AppColors.textDark,
-                height: 1.3,
+            SizedBox(
+              height: labelHeight,
+              child: Text(
+                data.label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: labelStyle,
               ),
             ),
           ],

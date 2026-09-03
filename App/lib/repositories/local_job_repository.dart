@@ -426,7 +426,8 @@ class LocalJobRepository {
       return;
     }
 
-    if (outbound != null && SessionSchedule.morningWasStarted(outbound.status)) {
+    if (outbound != null &&
+        SessionSchedule.morningWasStarted(outbound.status)) {
       await _markSessionStatusLocally(
         localSessionId: outbound.localId,
         status: 'incomplete',
@@ -492,19 +493,21 @@ class LocalJobRepository {
     final localSessionId = _uuid.v4();
     final now = DateTime.now();
 
-    await _db.into(_db.sessionsLocal).insert(
-      SessionsLocalCompanion.insert(
-        localId: localSessionId,
-        jobId: jobId,
-        sessionDate: todayDate,
-        direction: direction,
-        status: const Value('skipped'),
-        driverId: driverId,
-        startedAt: Value(now),
-        note: Value(note),
-        isSynced: const Value(false),
-      ),
-    );
+    await _db
+        .into(_db.sessionsLocal)
+        .insert(
+          SessionsLocalCompanion.insert(
+            localId: localSessionId,
+            jobId: jobId,
+            sessionDate: todayDate,
+            direction: direction,
+            status: const Value('skipped'),
+            driverId: driverId,
+            startedAt: Value(now),
+            note: Value(note),
+            isSynced: const Value(false),
+          ),
+        );
 
     await _enqueue(
       opType: 'session_status',
@@ -1008,8 +1011,9 @@ class LocalJobRepository {
     String? vehicleId;
     String? vehicleCompanyId;
 
-    final cachedVehicle =
-        await (_db.select(_db.vehiclesCache)..limit(1)).getSingleOrNull();
+    final cachedVehicle = await (_db.select(
+      _db.vehiclesCache,
+    )..limit(1)).getSingleOrNull();
     if (cachedVehicle != null) {
       vehicleId = cachedVehicle.id;
       vehicleCompanyId = cachedVehicle.companyId;
@@ -1051,7 +1055,9 @@ class LocalJobRepository {
     }
 
     final todayDate = _dateString(DateTime.now());
-    await _db.into(_db.checklistLocal).insertOnConflictUpdate(
+    await _db
+        .into(_db.checklistLocal)
+        .insertOnConflictUpdate(
           ChecklistLocalCompanion.insert(
             id: _uuid.v4(),
             driverId: driverId,
@@ -1194,6 +1200,26 @@ class LocalJobRepository {
     return total;
   }
 
+  /// Counts local session rows for dashboard Completed / Not Completed cards.
+  Future<({int completed, int notCompleted})> countDriverSessionStats(
+    String driverId,
+  ) async {
+    final rows = await (_db.select(_db.sessionsLocal)
+          ..where((t) => t.driverId.equals(driverId)))
+        .get();
+    var completed = 0;
+    var notCompleted = 0;
+    for (final row in rows) {
+      final status = row.status.trim().toLowerCase();
+      if (status == 'completed') {
+        completed++;
+      } else if (status == 'skipped' || status == 'incomplete') {
+        notCompleted++;
+      }
+    }
+    return (completed: completed, notCompleted: notCompleted);
+  }
+
   // ── Day boundary clear ────────────────────────────────────────────────────
   //
   // Called by the midnight timer in JobProvider (same logic as current
@@ -1258,18 +1284,17 @@ class LocalJobRepository {
     if (userId.trim().isEmpty) return null;
 
     final todayDate = _dateString(DateTime.now());
-    final assignedJobIds = (await (_db.select(_db.jobsCache)..where(
-          (t) => t.assignedDriverId.equals(userId),
-        ))
-        .get())
-        .map((j) => j.id)
-        .toSet();
+    final assignedJobIds =
+        (await (_db.select(
+              _db.jobsCache,
+            )..where((t) => t.assignedDriverId.equals(userId))).get())
+            .map((j) => j.id)
+            .toSet();
 
     final localSessions =
         await (_db.select(_db.sessionsLocal)..where(
               (t) =>
-                  t.driverId.equals(userId) &
-                  t.sessionDate.equals(todayDate),
+                  t.driverId.equals(userId) & t.sessionDate.equals(todayDate),
             ))
             .get();
 
@@ -1317,7 +1342,7 @@ class LocalJobRepository {
       }
     });
 
-    return 'This job was removed while you were offline. Local session data was cleared.';
+    return 'This job was removed while you were offline.';
   }
 
   /// Wipes all local tables. Called on logout and from debug tooling.
@@ -1716,6 +1741,108 @@ class LocalJobRepository {
     );
   }
 
+  /// Driver weekly schedule view — same shape as [fetchPaAssignedJob].
+  Future<PaAssignedJobModel?> fetchDriverAssignedJob(String driverUserId) async {
+    final jobRow =
+        await (_db.select(_db.jobsCache)
+              ..where(
+                (t) =>
+                    t.assignedDriverId.equals(driverUserId) &
+                    t.status.isNotIn(['cancelled']) &
+                    t.driverApprovalStatus.equalsNullable('accepted'),
+              )
+              ..limit(1))
+            .getSingleOrNull();
+
+    if (jobRow == null) return null;
+
+    final hasOutbound = jobRow.hasOutbound;
+    final hasInbound = jobRow.hasInbound;
+    final morningStart = _formatTime(jobRow.morningStartTime);
+    final eveningStart = _formatTime(jobRow.eveningStartTime);
+    // Reuse PaDayRun.driverName for the PA label on the driver UI.
+    final companionLabel = (jobRow.assignedPaId != null &&
+            jobRow.assignedPaId!.trim().isNotEmpty)
+        ? 'Passenger Assistant'
+        : '';
+
+    final scheduleRows =
+        await (_db.select(_db.schedulesCache)
+              ..where(
+                (t) => t.jobId.equals(jobRow.id) & t.exceptionDate.isNull(),
+              )
+              ..orderBy([(t) => OrderingTerm.asc(t.stopOrder)]))
+            .get();
+
+    if (scheduleRows.isEmpty) {
+      return PaAssignedJobModel(
+        jobDbId: jobRow.id,
+        jobName: jobRow.jobName,
+        semesterStart: _formatDate(jobRow.semesterStart),
+        semesterEnd: _formatDate(jobRow.semesterEnd),
+        activeDays: [],
+        schedule: {},
+      );
+    }
+
+    final passengerIds = scheduleRows
+        .map((s) => s.passengerId)
+        .toSet()
+        .toList();
+    final profiles = await (_db.select(
+      _db.passengersCache,
+    )..where((t) => t.id.isIn(passengerIds))).get();
+    final profileMap = {for (final p in profiles) p.id: p};
+
+    final rawMap = <String, Map<String, List<SchedulesCacheData>>>{};
+    for (final row in scheduleRows) {
+      if (row.direction == 'outbound' && !hasOutbound) continue;
+      if (row.direction == 'inbound' && !hasInbound) continue;
+      rawMap.putIfAbsent(row.weekday, () => {});
+      rawMap[row.weekday]!.putIfAbsent(row.direction, () => []);
+      rawMap[row.weekday]![row.direction]!.add(row);
+    }
+
+    final schedule = <String, Map<String, PaDayRun>>{};
+    for (final weekday in rawMap.keys) {
+      schedule[weekday] = {};
+      for (final direction in rawMap[weekday]!.keys) {
+        final rows = rawMap[weekday]![direction]!
+          ..sort((a, b) => (a.stopOrder ?? 0).compareTo(b.stopOrder ?? 0));
+
+        final stops = rows.map((row) {
+          final profile = profileMap[row.passengerId];
+          final name = _fullName(profile);
+          return PaScheduleStop(
+            passengerName: name.isEmpty ? 'Student' : name,
+            pickupAddress: row.pickupAddress,
+            dropoffAddress: row.dropoffAddress,
+            pickupTime: _formatTime(row.pickupTime),
+            wheelchairRequired: profile?.wheelchairRequired ?? false,
+            harnessRequired: profile?.harnessRequired ?? false,
+            stopOrder: row.stopOrder ?? 0,
+          );
+        }).toList();
+
+        schedule[weekday]![direction] = PaDayRun(
+          direction: direction,
+          startTime: direction == 'outbound' ? morningStart : eveningStart,
+          driverName: companionLabel,
+          stops: stops,
+        );
+      }
+    }
+
+    return PaAssignedJobModel(
+      jobDbId: jobRow.id,
+      jobName: jobRow.jobName,
+      semesterStart: _formatDate(jobRow.semesterStart),
+      semesterEnd: _formatDate(jobRow.semesterEnd),
+      activeDays: rawMap.keys.toList(),
+      schedule: schedule,
+    );
+  }
+
   /// Mirrors server [job_sessions] + [job_session_passengers] into local write
   /// tables so PA devices (read-only) stay in sync after the driver updates
   /// Supabase from another device.
@@ -1723,7 +1850,8 @@ class LocalJobRepository {
     required String jobId,
     required String todayDate,
     required List<Map<String, dynamic>> sessions,
-    required Map<String, List<Map<String, dynamic>>> passengersByServerSessionId,
+    required Map<String, List<Map<String, dynamic>>>
+    passengersByServerSessionId,
   }) async {
     if (sessions.isEmpty) return;
 
@@ -1735,15 +1863,15 @@ class LocalJobRepository {
         final direction = (sessionRow['direction'] ?? '').toString();
         final status = (sessionRow['status'] ?? 'active').toString();
         final driverId = (sessionRow['driver_id'] ?? '').toString();
-        final startedAt = _parseDateTime(sessionRow['started_at']) ?? DateTime.now();
+        final startedAt =
+            _parseDateTime(sessionRow['started_at']) ?? DateTime.now();
         final completedAt = _parseDateTime(sessionRow['completed_at']);
         final note = sessionRow['note']?.toString().trim();
         final noteValue = (note == null || note.isEmpty) ? null : note;
 
-        var localSession =
-            await (_db.select(_db.sessionsLocal)
-                  ..where((t) => t.serverId.equals(serverId)))
-                .getSingleOrNull();
+        var localSession = await (_db.select(
+          _db.sessionsLocal,
+        )..where((t) => t.serverId.equals(serverId))).getSingleOrNull();
 
         localSession ??=
             await (_db.select(_db.sessionsLocal)..where(
@@ -1757,9 +1885,9 @@ class LocalJobRepository {
         late final String localSessionId;
         if (localSession != null) {
           localSessionId = localSession.localId;
-          await (_db.update(_db.sessionsLocal)
-                ..where((t) => t.localId.equals(localSessionId)))
-              .write(
+          await (_db.update(
+            _db.sessionsLocal,
+          )..where((t) => t.localId.equals(localSessionId))).write(
             SessionsLocalCompanion(
               serverId: Value(serverId),
               status: Value(status),
@@ -1775,21 +1903,23 @@ class LocalJobRepository {
           );
         } else {
           localSessionId = _uuid.v4();
-          await _db.into(_db.sessionsLocal).insert(
-            SessionsLocalCompanion.insert(
-              localId: localSessionId,
-              serverId: Value(serverId),
-              jobId: jobId,
-              sessionDate: todayDate,
-              direction: direction,
-              status: Value(status),
-              driverId: driverId,
-              startedAt: Value(startedAt),
-              completedAt: Value(completedAt),
-              note: Value(noteValue),
-              isSynced: const Value(true),
-            ),
-          );
+          await _db
+              .into(_db.sessionsLocal)
+              .insert(
+                SessionsLocalCompanion.insert(
+                  localId: localSessionId,
+                  serverId: Value(serverId),
+                  jobId: jobId,
+                  sessionDate: todayDate,
+                  direction: direction,
+                  status: Value(status),
+                  driverId: driverId,
+                  startedAt: Value(startedAt),
+                  completedAt: Value(completedAt),
+                  note: Value(noteValue),
+                  isSynced: const Value(true),
+                ),
+              );
         }
 
         final passengerRows = passengersByServerSessionId[serverId] ?? [];
@@ -1802,12 +1932,11 @@ class LocalJobRepository {
           final pickedUpAt = _parseDateTime(pr['picked_up_at']);
           final droppedOffAt = _parseDateTime(pr['dropped_off_at']);
 
-          var localPassenger =
-              serverPassengerId.isNotEmpty
-                  ? await (_db.select(_db.passengersLocal)
-                        ..where((t) => t.serverId.equals(serverPassengerId)))
-                      .getSingleOrNull()
-                  : null;
+          var localPassenger = serverPassengerId.isNotEmpty
+              ? await (_db.select(_db.passengersLocal)
+                      ..where((t) => t.serverId.equals(serverPassengerId)))
+                    .getSingleOrNull()
+              : null;
 
           localPassenger ??=
               await (_db.select(_db.passengersLocal)..where(
@@ -1818,9 +1947,9 @@ class LocalJobRepository {
                   .getSingleOrNull();
 
           if (localPassenger != null) {
-            await (_db.update(_db.passengersLocal)
-                  ..where((t) => t.localId.equals(localPassenger!.localId)))
-                .write(
+            await (_db.update(
+              _db.passengersLocal,
+            )..where((t) => t.localId.equals(localPassenger!.localId))).write(
               PassengersLocalCompanion(
                 serverId: serverPassengerId.isNotEmpty
                     ? Value(serverPassengerId)
@@ -1833,28 +1962,30 @@ class LocalJobRepository {
               ),
             );
           } else {
-            await _db.into(_db.passengersLocal).insert(
-              PassengersLocalCompanion.insert(
-                localId: _uuid.v4(),
-                serverId: serverPassengerId.isNotEmpty
-                    ? Value(serverPassengerId)
-                    : const Value(null),
-                localSessionId: localSessionId,
-                passengerId: passengerId,
-                stopOrder: _asInt(pr['stop_order']),
-                status: Value(prStatus),
-                pickupAddress: (pr['pickup_address'] ?? '').toString(),
-                pickupPostcode: Value(pr['pickup_postcode']?.toString()),
-                pickupLatitude: Value(_asDouble(pr['pickup_latitude'])),
-                pickupLongitude: Value(_asDouble(pr['pickup_longitude'])),
-                dropoffAddress: (pr['dropoff_address'] ?? '').toString(),
-                dropoffPostcode: Value(pr['dropoff_postcode']?.toString()),
-                pickedUpAt: Value(pickedUpAt),
-                droppedOffAt: Value(droppedOffAt),
-                notes: Value(pr['notes']?.toString()),
-                isSynced: const Value(true),
-              ),
-            );
+            await _db
+                .into(_db.passengersLocal)
+                .insert(
+                  PassengersLocalCompanion.insert(
+                    localId: _uuid.v4(),
+                    serverId: serverPassengerId.isNotEmpty
+                        ? Value(serverPassengerId)
+                        : const Value(null),
+                    localSessionId: localSessionId,
+                    passengerId: passengerId,
+                    stopOrder: _asInt(pr['stop_order']),
+                    status: Value(prStatus),
+                    pickupAddress: (pr['pickup_address'] ?? '').toString(),
+                    pickupPostcode: Value(pr['pickup_postcode']?.toString()),
+                    pickupLatitude: Value(_asDouble(pr['pickup_latitude'])),
+                    pickupLongitude: Value(_asDouble(pr['pickup_longitude'])),
+                    dropoffAddress: (pr['dropoff_address'] ?? '').toString(),
+                    dropoffPostcode: Value(pr['dropoff_postcode']?.toString()),
+                    pickedUpAt: Value(pickedUpAt),
+                    droppedOffAt: Value(droppedOffAt),
+                    notes: Value(pr['notes']?.toString()),
+                    isSynced: const Value(true),
+                  ),
+                );
           }
         }
       }
@@ -2021,16 +2152,14 @@ class LocalJobRepository {
   Future<String?> _resolvePassengerLocalIdByAnyKey(String id) async {
     if (id.isEmpty) return null;
 
-    final byLocal =
-        await (_db.select(_db.passengersLocal)
-              ..where((t) => t.localId.equals(id)))
-            .getSingleOrNull();
+    final byLocal = await (_db.select(
+      _db.passengersLocal,
+    )..where((t) => t.localId.equals(id))).getSingleOrNull();
     if (byLocal != null) return byLocal.localId;
 
-    final byServer =
-        await (_db.select(_db.passengersLocal)
-              ..where((t) => t.serverId.equals(id)))
-            .getSingleOrNull();
+    final byServer = await (_db.select(
+      _db.passengersLocal,
+    )..where((t) => t.serverId.equals(id))).getSingleOrNull();
     return byServer?.localId;
   }
 

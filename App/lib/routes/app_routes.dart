@@ -8,6 +8,7 @@ import '../users/auth/pages/register_passenger_assistant.dart';
 import '../users/driver/pages/dashboard/dashboard.dart';
 import '../users/driver/pages/dashboard/vehicle_check_list.dart';
 import '../users/driver/pages/job/complete_job.dart';
+import '../users/driver/pages/job/job_detail.dart';
 import '../users/driver/pages/job/pickup.dart';
 import '../users/driver/pages/job/pickup_que.dart';
 import '../users/driver/pages/job/requested_jobs.dart';
@@ -43,6 +44,7 @@ class AppRoutes {
   static const String driverEditProfile = '/driver/profile/edit';
   static const String driverNotifications = '/driver/notifications';
   static const String requestedJobs = '/driver/requested-jobs';
+  static const String jobDetail = '/driver/job-detail';
   static const String routeDetail = '/driver/route-detail';
   static const String pickupQueue = '/driver/pickup-queue';
   static const String pickupPage = '/driver/pickup';
@@ -114,6 +116,9 @@ class AppRoutes {
           settings: settings,
           builder: (_) => const RequestedJobsPage(),
         );
+
+      case jobDetail:
+        return MaterialPageRoute(builder: (_) => const DriverJobDetailPage());
 
       case routeDetail:
         return MaterialPageRoute(builder: (_) => const RouteDetailPage());
