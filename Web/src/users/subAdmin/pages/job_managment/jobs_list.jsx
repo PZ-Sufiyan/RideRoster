@@ -19,7 +19,9 @@ import {
 } from 'react-icons/md';
 import { useAppToast } from '../../../../context/toastContext';
 import {
+    COMPLETED_JOB_ASSIGN_ERROR,
     driversAvailableForAssignment,
+    isJobCompleted,
     passengerAssistantsAvailableForAssignment,
     validateDriverAssignment,
     updateJobAssignedDriver,
@@ -32,6 +34,10 @@ import { truncateText } from '../../../../utils/truncateText';
 import { useSubAdminPermissions } from '../../../../context/subAdminPermissionsContext';
 import { useJobsListRealtimeSync } from '../../../../hooks/useJobsListRealtimeSync';
 import { useJobsList } from '../../../../hooks/useJobsList';
+import DriverFleetFilterRadios, {
+    DRIVER_FLEET_FILTER,
+    driverMatchesFleetFilter,
+} from '../../../../components/DriverFleetFilterRadios';
 
 const ConfirmDialog = ({ open, title, message, confirmLabel = 'Remove', onConfirm, onCancel, danger = true }) => {
     if (!open) return null;
@@ -65,6 +71,8 @@ const ConfirmDialog = ({ open, title, message, confirmLabel = 'Remove', onConfir
     );
 };
 
+const ITEMS_PER_PAGE = 10;
+
 const ActiveJobs = () => {
     const navigate = useNavigate();
     const { can } = useSubAdminPermissions();
@@ -88,9 +96,11 @@ const ActiveJobs = () => {
     const [selectedJob, setSelectedJob] = useState(null);
     const { pushToast } = useAppToast();
     const [driverQuery, setDriverQuery] = useState('');
+    const [driverFleetFilter, setDriverFleetFilter] = useState(DRIVER_FLEET_FILTER.ALL);
     const [paQuery, setPaQuery] = useState('');
     const [assigningDriverId, setAssigningDriverId] = useState(null);
     const [statusFilter, setStatusFilter] = useState('all');
+    const [currentPage, setCurrentPage] = useState(1);
     const [confirmDialog, setConfirmDialog] = useState({ open: false, type: null, job: null });
 
     const menuRef = useRef(null);
@@ -165,8 +175,15 @@ const ActiveJobs = () => {
 
     const handleAssignDriver = (job) => {
         if (!can('edit_jobs')) return;
+        if (isJobCompleted(job)) {
+            pushToast('warning', COMPLETED_JOB_ASSIGN_ERROR);
+            setActiveMenu(null);
+            setActionMenuAnchor(null);
+            return;
+        }
         setSelectedJob(job);
         setDriverQuery('');
+        setDriverFleetFilter(DRIVER_FLEET_FILTER.ALL);
         setShowAssignDriver(true);
         setActiveMenu(null);
         setActionMenuAnchor(null);
@@ -174,6 +191,12 @@ const ActiveJobs = () => {
 
     const handleAssignPA = (job) => {
         if (!can('edit_jobs')) return;
+        if (isJobCompleted(job)) {
+            pushToast('warning', COMPLETED_JOB_ASSIGN_ERROR);
+            setActiveMenu(null);
+            setActionMenuAnchor(null);
+            return;
+        }
         setSelectedJob(job);
         setPaQuery('');
         setShowAssignPA(true);
@@ -270,6 +293,7 @@ const ActiveJobs = () => {
         const q = driverQuery.trim().toLowerCase();
         return available
             .filter((d) => {
+                if (!driverMatchesFleetFilter(d, driverFleetFilter)) return false;
                 if (!q) return true;
                 const name = `${d.first_name || ''} ${d.last_name || ''}`.toLowerCase();
                 const lic = (d.license_no || '').toLowerCase();
@@ -282,7 +306,7 @@ const ActiveJobs = () => {
                 vehicleCode: d.license_no || '—',
                 avatar: `https://i.pravatar.cc/150?u=${encodeURIComponent(d.id)}`,
             }));
-    }, [selectedJob, showAssignDriver, driversCatalog, jobsMinimal, driverQuery]);
+    }, [selectedJob, showAssignDriver, driversCatalog, jobsMinimal, driverQuery, driverFleetFilter]);
 
     const filteredPaRows = useMemo(() => {
         if (!selectedJob || !showAssignPA) return [];
@@ -314,7 +338,34 @@ const ActiveJobs = () => {
     }, [jobs, statusFilter]);
 
     const totalJobs = filteredJobs.length;
-    const footerLabel = totalJobs === 0 ? '0' : `1–${totalJobs}`;
+    const totalPages = Math.max(1, Math.ceil(totalJobs / ITEMS_PER_PAGE));
+    const paginatedJobs = filteredJobs.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE,
+    );
+    const rangeStart = totalJobs === 0 ? 0 : (currentPage - 1) * ITEMS_PER_PAGE + 1;
+    const rangeEnd = Math.min(currentPage * ITEMS_PER_PAGE, totalJobs);
+    const footerLabel = totalJobs === 0 ? '0' : `${rangeStart}–${rangeEnd}`;
+
+    useEffect(() => {
+        setCurrentPage(1);
+    }, [statusFilter]);
+
+    useEffect(() => {
+        if (currentPage > totalPages) setCurrentPage(totalPages);
+    }, [currentPage, totalPages]);
+
+    const getPageNumbers = () => {
+        if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);
+        const pages = [1];
+        if (currentPage > 3) pages.push('...');
+        for (let i = Math.max(2, currentPage - 1); i <= Math.min(totalPages - 1, currentPage + 1); i += 1) {
+            pages.push(i);
+        }
+        if (currentPage < totalPages - 2) pages.push('...');
+        pages.push(totalPages);
+        return pages;
+    };
 
     return (
         <div className="space-y-6">
@@ -323,8 +374,12 @@ const ActiveJobs = () => {
                 title={confirmDialog.type === 'driver' ? 'Remove Driver?' : 'Remove Passenger Assistant?'}
                 message={
                     confirmDialog.type === 'driver'
-                        ? `This will unassign the driver from ${confirmDialog.job ? formatShortJobLabel(confirmDialog.job.id) : 'this job'}. The job will return to "Unassigned" status.`
-                        : `This will unassign the passenger assistant from ${confirmDialog.job ? formatShortJobLabel(confirmDialog.job.id) : 'this job'}.`
+                        ? isJobCompleted(confirmDialog.job)
+                            ? `This will unassign the driver from ${confirmDialog.job ? formatShortJobLabel(confirmDialog.job.id) : 'this job'}. This job is completed, so a replacement cannot be assigned.`
+                            : `This will unassign the driver from ${confirmDialog.job ? formatShortJobLabel(confirmDialog.job.id) : 'this job'}. The job will return to "Unassigned" status.`
+                        : isJobCompleted(confirmDialog.job)
+                            ? `This will unassign the passenger assistant from ${confirmDialog.job ? formatShortJobLabel(confirmDialog.job.id) : 'this job'}. This job is completed, so a replacement cannot be assigned.`
+                            : `This will unassign the passenger assistant from ${confirmDialog.job ? formatShortJobLabel(confirmDialog.job.id) : 'this job'}.`
                 }
                 confirmLabel="Remove"
                 onConfirm={executeRemove}
@@ -405,7 +460,7 @@ const ActiveJobs = () => {
                         </thead>
                         <tbody className="divide-y divide-gray-50" aria-busy={loading}>
                             {loading &&
-                                Array.from({ length: 6 }).map((_, i) => (
+                                Array.from({ length: ITEMS_PER_PAGE }).map((_, i) => (
                                     <tr key={`jobs-skeleton-${i}`}>
                                         <td className="px-6 py-5"><ShimmerBlock className="w-4 h-4 rounded" rounded="rounded" /></td>
                                         <td className="px-6 py-5">
@@ -435,7 +490,7 @@ const ActiveJobs = () => {
                                         <td className="px-6 py-5"><ShimmerBlock className="ml-auto h-8 w-8 rounded-full" rounded="rounded-full" /></td>
                                     </tr>
                                 ))}
-                            {!loading && filteredJobs.map((job, idx) => (
+                            {!loading && paginatedJobs.map((job, idx) => (
                                 <tr key={job.id} className="hover:bg-gray-50/50 transition-all">
                                     <td className="px-6 py-5">
                                         <input
@@ -475,7 +530,7 @@ const ActiveJobs = () => {
                                                     </p>
                                                 </div>
                                             </div>
-                                        ) : can('edit_jobs') ? (
+                                        ) : can('edit_jobs') && !isJobCompleted(job) ? (
                                             <button
                                                 onClick={() => handleAssignDriver(job)}
                                                 className="px-4 py-1.5 bg-orange-50 text-orange-600 rounded-lg text-[11px] font-bold border border-orange-100 hover:bg-orange-100 transition-all"
@@ -565,13 +620,38 @@ const ActiveJobs = () => {
                         <span className="text-gray-900 font-bold">{totalJobs}</span> jobs
                     </p>
                     <div className="flex items-center gap-1.5">
-                        <button className="p-1.5 border border-gray-200 rounded-lg text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-50">
+                        <button
+                            type="button"
+                            onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                            disabled={currentPage === 1 || totalJobs === 0}
+                            className="p-1.5 border border-gray-200 rounded-lg text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-50"
+                        >
                             <MdChevronLeft size={20} />
                         </button>
-                        <button className="w-8 h-8 flex items-center justify-center rounded-lg bg-[#F4F9FF] text-[#004D6D] border border-blue-100 text-[13px] font-bold">
-                            1
-                        </button>
-                        <button className="p-1.5 border border-gray-200 rounded-lg text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-50">
+                        {getPageNumbers().map((page, i) =>
+                            page === '...' ? (
+                                <span key={`ellipsis-${i}`} className="px-2 text-gray-400 text-[12px]">...</span>
+                            ) : (
+                                <button
+                                    key={page}
+                                    type="button"
+                                    onClick={() => setCurrentPage(page)}
+                                    className={`w-8 h-8 flex items-center justify-center rounded-lg border text-[13px] font-bold ${
+                                        currentPage === page
+                                            ? 'bg-[#F4F9FF] text-[#004D6D] border-blue-100'
+                                            : 'border-gray-200 text-gray-500 hover:bg-gray-50'
+                                    }`}
+                                >
+                                    {page}
+                                </button>
+                            ),
+                        )}
+                        <button
+                            type="button"
+                            onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                            disabled={currentPage === totalPages || totalJobs === 0}
+                            className="p-1.5 border border-gray-200 rounded-lg text-gray-400 hover:bg-gray-50 transition-all disabled:opacity-50"
+                        >
                             <MdChevronRight size={20} />
                         </button>
                     </div>
@@ -607,6 +687,12 @@ const ActiveJobs = () => {
                                     Drivers must be approved and already have a vehicle assigned. Drivers on other jobs are hidden. Assignment will be blocked if the vehicle has insufficient seats or lacks wheelchair access.
                                 </span>
                             </div>
+
+                            <DriverFleetFilterRadios
+                                name="job-list-driver-fleet"
+                                value={driverFleetFilter}
+                                onChange={setDriverFleetFilter}
+                            />
 
                             <div className="relative w-full">
                                 <input
@@ -785,7 +871,7 @@ const ActiveJobs = () => {
 
             {activeMenu !== null &&
                 actionMenuAnchor &&
-                filteredJobs[activeMenu] &&
+                paginatedJobs[activeMenu] &&
                 createPortal(
                     <div
                         ref={menuRef}
@@ -798,7 +884,7 @@ const ActiveJobs = () => {
                                 type="button"
                                 role="menuitem"
                                 onClick={() => {
-                                    const job = filteredJobs[activeMenu];
+                                    const job = paginatedJobs[activeMenu];
                                     setActiveMenu(null);
                                     setActionMenuAnchor(null);
                                     navigate(`/team/jobs/${job.id}`);
@@ -810,52 +896,57 @@ const ActiveJobs = () => {
 
                             {can('edit_jobs') && (
                                 <>
-                                    {filteredJobs[activeMenu].driver ? (
+                                    {paginatedJobs[activeMenu].driver ? (
                                         <>
+                                            {!isJobCompleted(paginatedJobs[activeMenu]) && (
+                                                <button
+                                                    type="button"
+                                                    role="menuitem"
+                                                    onClick={() => handleAssignDriver(paginatedJobs[activeMenu])}
+                                                    className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
+                                                >
+                                                    Reassign Driver
+                                                </button>
+                                            )}
                                             <button
                                                 type="button"
                                                 role="menuitem"
-                                                onClick={() => handleAssignDriver(filteredJobs[activeMenu])}
-                                                className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
-                                            >
-                                                Reassign Driver
-                                            </button>
-                                            <button
-                                                type="button"
-                                                role="menuitem"
-                                                onClick={() => handleRemoveDriver(filteredJobs[activeMenu])}
+                                                onClick={() => handleRemoveDriver(paginatedJobs[activeMenu])}
                                                 className="w-full flex items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 text-left font-medium"
                                             >
                                                 <MdPersonRemove size={15} />
                                                 Remove Driver
                                             </button>
                                         </>
-                                    ) : (
+                                    ) : !isJobCompleted(paginatedJobs[activeMenu]) ? (
                                         <button
                                             type="button"
                                             role="menuitem"
-                                            onClick={() => handleAssignDriver(filteredJobs[activeMenu])}
+                                            onClick={() => handleAssignDriver(paginatedJobs[activeMenu])}
                                             className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
                                         >
                                             Add Driver
                                         </button>
-                                    )}
+                                    ) : null}
 
+                                    {(paginatedJobs[activeMenu].pa || !isJobCompleted(paginatedJobs[activeMenu])) && (
                                     <div className="border-t border-gray-50">
-                                        {filteredJobs[activeMenu].pa ? (
+                                        {paginatedJobs[activeMenu].pa ? (
                                             <>
+                                                {!isJobCompleted(paginatedJobs[activeMenu]) && (
+                                                    <button
+                                                        type="button"
+                                                        role="menuitem"
+                                                        onClick={() => handleAssignPA(paginatedJobs[activeMenu])}
+                                                        className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
+                                                    >
+                                                        Reassign PA
+                                                    </button>
+                                                )}
                                                 <button
                                                     type="button"
                                                     role="menuitem"
-                                                    onClick={() => handleAssignPA(filteredJobs[activeMenu])}
-                                                    className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
-                                                >
-                                                    Reassign PA
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    role="menuitem"
-                                                    onClick={() => handleRemovePA(filteredJobs[activeMenu])}
+                                                    onClick={() => handleRemovePA(paginatedJobs[activeMenu])}
                                                     className="w-full flex items-center gap-2 px-4 py-2.5 text-[13px] text-red-600 hover:bg-red-50 text-left font-medium"
                                                 >
                                                     <MdPersonRemove size={15} />
@@ -866,13 +957,14 @@ const ActiveJobs = () => {
                                             <button
                                                 type="button"
                                                 role="menuitem"
-                                                onClick={() => handleAssignPA(filteredJobs[activeMenu])}
+                                                onClick={() => handleAssignPA(paginatedJobs[activeMenu])}
                                                 className="w-full flex items-center px-4 py-2.5 text-[13px] text-gray-700 hover:bg-gray-50 text-left font-medium"
                                             >
                                                 Add PA
                                             </button>
                                         )}
                                     </div>
+                                    )}
                                 </>
                             )}
                         </div>

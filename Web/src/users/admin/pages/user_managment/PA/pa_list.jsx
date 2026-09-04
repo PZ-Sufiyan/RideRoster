@@ -175,7 +175,7 @@ const PAListPage = () => {
 
     const menuPa = openMenu ? pas.find((p) => p.id === openMenu.paId) : null;
     const paMenuActions = menuPa ? PA_MENU_ACTIONS : [];
-    const shimmerRows = Array.from({ length: 5 });
+    const shimmerRows = Array.from({ length: ITEMS_PER_PAGE });
 
     const toggleRow = (id) => setSelectedRows((prev) =>
         prev.includes(id) ? prev.filter((r) => r !== id) : [...prev, id]

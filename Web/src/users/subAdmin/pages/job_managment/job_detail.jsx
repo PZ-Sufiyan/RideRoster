@@ -18,6 +18,7 @@ import {
     formatTimeDisplay,
 } from '../../../../services/jobService';
 import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer';
+import JobDriverPayHistory from '../../../../components/JobDriverPayHistory';
 import { useSubAdminPermissions } from '../../../../context/subAdminPermissionsContext';
 
 const defaultAvatar = (seed) => `https://i.pravatar.cc/150?u=${encodeURIComponent(String(seed))}`;
@@ -222,7 +223,13 @@ const JobDetail = () => {
                     <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm"><div className="flex items-center gap-2 mb-4"><MdCalendarToday size={16} className="text-[#004D6D]" /><h2 className="text-[14px] font-bold text-gray-900">Semester</h2></div><div className="space-y-2.5"><div className="flex justify-between text-[13px]"><span className="text-gray-500">Start</span><span className="font-bold text-gray-800">{formatSemesterDate(job?.semester_start)}</span></div><div className="flex justify-between text-[13px]"><span className="text-gray-500">End</span><span className="font-bold text-gray-800">{formatSemesterDate(job?.semester_end)}</span></div></div></div>
                     <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm"><h2 className="text-[14px] font-bold text-gray-900 mb-4">Assigned Driver</h2>{driverName ? <div className="flex items-center gap-3"><img src={defaultAvatar(bundle.driver.id)} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" /><div><p className="text-[14px] font-bold text-gray-900">{driverName}</p><p className="text-[12px] text-gray-500 mt-0.5">{vehicleLabel || '?'}</p></div></div> : <p className="text-[13px] text-gray-500">No driver assigned</p>}</div>
                     <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm"><h2 className="text-[14px] font-bold text-gray-900 mb-4">Passenger Assistant</h2>{paName ? <div className="flex items-center gap-3"><img src={bundle.pa.profile_picture_url || defaultAvatar(bundle.pa.id)} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" /><div><p className="text-[14px] font-bold text-gray-900">{paName}</p><p className="text-[12px] text-gray-500 mt-0.5">Passenger Assistant</p></div></div> : <p className="text-[13px] text-gray-500">No passenger assistant assigned</p>}</div>
-                    <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm border-t-4 border-t-green-500"><h2 className="text-[14px] font-bold text-gray-900 mb-4">Compensation</h2><InfoRow label="Total" value={totalPay > 0 ? `?${totalPay.toFixed(2)}` : '?'} valueClass="text-green-600" /></div>
+                    <div className="bg-white border border-gray-100 rounded-2xl p-5 shadow-sm border-t-4 border-t-green-500">
+                        <h2 className="text-[14px] font-bold text-gray-900 mb-4">Compensation</h2>
+                        <InfoRow label="Driver Pay" value={job?.driver_pay != null ? `£${Number(job.driver_pay).toFixed(2)}` : '—'} />
+                        <InfoRow label="PA Pay" value={job?.passenger_assistant_pay != null ? `£${Number(job.passenger_assistant_pay).toFixed(2)}` : '—'} />
+                        <InfoRow label="Total" value={totalPay > 0 ? `£${totalPay.toFixed(2)}` : '—'} valueClass="text-green-600" />
+                        <JobDriverPayHistory rows={bundle?.driverPayHistory} />
+                    </div>
                 </div>
             </div>
 

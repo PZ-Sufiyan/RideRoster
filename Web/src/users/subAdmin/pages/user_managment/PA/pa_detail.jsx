@@ -26,7 +26,7 @@ import {
 import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
 import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 
 const DOC_TYPE_LABELS = {
     [PA_DOCUMENT_TYPES.PASSPORT]: 'Passport',

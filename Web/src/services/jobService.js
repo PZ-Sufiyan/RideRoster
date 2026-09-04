@@ -672,7 +672,7 @@ export async function fetchJobDetailBundle(jobId, companyId) {
 
   const isNewModel = Boolean(job.semester_start)
 
-  const [driverRes, paRes, vehRes] = await Promise.all([
+  const [driverRes, paRes, vehRes, histRes] = await Promise.all([
     job.assigned_driver_id
       ? supabase.from('drivers').select('*').eq('id', job.assigned_driver_id).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
@@ -682,11 +682,20 @@ export async function fetchJobDetailBundle(jobId, companyId) {
     job.assigned_driver_id
       ? supabase.from('vehicles').select('*').eq('company_id', companyId).eq('driver_id', job.assigned_driver_id).limit(1).maybeSingle()
       : Promise.resolve({ data: null, error: null }),
+    supabase
+      .from('job_driver_pay_history')
+      .select('id, driver_id, approved_pay, approved_at, ended_at, end_reason, driver:drivers(id, first_name, last_name)')
+      .eq('job_id', jobId)
+      .order('approved_at', { ascending: false }),
   ])
 
   if (driverRes.error) throw driverRes.error
   if (paRes.error)     throw paRes.error
   if (vehRes.error)    throw vehRes.error
+  if (histRes.error) {
+    console.warn('job_driver_pay_history unavailable:', histRes.error.message)
+  }
+  const driverPayHistory = histRes.error ? [] : (histRes.data || [])
 
   if (isNewModel) {
     return {
@@ -700,6 +709,7 @@ export async function fetchJobDetailBundle(jobId, companyId) {
       pa:             paRes.data,
       vehicle:        vehRes.data,
       passengersById: new Map(),
+      driverPayHistory,
     }
   }
 
@@ -750,6 +760,7 @@ export async function fetchJobDetailBundle(jobId, companyId) {
     pickupStops, dropoffStops,
     driver: driverRes.data, pa: paRes.data, vehicle: vehRes.data,
     passengersById,
+    driverPayHistory,
   }
 }
 
@@ -852,6 +863,7 @@ export async function removePassengerRouteFromJob(jobId, passengerId) {
 
 export async function validateDriverAssignment(jobId, driverId, companyId) {
   if (!jobId || !driverId || !companyId) throw new Error('Job, driver, and company are required.')
+  await assertJobAllowsNewAssignment(jobId)
 
   const { data: conflictingJobs, error: conflictErr } = await supabase
     .from('jobs')
@@ -964,15 +976,20 @@ async function resolveDriverApprovalStatusForAssignment(driverId) {
   return isCompanyFleet(driver.fleet) ? 'accepted' : 'pending'
 }
 
-export async function updateJobAssignedDriver(jobId, driverId) {
+export async function updateJobAssignedDriver(jobId, driverId, extras = {}) {
+  await assertJobAllowsNewAssignment(jobId)
   const approvalStatus = await resolveDriverApprovalStatusForAssignment(driverId)
-  const { data, error } = await supabase
-    .from('jobs').update({
+  const payload = {
       assigned_driver_id:     driverId,
       driver_approval_status: approvalStatus,
       driver_counter_offer_pay: null,
       updated_at:             new Date().toISOString(),
-    })
+  }
+  if (Object.prototype.hasOwnProperty.call(extras, 'driver_pay')) {
+    payload.driver_pay = extras.driver_pay
+  }
+  const { data, error } = await supabase
+    .from('jobs').update(payload)
     .eq('id', jobId).select().single()
   if (error) throw error
 
@@ -1040,6 +1057,7 @@ export async function removeJobAssignedDriver(jobId) {
 }
 
 export async function updateJobAssignedPa(jobId, paId) {
+  await assertJobAllowsNewAssignment(jobId)
   const { data, error } = await supabase
     .from('jobs').update({ assigned_pa_id: paId, updated_at: new Date().toISOString() })
     .eq('id', jobId).select().single()
@@ -1125,6 +1143,46 @@ export function deriveJobUiStatus(job) {
   if (s === 'active')          return { label: 'In Progress',  statusColor: 'bg-green-50 text-green-600 border-green-100' }
   if (s === 'completed')       return { label: 'Completed',    statusColor: 'bg-gray-50 text-gray-600 border-gray-100' }
   return { label: 'Upcoming', statusColor: 'bg-blue-50 text-blue-600 border-blue-100' }
+}
+
+export const COMPLETED_JOB_ASSIGN_ERROR =
+  'This job is completed. You can remove the assigned driver or PA, but cannot assign or reassign anyone.'
+
+/** True for portal Completed jobs (DB status or semester ended). Works on raw jobs and list rows. */
+export function isJobCompleted(job) {
+  if (!job) return false
+
+  const statusLabel = String(job.status || '').trim().toLowerCase()
+  const rawStatus = String(job.statusRaw || '').trim().toLowerCase()
+  if (
+    statusLabel === 'cancelled' ||
+    statusLabel === 'canceled' ||
+    rawStatus === 'cancelled' ||
+    rawStatus === 'canceled'
+  ) {
+    return false
+  }
+  if (statusLabel === 'completed' || statusLabel === 'complete') return true
+  if (rawStatus === 'completed' || rawStatus === 'complete') return true
+
+  const semesterEnd = job.semester_end || job.semesterEnd
+  if (semesterEnd) {
+    const today = new Date().toISOString().slice(0, 10)
+    if (today > String(semesterEnd).slice(0, 10)) return true
+  }
+  return false
+}
+
+export async function assertJobAllowsNewAssignment(jobId) {
+  if (!jobId) throw new Error('Job id is required.')
+  const { data: job, error } = await supabase
+    .from('jobs')
+    .select('id, status, semester_start, semester_end')
+    .eq('id', jobId)
+    .maybeSingle()
+  if (error) throw error
+  if (!job) throw new Error('Job not found.')
+  if (isJobCompleted(job)) throw new Error(COMPLETED_JOB_ASSIGN_ERROR)
 }
 
 export function formatPassengersCapacityLabel(passengerCount, seatCapacityTotal) {

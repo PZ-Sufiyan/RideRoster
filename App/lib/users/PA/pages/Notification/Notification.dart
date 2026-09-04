@@ -17,7 +17,7 @@ class _PaNotificationColors {
   static const Color iconRedBg = Color(0xFFFEE2E2);
 }
 
-enum _NotificationFilter { all, leaveStatus, message, newJobs, document, unread }
+enum _NotificationFilter { all, unread }
 
 class PaNotificationsPage extends StatefulWidget {
   const PaNotificationsPage({super.key});
@@ -83,20 +83,10 @@ class _PaNotificationsPageState extends State<PaNotificationsPage> {
   int get _unreadCount => _items.where((n) => n.isUnread).length;
 
   List<UserNotificationItem> get _filteredItems {
-    switch (_selectedFilter) {
-      case _NotificationFilter.leaveStatus:
-        return _items.where((n) => n.notificationType == 'leave_status').toList();
-      case _NotificationFilter.message:
-        return _items.where((n) => n.notificationType == 'message').toList();
-      case _NotificationFilter.newJobs:
-        return _items.where((n) => n.notificationType == 'job_assignment').toList();
-      case _NotificationFilter.document:
-        return _items.where((n) => n.notificationType == 'document_expiry').toList();
-      case _NotificationFilter.unread:
-        return _items.where((n) => n.isUnread).toList();
-      case _NotificationFilter.all:
-        return _items;
+    if (_selectedFilter == _NotificationFilter.unread) {
+      return _items.where((n) => n.isUnread).toList();
     }
+    return _items;
   }
 
   void _exitSelectionMode() {
@@ -213,17 +203,6 @@ class _PaNotificationsPageState extends State<PaNotificationsPage> {
             _FilterChips(
               selectedFilter: _selectedFilter,
               unreadCount: _unreadCount,
-              messageCount:
-                  _items.where((n) => n.notificationType == 'message').length,
-              leaveCount: _items
-                  .where((n) => n.notificationType == 'leave_status')
-                  .length,
-              jobCount: _items
-                  .where((n) => n.notificationType == 'job_assignment')
-                  .length,
-              documentCount: _items
-                  .where((n) => n.notificationType == 'document_expiry')
-                  .length,
               onSelected: (f) => setState(() => _selectedFilter = f),
             ),
             SizedBox(height: SizeConfig.r(16)),
@@ -454,26 +433,17 @@ class _NotificationsSummaryCard extends StatelessWidget {
 class _FilterChips extends StatelessWidget {
   final _NotificationFilter selectedFilter;
   final int unreadCount;
-  final int messageCount;
-  final int leaveCount;
-  final int jobCount;
-  final int documentCount;
   final ValueChanged<_NotificationFilter> onSelected;
 
   const _FilterChips({
     required this.selectedFilter,
     required this.unreadCount,
-    required this.messageCount,
-    required this.leaveCount,
-    required this.jobCount,
-    required this.documentCount,
     required this.onSelected,
   });
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
+    return Padding(
       padding: EdgeInsets.symmetric(horizontal: SizeConfig.hPad),
       child: Row(
         children: [
@@ -481,34 +451,6 @@ class _FilterChips extends StatelessWidget {
             label: 'All',
             isSelected: selectedFilter == _NotificationFilter.all,
             onTap: () => onSelected(_NotificationFilter.all),
-          ),
-          SizedBox(width: SizeConfig.r(10)),
-          _FilterChip(
-            label: 'Leave Status',
-            badge: leaveCount > 0 ? '$leaveCount' : null,
-            isSelected: selectedFilter == _NotificationFilter.leaveStatus,
-            onTap: () => onSelected(_NotificationFilter.leaveStatus),
-          ),
-          SizedBox(width: SizeConfig.r(10)),
-          _FilterChip(
-            label: 'Message',
-            badge: messageCount > 0 ? '$messageCount' : null,
-            isSelected: selectedFilter == _NotificationFilter.message,
-            onTap: () => onSelected(_NotificationFilter.message),
-          ),
-          SizedBox(width: SizeConfig.r(10)),
-          _FilterChip(
-            label: 'New Jobs',
-            badge: jobCount > 0 ? '$jobCount' : null,
-            isSelected: selectedFilter == _NotificationFilter.newJobs,
-            onTap: () => onSelected(_NotificationFilter.newJobs),
-          ),
-          SizedBox(width: SizeConfig.r(10)),
-          _FilterChip(
-            label: 'Document',
-            badge: documentCount > 0 ? '$documentCount' : null,
-            isSelected: selectedFilter == _NotificationFilter.document,
-            onTap: () => onSelected(_NotificationFilter.document),
           ),
           SizedBox(width: SizeConfig.r(10)),
           _FilterChip(
@@ -927,14 +869,6 @@ class _EmptyState extends StatelessWidget {
     String message = 'No notifications yet.';
     if (filter == _NotificationFilter.unread) {
       message = 'No unread notifications.';
-    } else if (filter == _NotificationFilter.message) {
-      message = 'No messages yet.';
-    } else if (filter == _NotificationFilter.newJobs) {
-      message = 'No new job assignments yet.';
-    } else if (filter == _NotificationFilter.document) {
-      message = 'No document expiry notices yet.';
-    } else if (filter == _NotificationFilter.leaveStatus) {
-      message = 'No leave status updates yet.';
     }
 
     return Center(

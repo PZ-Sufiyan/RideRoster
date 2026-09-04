@@ -43,7 +43,7 @@ const DRIVER_DOC_ORDER = [
     'safeguarding_certificate',
 ];
 
-const JOB_HISTORY_PAGE_SIZE = 6;
+const JOB_HISTORY_PAGE_SIZE = 10;
 
 function formatDate(isoOrDate) {
     if (!isoOrDate) return '—';

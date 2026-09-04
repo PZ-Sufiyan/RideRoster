@@ -29,7 +29,7 @@ import {
     vehicleStatusFromAction,
 } from '../../../../../utils/vehicleStatus';
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 
 function formatDateAdded(iso) {
     if (!iso) return '—';
@@ -182,7 +182,7 @@ const VehiclesPage = ({ basePath = '/portal' }) => {
     const menuVehicle = openMenu ? vehicles.find((v) => v.id === openMenu.vehicleId) : null;
     const privateVehicle = menuVehicle ? isPrivateFleet(menuVehicle.fleet) : false;
     const hasDriver = Boolean(menuVehicle?.driver_id);
-    const shimmerRows = Array.from({ length: 5 });
+    const shimmerRows = Array.from({ length: ITEMS_PER_PAGE });
 
     const getPageNumbers = () => {
         if (totalPages <= 5) return Array.from({ length: totalPages }, (_, i) => i + 1);

@@ -7,9 +7,11 @@ import { useParams } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
 import { getCompanyAdminById } from '../services/companyService';
 import {
+    COMPLETED_JOB_ASSIGN_ERROR,
     fetchJobDetailBundle,
     fetchJobSchedulePassengers,
     fetchJobsListPageData,
+    isJobCompleted,
     removeJobAssignedDriver,
     timeInputFromDb,
     toPgTime,
@@ -345,13 +347,24 @@ export function EditJobProvider({ children }) {
         if (selectedPassengers.length === 0)
             throw new Error('Add at least one passenger.');
 
+        const previousDriverId = bundle?.job?.assigned_driver_id ?? null;
+        const previousPaId = bundle?.job?.assigned_pa_id ?? null;
+        if (isJobCompleted(bundle?.job)) {
+            if (draftDriverId && draftDriverId !== previousDriverId) {
+                throw new Error(COMPLETED_JOB_ASSIGN_ERROR);
+            }
+            if (draftPaId && draftPaId !== previousPaId) {
+                throw new Error(COMPLETED_JOB_ASSIGN_ERROR);
+            }
+        }
+
         // ── Driver assignment validation ──────────────────────────────────────
         // Run even if draftDriverId is the same as the DB value — the passenger
         // list or vehicle may have changed since the modal was opened.
         await validateDriverConstraints(jobId, draftDriverId, companyId, selectedPassengers);
 
-        const previousDriverId = bundle?.job?.assigned_driver_id ?? null;
         const driverChanged = (draftDriverId || null) !== (previousDriverId || null);
+        const driverPay = parseMoneyInput(step3Draft.driverPay);
 
         setSaveInProgress(true);
         try {
@@ -370,7 +383,7 @@ export function EditJobProvider({ children }) {
                     morning_start_time:      toPgTime(step3Draft.morningStartTime) || null,
                     morning_end_time:        toPgTime(step3Draft.morningEndTime)   || null,
                     evening_start_time:      toPgTime(step3Draft.eveningStartTime) || null,
-                    driver_pay:              parseMoneyInput(step3Draft.driverPay),
+                    ...(driverChanged ? {} : { driver_pay: driverPay }),
                     passenger_assistant_pay: parseMoneyInput(step3Draft.passengerAssistantPay),
                     assigned_pa_id:          draftPaId     || null,
                     updated_at:              new Date().toISOString(),
@@ -384,8 +397,17 @@ export function EditJobProvider({ children }) {
             if (driverChanged) {
                 if (!draftDriverId) {
                     await removeJobAssignedDriver(jobId);
+                    const { error: payErr } = await supabase
+                        .from('jobs')
+                        .update({
+                            driver_pay: driverPay,
+                            updated_at: new Date().toISOString(),
+                        })
+                        .eq('id', jobId)
+                        .eq('company_id', companyId);
+                    if (payErr) throw payErr;
                 } else {
-                    await updateJobAssignedDriver(jobId, draftDriverId);
+                    await updateJobAssignedDriver(jobId, draftDriverId, { driver_pay: driverPay });
                 }
             }
 

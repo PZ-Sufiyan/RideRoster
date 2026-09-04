@@ -10,13 +10,18 @@ import { useEditJob } from '../../../context/editJobContext';
 import {
     formatJobDisplayId,
     driversAvailableForAssignment,
+    isJobCompleted,
     passengerAssistantsAvailableForAssignment,
     validateDriverAssignment,
 } from '../../../services/jobService';
+import DriverFleetFilterRadios, {
+    DRIVER_FLEET_FILTER,
+    driverMatchesFleetFilter,
+} from '../../../components/DriverFleetFilterRadios';
 
 // ── Confirm removal dialog ────────────────────────────────────────────────────
 
-const RemoveConfirm = ({ open, label, onConfirm, onCancel }) => {
+const RemoveConfirm = ({ open, label, onConfirm, onCancel, completedJob = false }) => {
     if (!open) return null;
     return (
         <div className="fixed inset-0 z-[200] flex items-center justify-center px-4">
@@ -28,7 +33,10 @@ const RemoveConfirm = ({ open, label, onConfirm, onCancel }) => {
                     </div>
                     <h3 className="text-[16px] font-bold text-gray-900 mb-1">Remove {label}?</h3>
                     <p className="text-[13px] text-gray-500 leading-relaxed">
-                        This will clear the {label.toLowerCase()} from this job draft. You can reassign before saving.
+                        This will clear the {label.toLowerCase()} from this job draft.
+                        {completedJob
+                            ? ' This job is completed, so a replacement cannot be assigned.'
+                            : ' You can reassign before saving.'}
                     </p>
                 </div>
                 <div className="px-6 pb-6 flex items-center gap-3 justify-end">
@@ -63,6 +71,7 @@ const Step3EditJob = ({ setToasts }) => {
     const [showDriverModal, setShowDriverModal]   = useState(false);
     const [showPaModal,     setShowPaModal]       = useState(false);
     const [driverQuery,     setDriverQuery]       = useState('');
+    const [driverFleetFilter, setDriverFleetFilter] = useState(DRIVER_FLEET_FILTER.ALL);
     const [paQuery,         setPaQuery]           = useState('');
     const [pickingDriverId, setPickingDriverId]   = useState(null); // per-row loading in driver modal
     const [confirmRemove,   setConfirmRemove]     = useState(null); // 'driver' | 'pa' | null
@@ -115,6 +124,7 @@ const Step3EditJob = ({ setToasts }) => {
         const available = driversAvailableForAssignment(driversCatalog, jobsMinimal, id);
         const q = driverQuery.trim().toLowerCase();
         return available.filter((d) => {
+            if (!driverMatchesFleetFilter(d, driverFleetFilter)) return false;
             if (!q) return true;
             return `${d.first_name || ''} ${d.last_name || ''}`.toLowerCase().includes(q)
                 || (d.license_no || '').toLowerCase().includes(q);
@@ -124,7 +134,7 @@ const Step3EditJob = ({ setToasts }) => {
             sub:    d.license_no ? `License ${d.license_no}` : 'Registered driver',
             avatar: `https://i.pravatar.cc/150?u=${encodeURIComponent(d.id)}`,
         }));
-    }, [showDriverModal, driversCatalog, jobsMinimal, id, driverQuery]);
+    }, [showDriverModal, driversCatalog, jobsMinimal, id, driverQuery, driverFleetFilter]);
 
     const filteredPaRows = useMemo(() => {
         if (!showPaModal) return [];
@@ -189,6 +199,7 @@ const Step3EditJob = ({ setToasts }) => {
     };
 
     const jobDisplayId = bundle?.job ? formatJobDisplayId(bundle.job.id) : '';
+    const jobCompleted = isJobCompleted(bundle?.job);
 
     // ── Render ────────────────────────────────────────────────────────────────
 
@@ -198,12 +209,14 @@ const Step3EditJob = ({ setToasts }) => {
             <RemoveConfirm
                 open={confirmRemove === 'driver'}
                 label="Driver"
+                completedJob={jobCompleted}
                 onConfirm={handleConfirmRemove}
                 onCancel={() => setConfirmRemove(null)}
             />
             <RemoveConfirm
                 open={confirmRemove === 'pa'}
                 label="Passenger Assistant"
+                completedJob={jobCompleted}
                 onConfirm={handleConfirmRemove}
                 onCancel={() => setConfirmRemove(null)}
             />
@@ -404,7 +417,11 @@ const Step3EditJob = ({ setToasts }) => {
                 <div className="bg-white rounded-2xl border border-gray-100 shadow-sm overflow-hidden">
                     <div className="px-6 py-4 border-b border-gray-50">
                         <h2 className="text-[16px] font-bold text-gray-900">Driver & Passenger Assistant</h2>
-                        <p className="text-[13px] text-gray-500 mt-0.5">Assignments are saved when you press Save Changes.</p>
+                        <p className="text-[13px] text-gray-500 mt-0.5">
+                            {jobCompleted
+                                ? 'This job is completed. You can remove the assigned driver or PA, but cannot assign or reassign anyone.'
+                                : 'Assignments are saved when you press Save Changes.'}
+                        </p>
                     </div>
                     <div className="p-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -438,13 +455,15 @@ const Step3EditJob = ({ setToasts }) => {
                                                 <MdPersonRemove size={17} />
                                             </button>
                                         )}
-                                        <button
-                                            type="button"
-                                            onClick={() => { setDriverQuery(''); setShowDriverModal(true); }}
-                                            className="text-[12px] font-bold text-[#004D6D] hover:underline px-2"
-                                        >
-                                            {driverDisplay.name ? 'Change' : 'Assign'}
-                                        </button>
+                                        {!jobCompleted && (
+                                            <button
+                                                type="button"
+                                                onClick={() => { setDriverQuery(''); setDriverFleetFilter(DRIVER_FLEET_FILTER.ALL); setShowDriverModal(true); }}
+                                                className="text-[12px] font-bold text-[#004D6D] hover:underline px-2"
+                                            >
+                                                {driverDisplay.name ? 'Change' : 'Assign'}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -475,13 +494,15 @@ const Step3EditJob = ({ setToasts }) => {
                                                 <MdPersonRemove size={17} />
                                             </button>
                                         )}
-                                        <button
-                                            type="button"
-                                            onClick={() => { setPaQuery(''); setShowPaModal(true); }}
-                                            className="text-[12px] font-bold text-[#004D6D] hover:underline px-2"
-                                        >
-                                            {paDisplay.name ? 'Change' : 'Assign'}
-                                        </button>
+                                        {!jobCompleted && (
+                                            <button
+                                                type="button"
+                                                onClick={() => { setPaQuery(''); setShowPaModal(true); }}
+                                                className="text-[12px] font-bold text-[#004D6D] hover:underline px-2"
+                                            >
+                                                {paDisplay.name ? 'Change' : 'Assign'}
+                                            </button>
+                                        )}
                                     </div>
                                 </div>
                             </div>
@@ -504,7 +525,7 @@ const Step3EditJob = ({ setToasts }) => {
             </div>
 
             {/* ── Driver Modal ── */}
-            {showDriverModal && (
+            {showDriverModal && !jobCompleted && (
                 <AssignmentModal
                     title="Assign Driver"
                     jobDisplayId={jobDisplayId}
@@ -513,6 +534,9 @@ const Step3EditJob = ({ setToasts }) => {
                     onQueryChange={setDriverQuery}
                     searchPlaceholder="Search driver by name or license..."
                     infoNote="Only approved drivers with a vehicle assigned are shown. Drivers already on other jobs are hidden. Seat capacity and wheelchair access are validated when you select."
+                    fleetFilter={driverFleetFilter}
+                    onFleetFilterChange={setDriverFleetFilter}
+                    fleetFilterName="edit-job-driver-fleet"
                     rows={filteredDriverRows}
                     currentId={draftDriverId}
                     loadingId={pickingDriverId}
@@ -525,7 +549,7 @@ const Step3EditJob = ({ setToasts }) => {
             )}
 
             {/* ── PA Modal ── */}
-            {showPaModal && (
+            {showPaModal && !jobCompleted && (
                 <AssignmentModal
                     title="Assign Passenger Assistant"
                     jobDisplayId={jobDisplayId}
@@ -554,6 +578,7 @@ const AssignmentModal = ({
     title, jobDisplayId, jobName,
     query, onQueryChange, searchPlaceholder,
     infoNote,
+    fleetFilter, onFleetFilterChange, fleetFilterName,
     rows, currentId, loadingId, onPick, onClose,
     disabled, emptyText, renderSub,
 }) => (
@@ -585,6 +610,14 @@ const AssignmentModal = ({
                         <span>{infoNote}</span>
                     </div>
                 )}
+
+                {onFleetFilterChange ? (
+                    <DriverFleetFilterRadios
+                        name={fleetFilterName || 'edit-job-driver-fleet'}
+                        value={fleetFilter}
+                        onChange={onFleetFilterChange}
+                    />
+                ) : null}
 
                 {/* Search */}
                 <div className="relative">

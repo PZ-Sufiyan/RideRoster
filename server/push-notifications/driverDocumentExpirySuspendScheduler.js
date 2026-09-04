@@ -21,10 +21,10 @@ const DRIVER_DOCUMENT_LABELS = {
   dbs_certificate_front: 'DBS Certificate (Front)',
   dbs_certificate_back: 'DBS Certificate (Back)',
   safeguarding_certificate: 'Safeguarding Certificate',
-  right_to_work: 'Right to Work',
-  v5_front: 'V5 (Front)',
-  v5_inside: 'V5 (Inside)',
 }
+
+/** Passport expiry must not suspend company or private drivers. */
+const SUSPEND_EXCLUDED_DOCUMENT_TYPES = ['passport']
 
 function parseYmd(ymd) {
   const [y, m, d] = String(ymd).slice(0, 10).split('-').map(Number)
@@ -300,6 +300,7 @@ async function loadExpiredDriverDocuments(supabase, todayYmd) {
       )
       .not('expiry_date', 'is', null)
       .lte('expiry_date', todayYmd)
+      .not('document_type', 'in', `(${SUSPEND_EXCLUDED_DOCUMENT_TYPES.join(',')})`)
       .range(from, from + pageSize - 1)
 
     if (error) throw error
@@ -310,6 +311,9 @@ async function loadExpiredDriverDocuments(supabase, todayYmd) {
 
   return rows.filter((row) => {
     if (!row.driver_id || !row.drivers?.id) return false
+    if (SUSPEND_EXCLUDED_DOCUMENT_TYPES.includes(String(row.document_type || '').trim())) {
+      return false
+    }
     const expiry = parseYmd(row.expiry_date)
     if (Number.isNaN(expiry.getTime())) return false
     return daysBetween(parseYmd(todayYmd), expiry) <= 0

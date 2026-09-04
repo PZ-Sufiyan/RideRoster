@@ -40,7 +40,7 @@ function formatStatusLabel(raw) {
     return s.charAt(0).toUpperCase() + s.slice(1).toLowerCase();
 }
 
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 
 const DRIVER_ACTION_MENU_H = 188;
 const DRIVER_BULK_ACTIONS = ['Approve', 'Reject', 'Suspend'];
@@ -262,7 +262,7 @@ const DriversPage = () => {
 
     const menuDriver = openMenu ? drivers.find((d) => d.id === openMenu.driverId) : null;
     const driverMenuActions = menuDriver ? getDriverRowActions(menuDriver.status) : [];
-    const shimmerRows = Array.from({ length: 5 });
+    const shimmerRows = Array.from({ length: ITEMS_PER_PAGE });
 
     return (
         <div className="space-y-5">

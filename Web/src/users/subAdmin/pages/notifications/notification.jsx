@@ -26,7 +26,7 @@ import { useNotificationsList } from '../../../../hooks/useNotificationsList';
 import { ToastStack } from '../../../../utils/Toast';
 
 const TABS = Object.values(NOTIFICATION_TABS);
-const ITEMS_PER_PAGE = 5;
+const ITEMS_PER_PAGE = 10;
 const ROLE = NOTIFICATION_ROLES.SUBADMIN;
 
 const ICON_MAP = {

@@ -18,6 +18,7 @@ import {
     formatTimeDisplay,
 } from '../../../../services/jobService';
 import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer';
+import JobDriverPayHistory from '../../../../components/JobDriverPayHistory';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -572,6 +573,7 @@ const JobDetail = () => {
                             <InfoRow label="PA Pay" value={job?.passenger_assistant_pay != null ? `£${Number(job.passenger_assistant_pay).toFixed(2)}` : '—'} />
                             <InfoRow label="Total" value={totalPay > 0 ? `£${totalPay.toFixed(2)}` : '—'} valueClass="text-green-600" />
                         </div>
+                        <JobDriverPayHistory rows={bundle?.driverPayHistory} />
                     </div>
                 </div>
             </div>

@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { MdArrowBack, MdCloudUpload, MdVisibility, MdDeleteOutline, MdFileUpload } from 'react-icons/md';
+import { MdArrowBack, MdCloudUpload, MdVisibility, MdDeleteOutline, MdFileUpload, MdAccessible } from 'react-icons/md';
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { registerVehicleWithRecords } from '../../../../../services/vehicleRegistrationService';
@@ -323,7 +323,19 @@ const AddNewVehicle = ({ basePath = '/portal' }) => {
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <FormField label="Licensing Type" required placeholder="e.g. Nottingham City Council" value={form.licensingType} onChange={set('licensingType')} showError={showMissing('licensingType')} />
                             <div className="flex flex-col gap-2">
-                                <label className="text-xs font-semibold text-gray-600">Vehicle Type<span className="text-red-500 ml-0.5">*</span></label>
+                                <label className="text-xs font-semibold text-gray-600 flex items-center gap-2 flex-wrap">
+                                    <span>Vehicle Type<span className="text-red-500 ml-0.5">*</span></span>
+                                    {form.bodyStyle ? (
+                                        <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold border ${
+                                            form.wheelchairAccessible
+                                                ? 'bg-blue-50 text-blue-600 border-blue-100'
+                                                : 'bg-gray-100 text-gray-500 border-gray-200'
+                                        }`}>
+                                            <MdAccessible size={12} />
+                                            Wheelchair Included: {form.wheelchairAccessible ? 'Yes' : 'No'}
+                                        </span>
+                                    ) : null}
+                                </label>
                                 <select
                                     value={form.bodyStyle}
                                     disabled={vehicleTypesLoading}
