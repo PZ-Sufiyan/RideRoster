@@ -1464,6 +1464,24 @@ class LocalJobRepository {
   // These mirror PaJobService queries but read entirely from drift cache +
   // write tables. Called by PaJobProvider/PaAssignedJobsProvider when offline.
 
+  /// Drops cached jobs that were assigned to this PA but no longer are.
+  ///
+  /// When [keepJobId] is set, that row is left in place (current assignment).
+  Future<void> unassignPaFromCachedJobs(
+    String paUserId, {
+    String? keepJobId,
+  }) async {
+    if (paUserId.isEmpty) return;
+    await (_db.delete(_db.jobsCache)..where((t) {
+          var expr = t.assignedPaId.equalsNullable(paUserId);
+          if (keepJobId != null && keepJobId.isNotEmpty) {
+            expr = expr & t.id.equals(keepJobId).not();
+          }
+          return expr;
+        }))
+        .go();
+  }
+
   /// PA equivalent of fetchCurrentJob — reads from cached tables.
   /// [paUserId] is the PA's Supabase auth user ID (assigned_pa_id on jobs).
   Future<PaJobModel?> fetchPaCurrentJob(String paUserId) async {

@@ -1,8 +1,9 @@
 import React from 'react';
-import { formatFleetLabel, isPrivateFleet } from '../utils/fleet';
+import { formatFleetLabel, formatPaTypeLabel, isPrivateFleet } from '../utils/fleet';
 
-export default function FleetBadge({ fleet, className = '' }) {
+export default function FleetBadge({ fleet, className = '', entity = 'fleet' }) {
     const privateFleet = isPrivateFleet(fleet);
+    const label = entity === 'pa' ? formatPaTypeLabel(fleet) : formatFleetLabel(fleet);
     return (
         <span
             className={`inline-flex items-center px-2.5 py-1 rounded-full text-xs font-medium whitespace-nowrap ${
@@ -11,7 +12,7 @@ export default function FleetBadge({ fleet, className = '' }) {
                     : 'bg-sky-50 text-sky-800 border border-sky-200'
             } ${className}`}
         >
-            {formatFleetLabel(fleet)}
+            {label}
         </span>
     );
 }

@@ -550,75 +550,78 @@ class _NotificationCard extends StatelessWidget {
   });
 
   ({IconData icon, Color iconColor, Color iconBg}) get _style {
-    if (item.notificationType == 'job_assignment') {
-      return (
-        icon: Icons.route_outlined,
-        iconColor: _DriverNotificationColors.primary,
-        iconBg: _DriverNotificationColors.iconBlueBg,
-      );
+    switch (item.notificationType) {
+      case 'job_assignment':
+        return (
+          icon: Icons.route_outlined,
+          iconColor: _DriverNotificationColors.primary,
+          iconBg: _DriverNotificationColors.iconBlueBg,
+        );
+      case 'vehicle_assigned':
+        return (
+          icon: Icons.directions_car_outlined,
+          iconColor: _DriverNotificationColors.iconGreen,
+          iconBg: _DriverNotificationColors.iconGreenBg,
+        );
+      case 'vehicle_unassigned':
+        return (
+          icon: Icons.link_off_outlined,
+          iconColor: _DriverNotificationColors.iconOrange,
+          iconBg: _DriverNotificationColors.iconOrangeBg,
+        );
+      case 'vehicle_off_road':
+        return (
+          icon: Icons.car_repair_outlined,
+          iconColor: _DriverNotificationColors.iconRed,
+          iconBg: _DriverNotificationColors.iconRedBg,
+        );
+      case 'document_expiry':
+        return (
+          icon: Icons.description_outlined,
+          iconColor: _DriverNotificationColors.iconOrange,
+          iconBg: _DriverNotificationColors.iconOrangeBg,
+        );
+      case 'job_removed':
+        return (
+          icon: Icons.work_off_outlined,
+          iconColor: _DriverNotificationColors.iconRed,
+          iconBg: _DriverNotificationColors.iconRedBg,
+        );
+      case 'message':
+        return (
+          icon: Icons.chat_bubble_outline,
+          iconColor: _DriverNotificationColors.primary,
+          iconBg: _DriverNotificationColors.iconBlueBg,
+        );
+      case 'leave_status':
+        final status = (item.leaveStatus ?? '').toLowerCase();
+        if (status == 'approved') {
+          return (
+            icon: Icons.check_circle_outline,
+            iconColor: _DriverNotificationColors.iconGreen,
+            iconBg: _DriverNotificationColors.iconGreenBg,
+          );
+        }
+        if (status == 'rejected') {
+          return (
+            icon: Icons.cancel_outlined,
+            iconColor: _DriverNotificationColors.iconRed,
+            iconBg: _DriverNotificationColors.iconRedBg,
+          );
+        }
+        return (
+          icon: Icons.event_busy_outlined,
+          iconColor: _DriverNotificationColors.iconOrange,
+          iconBg: _DriverNotificationColors.iconOrangeBg,
+        );
+      default:
+        // Unknown types from the server still render with title + body.
+        return (
+          icon: Icons.notifications_outlined,
+          iconColor: _DriverNotificationColors.primary,
+          iconBg: _DriverNotificationColors.iconBlueBg,
+        );
     }
-    if (item.notificationType == 'vehicle_assigned') {
-      return (
-        icon: Icons.directions_car_outlined,
-        iconColor: _DriverNotificationColors.iconGreen,
-        iconBg: _DriverNotificationColors.iconGreenBg,
-      );
-    }
-    if (item.notificationType == 'vehicle_unassigned') {
-      return (
-        icon: Icons.link_off_outlined,
-        iconColor: _DriverNotificationColors.iconOrange,
-        iconBg: _DriverNotificationColors.iconOrangeBg,
-      );
-    }
-    if (item.notificationType == 'vehicle_off_road') {
-      return (
-        icon: Icons.car_repair_outlined,
-        iconColor: _DriverNotificationColors.iconRed,
-        iconBg: _DriverNotificationColors.iconRedBg,
-      );
-    }
-    if (item.notificationType == 'document_expiry') {
-      return (
-        icon: Icons.description_outlined,
-        iconColor: _DriverNotificationColors.iconOrange,
-        iconBg: _DriverNotificationColors.iconOrangeBg,
-      );
-    }
-    if (item.notificationType == 'job_removed') {
-      return (
-        icon: Icons.work_off_outlined,
-        iconColor: _DriverNotificationColors.iconRed,
-        iconBg: _DriverNotificationColors.iconRedBg,
-      );
-    }
-    if (item.notificationType == 'message') {
-      return (
-        icon: Icons.chat_bubble_outline,
-        iconColor: _DriverNotificationColors.primary,
-        iconBg: _DriverNotificationColors.iconBlueBg,
-      );
-    }
-    final status = (item.leaveStatus ?? '').toLowerCase();
-    if (status == 'approved') {
-      return (
-        icon: Icons.check_circle_outline,
-        iconColor: _DriverNotificationColors.iconGreen,
-        iconBg: _DriverNotificationColors.iconGreenBg,
-      );
-    }
-    if (status == 'rejected') {
-      return (
-        icon: Icons.cancel_outlined,
-        iconColor: _DriverNotificationColors.iconRed,
-        iconBg: _DriverNotificationColors.iconRedBg,
-      );
-    }
-    return (
-      icon: Icons.event_busy_outlined,
-      iconColor: _DriverNotificationColors.iconOrange,
-      iconBg: _DriverNotificationColors.iconOrangeBg,
-    );
   }
 
   @override
@@ -737,14 +740,7 @@ class _NotificationDetailDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isMessage = item.notificationType == 'message';
-    final isLeave = item.notificationType == 'leave_status';
-    final isJob = item.notificationType == 'job_assignment';
-    final isDocument = item.notificationType == 'document_expiry';
-    final isJobRemoved = item.notificationType == 'job_removed';
-    final isVehicle = item.notificationType == 'vehicle_assigned' ||
-        item.notificationType == 'vehicle_unassigned' ||
-        item.notificationType == 'vehicle_off_road';
+    final message = item.fullMessage.isNotEmpty ? item.fullMessage : item.body;
 
     return AlertDialog(
       shape: RoundedRectangleBorder(
@@ -762,99 +758,47 @@ class _NotificationDetailDialog extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            if (isMessage) ...[
+            if (item.leaveType != null)
+              _DetailRow(label: 'Leave type', value: item.leaveType!),
+            if (item.leaveStatus != null)
+              _DetailRow(
+                label: 'Status',
+                value: item.leaveStatus!.toUpperCase(),
+              ),
+            if (item.jobName != null)
+              _DetailRow(label: 'Job', value: item.jobName!),
+            if (item.jobSchool != null && item.jobSchool!.isNotEmpty)
+              _DetailRow(label: 'School', value: item.jobSchool!),
+            if (item.documentName != null)
+              _DetailRow(label: 'Document', value: item.documentName!),
+            if (item.expiryDate != null)
+              _DetailRow(label: 'Expiry date', value: item.expiryDate!),
+            if (item.reminderLabel != null)
+              _DetailRow(label: 'Reminder', value: item.reminderLabel!),
+            Text(
+              message,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(14),
+                color: AppColors.textMedium,
+                height: 1.5,
+              ),
+            ),
+            if (item.adminNotes != null) ...[
+              SizedBox(height: SizeConfig.r(12)),
               Text(
-                item.fullMessage,
+                'Admin note',
                 style: TextStyle(
-                  fontSize: SizeConfig.sp(14),
-                  color: AppColors.textMedium,
-                  height: 1.5,
+                  fontSize: SizeConfig.sp(11),
+                  fontWeight: FontWeight.w600,
+                  color: AppColors.textLight,
                 ),
               ),
-            ],
-            if (isLeave) ...[
-              if (item.leaveType != null)
-                _DetailRow(label: 'Leave type', value: item.leaveType!),
-              if (item.leaveStatus != null)
-                _DetailRow(
-                  label: 'Status',
-                  value: item.leaveStatus!.toUpperCase(),
-                ),
+              SizedBox(height: SizeConfig.r(4)),
               Text(
-                item.body,
+                item.adminNotes!,
                 style: TextStyle(
                   fontSize: SizeConfig.sp(14),
-                  color: AppColors.textMedium,
-                  height: 1.5,
-                ),
-              ),
-              if (item.adminNotes != null) ...[
-                SizedBox(height: SizeConfig.r(12)),
-                Text(
-                  'Admin note',
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(11),
-                    fontWeight: FontWeight.w600,
-                    color: AppColors.textLight,
-                  ),
-                ),
-                SizedBox(height: SizeConfig.r(4)),
-                Text(
-                  item.adminNotes!,
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(14),
-                    color: AppColors.textDark,
-                    height: 1.5,
-                  ),
-                ),
-              ],
-            ],
-            if (isJob) ...[
-              if (item.jobName != null)
-                _DetailRow(label: 'Job', value: item.jobName!),
-              if (item.jobSchool != null && item.jobSchool!.isNotEmpty)
-                _DetailRow(label: 'School', value: item.jobSchool!),
-              Text(
-                item.body,
-                style: TextStyle(
-                  fontSize: SizeConfig.sp(14),
-                  color: AppColors.textMedium,
-                  height: 1.5,
-                ),
-              ),
-            ],
-            if (isDocument) ...[
-              if (item.documentName != null)
-                _DetailRow(label: 'Document', value: item.documentName!),
-              if (item.expiryDate != null)
-                _DetailRow(label: 'Expiry date', value: item.expiryDate!),
-              if (item.reminderLabel != null)
-                _DetailRow(label: 'Reminder', value: item.reminderLabel!),
-              Text(
-                item.fullMessage,
-                style: TextStyle(
-                  fontSize: SizeConfig.sp(14),
-                  color: AppColors.textMedium,
-                  height: 1.5,
-                ),
-              ),
-            ],
-            if (isJobRemoved) ...[
-              Text(
-                item.fullMessage.isNotEmpty ? item.fullMessage : item.body,
-                style: TextStyle(
-                  fontSize: SizeConfig.sp(14),
-                  color: AppColors.textMedium,
-                  height: 1.5,
-                ),
-              ),
-            ],
-            if (isVehicle) ...[
-              Text(
-                item.body,
-                style: TextStyle(
-                  fontSize: SizeConfig.sp(14),
-                  color: AppColors.textMedium,
+                  color: AppColors.textDark,
                   height: 1.5,
                 ),
               ),

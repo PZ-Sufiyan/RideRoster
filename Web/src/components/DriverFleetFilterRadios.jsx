@@ -7,10 +7,18 @@ export const DRIVER_FLEET_FILTER = {
     PRIVATE: FLEET.PRIVATE,
 };
 
-const OPTIONS = [
+export const PA_FLEET_FILTER = DRIVER_FLEET_FILTER;
+
+const DRIVER_OPTIONS = [
     { value: DRIVER_FLEET_FILTER.ALL, label: 'All Drivers' },
     { value: DRIVER_FLEET_FILTER.COMPANY, label: 'Company Driver' },
     { value: DRIVER_FLEET_FILTER.PRIVATE, label: 'Private Driver' },
+];
+
+const PA_OPTIONS = [
+    { value: PA_FLEET_FILTER.ALL, label: 'All PAs' },
+    { value: PA_FLEET_FILTER.COMPANY, label: 'Company PA' },
+    { value: PA_FLEET_FILTER.PRIVATE, label: 'Private PA' },
 ];
 
 export function driverMatchesFleetFilter(driver, filter) {
@@ -18,18 +26,24 @@ export function driverMatchesFleetFilter(driver, filter) {
     return normalizeFleet(driver?.fleet) === filter;
 }
 
-export default function DriverFleetFilterRadios({
+export function paMatchesFleetFilter(pa, filter) {
+    return driverMatchesFleetFilter(pa, filter);
+}
+
+function FleetFilterRadios({
     value,
     onChange,
-    name = 'driver-fleet-filter',
+    name,
+    options,
+    ariaLabel,
 }) {
     return (
         <div
             className="flex flex-wrap items-center gap-x-6 gap-y-2"
             role="radiogroup"
-            aria-label="Filter drivers by fleet"
+            aria-label={ariaLabel}
         >
-            {OPTIONS.map((opt) => {
+            {options.map((opt) => {
                 const checked = value === opt.value;
                 return (
                     <label
@@ -51,5 +65,37 @@ export default function DriverFleetFilterRadios({
                 );
             })}
         </div>
+    );
+}
+
+export default function DriverFleetFilterRadios({
+    value,
+    onChange,
+    name = 'driver-fleet-filter',
+}) {
+    return (
+        <FleetFilterRadios
+            value={value}
+            onChange={onChange}
+            name={name}
+            options={DRIVER_OPTIONS}
+            ariaLabel="Filter drivers by fleet"
+        />
+    );
+}
+
+export function PaFleetFilterRadios({
+    value,
+    onChange,
+    name = 'pa-fleet-filter',
+}) {
+    return (
+        <FleetFilterRadios
+            value={value}
+            onChange={onChange}
+            name={name}
+            options={PA_OPTIONS}
+            ariaLabel="Filter PAs by type"
+        />
     );
 }

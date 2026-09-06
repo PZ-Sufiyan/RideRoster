@@ -11,6 +11,7 @@ class AppButton extends StatelessWidget {
   final VoidCallback? onPressed;
   final bool isLoading;
   final Color? backgroundColor;
+  final Color? disabledBackgroundColor;
   final Color? textColor;
   final Color? borderColor;
   final Widget? leadingIcon;
@@ -27,6 +28,7 @@ class AppButton extends StatelessWidget {
     this.onPressed,
     this.isLoading = false,
     this.backgroundColor,
+    this.disabledBackgroundColor,
     this.textColor,
     this.borderColor,
     this.leadingIcon,
@@ -51,7 +53,8 @@ class AppButton extends StatelessWidget {
         onPressed: isLoading ? null : onPressed,
         style: ElevatedButton.styleFrom(
           backgroundColor: bg,
-          disabledBackgroundColor: AppColors.buttonDisabled,
+          disabledBackgroundColor:
+              disabledBackgroundColor ?? AppColors.buttonDisabled,
           elevation: 0,
           shadowColor: Colors.transparent,
           shape: RoundedRectangleBorder(

@@ -4,6 +4,8 @@ import { getCompanyAdminById } from './companyService'
 import { notifyDriverJobAssignment, notifyPaJobAssignment } from './userNotificationService'
 import {
   notifyManualDriverJobRemoval,
+  notifyManualPaJobRemoval,
+  notifyPortalPaAssigned,
   notifyPortalCompanyDriverAssigned,
 } from './jobNotificationService'
 import {
@@ -11,7 +13,7 @@ import {
   privateVehicleDocsBlockedMessage,
 } from './vehicleDocumentComplianceService'
 import { resolveJobReassignmentOnDriverAssign } from './jobReassignmentService'
-import { isCompanyFleet } from '../utils/fleet'
+import { isCompanyFleet, isPaApproved } from '../utils/fleet'
 
 export const JOB_DRAFT_STORAGE_KEY = 'rideRoster_adminJobDraft_v1'
 
@@ -1065,6 +1067,7 @@ export async function updateJobAssignedPa(jobId, paId) {
 
   try {
     await notifyPaJobAssignment(data)
+    await notifyPortalPaAssigned({ job: data, paId })
   } catch (notifyErr) {
     console.warn('PA job assignment notification failed:', notifyErr?.message || notifyErr)
   }
@@ -1074,6 +1077,16 @@ export async function updateJobAssignedPa(jobId, paId) {
 
 export async function removeJobAssignedPa(jobId) {
   if (!jobId) throw new Error('Job id is required.')
+
+  const { data: existing, error: loadErr } = await supabase
+    .from('jobs')
+    .select('id, company_id, job_name, client_school_name, internal_job_id, assigned_pa_id')
+    .eq('id', jobId)
+    .maybeSingle()
+  if (loadErr) throw loadErr
+
+  const previousPaId = existing?.assigned_pa_id || null
+
   const { data, error } = await supabase
     .from('jobs').update({
       assigned_pa_id: null,
@@ -1081,6 +1094,18 @@ export async function removeJobAssignedPa(jobId) {
     })
     .eq('id', jobId).select().single()
   if (error) throw error
+
+  if (previousPaId && existing) {
+    try {
+      await notifyManualPaJobRemoval({
+        job: existing,
+        paId: previousPaId,
+      })
+    } catch (notifyErr) {
+      console.warn('PA removal notification failed:', notifyErr?.message || notifyErr)
+    }
+  }
+
   return data
 }
 
@@ -1442,9 +1467,10 @@ export function driversAvailableForAssignment(allDrivers, jobsMinimal, forJobId)
 }
 
 export function passengerAssistantsAvailableForAssignment(allPAs, jobsMinimal, forJobId) {
-  return allPAs.filter((p) =>
-    !jobsMinimal.some((j) => j.id !== forJobId && j.assigned_pa_id && j.assigned_pa_id === p.id)
-  )
+  return allPAs.filter((p) => {
+    if (!isPaApproved(p.status)) return false
+    return !jobsMinimal.some((j) => j.id !== forJobId && j.assigned_pa_id && j.assigned_pa_id === p.id)
+  })
 }
 
 // ── Session tracking ──────────────────────────────────────────────────────────

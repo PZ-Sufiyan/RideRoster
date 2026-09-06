@@ -1,5 +1,7 @@
 import { supabase } from '../lib/supabaseClient'
 import { getCompanyAdminById } from './companyService'
+import { getSubAdminById } from './subAdminService'
+import { notifyPaStatusChange } from './paNotificationService'
 
 /* Passenger info CRUD */
 
@@ -187,12 +189,16 @@ export const getPassengerAssistantsForCurrentAdmin = async () => {
     throw err
   }
   const admin = await getCompanyAdminById(uid)
-  if (!admin?.company_id) {
-    const err = new Error('No company linked to your account')
-    err.code = 'NO_COMPANY'
-    throw err
+  if (admin?.company_id) {
+    return getPassengerAssistants({ companyId: admin.company_id })
   }
-  return getPassengerAssistants({ companyId: admin.company_id })
+  const sub = await getSubAdminById(uid)
+  if (sub?.company_id) {
+    return getPassengerAssistants({ companyId: sub.company_id })
+  }
+  const err = new Error('No company linked to your account')
+  err.code = 'NO_COMPANY'
+  throw err
 }
 
 export const getPassengerAssistants = async ({ companyId = null } = {}) => {
@@ -263,6 +269,12 @@ export const getJobsByAssignedPassengerAssistant = async (companyId, paId) => {
  *  @param {object} updates — e.g. { status: 'approve' }
  */
 export const updatePassengerAssistant = async (assistantId, updates) => {
+  const statusChanging = updates?.status != null
+  let previous = null
+  if (statusChanging) {
+    previous = await getPassengerAssistantByIdMaybe(assistantId)
+  }
+
   const { data, error } = await supabase
     .from('passenger_assistant')
     .update({ ...updates, updated_at: new Date().toISOString() })
@@ -271,6 +283,11 @@ export const updatePassengerAssistant = async (assistantId, updates) => {
     .single()
 
   if (error) throw error
+
+  if (statusChanging && previous && String(previous.status || '').toLowerCase() !== String(data.status || '').toLowerCase()) {
+    await notifyPaStatusChange({ pa: data, previousStatus: previous.status })
+  }
+
   return data
 }
 

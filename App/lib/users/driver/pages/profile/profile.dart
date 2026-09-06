@@ -13,6 +13,7 @@ import 'edit_profile.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
+import '../../../../widgets/app_version_label.dart';
 
 /// Profile palette — matches PA profile layout (green header / accents).
 class _ProfileColors {
@@ -129,9 +130,10 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                         ),
                         SizedBox(height: SizeConfig.r(24)),
                         _SettingsSection(
-                          onDeleteAccount: () => _deleteAccount(context),
+                          onDeleteAccount: () => _openDeleteAccount(context),
                           onLogout: () => _logout(context),
                         ),
+                        const AppVersionLabel(),
                         SizedBox(height: SizeConfig.r(28)),
                       ],
                     ),
@@ -170,7 +172,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
     );
   }
 
-  static Future<void> _deleteAccount(BuildContext context) async {
+  static Future<void> _openDeleteAccount(BuildContext context) async {
     if (!context.read<ConnectivityProvider>().isOnline) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -181,60 +183,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Delete Account'),
-          content: const Text(
-            'This action will permanently delete your account. This cannot be undone.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              style: TextButton.styleFrom(foregroundColor: AppColors.error),
-              child: const Text('Delete Account'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true || !context.mounted) return;
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-
-    final error = await context.read<AuthProvider>().deleteAccount();
-
-    if (!context.mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
-
-    if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      AppRoutes.login,
-      (route) => false,
-    );
+    await Navigator.pushNamed(context, AppRoutes.deleteAccount);
   }
 }
 
@@ -1237,22 +1186,6 @@ class _SettingsSection extends StatelessWidget {
           _SettingsTile(
             icon: Icons.notifications_outlined,
             label: 'Notification Settings',
-            iconColor: AppColors.textMedium,
-            labelColor: AppColors.textDark,
-            onTap: () {},
-          ),
-          Divider(height: 1, thickness: 1, color: AppColors.inputBorder),
-          _SettingsTile(
-            icon: Icons.language,
-            label: 'Language',
-            iconColor: AppColors.textMedium,
-            labelColor: AppColors.textDark,
-            onTap: () {},
-          ),
-          Divider(height: 1, thickness: 1, color: AppColors.inputBorder),
-          _SettingsTile(
-            icon: Icons.headset_mic_outlined,
-            label: 'Support',
             iconColor: AppColors.textMedium,
             labelColor: AppColors.textDark,
             onTap: () {},

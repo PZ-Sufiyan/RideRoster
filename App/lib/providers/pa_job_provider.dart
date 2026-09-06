@@ -175,6 +175,7 @@ class PaJobProvider extends ChangeNotifier {
 
 class PaAssignedJobsProvider extends ChangeNotifier {
   late final PaJobService _service;
+  final RealtimeService _realtimeService = RealtimeService();
 
   PaAssignedJobModel? _job;
   bool _isLoading = false;
@@ -182,8 +183,16 @@ class PaAssignedJobsProvider extends ChangeNotifier {
   bool _hasLoadedOnce = false;
   bool _isRefreshing = false;
 
+  StreamSubscription<Map<String, dynamic>>? _jobSub;
+  StreamSubscription<void>? _reconnectSub;
+  Timer? _reloadDebounce;
+
   PaAssignedJobsProvider({required LocalJobRepository localRepo}) {
     _service = PaJobService(localRepo);
+    _jobSub = _realtimeService.onJobChange.listen((_) => _scheduleReload());
+    _reconnectSub = ConnectivityService().onReconnect.listen((_) {
+      refresh();
+    });
   }
 
   PaAssignedJobModel? get job => _job;
@@ -191,6 +200,13 @@ class PaAssignedJobsProvider extends ChangeNotifier {
   String? get error => _error;
   bool get hasLoadedOnce => _hasLoadedOnce;
   bool get isRefreshing => _isRefreshing;
+
+  void _scheduleReload() {
+    _reloadDebounce?.cancel();
+    _reloadDebounce = Timer(const Duration(milliseconds: 400), () {
+      refresh();
+    });
+  }
 
   Future<void> loadIfNeeded() async {
     if (!_hasLoadedOnce) {
@@ -234,5 +250,13 @@ class PaAssignedJobsProvider extends ChangeNotifier {
     _isRefreshing = false;
     _error = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _reloadDebounce?.cancel();
+    _jobSub?.cancel();
+    _reconnectSub?.cancel();
+    super.dispose();
   }
 }

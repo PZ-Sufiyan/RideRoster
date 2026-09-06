@@ -57,24 +57,56 @@ class _PaDashboardPageState extends State<PaDashboardPage>
             const OfflineBanner(),
             const _PaAppBar(),
             Expanded(
-              child: SingleChildScrollView(
-                padding: EdgeInsets.symmetric(
-                  horizontal: SizeConfig.hPad,
-                  vertical: SizeConfig.spaceSM,
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    const _CurrentJobCard(),
-                    SizedBox(height: SizeConfig.r(20)),
-                    const _PassengersSection(),
-                    SizedBox(height: SizeConfig.r(20)),
-                    const _QuickActionsSection(),
-                    SizedBox(height: SizeConfig.r(18)),
-                    const _SosButton(),
-                    SizedBox(height: SizeConfig.spaceMD),
-                  ],
-                ),
+              child: LayoutBuilder(
+                builder: (context, constraints) {
+                  final bottomInset = MediaQuery.paddingOf(context).bottom;
+                  return SingleChildScrollView(
+                    padding: EdgeInsets.fromLTRB(
+                      SizeConfig.hPad,
+                      SizeConfig.spaceSM,
+                      SizeConfig.hPad,
+                      SizeConfig.spaceMD + bottomInset,
+                    ),
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight:
+                            (constraints.maxHeight -
+                                    SizeConfig.spaceSM -
+                                    SizeConfig.spaceMD -
+                                    bottomInset)
+                                .clamp(0.0, double.infinity),
+                      ),
+                      child: Consumer<PaJobProvider>(
+                        builder: (context, provider, _) {
+                          final showPassengers =
+                              provider.isLoading || provider.job != null;
+                          return Column(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  const _CurrentJobCard(),
+                                  if (showPassengers) ...[
+                                    SizedBox(height: SizeConfig.r(20)),
+                                    const _PassengersSection(),
+                                  ],
+                                  SizedBox(height: SizeConfig.r(20)),
+                                  const _QuickActionsSection(),
+                                ],
+                              ),
+                              Padding(
+                                padding: EdgeInsets.only(top: SizeConfig.r(24)),
+                                child: const _SosButton(),
+                              ),
+                            ],
+                          );
+                        },
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
           ],
@@ -244,29 +276,74 @@ class _CurrentJobCard extends StatelessWidget {
         final job = provider.job;
 
         if (job == null) {
-          return Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(SizeConfig.r(18)),
-            decoration: BoxDecoration(
-              color: AppColors.primaryLight,
-              borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
-            ),
+          return _PaCurrentJobCardShell(
             child: Column(
               children: [
-                Icon(
-                  Icons.assignment_late_outlined,
-                  size: SizeConfig.r(40),
-                  color: AppColors.primaryDark,
-                ),
-                SizedBox(height: SizeConfig.r(10)),
-                Text(
-                  'No job assigned for today',
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(14),
+                Container(
+                  width: SizeConfig.r(72),
+                  height: SizeConfig.r(72),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: AppColors.primary.withValues(alpha: 0.14),
+                        blurRadius: 16,
+                        offset: const Offset(0, 6),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    Icons.event_available_outlined,
+                    size: SizeConfig.r(32),
                     color: AppColors.primaryDark,
-                    fontWeight: FontWeight.w600,
                   ),
                 ),
+                SizedBox(height: SizeConfig.r(16)),
+                Text(
+                  'You\'re free for now',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(16),
+                    fontWeight: FontWeight.w700,
+                    color: AppColors.primaryDark,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.r(6)),
+                Text(
+                  'No run is assigned today. You\'ll get a notification as soon as a job is added.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(13),
+                    height: 1.4,
+                    color: AppColors.textMedium,
+                  ),
+                ),
+                SizedBox(height: SizeConfig.r(16)),
+                SizedBox(
+                  width: double.infinity,
+                  height: SizeConfig.r(44),
+                  child: ElevatedButton(
+                    onPressed: () =>
+                        Navigator.pushNamed(context, AppRoutes.paAssignedJobs),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(SizeConfig.radius),
+                      ),
+                    ),
+                    child: Text(
+                      'View assigned jobs',
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(14),
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ),
+                SizedBox(height: SizeConfig.r(8)),
               ],
             ),
           );
@@ -538,18 +615,51 @@ class _PassengersSection extends StatelessWidget {
             else if (stops.isEmpty)
               Container(
                 width: double.infinity,
-                padding: EdgeInsets.all(SizeConfig.r(16)),
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.r(16),
+                  vertical: SizeConfig.r(22),
+                ),
                 decoration: BoxDecoration(
                   color: AppColors.background,
                   borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
                   border: Border.all(color: AppColors.inputBorder),
                 ),
-                child: Text(
-                  'No passengers scheduled for today.',
-                  style: TextStyle(
-                    fontSize: SizeConfig.sp(13),
-                    color: AppColors.textMedium,
-                  ),
+                child: Column(
+                  children: [
+                    Container(
+                      width: SizeConfig.r(48),
+                      height: SizeConfig.r(48),
+                      decoration: BoxDecoration(
+                        color: AppColors.primaryLight,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Icon(
+                        Icons.groups_outlined,
+                        size: SizeConfig.r(24),
+                        color: AppColors.primaryDark,
+                      ),
+                    ),
+                    SizedBox(height: SizeConfig.r(10)),
+                    Text(
+                      'No passengers on this run',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(14),
+                        fontWeight: FontWeight.w700,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    SizedBox(height: SizeConfig.r(4)),
+                    Text(
+                      'Passenger names and pickup details will appear here once they are added.',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: SizeConfig.sp(12),
+                        height: 1.4,
+                        color: AppColors.textMedium,
+                      ),
+                    ),
+                  ],
                 ),
               )
             else
@@ -686,28 +796,14 @@ class _QuickActionsSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final actions = <_QuickActionData>[
       _QuickActionData(
-        icon: Icons.check_circle,
-        label: 'Mark Ready',
+        icon: Icons.person_outline,
+        label: 'Profile',
         color: AppColors.success,
-      ),
-      _QuickActionData(
-        icon: Icons.sticky_note_2_outlined,
-        label: 'Add Note',
-        color: AppColors.primary,
-      ),
-      _QuickActionData(
-        icon: Icons.alt_route,
-        label: 'View Route',
-        color: const Color(0xFF7C3AED),
-      ),
-      _QuickActionData(
-        icon: Icons.phone,
-        label: 'Contact\nDriver',
-        color: AppColors.success,
+        onTap: () => Navigator.pushNamed(context, AppRoutes.paProfile),
       ),
       _QuickActionData(
         icon: Icons.work_outline,
-        label: 'Assigned\nJob',
+        label: 'Assigned Job',
         color: AppColors.primaryDark,
         onTap: () => Navigator.pushNamed(context, AppRoutes.paAssignedJobs),
       ),
@@ -716,6 +812,12 @@ class _QuickActionsSection extends StatelessWidget {
         label: 'Leave',
         color: const Color(0xFFEA580C),
         onTap: () => Navigator.pushNamed(context, AppRoutes.paLeave),
+      ),
+      _QuickActionData(
+        icon: Icons.notifications_outlined,
+        label: 'Notifications',
+        color: AppColors.warning,
+        onTap: () => Navigator.pushNamed(context, AppRoutes.paNotifications),
       ),
     ];
 
@@ -731,26 +833,26 @@ class _QuickActionsSection extends StatelessWidget {
           ),
         ),
         SizedBox(height: SizeConfig.r(10)),
-        Row(
-          children: List.generate(3, (i) {
-            return Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(right: i < 2 ? SizeConfig.r(10) : 0),
-                child: _QuickActionCard(data: actions[i]),
-              ),
-            );
-          }),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _QuickActionCard(data: actions[0])),
+              SizedBox(width: SizeConfig.r(10)),
+              Expanded(child: _QuickActionCard(data: actions[1])),
+            ],
+          ),
         ),
         SizedBox(height: SizeConfig.r(10)),
-        Row(
-          children: List.generate(3, (i) {
-            return Expanded(
-              child: Padding(
-                padding: EdgeInsets.only(right: i < 2 ? SizeConfig.r(10) : 0),
-                child: _QuickActionCard(data: actions[i + 3]),
-              ),
-            );
-          }),
+        IntrinsicHeight(
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: _QuickActionCard(data: actions[2])),
+              SizedBox(width: SizeConfig.r(10)),
+              Expanded(child: _QuickActionCard(data: actions[3])),
+            ],
+          ),
         ),
       ],
     );
@@ -776,30 +878,55 @@ class _QuickActionCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final labelStyle = TextStyle(
+      fontSize: SizeConfig.sp(12),
+      fontWeight: FontWeight.w600,
+      color: AppColors.textDark,
+      height: 1.3,
+    );
+    final labelHeight = SizeConfig.sp(12) * 1.3 * 2;
+
     return GestureDetector(
       onTap: data.onTap,
       child: Container(
+        width: double.infinity,
         padding: EdgeInsets.symmetric(
-          vertical: SizeConfig.r(20),
+          vertical: SizeConfig.r(16),
           horizontal: SizeConfig.r(10),
         ),
         decoration: BoxDecoration(
           color: AppColors.background,
           borderRadius: BorderRadius.circular(SizeConfig.radiusLG),
           border: Border.all(color: AppColors.inputBorder),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 6,
+              offset: const Offset(0, 2),
+            ),
+          ],
         ),
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(data.icon, color: data.color, size: SizeConfig.r(28)),
+            Container(
+              width: SizeConfig.r(44),
+              height: SizeConfig.r(44),
+              decoration: BoxDecoration(
+                color: data.color.withValues(alpha: 0.12),
+                shape: BoxShape.circle,
+              ),
+              child: Icon(data.icon, color: data.color, size: SizeConfig.r(22)),
+            ),
             SizedBox(height: SizeConfig.r(10)),
-            Text(
-              data.label,
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: SizeConfig.sp(13),
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
+            SizedBox(
+              height: labelHeight,
+              child: Text(
+                data.label,
+                textAlign: TextAlign.center,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: labelStyle,
               ),
             ),
           ],

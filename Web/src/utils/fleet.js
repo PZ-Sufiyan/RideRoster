@@ -24,6 +24,16 @@ export function isDriverApproved(status) {
   return String(status || '').trim().toLowerCase() === 'approved'
 }
 
+/** PA DB status is `approve` (UI: Approved). Accept the driver-style synonym too. */
+export function isPaApproved(status) {
+  const s = String(status || '').trim().toLowerCase()
+  return s === 'approve' || s === 'approved'
+}
+
+export function formatPaTypeLabel(value) {
+  return normalizeFleet(value) === FLEET.PRIVATE ? 'Private PA' : 'Company PA'
+}
+
 export function isVehicleAssignedFlag(value) {
   return value === true
 }

@@ -18,6 +18,7 @@ import { usePAList } from '../../../../../hooks/usePAList';
 import { ShimmerBlock } from '../../../../../utils/Shimmer';
 import { truncateText } from '../../../../../utils/truncateText';
 import { useSubAdminPermissions } from '../../../../../context/subAdminPermissionsContext';
+import FleetBadge from '../../../../../components/FleetBadge';
 
 /** DB `passenger_assistant.status` values (lowercase) */
 const PA_STATUS_DB = {
@@ -81,9 +82,11 @@ const PAListPage = () => {
     const canManageUsers = can('edit_profiles') || can('deactivate_users');
     const [search, setSearch] = useState('');
     const [statusFilter, setStatusFilter] = useState('All');
+    const [fleetFilter, setFleetFilter] = useState('All');
     const [selectedRows, setSelectedRows] = useState([]);
     const [openMenu, setOpenMenu] = useState(null);
     const [isStatusOpen, setIsStatusOpen] = useState(false);
+    const [isFleetOpen, setIsFleetOpen] = useState(false);
     const [isBulkOpen, setIsBulkOpen] = useState(false);
     const [currentPage, setCurrentPage] = useState(1);
     const [statusUpdateError, setStatusUpdateError] = useState('');
@@ -91,9 +94,11 @@ const PAListPage = () => {
 
     const menuRef = useRef(null);
     const statusRef = useRef(null);
+    const fleetRef = useRef(null);
     const bulkRef = useRef(null);
 
     const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended'];
+    const fleetOptions = ['All', 'Company', 'Private'];
 
     useEffect(() => {
         const handler = (e) => {
@@ -103,6 +108,7 @@ const PAListPage = () => {
             }
             setOpenMenu(null);
             if (statusRef.current && !statusRef.current.contains(e.target)) setIsStatusOpen(false);
+            if (fleetRef.current && !fleetRef.current.contains(e.target)) setIsFleetOpen(false);
             if (bulkRef.current && !bulkRef.current.contains(e.target)) setIsBulkOpen(false);
         };
         document.addEventListener('mousedown', handler);
@@ -128,7 +134,9 @@ const PAListPage = () => {
             p.phone.toLowerCase().includes(q) ||
             p.paId.toLowerCase().includes(q);
         const matchStatus = statusFilter === 'All' || paStatusLabel(p.statusDb) === statusFilter;
-        return matchSearch && matchStatus;
+        const fleet = String(p.fleet || 'company').toLowerCase();
+        const matchFleet = fleetFilter === 'All' || fleet === fleetFilter.toLowerCase();
+        return matchSearch && matchStatus && matchFleet;
     });
 
     const totalPages = Math.max(1, Math.ceil(filtered.length / ITEMS_PER_PAGE));
@@ -292,6 +300,30 @@ const PAListPage = () => {
                                 </div>
                             )}
                         </div>
+
+                        {/* Type Filter */}
+                        <div className="relative" ref={fleetRef}>
+                            <button
+                                onClick={() => setIsFleetOpen((o) => !o)}
+                                className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 bg-white hover:bg-gray-50 transition-colors whitespace-nowrap"
+                            >
+                                {fleetFilter === 'All' ? 'All types' : fleetFilter}
+                                <MdKeyboardArrowDown size={16} className="text-gray-400" />
+                            </button>
+                            {isFleetOpen && (
+                                <div className="absolute left-0 top-full mt-1 w-44 bg-white border border-gray-100 rounded-lg shadow-lg z-20">
+                                    {fleetOptions.map((s) => (
+                                        <button
+                                            key={s}
+                                            onClick={() => { setFleetFilter(s); setIsFleetOpen(false); setCurrentPage(1); }}
+                                            className={`w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50 transition-colors first:rounded-t-lg last:rounded-b-lg ${fleetFilter === s ? 'font-semibold text-blue-600' : 'text-gray-700'}`}
+                                        >
+                                            {s}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
                     </div>
 
                     {canManageUsers ? (
@@ -352,7 +384,8 @@ const PAListPage = () => {
                                     </div>
                                 </th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[22%]">Name</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[24%]">Contact Info</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[20%]">Contact Info</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Type</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Assigned Jobs</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Status</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[14%]">Date Added</th>
@@ -431,6 +464,10 @@ const PAListPage = () => {
                                     <td className="px-4 py-3.5 max-w-0">
                                         <p className="text-gray-700 text-sm truncate" title={pa.email}>{truncateText(pa.email, 35)}</p>
                                         <p className="text-gray-400 text-xs mt-0.5 truncate" title={pa.phone}>{truncateText(pa.phone, 25)}</p>
+                                    </td>
+
+                                    <td className="px-4 py-3.5">
+                                        <FleetBadge fleet={pa.fleet} entity="pa" />
                                     </td>
 
                                     {/* Assigned Jobs */}

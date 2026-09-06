@@ -17,7 +17,11 @@ import {
 import DriverFleetFilterRadios, {
     DRIVER_FLEET_FILTER,
     driverMatchesFleetFilter,
+    PaFleetFilterRadios,
+    PA_FLEET_FILTER,
+    paMatchesFleetFilter,
 } from '../../../components/DriverFleetFilterRadios';
+import { formatPaTypeLabel } from '../../../utils/fleet';
 
 // ── Confirm removal dialog ────────────────────────────────────────────────────
 
@@ -73,6 +77,7 @@ const Step3EditJob = ({ setToasts }) => {
     const [driverQuery,     setDriverQuery]       = useState('');
     const [driverFleetFilter, setDriverFleetFilter] = useState(DRIVER_FLEET_FILTER.ALL);
     const [paQuery,         setPaQuery]           = useState('');
+    const [paFleetFilter,   setPaFleetFilter]     = useState(PA_FLEET_FILTER.ALL);
     const [pickingDriverId, setPickingDriverId]   = useState(null); // per-row loading in driver modal
     const [confirmRemove,   setConfirmRemove]     = useState(null); // 'driver' | 'pa' | null
 
@@ -141,14 +146,16 @@ const Step3EditJob = ({ setToasts }) => {
         const available = passengerAssistantsAvailableForAssignment(pasCatalog, jobsMinimal, id);
         const q = paQuery.trim().toLowerCase();
         return available.filter((p) => {
+            if (!paMatchesFleetFilter(p, paFleetFilter)) return false;
             if (!q) return true;
             return `${p.first_name || ''} ${p.surname || ''}`.toLowerCase().includes(q);
         }).map((p) => ({
             id:     p.id,
             name:   [p.first_name, p.surname].filter(Boolean).join(' ').trim(),
             avatar: p.profile_picture_url || `https://i.pravatar.cc/150?u=${encodeURIComponent(p.id)}`,
+            typeLabel: formatPaTypeLabel(p.fleet),
         }));
-    }, [showPaModal, pasCatalog, jobsMinimal, id, paQuery]);
+    }, [showPaModal, pasCatalog, jobsMinimal, id, paQuery, paFleetFilter]);
 
     // ── Pick driver (with seat + wheelchair validation) ────────────────────────
     // Validates against DB state (other-job conflict, vehicle capacity, wheelchair).
@@ -537,6 +544,7 @@ const Step3EditJob = ({ setToasts }) => {
                     fleetFilter={driverFleetFilter}
                     onFleetFilterChange={setDriverFleetFilter}
                     fleetFilterName="edit-job-driver-fleet"
+                    fleetFilterKind="driver"
                     rows={filteredDriverRows}
                     currentId={draftDriverId}
                     loadingId={pickingDriverId}
@@ -558,6 +566,10 @@ const Step3EditJob = ({ setToasts }) => {
                     onQueryChange={setPaQuery}
                     searchPlaceholder="Search PA by name..."
                     infoNote={null}
+                    fleetFilter={paFleetFilter}
+                    onFleetFilterChange={setPaFleetFilter}
+                    fleetFilterName="edit-job-pa-fleet"
+                    fleetFilterKind="pa"
                     rows={filteredPaRows}
                     currentId={draftPaId}
                     loadingId={null}
@@ -565,7 +577,7 @@ const Step3EditJob = ({ setToasts }) => {
                     onClose={() => setShowPaModal(false)}
                     disabled={saveInProgress}
                     emptyText="No passenger assistants available."
-                    renderSub={() => 'Passenger Assistant'}
+                    renderSub={(row) => row.typeLabel || 'Passenger Assistant'}
                 />
             )}
         </>
@@ -578,7 +590,7 @@ const AssignmentModal = ({
     title, jobDisplayId, jobName,
     query, onQueryChange, searchPlaceholder,
     infoNote,
-    fleetFilter, onFleetFilterChange, fleetFilterName,
+    fleetFilter, onFleetFilterChange, fleetFilterName, fleetFilterKind = 'driver',
     rows, currentId, loadingId, onPick, onClose,
     disabled, emptyText, renderSub,
 }) => (
@@ -612,11 +624,19 @@ const AssignmentModal = ({
                 )}
 
                 {onFleetFilterChange ? (
-                    <DriverFleetFilterRadios
-                        name={fleetFilterName || 'edit-job-driver-fleet'}
-                        value={fleetFilter}
-                        onChange={onFleetFilterChange}
-                    />
+                    fleetFilterKind === 'pa' ? (
+                        <PaFleetFilterRadios
+                            name={fleetFilterName || 'edit-job-pa-fleet'}
+                            value={fleetFilter}
+                            onChange={onFleetFilterChange}
+                        />
+                    ) : (
+                        <DriverFleetFilterRadios
+                            name={fleetFilterName || 'edit-job-driver-fleet'}
+                            value={fleetFilter}
+                            onChange={onFleetFilterChange}
+                        />
+                    )
                 ) : null}
 
                 {/* Search */}

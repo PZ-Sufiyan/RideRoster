@@ -211,7 +211,8 @@ class PassengerAssistantRegistrationService extends ApiService {
         );
       }
 
-      // 3) passenger_assistant row — id = auth user id for a stable link
+      // 3) passenger_assistant row — id = auth user id for a stable link.
+      //    App self-registration is always a private PA (pending until admin approval).
       await _supabase.from('passenger_assistant').insert({
         'id': assistantId,
         'company_id': companyId,
@@ -237,6 +238,7 @@ class PassengerAssistantRegistrationService extends ApiService {
             ? null
             : passportNumber.trim(),
         'status': 'pending',
+        'fleet': 'private',
       });
 
       // 4) Standard documents (enum + unique constraint: one row per type)

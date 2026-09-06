@@ -1,5 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { createAuthUserRequiringEmailConfirm } from '../utils/authEmailGuards'
+import { FLEET } from '../utils/fleet'
 import {
   uploadPassengerAssistantDocument,
   uploadPassengerAssistantProfileImage,
@@ -36,6 +37,9 @@ function toDateOrNull(v) {
 /**
  * Registers a passenger assistant in Auth, then `passenger_assistant` + `passenger_assistant_documents`.
  * Uses the service-role client so the company admin session is unchanged.
+ *
+ * Portal registrations are company PAs (`fleet: company`, `status: approve`).
+ * App self-registration creates private PAs (`fleet: private`, `status: pending`).
  *
  * @param {object} params
  * @param {string} params.companyId
@@ -123,6 +127,9 @@ export async function registerPassengerAssistantWithAuthAndRecords({
       nationality: cleanString(personal?.nationality),
       right_to_work_code: personal?.isBritish ? null : toNullableString(personal?.rightToWork),
       passport_number: toNullableString(personal?.passportNumber),
+      // Portal registrations are company PAs and are approved on create (same as company drivers).
+      status: 'approve',
+      fleet: FLEET.COMPANY,
     }
 
     const { error: paErr } = await supabaseAdmin.from('passenger_assistant').insert(assistantPayload)

@@ -199,9 +199,7 @@ class CacheRepository {
         .lte('semester_start', today)
         .gte('semester_end', today);
 
-    if ((rows as List<dynamic>).isEmpty) return;
-
-    final jobList = rows
+    final jobList = (rows as List<dynamic>)
         .map((r) => Map<String, dynamic>.from(r as Map))
         .toList();
 
@@ -255,10 +253,26 @@ class CacheRepository {
 
     // Use insertOnConflictUpdate so driver rows already in cache aren't wiped.
     // PA job rows are inserted alongside driver rows, not instead of them.
+    // Always drop stale PA assignments — an empty server result means this PA
+    // is no longer on any job, so the cached row must go.
     await _db.transaction(() async {
-      await _db.batch(
-        (b) => b.insertAllOnConflictUpdate(_db.jobsCache, companions),
-      );
+      final keepIds = jobList
+          .map((m) => (m['id'] ?? '').toString())
+          .where((id) => id.isNotEmpty)
+          .toList();
+      await (_db.delete(_db.jobsCache)..where((t) {
+            var expr = t.assignedPaId.equalsNullable(userId);
+            if (keepIds.isNotEmpty) {
+              expr = expr & t.id.isNotIn(keepIds);
+            }
+            return expr;
+          }))
+          .go();
+      if (companions.isNotEmpty) {
+        await _db.batch(
+          (b) => b.insertAllOnConflictUpdate(_db.jobsCache, companions),
+        );
+      }
     });
   }
 

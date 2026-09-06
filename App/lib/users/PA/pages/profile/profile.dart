@@ -11,6 +11,7 @@ import '../../../../routes/app_routes.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
+import '../../../../widgets/app_version_label.dart';
 import 'edit_profile.dart';
 import 'pa_document_catalog.dart';
 
@@ -106,9 +107,10 @@ class _PaProfilePageState extends State<PaProfilePage> {
                         ),
                         SizedBox(height: SizeConfig.r(24)),
                         _SettingsSection(
-                          onDeleteAccount: () => _deleteAccount(context),
+                          onDeleteAccount: () => _openDeleteAccount(context),
                           onLogout: () => _logout(context),
                         ),
+                        const AppVersionLabel(),
                         SizedBox(height: SizeConfig.r(28)),
                       ],
                     ),
@@ -147,7 +149,7 @@ class _PaProfilePageState extends State<PaProfilePage> {
     );
   }
 
-  static Future<void> _deleteAccount(BuildContext context) async {
+  static Future<void> _openDeleteAccount(BuildContext context) async {
     if (!context.read<ConnectivityProvider>().isOnline) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
@@ -158,60 +160,7 @@ class _PaProfilePageState extends State<PaProfilePage> {
       return;
     }
 
-    final confirmed = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('Delete Account'),
-          content: const Text(
-            'This action will permanently delete your account. This cannot be undone.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              style: TextButton.styleFrom(foregroundColor: AppColors.error),
-              child: const Text('Delete Account'),
-            ),
-          ],
-        );
-      },
-    );
-
-    if (confirmed != true || !context.mounted) return;
-
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(
-        child: CircularProgressIndicator(),
-      ),
-    );
-
-    final error = await context.read<AuthProvider>().deleteAccount();
-
-    if (!context.mounted) return;
-    Navigator.of(context, rootNavigator: true).pop();
-
-    if (error != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(error),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
-      return;
-    }
-
-    Navigator.pushNamedAndRemoveUntil(
-      context,
-      AppRoutes.login,
-      (route) => false,
-    );
+    await Navigator.pushNamed(context, AppRoutes.deleteAccount);
   }
 }
 

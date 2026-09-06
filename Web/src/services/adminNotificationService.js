@@ -743,6 +743,77 @@ function formatDocumentTypeLabel(documentType, documentSource) {
   return DRIVER_DOCUMENT_LABELS[key] ?? key.replace(/_/g, ' ')
 }
 
+function buildPaEventNotification(row) {
+  if (!row?.id) return null
+
+  const eventType = String(row.event_type || '')
+  const isApproved = eventType === 'pa_approved'
+  const isRejected = eventType === 'pa_rejected'
+  const isSuspended = eventType === 'pa_suspended'
+  const isDocExpired = eventType === 'pa_document_expired'
+  const isRemovedFromJob = eventType === 'pa_removed_from_job'
+
+  const iconColor = isApproved
+    ? 'text-green-500 bg-green-50'
+    : isRejected || isSuspended || isDocExpired || isRemovedFromJob
+      ? 'text-orange-500 bg-orange-50'
+      : 'text-[#005580] bg-blue-50'
+
+  const toastType = isApproved
+    ? 'success'
+    : isRejected || isSuspended || isDocExpired || isRemovedFromJob
+      ? 'warning'
+      : 'info'
+
+  const toastTitle = isApproved
+    ? 'PA Approved'
+    : isRejected
+      ? 'PA Rejected'
+      : isSuspended
+        ? 'PA Suspended'
+        : isDocExpired
+          ? 'PA Document Expired'
+          : isRemovedFromJob
+            ? 'PA Removed from Job'
+            : 'PA Update'
+
+  const isDocRelated = isDocExpired
+    || (isSuspended && String(row.payload?.reason || '').toLowerCase() === 'document_expiry')
+  const isJobRelated = isRemovedFromJob
+
+  return {
+    key: `pa-event:${row.id}`,
+    category: isDocRelated
+      ? NOTIFICATION_CATEGORIES.DOCUMENT
+      : isJobRelated
+        ? NOTIFICATION_CATEGORIES.JOB
+        : NOTIFICATION_CATEGORIES.VEHICLE,
+    tab: isDocRelated
+      ? NOTIFICATION_TABS.DOCUMENTS
+      : isJobRelated
+        ? NOTIFICATION_TABS.JOBS
+        : NOTIFICATION_TABS.ALL,
+    createdAt: row.created_at,
+    isNew: false,
+    IconName: isDocExpired
+      ? 'MdDescription'
+      : isRemovedFromJob
+        ? 'MdWarning'
+        : isApproved
+          ? 'MdPersonAdd'
+          : 'MdPersonOff',
+    iconColor,
+    title: row.title || toastTitle,
+    content: row.body,
+    linkText: isRemovedFromJob && row.job_id ? 'View Job' : 'View PA',
+    linkTo: isRemovedFromJob && row.job_id
+      ? activeNotificationRoutes.job(row.job_id)
+      : (row.pa_id ? activeNotificationRoutes.paDetail(row.pa_id) : null),
+    toastType,
+    toastTitle,
+  }
+}
+
 function buildDriverEventNotification(row) {
   if (!row?.id) return null
 
@@ -893,8 +964,9 @@ function buildJobReassignmentAlert(row) {
 function buildJobEventNotification(row) {
   if (!row?.id) return null
   const eventType = String(row.event_type || '')
-  const isAssigned = eventType === 'job_driver_assigned'
-  const isRemoved = eventType === 'job_driver_removed'
+  const isAssigned = eventType === 'job_driver_assigned' || eventType === 'job_pa_assigned'
+  const isRemoved = eventType === 'job_driver_removed' || eventType === 'job_pa_removed'
+  const isPa = eventType === 'job_pa_assigned' || eventType === 'job_pa_removed'
 
   return {
     key: `job-event:${row.id}`,
@@ -909,7 +981,11 @@ function buildJobEventNotification(row) {
     linkText: 'View Job',
     linkTo: row.job_id ? activeNotificationRoutes.job(row.job_id) : null,
     toastType: isAssigned ? 'success' : isRemoved ? 'warning' : 'info',
-    toastTitle: isAssigned ? 'Driver Assigned' : isRemoved ? 'Driver Removed' : 'Job Update',
+    toastTitle: isAssigned
+      ? (isPa ? 'PA Assigned' : 'Driver Assigned')
+      : isRemoved
+        ? (isPa ? 'PA Removed' : 'Driver Removed')
+        : 'Job Update',
   }
 }
 
@@ -1271,6 +1347,21 @@ async function fetchDocumentExpiryNotifications(companyId, profileByUserId) {
   return notifications
 }
 
+async function fetchPaEventNotifications(companyId) {
+  const { data, error } = await supabase
+    .from('pa_event_notifications')
+    .select('id, company_id, pa_id, job_id, event_type, title, body, payload, created_at')
+    .eq('company_id', companyId)
+    .order('created_at', { ascending: false })
+    .limit(200)
+
+  if (error) {
+    console.warn('PA event notifications unavailable:', error.message)
+    return []
+  }
+  return (data || []).map(buildPaEventNotification).filter(Boolean)
+}
+
 async function fetchDriverEventNotifications(companyId) {
   const { data, error } = await supabase
     .from('driver_event_notifications')
@@ -1349,6 +1440,7 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     documentItems,
     vehicleItems,
     driverEventItems,
+    paEventItems,
     jobEventItems,
     privateJobRemovalItems,
   ] =
@@ -1361,6 +1453,7 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     fetchDocumentExpiryNotifications(companyId, profileByUserId),
     fetchVehicleEventNotifications(companyId),
     fetchDriverEventNotifications(companyId),
+    fetchPaEventNotifications(companyId),
     fetchJobEventNotifications(companyId),
     fetchJobReassignmentAlerts(companyId),
   ])
@@ -1375,6 +1468,7 @@ export async function fetchCompanyNotifications(role = NOTIFICATION_ROLES.ADMIN)
     ...documentItems,
     ...vehicleItems,
     ...driverEventItems,
+    ...paEventItems,
     ...jobEventItems,
     ...privateJobRemovalItems,
   ]
@@ -1521,6 +1615,10 @@ export function buildNotificationFromDocumentExpiryRow(row, profile = {}, docume
 
 export function buildNotificationFromDriverEventRow(row) {
   return buildDriverEventNotification(row)
+}
+
+export function buildNotificationFromPaEventRow(row) {
+  return buildPaEventNotification(row)
 }
 
 export function buildNotificationFromVehicleEventRow(row) {

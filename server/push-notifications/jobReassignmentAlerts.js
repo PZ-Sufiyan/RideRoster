@@ -360,6 +360,59 @@ export async function unassignCompanyDriverFromVehicle(supabase, driverId) {
   return vehicle
 }
 
+export async function loadPaJobsForRemoval(supabase, paId, todayYmd) {
+  if (!paId) return []
+  const { data, error } = await supabase
+    .from('jobs')
+    .select('id, job_name, status, semester_start, semester_end, company_id, assigned_pa_id, internal_job_id, client_school_name')
+    .eq('assigned_pa_id', paId)
+    .neq('status', 'cancelled')
+
+  if (error) throw error
+  return (data || []).filter((job) => isActiveOrUpcomingJob(job, todayYmd))
+}
+
+export async function removePaFromJob(supabase, jobId) {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('jobs')
+    .update({
+      assigned_pa_id: null,
+      updated_at: now,
+    })
+    .eq('id', jobId)
+    .select('id, job_name, company_id, internal_job_id, client_school_name')
+
+  if (error) throw error
+  if (!data?.length) return null
+  return data[0]
+}
+
+export async function removePaFromJobs(supabase, jobs) {
+  const removed = []
+  for (const job of jobs) {
+    const updated = await removePaFromJob(supabase, job.id)
+    if (updated) removed.push({ ...job, ...updated })
+  }
+  return removed
+}
+
+export async function suspendApprovedPa(supabase, paId) {
+  const now = new Date().toISOString()
+  const { data, error } = await supabase
+    .from('passenger_assistant')
+    .update({
+      status: 'suspend',
+      updated_at: now,
+    })
+    .eq('id', paId)
+    .in('status', ['approve', 'approved'])
+    .select('id, status')
+
+  if (error) throw error
+  return data?.length ? data[0] : null
+}
+
 export async function suspendApprovedDriver(supabase, driverId) {
   const now = new Date().toISOString()
   const { data, error } = await supabase

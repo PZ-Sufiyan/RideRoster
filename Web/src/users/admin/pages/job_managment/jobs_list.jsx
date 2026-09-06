@@ -38,7 +38,11 @@ import { useJobsList } from '../../../../hooks/useJobsList';
 import DriverFleetFilterRadios, {
     DRIVER_FLEET_FILTER,
     driverMatchesFleetFilter,
+    PaFleetFilterRadios,
+    PA_FLEET_FILTER,
+    paMatchesFleetFilter,
 } from '../../../../components/DriverFleetFilterRadios';
+import { formatPaTypeLabel } from '../../../../utils/fleet';
 
 // ── Confirmation dialog ───────────────────────────────────────────────────────
 
@@ -105,7 +109,9 @@ const ActiveJobs = () => {
     const [driverQuery, setDriverQuery] = useState('');
     const [driverFleetFilter, setDriverFleetFilter] = useState(DRIVER_FLEET_FILTER.ALL);
     const [paQuery, setPaQuery] = useState('');
+    const [paFleetFilter, setPaFleetFilter] = useState(PA_FLEET_FILTER.ALL);
     const [assigningDriverId, setAssigningDriverId] = useState(null); // loading state per driver row
+    const [assigningPaId, setAssigningPaId] = useState(null);
     const [statusFilter, setStatusFilter] = useState('all');
     const [currentPage, setCurrentPage] = useState(1);
 
@@ -289,6 +295,7 @@ const ActiveJobs = () => {
     // ── Assign PA ─────────────────────────────────────────────────────────
 
     const assignPaToJob = async (jobId, paRow) => {
+        setAssigningPaId(paRow.id);
         try {
             await updateJobAssignedPa(jobId, paRow.id);
             pushToast('success', `Passenger assistant assigned to ${formatShortJobLabel(jobId)}.`);
@@ -296,6 +303,8 @@ const ActiveJobs = () => {
             await reloadData();
         } catch (e) {
             pushToast('error', e?.message || 'Could not assign PA.');
+        } finally {
+            setAssigningPaId(null);
         }
     };
 
@@ -334,6 +343,7 @@ const ActiveJobs = () => {
         const q = paQuery.trim().toLowerCase();
         return list
             .filter((p) => {
+                if (!paMatchesFleetFilter(p, paFleetFilter)) return false;
                 if (!q) return true;
                 const name = `${p.first_name || ''} ${p.surname || ''}`.toLowerCase();
                 return name.includes(q);
@@ -342,8 +352,9 @@ const ActiveJobs = () => {
                 id: p.id,
                 name: `${p.first_name || ''} ${p.surname || ''}`.trim(),
                 avatar: p.profile_picture_url || `https://i.pravatar.cc/150?u=${encodeURIComponent(p.id)}`,
+                typeLabel: formatPaTypeLabel(p.fleet),
             }));
-    }, [selectedJob, showAssignPA, pasCatalog, jobsMinimal, paQuery]);
+    }, [selectedJob, showAssignPA, pasCatalog, jobsMinimal, paQuery, paFleetFilter]);
 
     const filteredJobs = useMemo(() => {
         if (statusFilter === 'all') return jobs;
@@ -832,6 +843,12 @@ const ActiveJobs = () => {
                                 </div>
                             </div>
 
+                            <PaFleetFilterRadios
+                                name="job-list-pa-fleet"
+                                value={paFleetFilter}
+                                onChange={setPaFleetFilter}
+                            />
+
                             <div className="relative w-full">
                                 <input
                                     type="text"
@@ -851,6 +868,7 @@ const ActiveJobs = () => {
                                 )}
                                 {filteredPaRows.map((pa) => {
                                     const isCurrent = selectedJob?.assigned_pa_id === pa.id;
+                                    const isLoading = assigningPaId === pa.id;
                                     return (
                                         <div
                                             key={pa.id}
@@ -862,17 +880,20 @@ const ActiveJobs = () => {
                                                 <img src={pa.avatar} className="w-10 h-10 rounded-full object-cover border border-gray-100" alt="" />
                                                 <div>
                                                     <p className="text-[14px] font-bold text-gray-900">{pa.name}</p>
-                                                    <p className="text-[12px] text-gray-400 font-medium mt-0.5">Passenger Assistant</p>
+                                                    <p className="text-[12px] text-gray-400 font-medium mt-0.5">{pa.typeLabel || 'Passenger Assistant'}</p>
                                                 </div>
                                             </div>
                                             <button
                                                 onClick={() => {
-                                                    if (!selectedJob || isCurrent) return;
+                                                    if (!selectedJob || isCurrent || isLoading) return;
                                                     assignPaToJob(selectedJob.id, pa);
                                                 }}
-                                                className={`px-4 py-2 rounded-xl text-[12px] font-bold transition-all ${
+                                                disabled={isLoading}
+                                                className={`shrink-0 px-4 py-2 rounded-xl text-[12px] font-bold transition-all min-w-[72px] text-center ${
                                                     isCurrent
                                                         ? 'border border-[#004D6D]/30 text-[#004D6D] bg-white cursor-default'
+                                                        : isLoading
+                                                        ? 'border border-gray-200 text-gray-400 bg-gray-50 cursor-wait'
                                                         : 'border border-gray-200 text-gray-700 hover:bg-gray-50'
                                                 }`}
                                             >
@@ -880,6 +901,14 @@ const ActiveJobs = () => {
                                                     <span className="inline-flex items-center gap-1.5 text-[#004D6D]">
                                                         <MdCheck size={16} />
                                                         Current
+                                                    </span>
+                                                ) : isLoading ? (
+                                                    <span className="inline-flex items-center gap-1.5">
+                                                        <svg className="animate-spin h-3.5 w-3.5" viewBox="0 0 24 24" fill="none">
+                                                            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                                                            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                                                        </svg>
+                                                        Assigning
                                                     </span>
                                                 ) : (
                                                     'Assign'

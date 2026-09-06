@@ -114,6 +114,12 @@ class _PaAssignedJobsPageState extends State<PaAssignedJobsPage> {
                   }
 
                   if (provider.job == null) {
+                    if (_selectedDay.isNotEmpty) {
+                      WidgetsBinding.instance.addPostFrameCallback((_) {
+                        if (!mounted || _selectedDay.isEmpty) return;
+                        setState(() => _selectedDay = '');
+                      });
+                    }
                     return Center(
                       child: Text(
                         'No job assigned.',

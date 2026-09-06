@@ -26,6 +26,7 @@ import {
 } from '../../../../../services/passengerAsssistantService';
 import SendUserMessageModal from '../../../../../components/SendDriverMessageModal';
 import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
+import FleetBadge from '../../../../../components/FleetBadge';
 
 const ITEMS_PER_PAGE = 10;
 
@@ -357,9 +358,12 @@ const PADetail = () => {
                         />
                         <div>
                             <h2 className="text-lg font-bold text-gray-900">{displayName}</h2>
-                            <div className={`mt-2 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${statusClass}`}>
-                                <span className="w-2 h-2 rounded-full bg-current opacity-60 shrink-0" />
-                                {statusLabel}
+                            <div className="mt-2 flex items-center justify-center gap-2 flex-wrap">
+                                <div className={`inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${statusClass}`}>
+                                    <span className="w-2 h-2 rounded-full bg-current opacity-60 shrink-0" />
+                                    {statusLabel}
+                                </div>
+                                <FleetBadge fleet={pa.fleet} entity="pa" />
                             </div>
                         </div>
 

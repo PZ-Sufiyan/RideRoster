@@ -8,6 +8,7 @@ import {
   buildNotificationFromSessionRow,
   buildNotificationFromSosRow,
   buildNotificationFromDriverEventRow,
+  buildNotificationFromPaEventRow,
   buildNotificationFromVehicleEventRow,
   detectSessionPassengerEventType,
   enrichSessionContext,
@@ -288,6 +289,11 @@ export function useAdminNotificationToasts(enabled, role = NOTIFICATION_ROLES.AD
 
       if (event.source === 'driver_event' && payload.new) {
         maybeToast(buildNotificationFromDriverEventRow(payload.new))
+        return
+      }
+
+      if (event.source === 'pa_event' && payload.new) {
+        maybeToast(buildNotificationFromPaEventRow(payload.new))
         return
       }
 

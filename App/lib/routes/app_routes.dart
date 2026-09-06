@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../repositories/local_job_repository.dart';
 import '../users/auth/pages/choose_account_type.dart';
+import '../users/auth/pages/delete_account.dart';
 import '../users/auth/pages/forgot_password.dart';
 import '../users/auth/pages/login.dart';
 import '../users/auth/pages/register.dart';
@@ -42,6 +43,7 @@ class AppRoutes {
   static const String sos = '/driver/sos';
   static const String driverProfile = '/driver/profile';
   static const String driverEditProfile = '/driver/profile/edit';
+  static const String deleteAccount = '/delete-account';
   static const String driverNotifications = '/driver/notifications';
   static const String requestedJobs = '/driver/requested-jobs';
   static const String jobDetail = '/driver/job-detail';
@@ -105,6 +107,9 @@ class AppRoutes {
         return MaterialPageRoute(
           builder: (_) => DriverEditProfilePage(args: args),
         );
+
+      case deleteAccount:
+        return MaterialPageRoute(builder: (_) => const DeleteAccountPage());
 
       case driverNotifications:
         return MaterialPageRoute(

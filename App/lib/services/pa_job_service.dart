@@ -79,6 +79,20 @@ class PaJobService {
   Future<void> _syncPaLiveStateFromServer(String paUserId) async {
     final todayDate = _dateString(DateTime.now());
 
+    final assignedRows = await _supabase
+        .from('jobs')
+        .select('id')
+        .eq('assigned_pa_id', paUserId)
+        .eq('driver_approval_status', 'accepted')
+        .neq('status', 'cancelled')
+        .limit(1)
+        .timeout(const Duration(seconds: 4));
+
+    if (assignedRows.isEmpty) {
+      await _localRepo.unassignPaFromCachedJobs(paUserId);
+      return;
+    }
+
     final jobRows = await _supabase
         .from('jobs')
         .select('id')
@@ -340,16 +354,21 @@ class PaJobService {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return null;
 
-    // ── Try local cache first ─────────────────────────────────────────────
-    try {
-      final local = await _localRepo.fetchPaAssignedJob(userId);
-      if (local != null) return local;
-    } catch (_) {}
+    // When online, server assignment is the source of truth. Local cache can
+    // still hold a job after admin removes this PA (assigned_pa_id → null).
+    if (ConnectivityService().canReachServer) {
+      try {
+        final remote = await _fetchAssignedJobFromSupabase(userId);
+        await _localRepo.unassignPaFromCachedJobs(
+          userId,
+          keepJobId: remote?.jobDbId,
+        );
+        return remote;
+      } catch (_) {}
+    }
 
-    // ── Supabase fallback ─────────────────────────────────────────────────
-    if (!ConnectivityService().canReachServer) return null;
     try {
-      return await _fetchAssignedJobFromSupabase(userId);
+      return await _localRepo.fetchPaAssignedJob(userId);
     } catch (_) {
       return null;
     }

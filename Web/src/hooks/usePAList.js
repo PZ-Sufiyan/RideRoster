@@ -28,6 +28,7 @@ function mapPassengerAssistantRow(row) {
         phone: row.phone || '-',
         assignedJobs: 0,
         statusDb: normalizePaStatus(row.status),
+        fleet: String(row.fleet || 'company').trim().toLowerCase() === 'private' ? 'private' : 'company',
         dateAdded: row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : '-',
     };
 }
