@@ -7,6 +7,8 @@ import {
   notifyManualPaJobRemoval,
   notifyPortalPaAssigned,
   notifyPortalCompanyDriverAssigned,
+  notifyJobCompletedDriverReleased,
+  notifyJobCompletedPaReleased,
 } from './jobNotificationService'
 import {
   privateDriverBlockedByExpiredVehicleDocs,
@@ -778,6 +780,11 @@ export async function updateJobById(jobId, companyId, updates) {
     .from('jobs').update({ ...updates, updated_at: new Date().toISOString() })
     .eq('id', jobId).eq('company_id', companyId).select().single()
   if (error) throw error
+  try {
+    await releaseAssignedStaffIfJobCompleted(data)
+  } catch (releaseErr) {
+    console.warn('Failed to release staff from completed job:', releaseErr?.message || releaseErr)
+  }
   return data
 }
 
@@ -869,15 +876,29 @@ export async function validateDriverAssignment(jobId, driverId, companyId) {
 
   const { data: conflictingJobs, error: conflictErr } = await supabase
     .from('jobs')
-    .select('id, job_name')
+    .select('id, company_id, job_name, client_school_name, internal_job_id, status, semester_start, semester_end, assigned_driver_id')
     .eq('assigned_driver_id', driverId)
     .neq('id', jobId)
     .neq('status', 'cancelled')
 
   if (conflictErr) throw conflictErr
 
-  if (conflictingJobs && conflictingJobs.length > 0) {
-    const conflictName = conflictingJobs[0].job_name || 'another job'
+  const blockingJobs = []
+  for (const conflict of conflictingJobs || []) {
+    if (isJobCompleted(conflict)) {
+      try {
+        await releaseAssignedDriverIfJobCompleted(conflict)
+      } catch (releaseErr) {
+        console.warn('Failed to release driver from completed job:', releaseErr?.message || releaseErr)
+        blockingJobs.push(conflict)
+      }
+      continue
+    }
+    blockingJobs.push(conflict)
+  }
+
+  if (blockingJobs.length > 0) {
+    const conflictName = blockingJobs[0].job_name || 'another job'
     throw new Error(
       `This driver is already assigned to "${conflictName}". Remove them from that job first.`
     )
@@ -1060,6 +1081,36 @@ export async function removeJobAssignedDriver(jobId) {
 
 export async function updateJobAssignedPa(jobId, paId) {
   await assertJobAllowsNewAssignment(jobId)
+
+  const { data: conflictingJobs, error: conflictErr } = await supabase
+    .from('jobs')
+    .select('id, company_id, job_name, client_school_name, internal_job_id, status, semester_start, semester_end, assigned_pa_id')
+    .eq('assigned_pa_id', paId)
+    .neq('id', jobId)
+    .neq('status', 'cancelled')
+  if (conflictErr) throw conflictErr
+
+  const blockingJobs = []
+  for (const conflict of conflictingJobs || []) {
+    if (isJobCompleted(conflict)) {
+      try {
+        await releaseAssignedPaIfJobCompleted(conflict)
+      } catch (releaseErr) {
+        console.warn('Failed to release PA from completed job:', releaseErr?.message || releaseErr)
+        blockingJobs.push(conflict)
+      }
+      continue
+    }
+    blockingJobs.push(conflict)
+  }
+
+  if (blockingJobs.length > 0) {
+    const conflictName = blockingJobs[0].job_name || 'another job'
+    throw new Error(
+      `This passenger assistant is already assigned to "${conflictName}". Remove them from that job first.`
+    )
+  }
+
   const { data, error } = await supabase
     .from('jobs').update({ assigned_pa_id: paId, updated_at: new Date().toISOString() })
     .eq('id', jobId).select().single()
@@ -1210,6 +1261,93 @@ export async function assertJobAllowsNewAssignment(jobId) {
   if (isJobCompleted(job)) throw new Error(COMPLETED_JOB_ASSIGN_ERROR)
 }
 
+/**
+ * Clear the assigned driver when a job is completed (semester ended or status).
+ * Sends portal in-app notice + driver in-app/push. Safe to call repeatedly.
+ */
+export async function releaseAssignedDriverIfJobCompleted(job) {
+  if (!job?.id || !job.assigned_driver_id) return null
+  if (!isJobCompleted(job)) return null
+
+  const previousDriverId = job.assigned_driver_id
+  const { data, error } = await supabase
+    .from('jobs')
+    .update({
+      assigned_driver_id: null,
+      driver_approval_status: null,
+      driver_counter_offer_pay: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', job.id)
+    .eq('assigned_driver_id', previousDriverId)
+    .select('id')
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+
+  try {
+    await notifyJobCompletedDriverReleased({
+      job,
+      driverId: previousDriverId,
+    })
+  } catch (notifyErr) {
+    console.warn('Job completed driver release notification failed:', notifyErr?.message || notifyErr)
+  }
+
+  return { jobId: job.id, driverId: previousDriverId }
+}
+
+export async function releaseAssignedPaIfJobCompleted(job) {
+  if (!job?.id || !job.assigned_pa_id) return null
+  if (!isJobCompleted(job)) return null
+
+  const previousPaId = job.assigned_pa_id
+  const { data, error } = await supabase
+    .from('jobs')
+    .update({
+      assigned_pa_id: null,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', job.id)
+    .eq('assigned_pa_id', previousPaId)
+    .select('id')
+    .maybeSingle()
+  if (error) throw error
+  if (!data) return null
+
+  try {
+    await notifyJobCompletedPaReleased({
+      job,
+      paId: previousPaId,
+    })
+  } catch (notifyErr) {
+    console.warn('Job completed PA release notification failed:', notifyErr?.message || notifyErr)
+  }
+
+  return { jobId: job.id, paId: previousPaId }
+}
+
+export async function releaseAssignedStaffIfJobCompleted(job) {
+  if (!job?.id || !isJobCompleted(job)) return null
+  const driver = await releaseAssignedDriverIfJobCompleted(job)
+  const pa = await releaseAssignedPaIfJobCompleted(job)
+  if (!driver && !pa) return null
+  return { jobId: job.id, driverId: driver?.driverId || null, paId: pa?.paId || null }
+}
+
+export async function releaseStaffFromCompletedJobs(jobs) {
+  const released = []
+  for (const job of jobs || []) {
+    try {
+      const result = await releaseAssignedStaffIfJobCompleted(job)
+      if (result) released.push(result)
+    } catch (err) {
+      console.warn('Failed to release staff from completed job:', err?.message || err)
+    }
+  }
+  return released
+}
+
 export function formatPassengersCapacityLabel(passengerCount, seatCapacityTotal) {
   const n   = Number(passengerCount) || 0
   const cap = seatCapacityTotal == null || seatCapacityTotal === '' ? null : Number(seatCapacityTotal)
@@ -1314,6 +1452,8 @@ function mapRawJobsToListRows(jobsRaw, passengerCounts, drivers, pas, vehicleRow
     id:                 j.id,
     assigned_driver_id: j.assigned_driver_id,
     assigned_pa_id:     j.assigned_pa_id,
+    status:             j.status,
+    semester_end:       j.semester_end,
   }))
 
   return { jobs, jobsMinimal }
@@ -1388,6 +1528,20 @@ export async function fetchJobsListPageData(companyId) {
   if (vehiclesRes.error) throw vehiclesRes.error
 
   const jobsRaw         = jobsRes.data || []
+  const released        = await releaseStaffFromCompletedJobs(jobsRaw)
+  if (released.length) {
+    const releasedByJobId = new Map(released.map((row) => [row.jobId, row]))
+    for (const job of jobsRaw) {
+      const row = releasedByJobId.get(job.id)
+      if (!row) continue
+      if (row.driverId) {
+        job.assigned_driver_id = null
+        job.driver_approval_status = null
+        job.driver_counter_offer_pay = null
+      }
+      if (row.paId) job.assigned_pa_id = null
+    }
+  }
   const passengerCounts = await countPassengersByJobId(jobsRaw.map((j) => j.id))
   const vehicles        = vehiclesRes.data || []
   const privateVehicleIds = vehicles
@@ -1462,14 +1616,24 @@ export function driversAvailableForAssignment(allDrivers, jobsMinimal, forJobId)
     if (status !== 'approved') return false
     if (d.vehicle_assigned !== true) return false
     if (d.privateVehicleDocsExpired === true) return false
-    return !jobsMinimal.some((j) => j.id !== forJobId && j.assigned_driver_id && j.assigned_driver_id === d.id)
+    return !jobsMinimal.some((j) => (
+      j.id !== forJobId
+      && j.assigned_driver_id
+      && j.assigned_driver_id === d.id
+      && !isJobCompleted(j)
+    ))
   })
 }
 
 export function passengerAssistantsAvailableForAssignment(allPAs, jobsMinimal, forJobId) {
   return allPAs.filter((p) => {
     if (!isPaApproved(p.status)) return false
-    return !jobsMinimal.some((j) => j.id !== forJobId && j.assigned_pa_id && j.assigned_pa_id === p.id)
+    return !jobsMinimal.some((j) => (
+      j.id !== forJobId
+      && j.assigned_pa_id
+      && j.assigned_pa_id === p.id
+      && !isJobCompleted(j)
+    ))
   })
 }
 

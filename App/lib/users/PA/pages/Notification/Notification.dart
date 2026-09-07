@@ -563,6 +563,12 @@ class _NotificationCard extends StatelessWidget {
           iconColor: _PaNotificationColors.iconRed,
           iconBg: _PaNotificationColors.iconRedBg,
         );
+      case 'job_completed':
+        return (
+          icon: Icons.check_circle_outline,
+          iconColor: _PaNotificationColors.iconGreen,
+          iconBg: _PaNotificationColors.iconGreenBg,
+        );
       case 'job_assignment':
         return (
           icon: Icons.route_outlined,

@@ -9,6 +9,7 @@ import { startPrivateVehicleDocumentExpiryScheduler } from './privateVehicleDocu
 import { startDriverDocumentExpirySuspendScheduler } from './driverDocumentExpirySuspendScheduler.js'
 import { startPaDocumentExpirySuspendScheduler } from './paDocumentExpirySuspendScheduler.js'
 import { startJobReassignmentReminderScheduler } from './jobReassignmentReminderScheduler.js'
+import { startJobCompletionReleaseScheduler } from './jobCompletionReleaseScheduler.js'
 import { startJobScheduler } from './jobScheduler.js'
 import {
   createSupabaseAdminClient,
@@ -274,4 +275,5 @@ app.listen(port, '0.0.0.0', () => {
   startDriverDocumentExpirySuspendScheduler(supabaseAdmin)
   startPaDocumentExpirySuspendScheduler(supabaseAdmin)
   startJobReassignmentReminderScheduler(supabaseAdmin)
+  startJobCompletionReleaseScheduler(supabaseAdmin)
 })

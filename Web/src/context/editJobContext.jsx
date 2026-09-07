@@ -12,6 +12,8 @@ import {
     fetchJobSchedulePassengers,
     fetchJobsListPageData,
     isJobCompleted,
+    releaseAssignedDriverIfJobCompleted,
+    releaseAssignedStaffIfJobCompleted,
     removeJobAssignedDriver,
     timeInputFromDb,
     toPgTime,
@@ -143,14 +145,27 @@ async function validateDriverConstraints(jobId, driverId, companyId, passengers)
     // ── 1. One-job-at-a-time ─────────────────────────────────────────────
     const { data: conflicts, error: conflictErr } = await supabase
         .from('jobs')
-        .select('id, job_name')
+        .select('id, company_id, job_name, client_school_name, internal_job_id, status, semester_start, semester_end, assigned_driver_id')
         .eq('assigned_driver_id', driverId)
         .neq('id', jobId)
         .neq('status', 'cancelled');
 
     if (conflictErr) throw conflictErr;
-    if (conflicts && conflicts.length > 0) {
-        const name = conflicts[0].job_name || 'another job';
+    const blocking = [];
+    for (const conflict of conflicts || []) {
+        if (isJobCompleted(conflict)) {
+            try {
+                await releaseAssignedDriverIfJobCompleted(conflict);
+            } catch (releaseErr) {
+                console.warn('Failed to release driver from completed job:', releaseErr?.message || releaseErr);
+                blocking.push(conflict);
+            }
+            continue;
+        }
+        blocking.push(conflict);
+    }
+    if (blocking.length > 0) {
+        const name = blocking[0].job_name || 'another job';
         throw new Error(
             `This driver is already assigned to "${name}". Remove them from that job first.`
         );
@@ -435,6 +450,23 @@ export function EditJobProvider({ children }) {
                     .from('passenger_schedules')
                     .insert(newRows);
                 if (insErr) throw insErr;
+            }
+
+            try {
+                await releaseAssignedStaffIfJobCompleted({
+                    id: jobId,
+                    company_id: companyId,
+                    job_name: bundle?.job?.job_name,
+                    client_school_name: step1Draft.clientName.trim(),
+                    internal_job_id: step1Draft.internalId.trim() || bundle?.job?.internal_job_id || null,
+                    status: bundle?.job?.status,
+                    semester_start: step3Draft.semesterStart,
+                    semester_end: step3Draft.semesterEnd,
+                    assigned_driver_id: draftDriverId || null,
+                    assigned_pa_id: draftPaId || null,
+                });
+            } catch (releaseErr) {
+                console.warn('Failed to release staff from completed job:', releaseErr?.message || releaseErr);
             }
 
             // 4 ── Silent reload to re-sync local state with what the DB now holds

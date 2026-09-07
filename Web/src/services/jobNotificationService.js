@@ -4,6 +4,7 @@ import { getCompanyAdminById } from './companyService'
 import { getSubAdminById } from './subAdminService'
 import {
   createUserNotification,
+  NOTIFICATION_TYPE_JOB_COMPLETED,
   NOTIFICATION_TYPE_JOB_REMOVED,
 } from './userNotificationService'
 
@@ -12,6 +13,7 @@ export const PORTAL_JOB_EVENT = {
   DRIVER_REMOVED: 'job_driver_removed',
   PA_ASSIGNED: 'job_pa_assigned',
   PA_REMOVED: 'job_pa_removed',
+  JOB_COMPLETED: 'job_completed',
 }
 
 function formatDriverName(driver) {
@@ -314,6 +316,152 @@ export async function notifyManualPaJobRemoval({
     return true
   } catch (err) {
     warn('Manual PA job removal notification failed', err)
+    return null
+  }
+}
+
+/**
+ * Job completed: in-app portal notice for admins (no portal push) +
+ * in-app + push for the released driver.
+ */
+export async function notifyJobCompletedDriverReleased({
+  job,
+  driverId,
+  driver = null,
+}) {
+  try {
+    if (!job?.id || !driverId) return null
+
+    const driverRow = driver?.id ? driver : await loadDriver(driverId)
+    if (!driverRow?.id) return null
+
+    const driverName = formatDriverName(driverRow)
+    const jobLabel = formatJobLabel(job)
+    const jobName = job.job_name?.trim() || jobLabel
+    const school = job.client_school_name?.trim() || ''
+    const payload = {
+      event: PORTAL_JOB_EVENT.JOB_COMPLETED,
+      driver_name: driverName,
+      job_id: job.id,
+      job_name: job.job_name || null,
+      job_label: jobLabel,
+      client_school_name: school || null,
+      internal_job_id: job.internal_job_id ?? null,
+    }
+
+    if (job.company_id) {
+      try {
+        await insertPortalEvent({
+          companyId: job.company_id,
+          jobId: job.id,
+          driverId: driverRow.id,
+          eventType: PORTAL_JOB_EVENT.JOB_COMPLETED,
+          title: 'Job Completed:',
+          body: school
+            ? `${jobLabel} at ${school} is completed. ${driverName} is now available for other jobs.`
+            : `${jobLabel} is completed. ${driverName} is now available for other jobs.`,
+          payload,
+        })
+      } catch (portalErr) {
+        warn('Job completed portal notification failed', portalErr)
+      }
+    }
+
+    const driverBody = school
+      ? `${jobName} at ${school} is completed. You are now available for other jobs.`
+      : `${jobName} is completed. You are now available for other jobs.`
+
+    try {
+      await createUserNotification({
+        userId: driverRow.id,
+        companyId: job.company_id ?? null,
+        notificationType: NOTIFICATION_TYPE_JOB_COMPLETED,
+        title: 'Job Completed',
+        body: driverBody,
+        referenceId: job.id,
+        sendPush: true,
+        payload,
+      })
+    } catch (driverErr) {
+      warn('Job completed driver notification failed', driverErr)
+    }
+
+    return true
+  } catch (err) {
+    warn('Job completed driver release notification failed', err)
+    return null
+  }
+}
+
+/**
+ * Job completed: in-app portal notice for admins (no portal push) +
+ * in-app + push for the released PA.
+ */
+export async function notifyJobCompletedPaReleased({
+  job,
+  paId,
+  pa = null,
+}) {
+  try {
+    if (!job?.id || !paId) return null
+
+    const paRow = pa?.id ? pa : await loadPa(paId)
+    if (!paRow?.id) return null
+
+    const paName = formatPaName(paRow)
+    const jobLabel = formatJobLabel(job)
+    const jobName = job.job_name?.trim() || jobLabel
+    const school = job.client_school_name?.trim() || ''
+    const payload = {
+      event: PORTAL_JOB_EVENT.JOB_COMPLETED,
+      pa_name: paName,
+      job_id: job.id,
+      job_name: job.job_name || null,
+      job_label: jobLabel,
+      client_school_name: school || null,
+      internal_job_id: job.internal_job_id ?? null,
+    }
+
+    if (job.company_id) {
+      try {
+        await insertPortalEvent({
+          companyId: job.company_id,
+          jobId: job.id,
+          paId: paRow.id,
+          eventType: PORTAL_JOB_EVENT.JOB_COMPLETED,
+          title: 'Job Completed:',
+          body: school
+            ? `${jobLabel} at ${school} is completed. ${paName} is now available for other jobs.`
+            : `${jobLabel} is completed. ${paName} is now available for other jobs.`,
+          payload,
+        })
+      } catch (portalErr) {
+        warn('Job completed PA portal notification failed', portalErr)
+      }
+    }
+
+    const paBody = school
+      ? `${jobName} at ${school} is completed. You are now available for other jobs.`
+      : `${jobName} is completed. You are now available for other jobs.`
+
+    try {
+      await createUserNotification({
+        userId: paRow.id,
+        companyId: job.company_id ?? null,
+        notificationType: NOTIFICATION_TYPE_JOB_COMPLETED,
+        title: 'Job Completed',
+        body: paBody,
+        referenceId: job.id,
+        sendPush: true,
+        payload,
+      })
+    } catch (paErr) {
+      warn('Job completed PA notification failed', paErr)
+    }
+
+    return true
+  } catch (err) {
+    warn('Job completed PA release notification failed', err)
     return null
   }
 }

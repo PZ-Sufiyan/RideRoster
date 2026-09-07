@@ -241,7 +241,8 @@ class FcmService {
         type == 'vehicle_assigned' ||
         type == 'vehicle_unassigned' ||
         type == 'vehicle_off_road' ||
-        type == 'job_removed') {
+        type == 'job_removed' ||
+        type == 'job_completed') {
       final user = Supabase.instance.client.auth.currentUser;
       final meta = user?.userMetadata ?? user?.appMetadata;
       final role = meta?['role']?.toString();

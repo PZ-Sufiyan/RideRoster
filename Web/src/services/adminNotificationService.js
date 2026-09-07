@@ -972,6 +972,7 @@ function buildJobEventNotification(row) {
   const eventType = String(row.event_type || '')
   const isAssigned = eventType === 'job_driver_assigned' || eventType === 'job_pa_assigned'
   const isRemoved = eventType === 'job_driver_removed' || eventType === 'job_pa_removed'
+  const isCompleted = eventType === 'job_completed'
   const isPa = eventType === 'job_pa_assigned' || eventType === 'job_pa_removed'
 
   return {
@@ -980,8 +981,8 @@ function buildJobEventNotification(row) {
     tab: NOTIFICATION_TABS.JOBS,
     createdAt: row.created_at,
     isNew: false,
-    IconName: isAssigned ? 'MdCheckCircle' : 'MdDescription',
-    iconColor: isAssigned ? 'text-green-500 bg-green-50' : 'text-orange-500 bg-orange-50',
+    IconName: isAssigned || isCompleted ? 'MdCheckCircle' : 'MdDescription',
+    iconColor: isAssigned || isCompleted ? 'text-green-500 bg-green-50' : 'text-orange-500 bg-orange-50',
     title: row.title,
     content: row.body,
     linkText: 'View Job',
@@ -991,7 +992,9 @@ function buildJobEventNotification(row) {
       ? (isPa ? 'PA Assigned' : 'Driver Assigned')
       : isRemoved
         ? (isPa ? 'PA Removed' : 'Driver Removed')
-        : 'Job Update',
+        : isCompleted
+          ? 'Job Completed'
+          : 'Job Update',
   }
 }
 

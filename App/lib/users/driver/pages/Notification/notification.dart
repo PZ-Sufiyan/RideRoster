@@ -587,6 +587,12 @@ class _NotificationCard extends StatelessWidget {
           iconColor: _DriverNotificationColors.iconRed,
           iconBg: _DriverNotificationColors.iconRedBg,
         );
+      case 'job_completed':
+        return (
+          icon: Icons.check_circle_outline,
+          iconColor: _DriverNotificationColors.iconGreen,
+          iconBg: _DriverNotificationColors.iconGreenBg,
+        );
       case 'message':
         return (
           icon: Icons.chat_bubble_outline,
