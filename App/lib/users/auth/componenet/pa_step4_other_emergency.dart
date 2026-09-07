@@ -1,9 +1,11 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:phone_form_field/phone_form_field.dart';
 import '../../../model/passenger_assistant_register_data.dart';
 import 'register_widgets.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/driver_register_validators.dart';
+import '../../../../utils/register_phone.dart';
 import '../../../../utils/size_confg.dart';
 import '../../../../services/passenger_assistant_registration_service.dart';
 
@@ -23,7 +25,7 @@ class PaStep4OtherEmergency extends StatefulWidget {
 
 class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
   late final TextEditingController _emergencyNameCtrl;
-  late final TextEditingController _emergencyPhoneCtrl;
+  late final PhoneController _emergencyPhoneCtrl;
   final _registration = PassengerAssistantRegistrationService();
   bool _loading = false;
   String? _error;
@@ -34,7 +36,12 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
     super.initState();
     final d = widget.data;
     _emergencyNameCtrl = TextEditingController(text: d.emergencyContactName);
-    _emergencyPhoneCtrl = TextEditingController(text: d.emergencyContactPhone);
+    _emergencyPhoneCtrl = PhoneController(
+      initialValue: RegisterPhone.fromSaved(
+        countryCode: '+44',
+        mobileNumber: d.emergencyContactPhone,
+      ),
+    );
   }
 
   @override
@@ -187,15 +194,22 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
 
   Future<void> _submit() async {
     final d = widget.data;
+    final emergencyPhone = _emergencyPhoneCtrl.value;
+    final phoneError = RegisterPhone.validateMobile(context, emergencyPhone);
     final validation = DriverRegisterValidators.validatePaStep4Emergency(
       emergencyContactName: _emergencyNameCtrl.text,
-      emergencyContactPhone: _emergencyPhoneCtrl.text.trim(),
+      emergencyContactPhone: emergencyPhone.international,
     );
 
-    if (!validation.isValid) {
+    final errors = Map<String, String>.from(validation.errors);
+    if (phoneError != null) {
+      errors['emergencyContactPhone'] = phoneError;
+    }
+
+    if (errors.isNotEmpty) {
       setState(() {
-        _fieldErrors = Map<String, String>.from(validation.errors);
-        _error = validation.firstError;
+        _fieldErrors = errors;
+        _error = errors.values.first;
       });
       return;
     }
@@ -209,7 +223,7 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
       RegExp(r' +'),
       ' ',
     );
-    d.emergencyContactPhone = _emergencyPhoneCtrl.text.trim();
+    d.emergencyContactPhone = emergencyPhone.international;
 
     setState(() {
       _loading = true;
@@ -459,20 +473,17 @@ class _PaStep4OtherEmergencyState extends State<PaStep4OtherEmergency> {
             controller: _emergencyNameCtrl,
             hintText: 'e.g. John Smith',
             keyboardType: TextInputType.name,
-            textCapitalization: TextCapitalization.words,
-            inputFormatters: [
-              DriverRegisterValidators.lettersAndSpacesFormatter,
-            ],
+            textCapitalization: TextCapitalization.none,
+            maxLength: DriverRegisterValidators.personNameMaxLength,
+            inputFormatters: DriverRegisterValidators.emergencyNameFormatters,
             errorText: _fieldErrors['emergencyContactName'],
             onChanged: (_) => _clearFieldError('emergencyContactName'),
           ),
           SizedBox(height: SizeConfig.r(18)),
           const RegFieldLabel('Contact phone number *'),
           SizedBox(height: SizeConfig.r(6)),
-          RegField(
+          RegMobileField(
             controller: _emergencyPhoneCtrl,
-            hintText: 'e.g. 7700 900456',
-            keyboardType: TextInputType.phone,
             errorText: _fieldErrors['emergencyContactPhone'],
             onChanged: (_) => _clearFieldError('emergencyContactPhone'),
           ),

@@ -1,6 +1,7 @@
 export const VEHICLE_STATUS = {
   ACTIVE: 'active',
   OFF_ROAD: 'off_road',
+  INACTIVE: 'inactive',
 }
 
 export function normalizeVehicleStatus(value) {
@@ -8,11 +9,16 @@ export function normalizeVehicleStatus(value) {
     .trim()
     .toLowerCase()
     .replace(/[\s-]+/g, '_')
-  return s === VEHICLE_STATUS.OFF_ROAD ? VEHICLE_STATUS.OFF_ROAD : VEHICLE_STATUS.ACTIVE
+  if (s === VEHICLE_STATUS.OFF_ROAD) return VEHICLE_STATUS.OFF_ROAD
+  if (s === VEHICLE_STATUS.INACTIVE) return VEHICLE_STATUS.INACTIVE
+  return VEHICLE_STATUS.ACTIVE
 }
 
 export function formatVehicleStatusLabel(value) {
-  return normalizeVehicleStatus(value) === VEHICLE_STATUS.OFF_ROAD ? 'Off Road' : 'Active'
+  const status = normalizeVehicleStatus(value)
+  if (status === VEHICLE_STATUS.OFF_ROAD) return 'Off Road'
+  if (status === VEHICLE_STATUS.INACTIVE) return 'Inactive'
+  return 'Active'
 }
 
 export function isVehicleOffRoad(value) {
@@ -21,6 +27,10 @@ export function isVehicleOffRoad(value) {
 
 export function isVehicleActive(value) {
   return normalizeVehicleStatus(value) === VEHICLE_STATUS.ACTIVE
+}
+
+export function isVehicleInactive(value) {
+  return normalizeVehicleStatus(value) === VEHICLE_STATUS.INACTIVE
 }
 
 export function vehicleStatusFromAction(action) {

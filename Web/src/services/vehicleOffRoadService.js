@@ -1,6 +1,6 @@
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { FLEET, isCompanyFleet, isPrivateFleet } from '../utils/fleet'
-import { VEHICLE_STATUS, isVehicleActive } from '../utils/vehicleStatus'
+import { VEHICLE_STATUS, isVehicleActive, isVehicleInactive } from '../utils/vehicleStatus'
 import {
   getBlockingJobsForDriver,
   getCurrentCompanyId,
@@ -94,6 +94,9 @@ async function applyOffRoad({ vehicle, unassignDriver }) {
 export async function requestVehicleOffRoad({ companyId, vehicleId }) {
   if (!companyId || !vehicleId) throw new Error('Company and vehicle are required.')
   const vehicle = await loadVehicleInCompany(vehicleId, companyId)
+  if (isVehicleInactive(vehicle.status)) {
+    throw new Error('Inactive vehicles cannot be changed.')
+  }
 
   if (!vehicle.driver_id) {
     const result = await applyOffRoad({ vehicle, unassignDriver: false })
@@ -147,6 +150,9 @@ export async function swapReplacementAndMarkOffRoad({ companyId, brokenVehicleId
   const broken = await loadVehicleInCompany(brokenVehicleId, companyId)
   const replacement = await loadVehicleInCompany(replacementVehicleId, companyId)
 
+  if (isVehicleInactive(broken.status) || isVehicleInactive(replacement.status)) {
+    throw new Error('Inactive vehicles cannot be changed.')
+  }
   if (isPrivateFleet(broken.fleet)) {
     throw new Error('Private vehicles cannot be swapped from the portal.')
   }

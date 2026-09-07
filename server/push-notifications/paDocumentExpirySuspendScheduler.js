@@ -58,6 +58,10 @@ function isPaRejectedStatus(status) {
   return s === 'reject' || s === 'rejected'
 }
 
+function isPaDeletedStatus(status) {
+  return normalizePaStatus(status) === 'deleted'
+}
+
 function operatingTimezone() {
   return resolveTimezone(process.env.DOCUMENT_EXPIRY_TIMEZONE || 'Europe/London')
 }
@@ -236,6 +240,7 @@ async function loadExpiredSafeguardingDocuments(supabase, todayYmd) {
 
   return rows.filter((row) => {
     if (!row.passenger_assistant_id || !row.passenger_assistant?.id) return false
+    if (String(row.passenger_assistant?.status || '').trim().toLowerCase() === 'deleted') return false
     const expiry = parseYmd(row.expiry_date)
     if (Number.isNaN(expiry.getTime())) return false
     return daysBetween(parseYmd(todayYmd), expiry) <= 0
@@ -249,7 +254,7 @@ async function processPaSafeguardingExpiry({
   todayYmd,
   summary,
 }) {
-  if (isPaRejectedStatus(pa.status)) {
+  if (isPaRejectedStatus(pa.status) || isPaDeletedStatus(pa.status)) {
     summary.skipped += 1
     return
   }

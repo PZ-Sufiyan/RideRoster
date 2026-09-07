@@ -2,6 +2,7 @@ import { supabase } from '../lib/supabaseClient'
 import { getCompanyAdminById } from './companyService'
 import { getSubAdminById } from './subAdminService'
 import { notifyPaStatusChange } from './paNotificationService'
+import { isDeletedStaffStatus } from '../utils/fleet'
 
 /* Passenger info CRUD */
 
@@ -273,6 +274,15 @@ export const updatePassengerAssistant = async (assistantId, updates) => {
   let previous = null
   if (statusChanging) {
     previous = await getPassengerAssistantByIdMaybe(assistantId)
+  }
+
+  if (statusChanging) {
+    if (isDeletedStaffStatus(previous?.status)) {
+      throw new Error('Deleted accounts cannot be changed.')
+    }
+    if (isDeletedStaffStatus(updates.status)) {
+      throw new Error('Account deletion cannot be set from the portal.')
+    }
   }
 
   const { data, error } = await supabase

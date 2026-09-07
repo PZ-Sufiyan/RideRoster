@@ -8,6 +8,7 @@ export const REASSIGNMENT_REASON = {
   COMPANY_DRIVER_DOCUMENT: 'company_driver_document_expiry',
   PRIVATE_VEHICLE_DOCUMENT: 'private_vehicle_document_expiry',
   PRIVATE_DRIVER_DOCUMENT: 'private_driver_document_expiry',
+  DRIVER_ACCOUNT_DELETED: 'driver_account_deleted',
 }
 
 function operatingTimezone() {
@@ -66,6 +67,9 @@ export async function removeDriverFromJobs(supabase, jobs) {
 
 function buildHourlyReminderBody({ jobName, reason }) {
   const label = jobName || 'Job'
+  if (reason === REASSIGNMENT_REASON.DRIVER_ACCOUNT_DELETED) {
+    return `Driver deleted their account and was removed from ${label}. This job still requires reassignment.`
+  }
   if (reason === REASSIGNMENT_REASON.COMPANY_VEHICLE_DOCUMENT
     || reason === REASSIGNMENT_REASON.PRIVATE_VEHICLE_DOCUMENT) {
     return `Driver was removed from ${label} because the assigned vehicle document expired. This job still requires reassignment.`

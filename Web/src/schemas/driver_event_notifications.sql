@@ -13,7 +13,8 @@ create table if not exists public.driver_event_notifications (
       'driver_suspended',
       'driver_approved',
       'driver_rejected',
-      'driver_active'
+      'driver_active',
+      'driver_deleted'
     )
   ),
   title       text not null,

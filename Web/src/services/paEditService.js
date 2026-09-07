@@ -5,6 +5,7 @@ import {
   removeCompanyDocument,
 } from './storageService'
 import { PA_DOCUMENT_TYPES } from './passengerAsssistantService'
+import { isDeletedStaffStatus } from '../utils/fleet'
 
 function cleanString(v) {
   if (v === null || v === undefined) return ''
@@ -107,6 +108,16 @@ export async function updatePAWithRecords({
 }) {
   if (!assistantId) throw new Error('Passenger assistant ID is required.')
   if (!companyId) throw new Error('Company ID is required.')
+
+  const { data: existingPa, error: existingErr } = await supabaseAdmin
+    .from('passenger_assistant')
+    .select('status')
+    .eq('id', assistantId)
+    .maybeSingle()
+  if (existingErr) throw existingErr
+  if (isDeletedStaffStatus(existingPa?.status)) {
+    throw new Error('Deleted accounts cannot be changed.')
+  }
 
   const passportNumber = toNullableString(personal?.passportNumber)
   const passportFile = files[PA_DOCUMENT_TYPES.PASSPORT]

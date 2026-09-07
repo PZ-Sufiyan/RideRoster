@@ -7,7 +7,7 @@ import {
   isDriverApproved,
   isPrivateFleet,
 } from '../utils/fleet'
-import { isVehicleOffRoad } from '../utils/vehicleStatus'
+import { isVehicleOffRoad, isVehicleInactive } from '../utils/vehicleStatus'
 import { notifyVehicleAssigned, notifyVehicleUnassigned } from './vehicleNotificationService'
 
 function isCancelledJobStatus(status) {
@@ -119,6 +119,9 @@ export async function assignDriverToVehicle({ companyId, vehicleId, driverId }) 
   if (isPrivateFleet(vehicle.fleet)) {
     throw new Error('Private vehicles cannot be assigned from the portal.')
   }
+  if (isVehicleInactive(vehicle.status)) {
+    throw new Error('Inactive vehicles cannot be assigned.')
+  }
   if (isVehicleOffRoad(vehicle.status)) {
     throw new Error('This vehicle is Off Road. Set it to Active before assigning a driver.')
   }
@@ -175,6 +178,9 @@ export async function unassignDriverFromVehicle({ companyId, vehicleId }) {
   const vehicle = await loadVehicleInCompany(vehicleId, companyId)
   if (isPrivateFleet(vehicle.fleet)) {
     throw new Error('Private vehicles cannot be unassigned from the portal.')
+  }
+  if (isVehicleInactive(vehicle.status)) {
+    throw new Error('Inactive vehicles cannot be unassigned.')
   }
   if (!vehicle.driver_id) {
     throw new Error('This vehicle has no driver assigned.')

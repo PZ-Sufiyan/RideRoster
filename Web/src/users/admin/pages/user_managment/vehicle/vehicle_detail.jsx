@@ -15,6 +15,7 @@ import { ToastStack } from '../../../../../utils/Toast';
 import { useVehicleOffRoad } from '../../../../../hooks/useVehicleOffRoad';
 import {
     formatVehicleStatusLabel,
+    isVehicleInactive,
     isVehicleOffRoad,
     VEHICLE_STATUS,
 } from '../../../../../utils/vehicleStatus';
@@ -251,6 +252,8 @@ const VehicleDetail = ({ basePath = '/portal' }) => {
                     </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
+                    {!isVehicleInactive(vehicle.status) && (
+                    <>
                     <button
                         type="button"
                         onClick={handleStatusToggle}
@@ -292,6 +295,8 @@ const VehicleDetail = ({ basePath = '/portal' }) => {
                         <MdEdit size={14} />
                         Edit vehicle
                     </button>
+                    </>
+                    )}
                 </div>
             </div>
 

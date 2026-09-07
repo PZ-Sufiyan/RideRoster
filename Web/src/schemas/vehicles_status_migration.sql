@@ -13,7 +13,7 @@ where status is null or status = '';
 
 alter table public.vehicles drop constraint if exists vehicles_status_check;
 alter table public.vehicles
-  add constraint vehicles_status_check check (status in ('active', 'off_road'));
+  add constraint vehicles_status_check check (status in ('active', 'off_road', 'inactive'));
 
 create index if not exists idx_vehicles_status
   on public.vehicles using btree (company_id, status);

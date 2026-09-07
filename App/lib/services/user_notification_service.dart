@@ -71,7 +71,8 @@ class UserNotificationItem {
       readAt: row['read_at'] != null
           ? DateTime.tryParse(row['read_at'].toString())
           : null,
-      createdAt: DateTime.tryParse(row['created_at']?.toString() ?? '') ??
+      createdAt:
+          DateTime.tryParse(row['created_at']?.toString() ?? '') ??
           DateTime.now(),
     );
   }
@@ -83,10 +84,16 @@ class UserNotificationService {
       UserNotificationService._internal();
   factory UserNotificationService() => _instance;
 
+  static const Duration visibleWindow = Duration(days: 7);
+
   SupabaseClient get _supabase => Supabase.instance.client;
   RealtimeChannel? _channel;
 
   String? get _userId => _supabase.auth.currentUser?.id;
+
+  /// Oldest instant still shown in the app. Older rows stay in the DB.
+  String get _visibleSinceIso =>
+      DateTime.now().toUtc().subtract(visibleWindow).toIso8601String();
 
   Future<List<UserNotificationItem>> fetchNotifications() async {
     final userId = _userId;
@@ -98,12 +105,15 @@ class UserNotificationService {
           'id, notification_type, title, body, payload, reference_id, read_at, created_at',
         )
         .eq('user_id', userId)
+        .gte('created_at', _visibleSinceIso)
         .order('created_at', ascending: false);
 
     return (rows as List)
-        .map((row) => UserNotificationItem.fromRow(
-              Map<String, dynamic>.from(row as Map),
-            ))
+        .map(
+          (row) => UserNotificationItem.fromRow(
+            Map<String, dynamic>.from(row as Map),
+          ),
+        )
         .toList();
   }
 
@@ -132,7 +142,8 @@ class UserNotificationService {
         .from('user_notifications')
         .update({'read_at': now})
         .eq('user_id', userId)
-        .isFilter('read_at', null);
+        .isFilter('read_at', null)
+        .gte('created_at', _visibleSinceIso);
   }
 
   Future<int> fetchUnreadCount() async {
@@ -143,7 +154,8 @@ class UserNotificationService {
         .from('user_notifications')
         .select('id')
         .eq('user_id', userId)
-        .isFilter('read_at', null);
+        .isFilter('read_at', null)
+        .gte('created_at', _visibleSinceIso);
 
     return (rows as List).length;
   }

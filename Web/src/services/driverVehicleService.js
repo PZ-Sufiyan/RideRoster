@@ -1,7 +1,8 @@
 import { supabase } from '../lib/supabaseClient'
 import { supabaseAdmin } from '../lib/supabaseAdmin'
 import { getCompanyAdminById } from './companyService'
-import { VEHICLE_STATUS, normalizeVehicleStatus } from '../utils/vehicleStatus'
+import { VEHICLE_STATUS, isVehicleInactive, normalizeVehicleStatus } from '../utils/vehicleStatus'
+import { isDeletedStaffStatus } from '../utils/fleet'
 import { notifyDriverStatusChange } from './driverNotificationService'
 import { notifyVehicleSetActive } from './vehicleNotificationService'
 
@@ -11,6 +12,7 @@ export const DRIVER_DB_STATUS = {
   APPROVED: 'approved',
   REJECTED: 'rejected',
   SUSPENDED: 'suspended',
+  DELETED: 'deleted',
 }
 
 /**
@@ -125,6 +127,15 @@ export const updateDriver = async (driverId, updates) => {
   let previous = null
   if (statusChanging) {
     previous = await getDriverByIdMaybe(driverId)
+  }
+
+  if (statusChanging) {
+    if (isDeletedStaffStatus(previous?.status)) {
+      throw new Error('Deleted accounts cannot be changed.')
+    }
+    if (isDeletedStaffStatus(updates.status)) {
+      throw new Error('Account deletion cannot be set from the portal.')
+    }
   }
 
   const { data, error } = await supabase
@@ -260,6 +271,9 @@ export const updateVehicle = async (vehicleId, updates) => {
 export const updateVehicleStatus = async (vehicleId, status) => {
   if (!vehicleId) throw new Error('Vehicle ID is required.')
   const nextStatus = normalizeVehicleStatus(status)
+  if (nextStatus === VEHICLE_STATUS.INACTIVE) {
+    throw new Error('Inactive vehicle status cannot be set from the portal.')
+  }
 
   const { data: existing, error: existingErr } = await supabaseAdmin
     .from('vehicles')
@@ -268,6 +282,9 @@ export const updateVehicleStatus = async (vehicleId, status) => {
     .maybeSingle()
   if (existingErr) throw existingErr
   if (!existing) throw new Error('Vehicle not found.')
+  if (isVehicleInactive(existing.status)) {
+    throw new Error('Inactive vehicles cannot be changed.')
+  }
 
   const { data, error } = await supabaseAdmin
     .from('vehicles')

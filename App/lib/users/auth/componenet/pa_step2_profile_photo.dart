@@ -22,6 +22,8 @@ class PaStep2ProfilePhoto extends StatefulWidget {
 }
 
 class _PaStep2ProfilePhotoState extends State<PaStep2ProfilePhoto> {
+  String? _error;
+
   Future<void> _pick() async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.image,
@@ -30,8 +32,19 @@ class _PaStep2ProfilePhotoState extends State<PaStep2ProfilePhoto> {
       withReadStream: false,
     );
     if (result != null && result.files.isNotEmpty) {
-      setState(() => widget.data.profilePhoto = result.files.first);
+      setState(() {
+        widget.data.profilePhoto = result.files.first;
+        _error = null;
+      });
     }
+  }
+
+  void _saveAndNext() {
+    if (widget.data.profilePhoto == null) {
+      setState(() => _error = 'Please add a profile picture to continue.');
+      return;
+    }
+    widget.onNext();
   }
 
   @override
@@ -145,8 +158,18 @@ class _PaStep2ProfilePhotoState extends State<PaStep2ProfilePhoto> {
               ),
             ),
           ),
+          if (_error != null) ...[
+            SizedBox(height: SizeConfig.r(12)),
+            Text(
+              _error!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(13),
+                color: AppColors.error,
+              ),
+            ),
+          ],
           SizedBox(height: SizeConfig.spaceLG),
-          NextStepButton(onTap: widget.onNext),
+          NextStepButton(onTap: _saveAndNext),
         ],
       ),
     );

@@ -292,7 +292,7 @@ const ForgotPasswordPanel = ({ variant = 'admin', onBack }) => {
                   placeholder="************"
                   className={inputWithToggleClass}
                   value={password}
-                  maxLength={12}
+                  maxLength={15}
                   onChange={(e) => {
                     setPassword(e.target.value)
                     if (error) setError('')
@@ -321,7 +321,7 @@ const ForgotPasswordPanel = ({ variant = 'admin', onBack }) => {
                   placeholder="************"
                   className={inputWithToggleClass}
                   value={password}
-                  maxLength={12}
+                  maxLength={15}
                   onChange={(e) => {
                     setPassword(e.target.value)
                     if (error) setError('')
@@ -361,7 +361,7 @@ const ForgotPasswordPanel = ({ variant = 'admin', onBack }) => {
                   placeholder="************"
                   className={inputWithToggleClass}
                   value={confirmPassword}
-                  maxLength={12}
+                  maxLength={15}
                   onChange={(e) => {
                     setConfirmPassword(e.target.value)
                     if (error) setError('')
@@ -390,7 +390,7 @@ const ForgotPasswordPanel = ({ variant = 'admin', onBack }) => {
                   placeholder="************"
                   className={inputWithToggleClass}
                   value={confirmPassword}
-                  maxLength={12}
+                  maxLength={15}
                   onChange={(e) => {
                     setConfirmPassword(e.target.value)
                     if (error) setError('')

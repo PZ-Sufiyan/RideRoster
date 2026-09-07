@@ -104,6 +104,7 @@ function statusPillClass(statusRaw) {
         rejected: 'bg-red-50 text-red-600 border border-red-200',
         suspended: 'bg-orange-50 text-orange-700 border border-orange-200',
         pending: 'bg-amber-50 text-amber-800 border border-amber-200',
+        deleted: 'bg-gray-100 text-gray-600 border border-gray-200',
     };
     return map[s] || 'bg-gray-100 text-gray-600 border border-gray-200';
 }
@@ -363,6 +364,8 @@ const DriverDetail = () => {
                     </div>
                 </div>
                 <div className="flex items-center gap-3">
+                    {String(driver.status || '').trim().toLowerCase() !== 'deleted' && (
+                    <>
                     <button
                         type="button"
                         onClick={() => setShowMessageModal(true)}
@@ -379,6 +382,8 @@ const DriverDetail = () => {
                         <MdEdit size={14} />
                         Edit Profile
                     </button>
+                    </>
+                    )}
                 </div>
             </div>
 

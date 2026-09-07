@@ -29,7 +29,9 @@ create table public.drivers (
 
 create index IF not exists idx_drivers_company on public.drivers using btree (company_id) TABLESPACE pg_default;
 
-create unique INDEX IF not exists uq_drivers_email on public.drivers using btree (email) TABLESPACE pg_default;
+create unique INDEX IF not exists uq_drivers_email_active
+  on public.drivers using btree (lower(email))
+  where lower(coalesce(status, '')) is distinct from 'deleted';
 
 create index IF not exists idx_drivers_fleet on public.drivers using btree (company_id, fleet) TABLESPACE pg_default;
 
@@ -84,7 +86,7 @@ create table public.vehicles (
   status text not null default 'active',
   constraint vehicles_pkey primary key (id),
   constraint vehicles_fleet_check check (fleet in ('company', 'private')),
-  constraint vehicles_status_check check (status in ('active', 'off_road')),
+  constraint vehicles_status_check check (status in ('active', 'off_road', 'inactive')),
   constraint vehicles_company_id_fkey foreign KEY (company_id) references companies (id) on delete CASCADE,
   constraint vehicles_driver_id_fkey foreign KEY (driver_id) references drivers (id) on delete set null
 ) TABLESPACE pg_default;

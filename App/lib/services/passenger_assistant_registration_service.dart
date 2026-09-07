@@ -5,6 +5,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'api_service.dart';
 import 'auth_result.dart';
 import 'email_confirmation_service.dart';
+import '../utils/driver_register_validators.dart';
+import '../utils/register_phone.dart';
 
 /// Registers a passenger assistant: Supabase Auth sign-up, then
 /// `passenger_assistant` and `passenger_assistant_documents`.
@@ -125,11 +127,41 @@ class PassengerAssistantRegistrationService extends ApiService {
     if (!emailNorm.contains('@')) {
       return AuthResult.failure('Please enter a valid email address.');
     }
+    final emailError = DriverRegisterValidators.emailAddress(emailNorm);
+    if (emailError != null) {
+      return AuthResult.failure(emailError);
+    }
+    final firstNameError = DriverRegisterValidators.personName(
+      firstName,
+      label: 'First name',
+    );
+    if (firstNameError != null) {
+      return AuthResult.failure(firstNameError);
+    }
+    final lastNameError = DriverRegisterValidators.personName(
+      lastName,
+      label: 'Last name',
+    );
+    if (lastNameError != null) {
+      return AuthResult.failure(lastNameError);
+    }
     if (firstName.trim().isEmpty || lastName.trim().isEmpty) {
       return AuthResult.failure('First and last name are required.');
     }
     if (mobileNumber.trim().isEmpty) {
       return AuthResult.failure('Phone number is required.');
+    }
+    final mobileError = DriverRegisterValidators.mobileNumberValue(
+      RegisterPhone.toStorageValue(
+        countryCode: countryCode,
+        mobileNumber: mobileNumber,
+      ),
+    );
+    if (mobileError != null) {
+      return AuthResult.failure(mobileError);
+    }
+    if (residentialAddress == null || residentialAddress.trim().isEmpty) {
+      return AuthResult.failure('Residential address is required.');
     }
     if (nationality.trim().isEmpty) {
       return AuthResult.failure('Nationality is required.');
@@ -144,6 +176,9 @@ class PassengerAssistantRegistrationService extends ApiService {
         emergencyContactPhone.trim().isEmpty) {
       return AuthResult.failure('Emergency contact details are required.');
     }
+    if (profilePhotoPath == null || profilePhotoPath.trim().isEmpty) {
+      return AuthResult.failure('Profile picture is required.');
+    }
     if (passportFilePath != null &&
         passportFilePath.trim().isNotEmpty &&
         passportExpiry == null) {
@@ -151,12 +186,20 @@ class PassengerAssistantRegistrationService extends ApiService {
         'Passport expiry is required when a passport document is uploaded.',
       );
     }
-    if (safeguardingFilePath != null &&
-        safeguardingFilePath.trim().isNotEmpty &&
-        safeguardingExpiry == null) {
+    if (safeguardingFilePath == null || safeguardingFilePath.trim().isEmpty) {
+      return AuthResult.failure('Safeguarding certificate is required.');
+    }
+    if (safeguardingExpiry == null) {
       return AuthResult.failure(
-        'Safeguarding expiry is required when a safeguarding file is uploaded.',
+        'Safeguarding certificate expiry date is required.',
       );
+    }
+    if (backgroundCheckFilePath == null ||
+        backgroundCheckFilePath.trim().isEmpty) {
+      return AuthResult.failure('Background check certificate is required.');
+    }
+    if (firstAidFilePath == null || firstAidFilePath.trim().isEmpty) {
+      return AuthResult.failure('First aid certificate is required.');
     }
     if (otherCertificateLabels.length != otherCertificatePaths.length) {
       return AuthResult.failure(
@@ -201,8 +244,8 @@ class PassengerAssistantRegistrationService extends ApiService {
 
       // 2) Profile image → public URL
       String? profilePictureUrl;
-      final profilePath = profilePhotoPath?.trim();
-      if (profilePath != null && profilePath.isNotEmpty) {
+      final profilePath = profilePhotoPath.trim();
+      if (profilePath.isNotEmpty) {
         profilePictureUrl = await _uploadFile(
           companyId: companyId,
           scopeId: assistantId,
@@ -219,11 +262,11 @@ class PassengerAssistantRegistrationService extends ApiService {
         'first_name': firstName.trim(),
         'surname': lastName.trim(),
         'email': emailNorm,
-        'phone': '$countryCode${mobileNumber.trim()}',
-        'residential_address':
-            residentialAddress == null || residentialAddress.trim().isEmpty
-            ? null
-            : residentialAddress.trim(),
+        'phone': RegisterPhone.toStorageValue(
+          countryCode: countryCode,
+          mobileNumber: mobileNumber,
+        ),
+        'residential_address': residentialAddress.trim(),
         'profile_picture_url': profilePictureUrl,
         'emergency_contact_name': emergencyContactName.trim(),
         'emergency_contact_phone': emergencyContactPhone.trim(),

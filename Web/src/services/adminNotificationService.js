@@ -752,16 +752,17 @@ function buildPaEventNotification(row) {
   const isSuspended = eventType === 'pa_suspended'
   const isDocExpired = eventType === 'pa_document_expired'
   const isRemovedFromJob = eventType === 'pa_removed_from_job'
+  const isDeleted = eventType === 'pa_deleted'
 
   const iconColor = isApproved
     ? 'text-green-500 bg-green-50'
-    : isRejected || isSuspended || isDocExpired || isRemovedFromJob
+    : isRejected || isSuspended || isDocExpired || isRemovedFromJob || isDeleted
       ? 'text-orange-500 bg-orange-50'
       : 'text-[#005580] bg-blue-50'
 
   const toastType = isApproved
     ? 'success'
-    : isRejected || isSuspended || isDocExpired || isRemovedFromJob
+    : isRejected || isSuspended || isDocExpired || isRemovedFromJob || isDeleted
       ? 'warning'
       : 'info'
 
@@ -775,7 +776,9 @@ function buildPaEventNotification(row) {
           ? 'PA Document Expired'
           : isRemovedFromJob
             ? 'PA Removed from Job'
-            : 'PA Update'
+            : isDeleted
+              ? 'PA Deleted Account'
+              : 'PA Update'
 
   const isDocRelated = isDocExpired
     || (isSuspended && String(row.payload?.reason || '').toLowerCase() === 'document_expiry')
@@ -797,7 +800,7 @@ function buildPaEventNotification(row) {
     isNew: false,
     IconName: isDocExpired
       ? 'MdDescription'
-      : isRemovedFromJob
+      : isRemovedFromJob || isDeleted
         ? 'MdWarning'
         : isApproved
           ? 'MdPersonAdd'
@@ -823,16 +826,17 @@ function buildDriverEventNotification(row) {
   const isSuspended = eventType === 'driver_suspended'
   const isDocExpired = eventType === 'driver_document_expired'
   const isActive = eventType === 'driver_active'
+  const isDeleted = eventType === 'driver_deleted'
 
   const iconColor = isApproved || isActive
     ? 'text-green-500 bg-green-50'
-    : isRejected || isSuspended || isDocExpired
+    : isRejected || isSuspended || isDocExpired || isDeleted
       ? 'text-orange-500 bg-orange-50'
       : 'text-[#005580] bg-blue-50'
 
   const toastType = isApproved || isActive
     ? 'success'
-    : isRejected || isSuspended || isDocExpired
+    : isRejected || isSuspended || isDocExpired || isDeleted
       ? 'warning'
       : 'info'
 
@@ -846,7 +850,9 @@ function buildDriverEventNotification(row) {
           ? 'Driver Document Expired'
           : isActive
             ? 'Driver Active'
-            : 'Driver Update'
+            : isDeleted
+              ? 'Driver Deleted Account'
+              : 'Driver Update'
 
   const isDocRelated = isDocExpired
     || (isSuspended && String(row.payload?.reason || '').toLowerCase() === 'document_expiry')
@@ -857,7 +863,7 @@ function buildDriverEventNotification(row) {
     tab: isDocRelated ? NOTIFICATION_TABS.DOCUMENTS : NOTIFICATION_TABS.ALL,
     createdAt: row.created_at,
     isNew: false,
-    IconName: isDocExpired ? 'MdDescription' : 'MdPerson',
+    IconName: isDocExpired ? 'MdDescription' : isDeleted ? 'MdPersonOff' : 'MdPerson',
     iconColor,
     title: row.title || toastTitle,
     content: row.body,

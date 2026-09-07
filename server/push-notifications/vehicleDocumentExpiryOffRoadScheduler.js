@@ -264,6 +264,7 @@ async function loadExpiredFleetVehicleDocuments(supabase, todayYmd) {
     const vehicle = row.vehicles
     if (!vehicle?.id) return false
     if (String(vehicle.fleet || '').toLowerCase() !== 'company') return false
+    if (String(vehicle.status || '').trim().toLowerCase() === 'inactive') return false
     const expiry = parseYmd(row.expiry_date)
     if (Number.isNaN(expiry.getTime())) return false
     return daysBetween(parseYmd(todayYmd), expiry) <= 0

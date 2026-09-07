@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/supabase_config.dart';
 import '../utils/driver_register_validators.dart';
+import '../utils/register_phone.dart';
 import 'api_service.dart';
 import 'auth_result.dart';
 import 'connectivity_service.dart';
@@ -21,6 +22,10 @@ class AuthService extends ApiService {
   static const String _companyDocsBucket = 'company-documents';
 
   static const Set<String> _allowedRoles = {'driver', 'passenger_assistant'};
+
+  /// Email whose recovery OTP was already verified in this app session.
+  /// Lets the user retry a new password without consuming the code again.
+  String? _pendingRecoveryEmail;
 
   String _fileExtension(String path) {
     final idx = path.lastIndexOf('.');
@@ -101,6 +106,39 @@ class AuthService extends ApiService {
     return full.isEmpty ? null : full;
   }
 
+  Future<String?> _rejectIfAccountClosed({
+    required User user,
+    required String? role,
+  }) async {
+    final meta = user.appMetadata['account_deleted'];
+    if (meta == true || meta?.toString() == 'true') {
+      return 'This account is closed.';
+    }
+
+    final table = role == 'driver'
+        ? 'drivers'
+        : role == 'passenger_assistant'
+            ? 'passenger_assistant'
+            : null;
+    if (table == null || !ConnectivityService().canReachServer) return null;
+
+    try {
+      final row = await _supabase
+          .from(table)
+          .select('status')
+          .eq('id', user.id)
+          .maybeSingle()
+          .timeout(_profileLookupTimeout);
+      final status = row?['status']?.toString().trim().toLowerCase();
+      if (status == 'deleted') {
+        return 'This account is closed.';
+      }
+    } catch (_) {
+      /* ignore lookup failures */
+    }
+    return null;
+  }
+
   Future<String?> _resolveDisplayName({
     required User user,
     required String? role,
@@ -179,6 +217,12 @@ class AuthService extends ApiService {
         return AuthResult.failure(
           'Access denied. Only drivers and passenger assistants can sign in.',
         );
+      }
+
+      final closed = await _rejectIfAccountClosed(user: user, role: role);
+      if (closed != null) {
+        await _supabase.auth.signOut();
+        return AuthResult.failure(closed);
       }
 
       final resolvedName = await _resolveDisplayName(user: user, role: role);
@@ -268,6 +312,72 @@ class AuthService extends ApiService {
     }
   }
 
+  /// User-facing reset errors — never reuse login copy or raw Auth text.
+  String _friendlyResetError(String? raw, [String? code]) {
+    final msg = (raw ?? '').toLowerCase();
+    final c = (code ?? '').toLowerCase();
+
+    if (c == 'same_password' ||
+        msg.contains('should be different') ||
+        msg.contains('same password') ||
+        msg.contains('different from the old')) {
+      return 'New password must be different from your current password.';
+    }
+
+    if (c == 'weak_password' ||
+        msg.contains('pwned') ||
+        msg.contains('data breach') ||
+        msg.contains('leaked') ||
+        msg.contains('easy to guess') ||
+        msg.contains('known to be weak') ||
+        msg.contains('compromised')) {
+      return 'This password is too common or has appeared in a data breach. Please choose a different one.';
+    }
+
+    if (c == 'session_not_found' ||
+        (msg.contains('session') && msg.contains('missing'))) {
+      _pendingRecoveryEmail = null;
+      return 'Reset session expired. Please request a new code.';
+    }
+
+    if (msg.contains('banned') ||
+        msg.contains('disabled') ||
+        msg.contains('account is closed')) {
+      return 'This account cannot reset its password. Contact your administrator.';
+    }
+
+    if (c.contains('otp') ||
+        msg.contains('otp') ||
+        msg.contains('token') ||
+        msg.contains('expired') ||
+        msg.contains('invalid')) {
+      return 'Invalid or expired code. Please try again or resend.';
+    }
+
+    if (msg.contains('failed to fetch') ||
+        msg.contains('socket') ||
+        msg.contains('network') ||
+        msg.contains('timeout') ||
+        msg.contains('timed out') ||
+        msg.contains('offline') ||
+        msg.contains('connection') ||
+        msg.contains('clientexception') ||
+        msg.contains('handshake')) {
+      return 'Connection problem. Check your internet and try again.';
+    }
+
+    if (msg.contains('server') ||
+        msg.contains('500') ||
+        msg.contains('502') ||
+        msg.contains('503') ||
+        msg.contains('504') ||
+        msg.contains('internal')) {
+      return 'Something went wrong on our side. Please try again in a moment.';
+    }
+
+    return 'Unable to reset password right now. Please try again.';
+  }
+
   /// Verify recovery OTP, set new password, then sign out.
   Future<AuthResult> resetPasswordWithCode({
     required String email,
@@ -299,29 +409,30 @@ class AuthService extends ApiService {
     }
 
     try {
-      await _supabase.auth.verifyOTP(
-        email: normalized,
-        token: token,
-        type: OtpType.recovery,
-      );
+      final sessionEmail =
+          _supabase.auth.currentUser?.email?.trim().toLowerCase();
+      final alreadyVerified = _pendingRecoveryEmail == normalized &&
+          sessionEmail == normalized &&
+          _supabase.auth.currentSession != null;
+
+      if (!alreadyVerified) {
+        await _supabase.auth.verifyOTP(
+          email: normalized,
+          token: token,
+          type: OtpType.recovery,
+        );
+        _pendingRecoveryEmail = normalized;
+      }
 
       await _supabase.auth.updateUser(
         UserAttributes(password: password),
       );
 
+      _pendingRecoveryEmail = null;
       await _supabase.auth.signOut();
       return AuthResult.success(message: 'Password updated successfully.');
     } on AuthException catch (e) {
-      final message = e.message.toLowerCase();
-      if (message.contains('otp') ||
-          message.contains('token') ||
-          message.contains('expired') ||
-          message.contains('invalid')) {
-        return AuthResult.failure(
-          'Invalid or expired code. Please try again or resend.',
-        );
-      }
-      return AuthResult.failure(_friendlyLoginError(e.message));
+      return AuthResult.failure(_friendlyResetError(e.message, e.code));
     } on SocketException {
       return AuthResult.failure(
         'Connection problem. Check your internet and try again.',
@@ -331,7 +442,7 @@ class AuthService extends ApiService {
         'Connection problem. Check your internet and try again.',
       );
     } catch (e) {
-      return AuthResult.failure(_friendlyLoginError(e.toString()));
+      return AuthResult.failure(_friendlyResetError(e.toString()));
     }
   }
 
@@ -419,11 +530,38 @@ class AuthService extends ApiService {
     if (firstName == null || firstName.trim().isEmpty) {
       return AuthResult.failure('First name is required.');
     }
+    final firstNameError = DriverRegisterValidators.personName(
+      firstName,
+      label: 'First name',
+    );
+    if (firstNameError != null) {
+      return AuthResult.failure(firstNameError);
+    }
     if (lastName == null || lastName.trim().isEmpty) {
       return AuthResult.failure('Last name is required.');
     }
+    final lastNameError = DriverRegisterValidators.personName(
+      lastName,
+      label: 'Last name',
+    );
+    if (lastNameError != null) {
+      return AuthResult.failure(lastNameError);
+    }
+    final emailError = DriverRegisterValidators.emailAddress(email);
+    if (emailError != null) {
+      return AuthResult.failure(emailError);
+    }
     if (mobileNumber.trim().isEmpty) {
       return AuthResult.failure('Mobile number is required.');
+    }
+    final mobileError = DriverRegisterValidators.mobileNumberValue(
+      RegisterPhone.toStorageValue(
+        countryCode: countryCode,
+        mobileNumber: mobileNumber,
+      ),
+    );
+    if (mobileError != null) {
+      return AuthResult.failure(mobileError);
     }
     if (residentialAddress == null || residentialAddress.trim().isEmpty) {
       return AuthResult.failure('Residential address is required.');
@@ -489,7 +627,10 @@ class AuthService extends ApiService {
             'first_name': firstName.trim(),
             'last_name': lastName.trim(),
             'email': emailNorm,
-            'phone': '$countryCode${mobileNumber.trim()}',
+            'phone': RegisterPhone.toStorageValue(
+              countryCode: countryCode,
+              mobileNumber: mobileNumber,
+            ),
             'residential_address': residentialAddress.trim(),
             'emergency_contact_name': emergencyContactName.trim(),
             'emergency_contact_phone': emergencyContactPhone.trim(),
@@ -816,7 +957,7 @@ class AuthService extends ApiService {
     await _supabase.auth.signOut();
   }
 
-  /// Permanently delete the signed-in driver / PA account via push-api.
+  /// Close the signed-in driver / PA account via push-api (soft delete).
   Future<AuthResult> deleteAccount() async {
     final session = _supabase.auth.currentSession;
     final accessToken = session?.accessToken;
@@ -891,6 +1032,12 @@ class AuthService extends ApiService {
         return AuthResult.failure(
           'Please check your email and confirm your account before logging in.',
         );
+      }
+
+      final closed = await _rejectIfAccountClosed(user: user, role: role);
+      if (closed != null) {
+        await _supabase.auth.signOut();
+        return AuthResult.failure(closed);
       }
 
       return AuthResult.success(

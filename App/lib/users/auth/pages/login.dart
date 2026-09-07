@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../../components/app_button.dart';
 import '../../../providers/auth_provider.dart';
 import '../../../routes/app_routes.dart';
 import '../../../utils/app_colors.dart';
+import '../../../utils/driver_register_validators.dart';
 import '../../../utils/size_confg.dart';
 
 class LoginPage extends StatefulWidget {
@@ -30,7 +32,7 @@ class _LoginPageState extends State<LoginPage> {
     auth.clearError();
 
     final success = await auth.driverLogin(
-      email: _emailController.text.trim(),
+      email: _emailController.text.trim().toLowerCase(),
       password: _passwordController.text,
     );
 
@@ -124,6 +126,7 @@ class _LoginPageState extends State<LoginPage> {
                 hintText: 'name@example.com',
                 prefixIcon: Icons.mail_outline,
                 keyboardType: TextInputType.emailAddress,
+                inputFormatters: DriverRegisterValidators.emailFormatters,
               ),
 
               SizedBox(height: SizeConfig.r(20)),
@@ -254,6 +257,7 @@ class _InputField extends StatelessWidget {
     this.obscureText = false,
     this.keyboardType,
     this.suffixIcon,
+    this.inputFormatters,
   });
 
   final TextEditingController controller;
@@ -262,6 +266,7 @@ class _InputField extends StatelessWidget {
   final bool obscureText;
   final TextInputType? keyboardType;
   final Widget? suffixIcon;
+  final List<TextInputFormatter>? inputFormatters;
 
   @override
   Widget build(BuildContext context) {
@@ -270,6 +275,7 @@ class _InputField extends StatelessWidget {
       controller: controller,
       obscureText: obscureText,
       keyboardType: keyboardType,
+      inputFormatters: inputFormatters,
       style: TextStyle(fontSize: SizeConfig.sp(15), color: AppColors.textDark),
       decoration: InputDecoration(
         hintText: hintText,

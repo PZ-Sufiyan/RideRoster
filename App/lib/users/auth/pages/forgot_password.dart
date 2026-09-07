@@ -210,6 +210,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           hintText: 'name@example.com',
           prefixIcon: Icons.mail_outline,
           keyboardType: TextInputType.emailAddress,
+          inputFormatters: DriverRegisterValidators.emailFormatters,
           onChanged: (_) {
             if (_localError != null) _setLocalError(null);
           },
@@ -278,7 +279,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           hintText: '••••••••',
           prefixIcon: Icons.lock_outline,
           obscureText: _obscurePassword,
-          maxLength: 12,
+          maxLength: DriverRegisterValidators.passwordMaxLength,
           suffixIcon: GestureDetector(
             onTap: () => setState(() => _obscurePassword = !_obscurePassword),
             child: Icon(
@@ -316,7 +317,7 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
           hintText: '••••••••',
           prefixIcon: Icons.lock_outline,
           obscureText: _obscureConfirm,
-          maxLength: 12,
+          maxLength: DriverRegisterValidators.passwordMaxLength,
           suffixIcon: GestureDetector(
             onTap: () => setState(() => _obscureConfirm = !_obscureConfirm),
             child: Icon(

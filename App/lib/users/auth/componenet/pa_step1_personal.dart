@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:phone_form_field/phone_form_field.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/passenger_assistant_register_data.dart';
 import 'register_widgets.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/driver_register_validators.dart';
+import '../../../../utils/register_phone.dart';
 import '../../../../utils/size_confg.dart';
 
 class PaStep1Personal extends StatefulWidget {
@@ -24,7 +26,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
   late final TextEditingController _emailCtrl;
   late final TextEditingController _companyCtrl;
   late final FocusNode _companyFocusNode;
-  late final TextEditingController _mobileCtrl;
+  late final PhoneController _phoneCtrl;
   late final TextEditingController _residentialAddressCtrl;
   late final TextEditingController _rightToWorkCodeCtrl;
   late final TextEditingController _nationalityCtrl;
@@ -34,7 +36,6 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  String _countryCode = '+44';
   bool _isLoadingCompanies = false;
   String? _companyLoadError;
   String? _formError;
@@ -43,19 +44,6 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
   final Map<String, String> _companyNameToId = {};
 
   bool _britishPassport = false;
-
-  static const List<String> _countryCodes = [
-    '+1',
-    '+44',
-    '+92',
-    '+91',
-    '+61',
-    '+49',
-    '+33',
-    '+971',
-    '+966',
-    '+20',
-  ];
 
   @override
   void initState() {
@@ -68,10 +56,14 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
     _emailCtrl = TextEditingController(text: d.email);
     _companyCtrl = TextEditingController(text: d.companyName);
     _companyFocusNode = FocusNode();
-    _mobileCtrl = TextEditingController(text: d.mobileNumber);
+    _phoneCtrl = PhoneController(
+      initialValue: RegisterPhone.fromSaved(
+        countryCode: d.countryCode,
+        mobileNumber: d.mobileNumber,
+      ),
+    );
     _residentialAddressCtrl = TextEditingController(text: d.residentialAddress);
     _rightToWorkCodeCtrl = TextEditingController(text: d.rightToWorkCode);
-    _countryCode = d.countryCode;
     _britishPassport = d.britishPassportHolder;
     _nationalityCtrl = TextEditingController(text: d.nationality);
     if (_britishPassport && _nationalityCtrl.text.trim().isEmpty) {
@@ -92,7 +84,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
     _companyCtrl.dispose();
     _companyFocusNode.removeListener(_onCompanyFocusChange);
     _companyFocusNode.dispose();
-    _mobileCtrl.dispose();
+    _phoneCtrl.dispose();
     _residentialAddressCtrl.dispose();
     _rightToWorkCodeCtrl.dispose();
     _nationalityCtrl.dispose();
@@ -182,25 +174,33 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
     final nationality = _nationalityCtrl.text.trim();
     final companyName = _companyCtrl.text.trim();
     final companyId = _companyNameToId[companyName.toLowerCase()] ?? '';
+    final phone = _phoneCtrl.value;
+    final phoneError = RegisterPhone.validateMobile(context, phone);
 
     final result = DriverRegisterValidators.validatePaStep1(
       firstName: firstName,
       lastName: lastName,
-      email: _emailCtrl.text.trim(),
-      mobileNumber: _mobileCtrl.text.trim(),
+      email: _emailCtrl.text.trim().toLowerCase(),
+      mobileNumber: phone.international,
       password: password,
       confirmPassword: confirmPassword,
       companyName: companyName,
       companyId: companyId,
+      residentialAddress: _residentialAddressCtrl.text.trim(),
       nationality: nationality,
       isBritishPassportHolder: _britishPassport,
       rightToWorkCode: _rightToWorkCodeCtrl.text.trim(),
     );
 
-    if (!result.isValid) {
+    final errors = Map<String, String>.from(result.errors);
+    if (phoneError != null) {
+      errors['mobile'] = phoneError;
+    }
+
+    if (errors.isNotEmpty) {
       setState(() {
-        _fieldErrors = Map<String, String>.from(result.errors);
-        _formError = result.firstError;
+        _fieldErrors = errors;
+        _formError = errors.values.first;
       });
       return;
     }
@@ -214,11 +214,11 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
     d.lastName = lastName;
     d.password = password;
     d.confirmPassword = confirmPassword;
-    d.email = _emailCtrl.text.trim();
+    d.email = _emailCtrl.text.trim().toLowerCase();
     d.companyName = companyName;
     d.companyId = companyId;
-    d.countryCode = _countryCode;
-    d.mobileNumber = _mobileCtrl.text.trim();
+    d.countryCode = '+${phone.countryCode}';
+    d.mobileNumber = phone.international;
     d.residentialAddress = _residentialAddressCtrl.text.trim();
     d.nationality = nationality;
     d.britishPassportHolder = _britishPassport;
@@ -227,34 +227,6 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
         : _rightToWorkCodeCtrl.text.trim();
     d.passportNumber = _passportNumberCtrl.text.trim();
     widget.onNext();
-  }
-
-  void _showCountryCodePicker() {
-    showModalBottomSheet<void>(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SizeConfig.r(16)),
-        ),
-      ),
-      builder: (_) => ListView(
-        shrinkWrap: true,
-        children: _countryCodes
-            .map(
-              (code) => ListTile(
-                title: Text(code),
-                trailing: code == _countryCode
-                    ? const Icon(Icons.check, color: AppColors.primary)
-                    : null,
-                onTap: () {
-                  setState(() => _countryCode = code);
-                  Navigator.pop(context);
-                },
-              ),
-            )
-            .toList(),
-      ),
-    );
   }
 
   @override
@@ -296,8 +268,9 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             controller: _firstNameCtrl,
             hintText: 'e.g. Jane',
             keyboardType: TextInputType.name,
-            textCapitalization: TextCapitalization.words,
-            inputFormatters: [DriverRegisterValidators.lettersOnlyFormatter],
+            textCapitalization: TextCapitalization.none,
+            maxLength: DriverRegisterValidators.personNameMaxLength,
+            inputFormatters: DriverRegisterValidators.personNameFormatters,
             errorText: _fieldErrors['firstName'],
             onChanged: (_) => _clearFieldError('firstName'),
           ),
@@ -308,8 +281,9 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             controller: _lastNameCtrl,
             hintText: 'e.g. Doe',
             keyboardType: TextInputType.name,
-            textCapitalization: TextCapitalization.words,
-            inputFormatters: [DriverRegisterValidators.lettersOnlyFormatter],
+            textCapitalization: TextCapitalization.none,
+            maxLength: DriverRegisterValidators.personNameMaxLength,
+            inputFormatters: DriverRegisterValidators.personNameFormatters,
             errorText: _fieldErrors['lastName'],
             onChanged: (_) => _clearFieldError('lastName'),
           ),
@@ -320,50 +294,17 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             controller: _emailCtrl,
             hintText: 'e.g. jane.doe@example.com',
             keyboardType: TextInputType.emailAddress,
+            inputFormatters: DriverRegisterValidators.emailFormatters,
             errorText: _fieldErrors['email'],
             onChanged: (_) => _clearFieldError('email'),
           ),
           SizedBox(height: SizeConfig.r(18)),
           const RegFieldLabel('Phone Number *'),
           SizedBox(height: SizeConfig.r(6)),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GestureDetector(
-                onTap: _showCountryCodePicker,
-                child: Container(
-                  height: SizeConfig.inputHeight,
-                  padding: EdgeInsets.symmetric(horizontal: SizeConfig.r(14)),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF3F7FC),
-                    borderRadius: BorderRadius.circular(SizeConfig.radius),
-                    border: Border.all(
-                      color: const Color(0xFFE0E8F3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      _countryCode,
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(15),
-                        color: AppColors.textMedium,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(width: SizeConfig.r(10)),
-              Expanded(
-                child: RegField(
-                  controller: _mobileCtrl,
-                  hintText: 'e.g. 7700 900123',
-                  keyboardType: TextInputType.phone,
-                  errorText: _fieldErrors['mobile'],
-                  onChanged: (_) => _clearFieldError('mobile'),
-                ),
-              ),
-            ],
+          RegMobileField(
+            controller: _phoneCtrl,
+            errorText: _fieldErrors['mobile'],
+            onChanged: (_) => _clearFieldError('mobile'),
           ),
           SizedBox(height: SizeConfig.r(18)),
           const RegFieldLabel('Password *'),
@@ -372,6 +313,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             controller: _passwordCtrl,
             hintText: '••••••••',
             obscureText: _obscurePassword,
+            maxLength: DriverRegisterValidators.passwordMaxLength,
             errorText: _fieldErrors['password'],
             onChanged: (_) => _clearFieldError('password'),
             prefixIcon: Icon(
@@ -392,7 +334,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
           ),
           SizedBox(height: SizeConfig.r(6)),
           Text(
-            'Min 8 characters, with upper, lower, number and special character.',
+            DriverRegisterValidators.passwordRulesHint,
             style: TextStyle(
               fontSize: SizeConfig.sp(11),
               color: AppColors.textLight,
@@ -405,6 +347,7 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             controller: _confirmPasswordCtrl,
             hintText: '••••••••',
             obscureText: _obscureConfirmPassword,
+            maxLength: DriverRegisterValidators.passwordMaxLength,
             errorText: _fieldErrors['confirmPassword'],
             onChanged: (_) => _clearFieldError('confirmPassword'),
             prefixIcon: Icon(
@@ -426,12 +369,14 @@ class _PaStep1PersonalState extends State<PaStep1Personal> {
             ),
           ),
           SizedBox(height: SizeConfig.r(18)),
-          const RegFieldLabel('Residential Address'),
+          const RegFieldLabel('Residential Address *'),
           SizedBox(height: SizeConfig.r(6)),
           RegField(
             controller: _residentialAddressCtrl,
             hintText: 'e.g. 123 Main Street, Anytown, UK',
             keyboardType: TextInputType.streetAddress,
+            errorText: _fieldErrors['residentialAddress'],
+            onChanged: (_) => _clearFieldError('residentialAddress'),
           ),
           SizedBox(height: SizeConfig.r(18)),
           const RegFieldLabel('Company *'),

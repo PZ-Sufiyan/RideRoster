@@ -272,6 +272,7 @@ async function loadExpiredPrivateVehicleDocuments(supabase, todayYmd) {
     const vehicle = row.vehicles
     if (!vehicle?.id) return false
     if (String(vehicle.fleet || '').toLowerCase() !== 'private') return false
+    if (String(vehicle.status || '').trim().toLowerCase() === 'inactive') return false
     const expiry = parseYmd(row.expiry_date)
     if (Number.isNaN(expiry.getTime())) return false
     return daysBetween(parseYmd(todayYmd), expiry) <= 0
@@ -348,6 +349,10 @@ async function processPrivateVehicleExpiry({ supabase, vehicle, documents, today
   const companyId = vehicle.company_id || claimed[0].company_id || null
   const driverId = await resolveVehicleDriverId(supabase, vehicle)
   const driver = driverId ? await loadDriver(supabase, driverId) : null
+  if (String(driver?.status || '').trim().toLowerCase() === 'deleted') {
+    summary.skipped += 1
+    return
+  }
   const driverName = formatDriverName(driver)
   const label = formatVehicleLabel(vehicle)
   const docNames = joinDocNames(claimed.map((d) => d.document_type))

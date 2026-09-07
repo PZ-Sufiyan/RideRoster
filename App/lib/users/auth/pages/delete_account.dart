@@ -115,7 +115,7 @@ class _DeleteAccountPageState extends State<DeleteAccountPage> {
                   SizedBox(
                     width: double.infinity,
                     child: Text(
-                      'This action cannot be undone.',
+                      'Your login will be closed. Your company may keep work records.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         fontSize: SizeConfig.sp(16),

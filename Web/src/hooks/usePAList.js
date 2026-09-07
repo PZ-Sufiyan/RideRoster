@@ -6,12 +6,13 @@ const PA_STATUS_DB = {
     APPROVE: 'approve',
     REJECT: 'reject',
     SUSPEND: 'suspend',
+    DELETED: 'deleted',
 };
 
 function normalizePaStatus(raw) {
     if (raw == null || raw === '') return PA_STATUS_DB.PENDING;
     const s = String(raw).trim().toLowerCase();
-    if (['pending', 'approve', 'reject', 'suspend'].includes(s)) return s;
+    if (['pending', 'approve', 'reject', 'suspend', 'deleted'].includes(s)) return s;
     if (s === 'approved') return PA_STATUS_DB.APPROVE;
     if (s === 'rejected') return PA_STATUS_DB.REJECT;
     if (s === 'suspended') return PA_STATUS_DB.SUSPEND;
@@ -26,7 +27,6 @@ function mapPassengerAssistantRow(row) {
         avatar: row.profile_picture_url || `https://i.pravatar.cc/64?u=${row.id}`,
         email: row.email || '-',
         phone: row.phone || '-',
-        assignedJobs: 0,
         statusDb: normalizePaStatus(row.status),
         fleet: String(row.fleet || 'company').trim().toLowerCase() === 'private' ? 'private' : 'company',
         dateAdded: row.created_at ? new Date(row.created_at).toISOString().slice(0, 10) : '-',

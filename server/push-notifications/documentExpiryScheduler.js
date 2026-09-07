@@ -259,18 +259,18 @@ async function loadExpiringDocuments(supabase) {
   const [driverDocsRes, vehicleDocsRes, paDocsRes] = await Promise.all([
     supabase
       .from('driver_documents')
-      .select('id, driver_id, company_id, document_type, expiry_date')
+      .select('id, driver_id, company_id, document_type, expiry_date, drivers!inner(status)')
       .not('expiry_date', 'is', null),
     supabase
       .from('vehicle_documents')
       .select(
-        'id, company_id, document_type, expiry_date, vehicles!inner(driver_id)',
+        'id, company_id, document_type, expiry_date, vehicles!inner(driver_id, status)',
       )
       .not('expiry_date', 'is', null),
     supabase
       .from('passenger_assistant_documents')
       .select(
-        'id, passenger_assistant_id, document_type, expiry_date, passenger_assistant!inner(company_id)',
+        'id, passenger_assistant_id, document_type, expiry_date, passenger_assistant!inner(company_id, status)',
       )
       .not('expiry_date', 'is', null),
   ])
@@ -283,6 +283,7 @@ async function loadExpiringDocuments(supabase) {
 
   for (const row of driverDocsRes.data ?? []) {
     if (!row.driver_id) continue
+    if (String(row.drivers?.status || '').trim().toLowerCase() === 'deleted') continue
     documents.push({
       id: row.id,
       user_id: row.driver_id,
@@ -296,6 +297,7 @@ async function loadExpiringDocuments(supabase) {
   for (const row of vehicleDocsRes.data ?? []) {
     const driverId = row.vehicles?.driver_id
     if (!driverId) continue
+    if (String(row.vehicles?.status || '').trim().toLowerCase() === 'inactive') continue
     documents.push({
       id: row.id,
       user_id: driverId,
@@ -309,6 +311,7 @@ async function loadExpiringDocuments(supabase) {
   for (const row of paDocsRes.data ?? []) {
     const paId = row.passenger_assistant_id
     if (!paId) continue
+    if (String(row.passenger_assistant?.status || '').trim().toLowerCase() === 'deleted') continue
     documents.push({
       id: row.id,
       user_id: paId,

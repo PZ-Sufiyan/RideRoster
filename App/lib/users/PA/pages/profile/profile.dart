@@ -111,7 +111,7 @@ class _PaProfilePageState extends State<PaProfilePage> {
                           onLogout: () => _logout(context),
                         ),
                         const AppVersionLabel(),
-                        SizedBox(height: SizeConfig.r(28)),
+                        SizedBox(height: SizeConfig.r(40)),
                       ],
                     ),
                   ),

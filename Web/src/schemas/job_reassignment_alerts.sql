@@ -13,7 +13,8 @@ create table if not exists public.job_reassignment_alerts (
                      'company_vehicle_document_expiry',
                      'company_driver_document_expiry',
                      'private_vehicle_document_expiry',
-                     'private_driver_document_expiry'
+                     'private_driver_document_expiry',
+                     'driver_account_deleted'
                    )),
   fleet            text null check (fleet is null or fleet in ('company', 'private')),
   record_type      text not null default 'notification'

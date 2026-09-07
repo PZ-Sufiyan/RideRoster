@@ -134,7 +134,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
                           onLogout: () => _logout(context),
                         ),
                         const AppVersionLabel(),
-                        SizedBox(height: SizeConfig.r(28)),
+                        SizedBox(height: SizeConfig.r(40)),
                       ],
                     ),
                   ),

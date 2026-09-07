@@ -95,7 +95,7 @@ function expiryUrgency(expiryDateStr) {
 function normalizePaStatus(raw) {
     if (raw == null || raw === '') return 'pending';
     const s = String(raw).trim().toLowerCase();
-    if (['pending', 'approve', 'reject', 'suspend', 'active'].includes(s)) return s;
+        if (['pending', 'approve', 'reject', 'suspend', 'active', 'deleted'].includes(s)) return s;
     if (s === 'approved') return 'approve';
     if (s === 'rejected') return 'reject';
     if (s === 'suspended') return 'suspend';
@@ -110,6 +110,7 @@ function paStatusLabel(dbStatus) {
         reject: 'Rejected',
         suspend: 'Suspended',
         active: 'Active',
+        deleted: 'Deleted',
     };
     return labels[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Pending');
 }
@@ -120,6 +121,7 @@ const STATUS_BADGE = {
     Rejected: 'bg-gray-100 text-gray-600 border border-gray-200',
     Suspended: 'bg-red-50 text-red-600 border border-red-200',
     Active: 'bg-blue-50 text-blue-700 border border-blue-200',
+    Deleted: 'bg-gray-100 text-gray-600 border border-gray-200',
 };
 
 function formatJobStatusLabel(raw) {
@@ -334,6 +336,7 @@ const PADetail = () => {
                     <p className="text-sm text-gray-500 mt-0.5">Passenger Assistant Profile &amp; Activity</p>
                 </div>
                 <div className="flex items-center gap-3 shrink-0">
+                    {statusLabel !== 'Deleted' && (
                     <button
                         type="button"
                         onClick={() => navigate(`/team/users/pa/${id}/edit`)}
@@ -342,6 +345,7 @@ const PADetail = () => {
                         <MdEdit size={16} />
                         Edit Profile
                     </button>
+                    )}
                 </div>
             </div>
 

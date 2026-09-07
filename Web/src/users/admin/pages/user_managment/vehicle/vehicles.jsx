@@ -23,6 +23,7 @@ import { useVehicleOffRoad } from '../../../../../hooks/useVehicleOffRoad';
 import { VehicleOffRoadDialogs } from '../../../../../components/OffRoadDialogs';
 import {
     formatVehicleStatusLabel,
+    isVehicleInactive,
     isVehicleOffRoad,
     normalizeVehicleStatus,
     VEHICLE_STATUS,
@@ -135,9 +136,13 @@ const VehiclesPage = ({ basePath = '/portal' }) => {
             const fleet = String(v.fleet || 'company').toLowerCase();
             const matchFleet = fleetFilter === 'All' || fleet === fleetFilter.toLowerCase();
             const status = normalizeVehicleStatus(v.status);
+            const isInactive = status === VEHICLE_STATUS.INACTIVE;
             const matchStatus =
-                statusFilter === 'All' ||
-                status === (statusFilter === 'Off Road' ? VEHICLE_STATUS.OFF_ROAD : VEHICLE_STATUS.ACTIVE);
+                statusFilter === 'Inactive'
+                    ? isInactive
+                    : statusFilter === 'All'
+                        ? !isInactive
+                        : status === (statusFilter === 'Off Road' ? VEHICLE_STATUS.OFF_ROAD : VEHICLE_STATUS.ACTIVE);
             return matchSearch && matchFleet && matchStatus;
         });
     }, [vehicles, search, fleetFilter, statusFilter]);
@@ -152,6 +157,7 @@ const VehiclesPage = ({ basePath = '/portal' }) => {
     const handleStatusChange = async (action, targetVehicle) => {
         const nextStatus = vehicleStatusFromAction(action);
         if (!nextStatus || !targetVehicle?.id) return;
+        if (isVehicleInactive(targetVehicle.status) || nextStatus === VEHICLE_STATUS.INACTIVE) return;
         setOpenMenu(null);
         if (nextStatus === VEHICLE_STATUS.OFF_ROAD) {
             await offRoad.request(targetVehicle);
@@ -266,7 +272,7 @@ const VehiclesPage = ({ basePath = '/portal' }) => {
                                 </button>
                                 {isStatusOpen && (
                                     <div className="absolute left-0 top-full mt-1 w-40 bg-white border border-gray-100 rounded-lg shadow-lg z-20">
-                                        {['All', 'Active', 'Off Road'].map((s) => (
+                                        {['All', 'Active', 'Off Road', 'Inactive'].map((s) => (
                                             <button
                                                 key={s}
                                                 onClick={() => { setStatusFilter(s); setIsStatusOpen(false); }}
@@ -400,6 +406,8 @@ const VehiclesPage = ({ basePath = '/portal' }) => {
                     <button type="button" className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50" onClick={() => { setOpenMenu(null); navigate(`${basePath}/users/vehicles/${menuVehicle.id}`); }}>
                         View
                     </button>
+                    {!isVehicleInactive(menuVehicle.status) && (
+                    <>
                     <button type="button" className="w-full text-left px-4 py-2.5 text-sm hover:bg-gray-50" onClick={() => { setOpenMenu(null); navigate(`${basePath}/users/vehicles/${menuVehicle.id}/edit`); }}>
                         Edit
                     </button>
@@ -438,6 +446,8 @@ const VehiclesPage = ({ basePath = '/portal' }) => {
                                 Unassign
                             </button>
                         </>
+                    )}
+                    </>
                     )}
                 </div>,
                 document.body

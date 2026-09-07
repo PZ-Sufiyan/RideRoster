@@ -26,12 +26,13 @@ const PA_STATUS_DB = {
     APPROVE: 'approve',
     REJECT: 'reject',
     SUSPEND: 'suspend',
+    DELETED: 'deleted',
 };
 
 function normalizePaStatus(raw) {
     if (raw == null || raw === '') return PA_STATUS_DB.PENDING;
     const s = String(raw).trim().toLowerCase();
-    if (['pending', 'approve', 'reject', 'suspend'].includes(s)) return s;
+    if (['pending', 'approve', 'reject', 'suspend', 'deleted'].includes(s)) return s;
     if (s === 'approved') return PA_STATUS_DB.APPROVE;
     if (s === 'rejected') return PA_STATUS_DB.REJECT;
     if (s === 'suspended') return PA_STATUS_DB.SUSPEND;
@@ -45,6 +46,7 @@ function paStatusLabel(dbStatus) {
         [PA_STATUS_DB.APPROVE]: 'Approved',
         [PA_STATUS_DB.REJECT]: 'Rejected',
         [PA_STATUS_DB.SUSPEND]: 'Suspended',
+        [PA_STATUS_DB.DELETED]: 'Deleted',
     };
     return labels[s] || (s ? s.charAt(0).toUpperCase() + s.slice(1) : 'Pending');
 }
@@ -55,6 +57,7 @@ const STATUS_COLORS = {
     Rejected: 'bg-gray-100 text-gray-600 border border-gray-200',
     Suspended: 'bg-red-50 text-red-600 border border-red-200',
     Active: 'bg-blue-50 text-blue-700 border border-blue-200',
+    Deleted: 'bg-gray-100 text-gray-600 border border-gray-200',
 };
 
 const ITEMS_PER_PAGE = 10;
@@ -97,7 +100,7 @@ const PAListPage = () => {
     const fleetRef = useRef(null);
     const bulkRef = useRef(null);
 
-    const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended'];
+    const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended', 'Deleted'];
     const fleetOptions = ['All', 'Company', 'Private'];
 
     useEffect(() => {
@@ -133,7 +136,13 @@ const PAListPage = () => {
             p.email.toLowerCase().includes(q) ||
             p.phone.toLowerCase().includes(q) ||
             p.paId.toLowerCase().includes(q);
-        const matchStatus = statusFilter === 'All' || paStatusLabel(p.statusDb) === statusFilter;
+        const label = paStatusLabel(p.statusDb);
+        const isDeleted = label === 'Deleted';
+        const matchStatus = statusFilter === 'Deleted'
+            ? isDeleted
+            : statusFilter === 'All'
+                ? !isDeleted
+                : label === statusFilter;
         const fleet = String(p.fleet || 'company').toLowerCase();
         const matchFleet = fleetFilter === 'All' || fleet === fleetFilter.toLowerCase();
         return matchSearch && matchStatus && matchFleet;
@@ -174,9 +183,13 @@ const PAListPage = () => {
         setStatusUpdateError('');
         setIsSavingStatus(true);
         try {
-            await Promise.all(selectedRows.map((id) => updatePassengerAssistant(id, { status: nextDb })));
+            const ids = selectedRows.filter((id) => {
+                const row = pas.find((p) => p.id === id);
+                return paStatusLabel(row?.statusDb) !== 'Deleted';
+            });
+            await Promise.all(ids.map((id) => updatePassengerAssistant(id, { status: nextDb })));
             setPas((prev) =>
-                prev.map((p) => (selectedRows.includes(p.id) ? { ...p, statusDb: nextDb } : p))
+                prev.map((p) => (ids.includes(p.id) ? { ...p, statusDb: nextDb } : p))
             );
             setSelectedRows([]);
             setIsBulkOpen(false);
@@ -189,7 +202,7 @@ const PAListPage = () => {
     };
 
     const menuPa = openMenu ? pas.find((p) => p.id === openMenu.paId) : null;
-    const paMenuActions = menuPa ? PA_MENU_ACTIONS : [];
+    const paMenuActions = menuPa && paStatusLabel(menuPa.statusDb) !== 'Deleted' ? PA_MENU_ACTIONS : [];
     const shimmerRows = Array.from({ length: ITEMS_PER_PAGE });
 
     const toggleRow = (id) => setSelectedRows((prev) =>
@@ -301,13 +314,13 @@ const PAListPage = () => {
                             )}
                         </div>
 
-                        {/* Type Filter */}
+                        {/* Fleet Filter */}
                         <div className="relative" ref={fleetRef}>
                             <button
                                 onClick={() => setIsFleetOpen((o) => !o)}
                                 className="flex items-center gap-2 px-3 py-2 border border-gray-200 rounded-lg text-sm text-gray-600 bg-white hover:bg-gray-50 transition-colors whitespace-nowrap"
                             >
-                                {fleetFilter === 'All' ? 'All types' : fleetFilter}
+                                {fleetFilter === 'All' ? 'All fleets' : fleetFilter}
                                 <MdKeyboardArrowDown size={16} className="text-gray-400" />
                             </button>
                             {isFleetOpen && (
@@ -383,12 +396,11 @@ const PAListPage = () => {
                                             : <MdCheckBoxOutlineBlank className="text-gray-300 w-5 h-5" />}
                                     </div>
                                 </th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[22%]">Name</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[20%]">Contact Info</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Type</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Assigned Jobs</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[12%]">Status</th>
-                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[14%]">Date Added</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[24%]">Name</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[22%]">Contact Info</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[14%]">Fleet</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[14%]">Status</th>
+                                <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider w-[16%]">Date Added</th>
                                 <th className="px-4 py-3.5 text-xs font-semibold text-gray-500 uppercase tracking-wider text-right w-[10%]">Actions</th>
                             </tr>
                         </thead>
@@ -470,11 +482,6 @@ const PAListPage = () => {
                                         <FleetBadge fleet={pa.fleet} entity="pa" />
                                     </td>
 
-                                    {/* Assigned Jobs */}
-                                    <td className="px-4 py-3.5 text-gray-600 whitespace-nowrap">
-                                        {pa.assignedJobs} Active
-                                    </td>
-
                                     {/* Status */}
                                     <td className="px-4 py-3.5">
                                         <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium whitespace-nowrap ${STATUS_COLORS[paStatusLabel(pa.statusDb)] || 'bg-gray-100 text-gray-500'}`}>
@@ -488,6 +495,9 @@ const PAListPage = () => {
                                     {/* Actions */}
                                     <td className="px-4 py-3.5 text-right">
                                         <div className="relative flex justify-end">
+                                            {paStatusLabel(pa.statusDb) === 'Deleted' ? (
+                                                <span className="text-xs text-gray-400 px-1.5">—</span>
+                                            ) : (
                                             <button
                                                 type="button"
                                                 data-pa-action-trigger
@@ -516,6 +526,7 @@ const PAListPage = () => {
                                             >
                                                 <MdMoreVert size={18} />
                                             </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

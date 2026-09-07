@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:phone_form_field/phone_form_field.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../model/driver_register_data.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/driver_register_validators.dart';
+import '../../../../utils/register_phone.dart';
 import '../../../../utils/size_confg.dart';
 import 'register_widgets.dart';
 
@@ -24,10 +26,10 @@ class _Step1RegisterState extends State<Step1Register> {
   late final TextEditingController _emailCtrl;
   late final TextEditingController _companyCtrl;
   late final FocusNode _companyFocusNode;
-  late final TextEditingController _mobileCtrl;
+  late final PhoneController _phoneCtrl;
   late final TextEditingController _residentialAddressCtrl;
   late final TextEditingController _emergencyContactNameCtrl;
-  late final TextEditingController _emergencyContactPhoneCtrl;
+  late final PhoneController _emergencyPhoneCtrl;
   late final TextEditingController _passportNumberCtrl;
   late final TextEditingController _rightToWorkCodeCtrl;
   late final TextEditingController _nationalityCtrl;
@@ -36,7 +38,6 @@ class _Step1RegisterState extends State<Step1Register> {
 
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
-  String _countryCode = '+44';
   bool _isLoadingCompanies = false;
   String? _companyLoadError;
   String? _formError;
@@ -48,19 +49,6 @@ class _Step1RegisterState extends State<Step1Register> {
   /// true  → driver is British (nationality locked, right-to-work hidden)
   /// false → driver must type nationality and may enter right-to-work code
   bool _isBritish = false;
-
-  static const List<String> _countryCodes = [
-    '+1',
-    '+44',
-    '+92',
-    '+91',
-    '+61',
-    '+49',
-    '+33',
-    '+971',
-    '+966',
-    '+20',
-  ];
 
   // ── Init / dispose ─────────────────────────────────────────────────────────
 
@@ -76,15 +64,23 @@ class _Step1RegisterState extends State<Step1Register> {
     _emailCtrl = TextEditingController(text: widget.data.email);
     _companyCtrl = TextEditingController(text: widget.data.companyName);
     _companyFocusNode = FocusNode();
-    _mobileCtrl = TextEditingController(text: widget.data.mobileNumber);
+    _phoneCtrl = PhoneController(
+      initialValue: RegisterPhone.fromSaved(
+        countryCode: widget.data.countryCode,
+        mobileNumber: widget.data.mobileNumber,
+      ),
+    );
     _residentialAddressCtrl = TextEditingController(
       text: widget.data.residentialAddress,
     );
     _emergencyContactNameCtrl = TextEditingController(
       text: widget.data.emergencyContactName,
     );
-    _emergencyContactPhoneCtrl = TextEditingController(
-      text: widget.data.emergencyContactPhone,
+    _emergencyPhoneCtrl = PhoneController(
+      initialValue: RegisterPhone.fromSaved(
+        countryCode: '+44',
+        mobileNumber: widget.data.emergencyContactPhone,
+      ),
     );
     _passportNumberCtrl = TextEditingController(
       text: widget.data.passportNumber,
@@ -92,7 +88,6 @@ class _Step1RegisterState extends State<Step1Register> {
     _rightToWorkCodeCtrl = TextEditingController(
       text: widget.data.rightToWorkCode,
     );
-    _countryCode = widget.data.countryCode;
     _companyFocusNode.addListener(_onCompanyFocusChange);
 
     // Restore nationality state
@@ -118,10 +113,10 @@ class _Step1RegisterState extends State<Step1Register> {
     _companyCtrl.dispose();
     _companyFocusNode.removeListener(_onCompanyFocusChange);
     _companyFocusNode.dispose();
-    _mobileCtrl.dispose();
+    _phoneCtrl.dispose();
     _residentialAddressCtrl.dispose();
     _emergencyContactNameCtrl.dispose();
-    _emergencyContactPhoneCtrl.dispose();
+    _emergencyPhoneCtrl.dispose();
     _passportNumberCtrl.dispose();
     _rightToWorkCodeCtrl.dispose();
     _nationalityCtrl.dispose();
@@ -220,26 +215,39 @@ class _Step1RegisterState extends State<Step1Register> {
     final companyKey = companyName.toLowerCase();
     final companyId = _companyNameToId[companyKey] ?? '';
     final companyCountry = _companyNameToCountry[companyKey] ?? '';
+    final phone = _phoneCtrl.value;
+    final phoneError = RegisterPhone.validateMobile(context, phone);
+    final emergencyPhone = _emergencyPhoneCtrl.value;
+    final emergencyPhoneError =
+        RegisterPhone.validateMobile(context, emergencyPhone);
 
     final result = DriverRegisterValidators.validateStep1(
       firstName: firstName,
       lastName: lastName,
-      email: _emailCtrl.text.trim(),
-      mobileNumber: _mobileCtrl.text.trim(),
+      email: _emailCtrl.text.trim().toLowerCase(),
+      mobileNumber: phone.international,
       password: password,
       confirmPassword: confirmPassword,
       companyName: companyName,
       companyId: companyId,
       residentialAddress: _residentialAddressCtrl.text.trim(),
       emergencyContactName: _emergencyContactNameCtrl.text,
-      emergencyContactPhone: _emergencyContactPhoneCtrl.text.trim(),
+      emergencyContactPhone: emergencyPhone.international,
       nationality: nationality,
     );
 
-    if (!result.isValid) {
+    final errors = Map<String, String>.from(result.errors);
+    if (phoneError != null) {
+      errors['mobile'] = phoneError;
+    }
+    if (emergencyPhoneError != null) {
+      errors['emergencyContactPhone'] = emergencyPhoneError;
+    }
+
+    if (errors.isNotEmpty) {
       setState(() {
-        _fieldErrors = Map<String, String>.from(result.errors);
-        _formError = result.firstError;
+        _fieldErrors = errors;
+        _formError = errors.values.first;
       });
       return;
     }
@@ -253,19 +261,19 @@ class _Step1RegisterState extends State<Step1Register> {
     widget.data.fullName = '$firstName $lastName'.trim();
     widget.data.password = password;
     widget.data.confirmPassword = confirmPassword;
-    widget.data.email = _emailCtrl.text.trim();
+    widget.data.email = _emailCtrl.text.trim().toLowerCase();
     widget.data.companyName = companyName;
     widget.data.companyId = companyId;
     if (widget.data.companyCountry != companyCountry) {
       widget.data.licensingType = '';
     }
     widget.data.companyCountry = companyCountry;
-    widget.data.countryCode = _countryCode;
-    widget.data.mobileNumber = _mobileCtrl.text.trim();
+    widget.data.countryCode = '+${phone.countryCode}';
+    widget.data.mobileNumber = phone.international;
     widget.data.residentialAddress = _residentialAddressCtrl.text.trim();
     widget.data.emergencyContactName =
         _emergencyContactNameCtrl.text.trim().replaceAll(RegExp(r' +'), ' ');
-    widget.data.emergencyContactPhone = _emergencyContactPhoneCtrl.text.trim();
+    widget.data.emergencyContactPhone = emergencyPhone.international;
     widget.data.passportNumber = _passportNumberCtrl.text.trim();
     widget.data.nationality = nationality;
     // British nationals skip right-to-work; others may provide it
@@ -273,36 +281,6 @@ class _Step1RegisterState extends State<Step1Register> {
         ? ''
         : _rightToWorkCodeCtrl.text.trim();
     widget.onNext();
-  }
-
-  // ── Country code picker ────────────────────────────────────────────────────
-
-  void _showCountryCodePicker() {
-    showModalBottomSheet<void>(
-      context: context,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(SizeConfig.r(16)),
-        ),
-      ),
-      builder: (_) => ListView(
-        shrinkWrap: true,
-        children: _countryCodes
-            .map(
-              (code) => ListTile(
-                title: Text(code),
-                trailing: code == _countryCode
-                    ? const Icon(Icons.check, color: AppColors.primary)
-                    : null,
-                onTap: () {
-                  setState(() => _countryCode = code);
-                  Navigator.pop(context);
-                },
-              ),
-            )
-            .toList(),
-      ),
-    );
   }
 
   // ── Build ──────────────────────────────────────────────────────────────────
@@ -349,8 +327,9 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _firstNameCtrl,
             hintText: 'e.g. John',
             keyboardType: TextInputType.name,
-            textCapitalization: TextCapitalization.words,
-            inputFormatters: [DriverRegisterValidators.lettersOnlyFormatter],
+            textCapitalization: TextCapitalization.none,
+            maxLength: DriverRegisterValidators.personNameMaxLength,
+            inputFormatters: DriverRegisterValidators.personNameFormatters,
             errorText: _fieldErrors['firstName'],
             onChanged: (_) => _clearFieldError('firstName'),
           ),
@@ -363,8 +342,9 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _lastNameCtrl,
             hintText: 'e.g. Smith',
             keyboardType: TextInputType.name,
-            textCapitalization: TextCapitalization.words,
-            inputFormatters: [DriverRegisterValidators.lettersOnlyFormatter],
+            textCapitalization: TextCapitalization.none,
+            maxLength: DriverRegisterValidators.personNameMaxLength,
+            inputFormatters: DriverRegisterValidators.personNameFormatters,
             errorText: _fieldErrors['lastName'],
             onChanged: (_) => _clearFieldError('lastName'),
           ),
@@ -377,6 +357,7 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _emailCtrl,
             hintText: 'john@example.com',
             keyboardType: TextInputType.emailAddress,
+            inputFormatters: DriverRegisterValidators.emailFormatters,
             errorText: _fieldErrors['email'],
             onChanged: (_) => _clearFieldError('email'),
           ),
@@ -385,44 +366,10 @@ class _Step1RegisterState extends State<Step1Register> {
           // ── Mobile Number ─────────────────────────────────────────────────
           const RegFieldLabel('Mobile Number *'),
           SizedBox(height: SizeConfig.r(6)),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              GestureDetector(
-                onTap: _showCountryCodePicker,
-                child: Container(
-                  height: SizeConfig.inputHeight,
-                  padding: EdgeInsets.symmetric(horizontal: SizeConfig.r(14)),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF3F7FC),
-                    borderRadius: BorderRadius.circular(SizeConfig.radius),
-                    border: Border.all(
-                      color: const Color(0xFFE0E8F3),
-                      width: 1,
-                    ),
-                  ),
-                  child: Center(
-                    child: Text(
-                      _countryCode,
-                      style: TextStyle(
-                        fontSize: SizeConfig.sp(15),
-                        color: AppColors.textMedium,
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(width: SizeConfig.r(10)),
-              Expanded(
-                child: RegField(
-                  controller: _mobileCtrl,
-                  hintText: '555-0123',
-                  keyboardType: TextInputType.phone,
-                  errorText: _fieldErrors['mobile'],
-                  onChanged: (_) => _clearFieldError('mobile'),
-                ),
-              ),
-            ],
+          RegMobileField(
+            controller: _phoneCtrl,
+            errorText: _fieldErrors['mobile'],
+            onChanged: (_) => _clearFieldError('mobile'),
           ),
           SizedBox(height: SizeConfig.r(18)),
 
@@ -433,6 +380,7 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _passwordCtrl,
             hintText: '••••••••',
             obscureText: _obscurePassword,
+            maxLength: DriverRegisterValidators.passwordMaxLength,
             errorText: _fieldErrors['password'],
             onChanged: (_) => _clearFieldError('password'),
             prefixIcon: Icon(
@@ -453,7 +401,7 @@ class _Step1RegisterState extends State<Step1Register> {
           ),
           SizedBox(height: SizeConfig.r(6)),
           Text(
-            'Min 8 characters, with upper, lower, number and special character.',
+            DriverRegisterValidators.passwordRulesHint,
             style: TextStyle(
               fontSize: SizeConfig.sp(11),
               color: AppColors.textLight,
@@ -468,6 +416,7 @@ class _Step1RegisterState extends State<Step1Register> {
             controller: _confirmPasswordCtrl,
             hintText: '••••••••',
             obscureText: _obscureConfirmPassword,
+            maxLength: DriverRegisterValidators.passwordMaxLength,
             errorText: _fieldErrors['confirmPassword'],
             onChanged: (_) => _clearFieldError('confirmPassword'),
             prefixIcon: Icon(
@@ -682,12 +631,11 @@ class _Step1RegisterState extends State<Step1Register> {
           SizedBox(height: SizeConfig.r(6)),
           RegField(
             controller: _emergencyContactNameCtrl,
-            hintText: 'Enter emergency contact name',
+            hintText: 'e.g. John Smith',
             keyboardType: TextInputType.name,
-            textCapitalization: TextCapitalization.words,
-            inputFormatters: [
-              DriverRegisterValidators.lettersAndSpacesFormatter,
-            ],
+            textCapitalization: TextCapitalization.none,
+            maxLength: DriverRegisterValidators.personNameMaxLength,
+            inputFormatters: DriverRegisterValidators.emergencyNameFormatters,
             errorText: _fieldErrors['emergencyContactName'],
             onChanged: (_) => _clearFieldError('emergencyContactName'),
           ),
@@ -695,10 +643,8 @@ class _Step1RegisterState extends State<Step1Register> {
 
           const RegFieldLabel('Emergency Contact Phone *'),
           SizedBox(height: SizeConfig.r(6)),
-          RegField(
-            controller: _emergencyContactPhoneCtrl,
-            hintText: 'Enter emergency contact phone',
-            keyboardType: TextInputType.phone,
+          RegMobileField(
+            controller: _emergencyPhoneCtrl,
             errorText: _fieldErrors['emergencyContactPhone'],
             onChanged: (_) => _clearFieldError('emergencyContactPhone'),
           ),

@@ -146,8 +146,6 @@ class AuthProvider extends ChangeNotifier {
   Future<void> logout() async {
     await _awaitLogoutCleanup();
 
-    final wasDriver = isDriver;
-
     // Navigate to login immediately — cleanup runs in the background.
     _token = null;
     _userId = null;
@@ -157,7 +155,7 @@ class AuthProvider extends ChangeNotifier {
     _errorMessage = null;
     _setStatus(AuthStatus.unauthenticated);
 
-    final cleanup = _runLogoutCleanup(wasDriver);
+    final cleanup = _runLogoutCleanup();
     _logoutCleanup = cleanup;
     unawaited(
       cleanup.whenComplete(() {
@@ -168,7 +166,7 @@ class AuthProvider extends ChangeNotifier {
     );
   }
 
-  /// Permanently delete the current account, then clear local session.
+  /// Close the current account on the server, then clear local session.
   ///
   /// Returns `null` on success, or an error message on failure.
   Future<String?> deleteAccount() async {
@@ -179,17 +177,15 @@ class AuthProvider extends ChangeNotifier {
       return result.error ?? 'Could not delete account. Please try again.';
     }
 
-    // Auth user is gone — clear local state (signOut may fail; cleanup tolerates it).
+    // Account is closed — clear local state (signOut may fail if Auth was banned).
     await logout();
     return null;
   }
 
-  Future<void> _runLogoutCleanup(bool wasDriver) async {
+  Future<void> _runLogoutCleanup() async {
     try {
       await RealtimeService().unsubscribe();
-      if (wasDriver) {
-        await FcmService().unregisterCurrentToken();
-      }
+      await FcmService().unregisterCurrentToken();
       await SessionCleanup.clearOnLogout();
       await _authService.driverLogout();
     } catch (error, stack) {

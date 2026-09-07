@@ -4,6 +4,7 @@ import {
   uploadDriverProfileImage,
   removeCompanyDocument,
 } from './storageService'
+import { isDeletedStaffStatus } from '../utils/fleet'
 
 function cleanString(v) {
   if (v === null || v === undefined) return ''
@@ -79,6 +80,16 @@ export async function updateDriverWithRecords({
 }) {
   if (!driverId) throw new Error('Driver ID is required.')
   if (!companyId) throw new Error('Company ID is required.')
+
+  const { data: existingDriver, error: existingErr } = await supabaseAdmin
+    .from('drivers')
+    .select('status')
+    .eq('id', driverId)
+    .maybeSingle()
+  if (existingErr) throw existingErr
+  if (isDeletedStaffStatus(existingDriver?.status)) {
+    throw new Error('Deleted accounts cannot be changed.')
+  }
 
   const passportNumber = toNullableString(personal?.passport)
   const passportFile = driverFiles.passport

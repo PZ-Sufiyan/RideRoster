@@ -13,7 +13,8 @@ create table if not exists public.pa_event_notifications (
       'pa_suspended',
       'pa_approved',
       'pa_rejected',
-      'pa_removed_from_job'
+      'pa_removed_from_job',
+      'pa_deleted'
     )
   ),
   title       text not null,

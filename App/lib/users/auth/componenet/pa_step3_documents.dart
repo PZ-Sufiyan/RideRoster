@@ -17,6 +17,8 @@ class PaStep3Documents extends StatefulWidget {
 }
 
 class _PaStep3DocumentsState extends State<PaStep3Documents> {
+  String? _formError;
+
   Future<void> _pickFile(void Function(PlatformFile f) onPicked) async {
     final result = await FilePicker.platform.pickFiles(
       type: FileType.custom,
@@ -25,7 +27,10 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
       withReadStream: false,
     );
     if (result != null && result.files.isNotEmpty) {
-      setState(() => onPicked(result.files.first));
+      setState(() {
+        onPicked(result.files.first);
+        _formError = null;
+      });
     }
   }
 
@@ -34,8 +39,6 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
     final month = d.month.toString().padLeft(2, '0');
     return '$day/$month/${d.year}';
   }
-
-  String? _formError;
 
   void _saveAndNext() {
     final docsError =
@@ -64,7 +67,7 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Documents & Certifications',
+            'Documents',
             style: TextStyle(
               fontSize: SizeConfig.sp(26),
               fontWeight: FontWeight.bold,
@@ -73,112 +76,52 @@ class _PaStep3DocumentsState extends State<PaStep3Documents> {
           ),
           SizedBox(height: SizeConfig.r(6)),
           Text(
-            'Upload documents as needed. Accepted: PDF, JPG, PNG, WEBP. '
-            'Passport and safeguarding require an expiry date when a file is uploaded.',
+            'Upload each file and enter the expiry date yourself.',
             style: TextStyle(
               fontSize: SizeConfig.sp(14),
               color: AppColors.textMedium,
             ),
           ),
-          SizedBox(height: SizeConfig.r(24)),
-          const RegFieldLabel('Passport copy (PDF or image)'),
-          SizedBox(height: SizeConfig.r(6)),
-          UploadBox(
+          SizedBox(height: SizeConfig.r(22)),
+          RegDocumentCard(
+            title: 'Passport',
+            optional: true,
             file: d.passportCopy,
-            onTap: () => _pickFile((f) => d.passportCopy = f),
-            subLabel: 'Passport copy (PDF or image)',
-          ),
-          SizedBox(height: SizeConfig.r(10)),
-          ExpiryButton(
-            date: d.passportExpiry,
-            onDatePicked: (dt) => setState(() => d.passportExpiry = dt),
+            onUpload: () => _pickFile((f) => d.passportCopy = f),
+            expiry: d.passportExpiry,
+            onExpiryPicked: (dt) => setState(() {
+              d.passportExpiry = dt;
+              _formError = null;
+            }),
             formatDate: _fmt,
+            errorText: d.passportCopy != null && d.passportExpiry == null
+                ? 'Enter the expiry date'
+                : null,
           ),
-          SizedBox(height: SizeConfig.r(6)),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Checkbox(
-                value: d.passportExpiryEnteredManually,
-                onChanged: (v) {
-                  setState(() {
-                    d.passportExpiryEnteredManually = v ?? false;
-                  });
-                },
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              ),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(top: SizeConfig.r(10)),
-                  child: Text(
-                    'Enter expiry manually; it is not read from the file.',
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(13),
-                      color: AppColors.textMedium,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: SizeConfig.r(22)),
-          const RegFieldLabel('Safeguarding certificate (PDF or image)'),
-          SizedBox(height: SizeConfig.r(6)),
-          UploadBox(
+          SizedBox(height: SizeConfig.r(14)),
+          RegDocumentCard(
+            title: 'Safeguarding certificate',
             file: d.safeguardingCertificate,
-            onTap: () => _pickFile((f) => d.safeguardingCertificate = f),
-            subLabel: 'Safeguarding certificate (PDF or image)',
-          ),
-          SizedBox(height: SizeConfig.r(10)),
-          ExpiryButton(
-            date: d.safeguardingExpiry,
-            onDatePicked: (dt) => setState(() => d.safeguardingExpiry = dt),
+            onUpload: () => _pickFile((f) => d.safeguardingCertificate = f),
+            expiry: d.safeguardingExpiry,
+            onExpiryPicked: (dt) => setState(() {
+              d.safeguardingExpiry = dt;
+              _formError = null;
+            }),
             formatDate: _fmt,
           ),
-          SizedBox(height: SizeConfig.r(6)),
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Checkbox(
-                value: d.safeguardingExpiryEnteredManually,
-                onChanged: (v) {
-                  setState(() {
-                    d.safeguardingExpiryEnteredManually = v ?? false;
-                  });
-                },
-                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                visualDensity: VisualDensity.compact,
-              ),
-              Expanded(
-                child: Padding(
-                  padding: EdgeInsets.only(top: SizeConfig.r(10)),
-                  child: Text(
-                    'Enter expiry manually; it is not read from the file.',
-                    style: TextStyle(
-                      fontSize: SizeConfig.sp(13),
-                      color: AppColors.textMedium,
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(height: SizeConfig.r(22)),
-          const RegFieldLabel('Background check certificate'),
-          SizedBox(height: SizeConfig.r(6)),
-          UploadBox(
+          SizedBox(height: SizeConfig.r(14)),
+          RegDocumentCard(
+            title: 'Background check',
             file: d.backgroundCheckCertificate,
-            onTap: () => _pickFile((f) => d.backgroundCheckCertificate = f),
-            subLabel: 'Upload certificate (PDF or image)',
+            onUpload: () =>
+                _pickFile((f) => d.backgroundCheckCertificate = f),
           ),
-          SizedBox(height: SizeConfig.r(22)),
-          const RegFieldLabel('First aid certification'),
-          SizedBox(height: SizeConfig.r(6)),
-          UploadBox(
+          SizedBox(height: SizeConfig.r(14)),
+          RegDocumentCard(
+            title: 'First aid certificate',
             file: d.firstAidCertificate,
-            onTap: () => _pickFile((f) => d.firstAidCertificate = f),
-            subLabel: 'Upload certificate (PDF or image)',
+            onUpload: () => _pickFile((f) => d.firstAidCertificate = f),
           ),
           if (_formError != null) ...[
             SizedBox(height: SizeConfig.r(14)),

@@ -26,6 +26,7 @@ const STATUS_COLORS = {
     pending: 'bg-blue-50 text-blue-700 border border-blue-200',
     rejected: 'bg-red-50 text-red-600 border border-red-200',
     suspended: 'bg-orange-50 text-orange-700 border border-orange-200',
+    deleted: 'bg-gray-100 text-gray-600 border border-gray-200',
 };
 
 function statusPillClass(statusRaw) {
@@ -48,6 +49,7 @@ const DRIVER_BULK_ACTIONS = ['Approve', 'Reject', 'Suspend'];
 
 function getDriverRowActions(rawStatus) {
     const s = (rawStatus || '').trim().toLowerCase();
+    if (s === 'deleted') return [];
     return ['Approve', 'Reject', 'Suspend'].filter((action) => {
         if (action === 'Approve' && s === 'approved') return false;
         if (action === 'Reject' && s === 'rejected') return false;
@@ -109,7 +111,7 @@ const DriversPage = () => {
     const fleetRef = useRef(null);
     const bulkRef = useRef(null);
 
-    const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended'];
+    const statuses = ['All', 'Pending', 'Approved', 'Rejected', 'Suspended', 'Deleted'];
 
     // Close menus on outside click (portal menu is outside the table DOM)
     useEffect(() => {
@@ -154,10 +156,14 @@ const DriversPage = () => {
             (d.phone || '').toLowerCase().includes(q) ||
             (d.license_no || '').toLowerCase().includes(q) ||
             (d.id || '').toLowerCase().includes(q);
-        const st = (d.status || '').trim();
+        const st = (d.status || '').trim().toLowerCase();
+        const isDeleted = st === 'deleted';
         const matchStatus =
-            statusFilter === 'All' ||
-            st.toLowerCase() === statusFilter.toLowerCase();
+            statusFilter === 'Deleted'
+                ? isDeleted
+                : statusFilter === 'All'
+                    ? !isDeleted
+                    : st === statusFilter.toLowerCase();
         const fleet = (d.fleet || 'company').trim().toLowerCase();
         const matchFleet =
             fleetFilter === 'All' ||
@@ -211,10 +217,14 @@ const DriversPage = () => {
         }
         setActionBusyId('bulk');
         try {
-            await Promise.all(selectedRows.map((driverId) => updateDriver(driverId, { status: nextStatus })));
+            const ids = selectedRows.filter((driverId) => {
+                const row = drivers.find((d) => d.id === driverId);
+                return String(row?.status || '').trim().toLowerCase() !== 'deleted';
+            });
+            await Promise.all(ids.map((driverId) => updateDriver(driverId, { status: nextStatus })));
             setDrivers((prev) =>
                 prev.map((row) =>
-                    selectedRows.includes(row.id) ? { ...row, status: nextStatus } : row
+                    ids.includes(row.id) ? { ...row, status: nextStatus } : row
                 )
             );
             setSelectedRows([]);
@@ -541,6 +551,9 @@ const DriversPage = () => {
                                     {/* Actions */}
                                     <td className="px-4 py-3.5 text-right">
                                         <div className="relative flex justify-end">
+                                            {String(driver.status || '').trim().toLowerCase() === 'deleted' ? (
+                                                <span className="text-xs text-gray-400 px-1.5">—</span>
+                                            ) : (
                                             <button
                                                 type="button"
                                                 data-driver-action-trigger
@@ -550,6 +563,7 @@ const DriversPage = () => {
                                             >
                                                 <MdMoreVert size={18} />
                                             </button>
+                                            )}
                                         </div>
                                     </td>
                                 </tr>

@@ -1,9 +1,11 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:phone_form_field/phone_form_field.dart';
 import '../../../../components/app_button.dart';
 import '../../../../utils/app_colors.dart';
 import '../../../../utils/expiry_date_picker.dart';
+import '../../../../utils/register_phone.dart';
 import '../../../../utils/size_confg.dart';
 
 /// Shared widgets used across all 3 registration step components.
@@ -47,6 +49,7 @@ class RegField extends StatelessWidget {
     this.inputFormatters,
     this.onChanged,
     this.textCapitalization = TextCapitalization.none,
+    this.maxLength,
   });
 
   final TextEditingController controller;
@@ -59,6 +62,7 @@ class RegField extends StatelessWidget {
   final List<TextInputFormatter>? inputFormatters;
   final ValueChanged<String>? onChanged;
   final TextCapitalization textCapitalization;
+  final int? maxLength;
 
   @override
   Widget build(BuildContext context) {
@@ -73,9 +77,11 @@ class RegField extends StatelessWidget {
           inputFormatters: inputFormatters,
           onChanged: onChanged,
           textCapitalization: textCapitalization,
+          maxLength: maxLength,
           style: TextStyle(fontSize: SizeConfig.sp(15), color: AppColors.textDark),
           decoration: InputDecoration(
             hintText: hintText,
+            counterText: maxLength == null ? null : '',
             hintStyle: TextStyle(
               fontSize: SizeConfig.sp(15),
               color: const Color(0xFFB0BEC5),
@@ -132,6 +138,101 @@ class RegField extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Mobile number (country picker + national number, E.164 on submit)
+// ─────────────────────────────────────────────────────────────────────────────
+
+class RegMobileField extends StatelessWidget {
+  const RegMobileField({
+    super.key,
+    required this.controller,
+    this.errorText,
+    this.onChanged,
+    this.hintText = '7123 456789',
+  });
+
+  final PhoneController controller;
+  final String? errorText;
+  final ValueChanged<PhoneNumber>? onChanged;
+  final String hintText;
+
+  @override
+  Widget build(BuildContext context) {
+    SizeConfig.init(context);
+    final hasError = errorText != null;
+
+    return PhoneFormField(
+      controller: controller,
+      validator: (phone) => RegisterPhone.validateMobile(context, phone),
+      autovalidateMode: AutovalidateMode.disabled,
+      countrySelectorNavigator: const CountrySelectorNavigator.modalBottomSheet(
+        favorites: [IsoCode.GB],
+      ),
+      isCountrySelectionEnabled: true,
+      isCountryButtonPersistent: true,
+      countryButtonStyle: CountryButtonStyle(
+        showDialCode: true,
+        showFlag: true,
+        showIsoCode: false,
+        flagSize: SizeConfig.r(18),
+        textStyle: TextStyle(
+          fontSize: SizeConfig.sp(15),
+          color: AppColors.textMedium,
+        ),
+      ),
+      style: TextStyle(fontSize: SizeConfig.sp(15), color: AppColors.textDark),
+      onChanged: onChanged,
+      decoration: InputDecoration(
+        hintText: hintText,
+        hintStyle: TextStyle(
+          fontSize: SizeConfig.sp(15),
+          color: const Color(0xFFB0BEC5),
+        ),
+        errorText: errorText,
+        errorStyle: TextStyle(
+          fontSize: SizeConfig.sp(12),
+          color: AppColors.error,
+        ),
+        filled: true,
+        fillColor: const Color(0xFFF3F7FC),
+        contentPadding: EdgeInsets.symmetric(
+          horizontal: SizeConfig.r(16),
+          vertical: SizeConfig.r(16),
+        ),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SizeConfig.radius),
+          borderSide: BorderSide(
+            color: hasError ? AppColors.error : const Color(0xFFE0E8F3),
+            width: 1,
+          ),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SizeConfig.radius),
+          borderSide: BorderSide(
+            color: hasError ? AppColors.error : const Color(0xFFE0E8F3),
+            width: 1,
+          ),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SizeConfig.radius),
+          borderSide: BorderSide(
+            color: hasError ? AppColors.error : AppColors.primary,
+            width: 1.5,
+          ),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SizeConfig.radius),
+          borderSide: const BorderSide(color: AppColors.error, width: 1),
+        ),
+        focusedErrorBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(SizeConfig.radius),
+          borderSide: const BorderSide(color: AppColors.error, width: 1.5),
+        ),
+      ),
     );
   }
 }
@@ -215,7 +316,7 @@ class UploadBox extends StatelessWidget {
             Text(
               file != null
                   ? file!.name
-                  : (subLabel ?? 'Click to upload or drag and drop'),
+                  : (subLabel ?? 'Tap to upload PDF or image'),
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: SizeConfig.sp(13),
@@ -226,6 +327,119 @@ class UploadBox extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class RegDocumentCard extends StatelessWidget {
+  const RegDocumentCard({
+    super.key,
+    required this.title,
+    required this.file,
+    required this.onUpload,
+    this.optional = false,
+    this.expiry,
+    this.onExpiryPicked,
+    this.formatDate,
+    this.errorText,
+  });
+
+  final String title;
+  final PlatformFile? file;
+  final VoidCallback onUpload;
+  final bool optional;
+  final DateTime? expiry;
+  final ValueChanged<DateTime>? onExpiryPicked;
+  final String Function(DateTime)? formatDate;
+  final String? errorText;
+
+  @override
+  Widget build(BuildContext context) {
+    SizeConfig.init(context);
+    final hasError = errorText != null;
+
+    return Container(
+      width: double.infinity,
+      padding: EdgeInsets.all(SizeConfig.r(14)),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(SizeConfig.radius),
+        border: Border.all(
+          color: hasError ? AppColors.error : const Color(0xFFD4DEF0),
+          width: 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  title,
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(15),
+                    fontWeight: FontWeight.w600,
+                    color: AppColors.textDark,
+                  ),
+                ),
+              ),
+              Container(
+                padding: EdgeInsets.symmetric(
+                  horizontal: SizeConfig.r(8),
+                  vertical: SizeConfig.r(4),
+                ),
+                decoration: BoxDecoration(
+                  color: optional
+                      ? const Color(0xFFF3F7FC)
+                      : AppColors.primary.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(SizeConfig.r(6)),
+                ),
+                child: Text(
+                  optional ? 'Optional' : 'Required',
+                  style: TextStyle(
+                    fontSize: SizeConfig.sp(11),
+                    fontWeight: FontWeight.w600,
+                    color: optional ? AppColors.textMedium : AppColors.primary,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: SizeConfig.r(10)),
+          UploadBox(
+            file: file,
+            onTap: onUpload,
+            subLabel: 'Tap to upload',
+          ),
+          if (onExpiryPicked != null && formatDate != null) ...[
+            SizedBox(height: SizeConfig.r(10)),
+            Text(
+              'Expiry date',
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.textMedium,
+              ),
+            ),
+            SizedBox(height: SizeConfig.r(6)),
+            ExpiryButton(
+              date: expiry,
+              onDatePicked: onExpiryPicked!,
+              formatDate: formatDate!,
+            ),
+          ],
+          if (errorText != null) ...[
+            SizedBox(height: SizeConfig.r(8)),
+            Text(
+              errorText!,
+              style: TextStyle(
+                fontSize: SizeConfig.sp(12),
+                color: AppColors.error,
+              ),
+            ),
+          ],
+        ],
       ),
     );
   }

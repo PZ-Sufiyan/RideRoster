@@ -3,6 +3,7 @@ import {
   uploadDriverVehicleDocument,
   removeCompanyDocument,
 } from './storageService'
+import { isVehicleInactive } from '../utils/vehicleStatus'
 
 function cleanString(v) {
   if (v === null || v === undefined) return ''
@@ -79,6 +80,16 @@ export async function updateVehicleWithRecords({
 }) {
   if (!vehicleId) throw new Error('Vehicle ID is required.')
   if (!companyId) throw new Error('Company ID is required.')
+
+  const { data: existingVehicle, error: existingErr } = await supabaseAdmin
+    .from('vehicles')
+    .select('status')
+    .eq('id', vehicleId)
+    .maybeSingle()
+  if (existingErr) throw existingErr
+  if (isVehicleInactive(existingVehicle?.status)) {
+    throw new Error('Inactive vehicles cannot be changed.')
+  }
 
   const uploadedForRollback = []
   const pushUpload = (meta) => {

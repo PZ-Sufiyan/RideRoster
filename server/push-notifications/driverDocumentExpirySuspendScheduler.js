@@ -311,6 +311,7 @@ async function loadExpiredDriverDocuments(supabase, todayYmd) {
 
   return rows.filter((row) => {
     if (!row.driver_id || !row.drivers?.id) return false
+    if (String(row.drivers?.status || '').trim().toLowerCase() === 'deleted') return false
     if (SUSPEND_EXCLUDED_DOCUMENT_TYPES.includes(String(row.document_type || '').trim())) {
       return false
     }
@@ -329,7 +330,7 @@ async function processDriverDocumentExpiry({
 }) {
   const driverStatus = normalizeDriverStatus(driver.status)
 
-  if (driverStatus === 'rejected') {
+  if (driverStatus === 'rejected' || driverStatus === 'deleted') {
     summary.skipped += 1
     return
   }
