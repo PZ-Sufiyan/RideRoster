@@ -15,6 +15,7 @@ import { getCompanyAdminById } from '../../../../../services/companyService';
 import { getDriverEditData, updateDriverWithRecords } from '../../../../../services/driverEditService';
 import { ToastStack } from '../../../../../utils/Toast';
 import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
+import PhoneNumberField, { getPhoneValidationError, toE164Value } from '../../../../../components/PhoneNumberField';
 
 // ─── Reusable: Text Input ─────────────────────────────────────
 const FormField = ({
@@ -262,6 +263,7 @@ const EditDriver = () => {
     const [otherCertificates, setOtherCertificates] = useState([]);
 
     const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+    const setPhone = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value || '' }));
     const setExpiry = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
     const setFile = (key) => (f) => setFiles((prev) => ({ ...prev, [key]: f }));
 
@@ -313,10 +315,10 @@ const EditDriver = () => {
                     firstName: driver.first_name || '',
                     lastName: driver.last_name || '',
                     email: driver.email || '',
-                    phone: driver.phone || '',
+                    phone: toE164Value(driver.phone),
                     address: driver.residential_address || '',
                     emergencyName: driver.emergency_contact_name || '',
-                    emergencyPhone: driver.emergency_contact_phone || '',
+                    emergencyPhone: toE164Value(driver.emergency_contact_phone),
                     passport: driver.passport_number || '',
                     rightToWork: driver.right_to_work_code || '',
                     nationality: driver.nationality || '',
@@ -350,10 +352,10 @@ const EditDriver = () => {
 
         if (!form.firstName?.trim()) missing.push('firstName');
         if (!form.lastName?.trim()) missing.push('lastName');
-        if (!form.phone?.trim()) missing.push('phone');
+        if (getPhoneValidationError(form.phone, { required: true, label: 'Phone number' })) missing.push('phone');
         if (!form.address?.trim()) missing.push('address');
         if (!form.emergencyName?.trim()) missing.push('emergencyName');
-        if (!form.emergencyPhone?.trim()) missing.push('emergencyPhone');
+        if (getPhoneValidationError(form.emergencyPhone, { required: true, label: 'Emergency contact phone' })) missing.push('emergencyPhone');
         if (!form.nationality?.trim()) missing.push('nationality');
         if (!avatarFile && !existingAvatarUrl) missing.push('avatarFile');
         if (form.passport?.trim() && !hasDoc('passport')) missing.push('passport');
@@ -527,12 +529,26 @@ const EditDriver = () => {
                                 disabled
                                 // Email changes must go through Supabase auth flow separately
                             />
-                            <FormField label="Phone Number" required type="tel" placeholder="Enter phone number" value={form.phone} onChange={set('phone')} showError={showMissing('phone')} />
+                            <PhoneNumberField
+                                label="Phone Number"
+                                required
+                                variant="driver"
+                                value={form.phone}
+                                onChange={setPhone('phone')}
+                                showError={submitAttempted}
+                            />
                         </div>
                         <FormField label="Residential Address" required placeholder="Enter full residential address" value={form.address} onChange={set('address')} showError={showMissing('address')} />
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <FormField label="Emergency Contact Name" required placeholder="Enter emergency contact name" value={form.emergencyName} onChange={set('emergencyName')} showError={showMissing('emergencyName')} />
-                            <FormField label="Emergency Contact Phone" required placeholder="Enter emergency contact phone" value={form.emergencyPhone} onChange={set('emergencyPhone')} showError={showMissing('emergencyPhone')} />
+                            <PhoneNumberField
+                                label="Emergency Contact Phone"
+                                required
+                                variant="driver"
+                                value={form.emergencyPhone}
+                                onChange={setPhone('emergencyPhone')}
+                                showError={submitAttempted}
+                            />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <div className="flex items-end">

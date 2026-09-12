@@ -1,4 +1,4 @@
-﻿import React, { useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
     MdPerson,
@@ -8,7 +8,6 @@ import {
     MdOutlineNotes,
     MdSettings,
     MdInfo,
-    MdArrowDropDown,
     MdLocationOn,
     MdHotel,
     MdCalendarToday,
@@ -24,7 +23,7 @@ import { ToastStack } from '../../../../../utils/Toast';
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { registerPassengerWithAuthAndRecord } from '../../../../../services/passengerService';
-import { getCountries, getCountryCallingCode, parsePhoneNumberFromString } from 'libphonenumber-js';
+import PhoneNumberField, { getPhoneValidationError } from '../../../../../components/PhoneNumberField';
 
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
@@ -220,19 +219,6 @@ const LocationCard = ({
 const AddNewPassenger = () => {
     const navigate = useNavigate();
 
-    const countryNameDisplay = useMemo(() => new Intl.DisplayNames(['en'], { type: 'region' }), []);
-    const phoneCountries = useMemo(
-        () =>
-            getCountries()
-                .map((code) => ({
-                    code,
-                    callingCode: `+${getCountryCallingCode(code)}`,
-                    name: countryNameDisplay.of(code) || code,
-                }))
-                .sort((a, b) => a.name.localeCompare(b.name)),
-        [countryNameDisplay]
-    );
-
     // ── Form state ──────────────────────────────────────────────────────────
     const [form, setForm] = useState({
         firstName: '',
@@ -265,12 +251,6 @@ const AddNewPassenger = () => {
     const [toasts, setToasts] = useState([]);
     const [submitAttempted, setSubmitAttempted] = useState(false);
     const [submitting, setSubmitting] = useState(false);
-
-    const [phoneCountriesByField, setPhoneCountriesByField] = useState({ contact1: 'GB', contact2: 'GB' });
-    const [phoneTouched, setPhoneTouched] = useState({ contact1: false, contact2: false });
-    const [openCountryDropdown, setOpenCountryDropdown] = useState({ contact1: false, contact2: false });
-    const contact1Ref = useRef(null);
-    const contact2Ref = useRef(null);
 
     // ── Handlers ────────────────────────────────────────────────────────────
     const handleChange = (field, value) => setForm((prev) => ({ ...prev, [field]: value }));
@@ -307,36 +287,8 @@ const AddNewPassenger = () => {
         if (address.trim() && postcode.trim()) runGeocode(type, address, postcode);
     };
 
-    // ── Outside click for phone dropdowns ───────────────────────────────────
-    useEffect(() => {
-        const handler = (e) => {
-            if (contact1Ref.current && !contact1Ref.current.contains(e.target))
-                setOpenCountryDropdown((prev) => ({ ...prev, contact1: false }));
-            if (contact2Ref.current && !contact2Ref.current.contains(e.target))
-                setOpenCountryDropdown((prev) => ({ ...prev, contact2: false }));
-        };
-        document.addEventListener('mousedown', handler);
-        return () => document.removeEventListener('mousedown', handler);
-    }, []);
-
-    // ── Phone validation ────────────────────────────────────────────────────
-    const validatePhone = (value, country, { required = false, label = 'Contact number' } = {}) => {
-        const trimmed = String(value || '').trim();
-        if (!trimmed) return required ? { error: `${label} is required.`, e164: '' } : { error: '', e164: '' };
-        try {
-            const parsed = parsePhoneNumberFromString(trimmed, country);
-            if (!parsed || !parsed.isValid()) return { error: `${label} is not valid for the selected country.`, e164: '' };
-            if (parsed.country && parsed.country !== country) return { error: `${label} does not match the selected country code.`, e164: '' };
-            return { error: '', e164: parsed.number };
-        } catch {
-            return { error: `${label} has an invalid format.`, e164: '' };
-        }
-    };
-
-    const contact1Phone = validatePhone(form.contact1, phoneCountriesByField.contact1, { required: true, label: 'Contact Number 1' });
-    const contact2Phone = validatePhone(form.contact2, phoneCountriesByField.contact2, { required: false, label: 'Contact Number 2' });
-    const showContact1Error = (submitAttempted || phoneTouched.contact1) && !!contact1Phone.error;
-    const showContact2Error = (submitAttempted || phoneTouched.contact2) && !!contact2Phone.error;
+    const contact1Error = getPhoneValidationError(form.contact1, { required: true, label: 'Contact Number 1' });
+    const contact2Error = getPhoneValidationError(form.contact2, { required: false, label: 'Contact Number 2' });
 
     // ── Validation helpers ──────────────────────────────────────────────────
     const noteMax = 500;
@@ -406,7 +358,7 @@ const AddNewPassenger = () => {
             pushToast('warning', 'Please confirm the Educational Site location on the map.');
             return false;
         }
-        if (contact1Phone.error || contact2Phone.error) {
+        if (contact1Error || contact2Error) {
             pushToast('warning', 'Please fix invalid contact number format.');
             return false;
         }
@@ -428,8 +380,8 @@ const AddNewPassenger = () => {
                 companyId: admin.company_id,
                 form: {
                     ...form,
-                    contact1: contact1Phone.e164,
-                    contact2: contact2Phone.e164,
+                    contact1: form.contact1,
+                    contact2: form.contact2 || '',
                     primaryLocation,
                     secondaryLocation,
                     educationalLocation,
@@ -445,58 +397,6 @@ const AddNewPassenger = () => {
         } finally {
             setSubmitting(false);
         }
-    };
-
-    // ── Phone field reusable renderer ─────────────────────────────────────
-    const renderPhoneField = (fieldKey, label, required, ref) => {
-        const hasError = fieldKey === 'contact1' ? showContact1Error : showContact2Error;
-        const phoneResult = fieldKey === 'contact1' ? contact1Phone : contact2Phone;
-        const showMissingRequired = required && showRequiredError(fieldKey);
-        const borderClass = hasError || showMissingRequired
-            ? 'border-red-400 focus-within:ring-red-500'
-            : 'border-gray-200 focus-within:ring-[#004D6D]';
-
-        return (
-            <div className="space-y-1.5">
-                <label className="text-[12px] font-semibold text-gray-700">
-                    {label}{required && <span className="text-red-500">*</span>}
-                </label>
-                <div className={`flex items-center border rounded-lg focus-within:ring-1 ${borderClass}`}>
-                    <div ref={ref} className="relative border-r border-gray-200 shrink-0">
-                        <button
-                            type="button"
-                            onClick={() => setOpenCountryDropdown((prev) => ({ ...prev, [fieldKey]: !prev[fieldKey] }))}
-                            className="flex items-center gap-1 px-2 py-2.5 bg-gray-50 text-[13px] text-gray-500 font-medium hover:bg-gray-100"
-                        >
-                            <span>+{getCountryCallingCode(phoneCountriesByField[fieldKey])}</span>
-                            <MdArrowDropDown size={16} />
-                        </button>
-                        {openCountryDropdown[fieldKey] && (
-                            <div className="absolute left-0 top-full mt-1 w-56 max-h-72 overflow-y-auto bg-white border border-gray-200 rounded-lg shadow-lg z-30">
-                                {phoneCountries.map((c) => (
-                                    <button key={`${fieldKey}-${c.code}`} type="button"
-                                        onClick={() => { setPhoneCountriesByField((prev) => ({ ...prev, [fieldKey]: c.code })); setOpenCountryDropdown((prev) => ({ ...prev, [fieldKey]: false })); }}
-                                        className="w-full text-left px-3 py-2 text-[12px] text-gray-700 hover:bg-gray-50"
-                                    >
-                                        {c.name} ({c.callingCode})
-                                    </button>
-                                ))}
-                            </div>
-                        )}
-                    </div>
-                    <input
-                        type="tel"
-                        placeholder="Enter phone number"
-                        value={form[fieldKey]}
-                        onChange={(e) => handleChange(fieldKey, e.target.value)}
-                        onBlur={() => setPhoneTouched((prev) => ({ ...prev, [fieldKey]: true }))}
-                        className="flex-1 px-3 py-2.5 text-[13px] text-gray-700 placeholder-gray-400 focus:outline-none bg-white"
-                    />
-                </div>
-                {showMissingRequired && <p className="text-[11px] font-semibold text-red-600">{label} is required.</p>}
-                {hasError && <p className="text-[11px] font-semibold text-red-600">{phoneResult.error}</p>}
-            </div>
-        );
     };
 
     // ── Time input class ──────────────────────────────────────────────────
@@ -558,8 +458,21 @@ const AddNewPassenger = () => {
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                            {renderPhoneField('contact1', 'Contact Number 1', true, contact1Ref)}
-                            {renderPhoneField('contact2', 'Contact Number 2 (Optional)', false, contact2Ref)}
+                            <PhoneNumberField
+                                label="Contact Number 1"
+                                required
+                                variant="passenger"
+                                value={form.contact1}
+                                onChange={(value) => handleChange('contact1', value)}
+                                showError={submitAttempted}
+                            />
+                            <PhoneNumberField
+                                label="Contact Number 2 (Optional)"
+                                variant="passenger"
+                                value={form.contact2}
+                                onChange={(value) => handleChange('contact2', value)}
+                                showError={submitAttempted}
+                            />
                         </div>
                     </div>
 

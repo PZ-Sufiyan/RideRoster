@@ -24,6 +24,7 @@ import {
 } from '../../../../services/adminNotificationService';
 import { useNotificationsList } from '../../../../hooks/useNotificationsList';
 import { ToastStack } from '../../../../utils/Toast';
+import { NotificationListSkeleton, ShimmerBlock } from '../../../../utils/Shimmer';
 
 const TABS = Object.values(NOTIFICATION_TABS);
 const ITEMS_PER_PAGE = 10;
@@ -226,9 +227,7 @@ const SubAdmin_Notifications = () => {
 
                 <div className="divide-y divide-gray-50">
                     {loading && notifications.length === 0 && (
-                        <div className="py-16 text-center text-sm text-gray-400">
-                            Loading notifications…
-                        </div>
+                        <NotificationListSkeleton rows={ITEMS_PER_PAGE} iconRounded="rounded-lg" />
                     )}
 
                     {error && notifications.length === 0 && (
@@ -267,6 +266,18 @@ const SubAdmin_Notifications = () => {
                 </div>
 
                 <div className="px-5 py-3.5 border-t border-gray-100 flex items-center justify-between gap-3 text-sm">
+                    {loading && notifications.length === 0 ? (
+                        <>
+                            <ShimmerBlock className="h-4 w-56 rounded-md" />
+                            <div className="flex items-center gap-1">
+                                <ShimmerBlock className="h-8 w-8 rounded-lg" />
+                                <ShimmerBlock className="h-8 w-8 rounded-lg" />
+                                <ShimmerBlock className="h-8 w-8 rounded-lg" />
+                                <ShimmerBlock className="h-8 w-8 rounded-lg" />
+                            </div>
+                        </>
+                    ) : (
+                    <>
                     <span className="text-gray-500">
                         Showing <span className="font-medium text-gray-900">{rangeStart}</span> to{' '}
                         <span className="font-medium text-gray-900">{rangeEnd}</span> of{' '}
@@ -313,6 +324,8 @@ const SubAdmin_Notifications = () => {
                             <MdChevronRight size={18} />
                         </button>
                     </div>
+                    </>
+                    )}
                 </div>
             </div>
         </div>

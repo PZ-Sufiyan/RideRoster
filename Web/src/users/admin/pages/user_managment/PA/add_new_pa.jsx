@@ -17,6 +17,7 @@ import {
     PA_DOCUMENT_TYPES,
 } from '../../../../../services/passengerAsssistantService';
 import { ToastStack } from '../../../../../utils/Toast';
+import PhoneNumberField, { getPhoneValidationError } from '../../../../../components/PhoneNumberField';
 
 // ─── Reusable: Form Field ─────────────────────────────────────
 const FormField = ({ label, required, placeholder, value, onChange, type = 'text', className = '', showError = false, errorText = 'This field is required.' }) => (
@@ -180,6 +181,7 @@ const AddNewPA = () => {
     const [otherCertLabel, setOtherCertLabel] = useState('');
 
     const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+    const setPhone = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value || '' }));
 
     const revokeIfUrl = useCallback((prev) => {
         if (prev?.objectUrl) URL.revokeObjectURL(prev.objectUrl);
@@ -263,6 +265,13 @@ const AddNewPA = () => {
             !form.contactPhone?.trim();
         if (missing) {
             pushToast('warning', 'Please fill in all required fields before adding a passenger assistant.');
+            return false;
+        }
+        if (
+            getPhoneValidationError(form.phone, { required: true, label: 'Phone number' }) ||
+            getPhoneValidationError(form.contactPhone, { required: true, label: 'Contact phone number' })
+        ) {
+            pushToast('warning', 'Please enter valid phone numbers for the selected country.');
             return false;
         }
         if (form.passportNumber?.trim() && !passportDoc?.file) {
@@ -377,7 +386,13 @@ const AddNewPA = () => {
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <FormField label="Email Address" required type="email" placeholder="e.g. jane.doe@example.com" value={form.email} onChange={set('email')} showError={showRequired(form.email)} />
-                        <FormField label="Phone Number" required type="tel" placeholder="e.g. (123) 456-7890" value={form.phone} onChange={set('phone')} showError={showRequired(form.phone)} />
+                        <PhoneNumberField
+                            label="Phone Number"
+                            required
+                            value={form.phone}
+                            onChange={setPhone('phone')}
+                            showError={submitAttempted}
+                        />
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                         <FormField
@@ -652,14 +667,12 @@ const AddNewPA = () => {
                         onChange={set('contactName')}
                         showError={showRequired(form.contactName)}
                     />
-                    <FormField
+                    <PhoneNumberField
                         label="Contact Phone Number"
                         required
-                        type="tel"
-                        placeholder="e.g. (123) 555-0123"
                         value={form.contactPhone}
-                        onChange={set('contactPhone')}
-                        showError={showRequired(form.contactPhone)}
+                        onChange={setPhone('contactPhone')}
+                        showError={submitAttempted}
                     />
                 </div>
             </Section>

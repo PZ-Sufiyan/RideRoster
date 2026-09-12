@@ -23,6 +23,7 @@ import {
 } from '../../../../services/adminNotificationService';
 import { useNotificationsList } from '../../../../hooks/useNotificationsList';
 import { ToastStack } from '../../../../utils/Toast';
+import { NotificationListSkeleton, ShimmerBlock } from '../../../../utils/Shimmer';
 
 const TABS = Object.values(NOTIFICATION_TABS);
 const ITEMS_PER_PAGE = 10;
@@ -235,9 +236,7 @@ const NotificationPage = () => {
 
                 <div>
                     {loading && notifications.length === 0 && (
-                        <div className="py-16 text-center text-sm text-gray-400">
-                            Loading notifications…
-                        </div>
+                        <NotificationListSkeleton rows={ITEMS_PER_PAGE} />
                     )}
 
                     {error && notifications.length === 0 && (
@@ -278,6 +277,19 @@ const NotificationPage = () => {
                 </div>
 
                 <div className="px-5 py-4 border-t border-gray-100 flex flex-col sm:flex-row items-center justify-between gap-3 bg-gray-50/30">
+                    {loading && notifications.length === 0 ? (
+                        <>
+                            <ShimmerBlock className="h-4 w-52 rounded-md" />
+                            <div className="flex items-center gap-1.5">
+                                <ShimmerBlock className="h-8 w-20 rounded" />
+                                <ShimmerBlock className="h-8 w-8 rounded" />
+                                <ShimmerBlock className="h-8 w-8 rounded" />
+                                <ShimmerBlock className="h-8 w-8 rounded" />
+                                <ShimmerBlock className="h-8 w-16 rounded" />
+                            </div>
+                        </>
+                    ) : (
+                    <>
                     <span className="text-sm text-gray-500 font-medium">
                         Showing {rangeStart}-{rangeEnd} of {filtered.length} notification
                         {filtered.length === 1 ? '' : 's'}
@@ -322,6 +334,8 @@ const NotificationPage = () => {
                             Next
                         </button>
                     </div>
+                    </>
+                    )}
                 </div>
             </div>
 

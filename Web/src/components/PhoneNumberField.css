@@ -1,0 +1,50 @@
+/* Match RideRoster form inputs; flags + country select come from react-phone-number-input. */
+.rr-phone-field .PhoneInput {
+    width: 100%;
+    gap: 0;
+}
+
+.rr-phone-field .PhoneInputCountry {
+    margin-right: 0;
+    padding: 0 0.625rem;
+    align-self: stretch;
+    border-right: 1px solid #e5e7eb;
+}
+
+.rr-phone-field .PhoneInputCountryIcon {
+    width: 1.5rem;
+    height: 1.125rem;
+    box-shadow: none;
+    background-color: transparent;
+    border: 0;
+}
+
+.rr-phone-field .PhoneInputCountrySelect:focus + .PhoneInputCountryIcon--border {
+    box-shadow: none;
+}
+
+.rr-phone-field .PhoneInputInput {
+    flex: 1;
+    min-width: 0;
+    width: 100%;
+    border: 0;
+    outline: none;
+    box-shadow: none;
+    background: transparent;
+    font: inherit;
+    color: inherit;
+}
+
+.rr-phone-field[data-variant='default'] .PhoneInputInput,
+.rr-phone-field[data-variant='passenger'] .PhoneInputInput {
+    padding: 0.625rem 0.75rem;
+}
+
+.rr-phone-field[data-variant='driver'] .PhoneInputInput,
+.rr-phone-field[data-variant='register'] .PhoneInputInput {
+    padding: 0.75rem 0.875rem;
+}
+
+.rr-phone-field .PhoneInputInput::placeholder {
+    color: #9ca3af;
+}

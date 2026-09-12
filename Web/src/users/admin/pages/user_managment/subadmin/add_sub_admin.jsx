@@ -1,6 +1,7 @@
 ﻿import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { ToastStack } from '../../../../../utils/Toast';
+import PhoneNumberField, { getPhoneValidationError } from '../../../../../components/PhoneNumberField';
 import { supabase } from '../../../../../lib/supabaseClient';
 import { getCompanyAdminById } from '../../../../../services/companyService';
 import { registerSubAdminWithAuthAndRecord } from '../../../../../services/subAdminRegistrationService';
@@ -44,6 +45,7 @@ const AddSubAdmin = () => {
     const [permissions, setPermissions] = useState([]);
 
     const setField = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+    const setPhone = (value) => setForm((prev) => ({ ...prev, phone: value || '' }));
 
     const handleCheckboxChange = (key) => {
         setPermissions(prev =>
@@ -83,6 +85,10 @@ const AddSubAdmin = () => {
 
         if (missing) {
             pushToast('warning', 'Please fill in all required fields before creating a sub-admin.');
+            return false;
+        }
+        if (getPhoneValidationError(form.phone, { required: false, label: 'Phone number' })) {
+            pushToast('warning', 'Please enter a valid phone number for the selected country.');
             return false;
         }
         return true;
@@ -174,7 +180,12 @@ const AddSubAdmin = () => {
                                 <FormField label="Email Address" required type="email" placeholder="e.g. jane.doe@example.com" value={form.email} onChange={setField('email')} showError={showRequired(form.email)} />
                             </div>
                             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-                                <FormField label="Phone Number" placeholder="e.g. (123) 456-7890" value={form.phone} onChange={setField('phone')} />
+                                <PhoneNumberField
+                                    label="Phone Number"
+                                    value={form.phone}
+                                    onChange={setPhone}
+                                    showError={submitAttempted}
+                                />
                                 <FormField label="Create Password" required type="password" placeholder="••••••••" value={form.password} onChange={setField('password')} showError={showRequired(form.password)} />
                             </div>
                         </div>

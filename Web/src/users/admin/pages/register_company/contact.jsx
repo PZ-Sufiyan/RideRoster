@@ -4,7 +4,6 @@ import {
     MdLocationOn,
     MdSearch,
     MdContactPage,
-    MdPhone,
     MdEmail,
     MdLanguage,
     MdPublic,
@@ -13,11 +12,11 @@ import {
     MdErrorOutline,
     MdKeyboardArrowDown,
 } from 'react-icons/md';
+import PhoneNumberField, { getPhoneValidationError } from '../../../../components/PhoneNumberField';
 
 // ─── Validators ───────────────────────────────────────────────────────────────
 
 const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-const isValidPhone = (v) => /^\+?[\d\s\-().]{7,20}$/.test(v);
 const isValidUrl   = (v) => {
     if (!v?.trim()) return true; // optional field
     try { new URL(v); return true; } catch { return false; }
@@ -88,10 +87,11 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
             e.company_operating_address = 'Operating address is required';
         if (!company.company_country?.trim())
             e.company_country = 'Country is required';
-        if (!company.company_phone?.trim())
-            e.company_phone = 'Phone number is required';
-        else if (!isValidPhone(company.company_phone))
-            e.company_phone = 'Enter a valid phone number';
+        const phoneError = getPhoneValidationError(company.company_phone, {
+            required: true,
+            label: 'Phone number',
+        });
+        if (phoneError) e.company_phone = phoneError;
         if (!company.company_email?.trim())
             e.company_email = 'Email address is required';
         else if (!isValidEmail(company.company_email))
@@ -350,25 +350,15 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-6">
 
                     {/* Phone */}
-                    <div className="space-y-1.5">
-                        <label className="block text-[14px] font-bold text-[#1e293b]">
-                            Main Contact Phone <span className="text-red-500">*</span>
-                        </label>
-                        <div className="relative">
-                            <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none text-gray-400">
-                                <MdPhone size={20} />
-                            </div>
-                            <input
-                                type="tel"
-                                placeholder="+44 20 7946 0000"
-                                value={company.company_phone || ''}
-                                onChange={(e) => setField('company_phone', e.target.value)}
-                                onBlur={() => touch('company_phone')}
-                                className={iconInputClass('company_phone')}
-                            />
-                        </div>
-                        {renderFieldError('company_phone')}
-                    </div>
+                    <PhoneNumberField
+                        label="Main Contact Phone"
+                        required
+                        variant="register"
+                        value={company.company_phone || ''}
+                        onChange={(next) => setField('company_phone', next)}
+                        onBlur={() => touch('company_phone')}
+                        showError={submitAttempted || touched.company_phone}
+                    />
 
                     {/* Email */}
                     <div className="space-y-1.5">

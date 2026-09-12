@@ -25,6 +25,7 @@ import {
     deleteOtherCertificate,
 } from '../../../../../services/paEditService';
 import { ToastStack } from '../../../../../utils/Toast';
+import PhoneNumberField, { getPhoneValidationError, toE164Value } from '../../../../../components/PhoneNumberField';
 import { ShimmerBlock, LoadingStatus } from '../../../../../utils/Shimmer';
 
 // ─── Reusable: Form Field ─────────────────────────────────────
@@ -243,6 +244,7 @@ const EditPA = () => {
     const [otherCertLabel, setOtherCertLabel] = useState('');
 
     const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+    const setPhone = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value || '' }));
 
     const pushToast = (type, message) => {
         setToasts((prev) => [
@@ -278,10 +280,10 @@ const EditPA = () => {
                     firstName: pa.first_name || '',
                     lastName: pa.surname || '',
                     email: pa.email || '',
-                    phone: pa.phone || '',
+                    phone: toE164Value(pa.phone),
                     address: pa.residential_address || '',
                     contactName: pa.emergency_contact_name || '',
-                    contactPhone: pa.emergency_contact_phone || '',
+                    contactPhone: toE164Value(pa.emergency_contact_phone),
                     nationality: pa.nationality || '',
                     rightToWork: pa.right_to_work_code || '',
                     isBritish: pa.nationality === 'British',
@@ -328,6 +330,13 @@ const EditPA = () => {
 
         if (missing) {
             pushToast('warning', 'Please fill in all required fields before saving.');
+            return false;
+        }
+        if (
+            getPhoneValidationError(form.phone, { required: true, label: 'Phone number' }) ||
+            getPhoneValidationError(form.contactPhone, { required: true, label: 'Contact phone number' })
+        ) {
+            pushToast('warning', 'Please enter valid phone numbers for the selected country.');
             return false;
         }
         const hasPassportDoc = !!existingDocs[PA_DOCUMENT_TYPES.PASSPORT]?.file_url
@@ -477,7 +486,13 @@ const EditPA = () => {
                         <FormField label="Email Address" type="email" value={form.email} disabled
                             // Email changes require Supabase auth flow
                         />
-                        <FormField label="Phone Number" required type="tel" placeholder="e.g. (123) 456-7890" value={form.phone} onChange={set('phone')} showError={showRequired(form.phone)} />
+                        <PhoneNumberField
+                            label="Phone Number"
+                            required
+                            value={form.phone}
+                            onChange={setPhone('phone')}
+                            showError={submitAttempted}
+                        />
                     </div>
                     <FormField label="Residential Address" placeholder="e.g. 123 Main Street" value={form.address} onChange={set('address')} />
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -737,8 +752,13 @@ const EditPA = () => {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                     <FormField label="Contact Full Name" required placeholder="e.g. John Smith"
                         value={form.contactName} onChange={set('contactName')} showError={showRequired(form.contactName)} />
-                    <FormField label="Contact Phone Number" required type="tel" placeholder="e.g. (123) 555-0123"
-                        value={form.contactPhone} onChange={set('contactPhone')} showError={showRequired(form.contactPhone)} />
+                    <PhoneNumberField
+                        label="Contact Phone Number"
+                        required
+                        value={form.contactPhone}
+                        onChange={setPhone('contactPhone')}
+                        showError={submitAttempted}
+                    />
                 </div>
             </Section>
 

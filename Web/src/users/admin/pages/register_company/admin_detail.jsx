@@ -12,6 +12,7 @@ import {
     MdLocationOn,
     MdEmail,
 } from 'react-icons/md';
+import PhoneNumberField, { getPhoneValidationError } from '../../../../components/PhoneNumberField';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,6 @@ const FLEET_SIZES = [
 // ─── Validators ───────────────────────────────────────────────────────────────
 
 const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-const isValidPhone = (v) => /^\+?[\d\s\-().]{7,20}$/.test(v);
 
 const EMPTY_COMPANY = Object.freeze({});
 const EMPTY_ADMIN = Object.freeze({});
@@ -73,10 +73,11 @@ const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev, adminEmail
             e.email = 'Admin email is required';
         else if (!isValidEmail(admin.email))
             e.email = 'Enter a valid email address';
-        if (!admin.phone?.trim())
-            e.phone = 'Admin phone is required';
-        else if (!isValidPhone(admin.phone))
-            e.phone = 'Enter a valid phone number';
+        const phoneError = getPhoneValidationError(admin.phone, {
+            required: true,
+            label: 'Admin phone',
+        });
+        if (phoneError) e.phone = phoneError;
         if (
             company.driver_estimate === null
             || company.driver_estimate === undefined
@@ -217,21 +218,15 @@ const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev, adminEmail
                             </p>
                         </div>
 
-                        {/* Admin Phone */}
-                        <div className="space-y-1.5">
-                            <label className="block text-[14px] font-bold text-[#1e293b]">
-                                Primary Admin Phone <span className="text-red-500">*</span>
-                            </label>
-                            <input
-                                type="tel"
-                                placeholder="+44 20 7946 0000"
-                                value={admin.phone || ''}
-                                onChange={(e) => setAdminField('phone', e.target.value)}
-                                onBlur={() => touch('phone')}
-                                className={inputClass('phone')}
-                            />
-                            {renderFieldError('phone')}
-                        </div>
+                        <PhoneNumberField
+                            label="Primary Admin Phone"
+                            required
+                            variant="register"
+                            value={admin.phone || ''}
+                            onChange={(next) => setAdminField('phone', next)}
+                            onBlur={() => touch('phone')}
+                            showError={submitAttempted || touched.phone}
+                        />
 
                         {/* Fleet Size */}
                         <div className="space-y-1.5">

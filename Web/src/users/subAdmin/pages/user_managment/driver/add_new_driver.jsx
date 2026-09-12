@@ -6,6 +6,7 @@ import { getCompanyAdminById } from '../../../../../services/companyService';
 import { registerDriverWithAuthAndRecords } from '../../../../../services/driverRegistrationService';
 import { invalidateDriversListCache } from '../../../../../hooks/useDriversList';
 import { ToastStack } from '../../../../../utils/Toast';
+import PhoneNumberField, { getPhoneValidationError } from '../../../../../components/PhoneNumberField';
 
 // ─── Reusable: Text Input ─────────────────────────────────────
 const FormField = ({ label, required, placeholder, value, onChange, type = 'text', className = '', showError = false, errorText = 'This field is required.' }) => (
@@ -212,7 +213,6 @@ const AddNewDriver = () => {
     const [submitError, setSubmitError] = useState('');
     const [form, setForm] = useState({
         firstName: '', lastName: '', email: '', phone: '',
-        countryCode: '+44',
         password: '', confirmPassword: '',
         address: '', emergencyName: '', emergencyPhone: '',
         passport: '', rightToWork: '', nationality: '',
@@ -231,6 +231,7 @@ const AddNewDriver = () => {
     const [missingKeys, setMissingKeys] = useState([]);
 
     const set = (key) => (e) => setForm((prev) => ({ ...prev, [key]: e.target.value }));
+    const setPhone = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value || '' }));
     const setExpiry = (key) => (value) => setForm((prev) => ({ ...prev, [key]: value }));
     const setFile = (key) => (f) => setFiles((prev) => ({ ...prev, [key]: f }));
 
@@ -271,12 +272,12 @@ const AddNewDriver = () => {
         if (!form.firstName?.trim()) missingFields.push('firstName');
         if (!form.lastName?.trim()) missingFields.push('lastName');
         if (!form.email?.trim()) missingFields.push('email');
-        if (!form.phone?.trim()) missingFields.push('phone');
+        if (getPhoneValidationError(form.phone, { required: true, label: 'Phone number' })) missingFields.push('phone');
         if (!form.password) missingFields.push('password');
         if (!form.confirmPassword) missingFields.push('confirmPassword');
         if (!form.address?.trim()) missingFields.push('address');
         if (!form.emergencyName?.trim()) missingFields.push('emergencyName');
-        if (!form.emergencyPhone?.trim()) missingFields.push('emergencyPhone');
+        if (getPhoneValidationError(form.emergencyPhone, { required: true, label: 'Emergency contact phone' })) missingFields.push('emergencyPhone');
         if (!form.nationality?.trim()) missingFields.push('nationality');
         if (!avatarFile) missingFields.push('avatarFile');
         if (form.passport?.trim() && !files.passport) missingFields.push('passport');
@@ -333,7 +334,7 @@ const AddNewDriver = () => {
                     firstName: form.firstName,
                     lastName: form.lastName,
                     email: form.email,
-                    phone: `${form.countryCode}${form.phone}`,
+                    phone: form.phone,
                     password: form.password,
                     address: form.address,
                     emergencyName: form.emergencyName,
@@ -401,10 +402,14 @@ const AddNewDriver = () => {
                         {/* Row 2 */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <FormField label="Email Address" required type="email" placeholder="Enter email address" value={form.email} onChange={set('email')} showError={showMissing('email')} />
-                            <div className="grid grid-cols-3 gap-3">
-                                <FormField label="Country Code" required placeholder="+44" value={form.countryCode} onChange={set('countryCode')} />
-                                <FormField label="Phone Number" required type="tel" placeholder="Enter phone number" value={form.phone} onChange={set('phone')} className="col-span-2" showError={showMissing('phone')} />
-                            </div>
+                            <PhoneNumberField
+                                label="Phone Number"
+                                required
+                                variant="driver"
+                                value={form.phone}
+                                onChange={setPhone('phone')}
+                                showError={submitAttempted}
+                            />
                         </div>
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <FormField
@@ -432,7 +437,14 @@ const AddNewDriver = () => {
                         {/* Row 4 */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                             <FormField label="Emergency Contact Name" required placeholder="Enter emergency contact name" value={form.emergencyName} onChange={set('emergencyName')} showError={showMissing('emergencyName')} />
-                            <FormField label="Emergency Contact Phone" required placeholder="Enter emergency contact phone" value={form.emergencyPhone} onChange={set('emergencyPhone')} showError={showMissing('emergencyPhone')} />
+                            <PhoneNumberField
+                                label="Emergency Contact Phone"
+                                required
+                                variant="driver"
+                                value={form.emergencyPhone}
+                                onChange={setPhone('emergencyPhone')}
+                                showError={submitAttempted}
+                            />
                         </div>
                         {/* Row 5 */}
                         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
