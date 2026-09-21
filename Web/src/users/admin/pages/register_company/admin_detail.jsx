@@ -13,6 +13,11 @@ import {
     MdEmail,
 } from 'react-icons/md';
 import PhoneNumberField, { getPhoneValidationError } from '../../../../components/PhoneNumberField';
+import {
+    PERSON_NAME_MAX,
+    validateEmail,
+    validatePersonName,
+} from '../../../../utils/companyRegistrationValidation';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -25,10 +30,6 @@ const FLEET_SIZES = [
     { value: '51',   label: '51–100 vehicles (Large)' },
     { value: '100',  label: '100+ vehicles (Enterprise)' },
 ];
-
-// ─── Validators ───────────────────────────────────────────────────────────────
-
-const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
 
 const EMPTY_COMPANY = Object.freeze({});
 const EMPTY_ADMIN = Object.freeze({});
@@ -67,12 +68,10 @@ const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev, adminEmail
     // ── Validation ──
     const errors = useMemo(() => {
         const e = {};
-        if (!admin.full_name?.trim())
-            e.full_name = 'Admin name is required';
-        if (!admin.email?.trim())
-            e.email = 'Admin email is required';
-        else if (!isValidEmail(admin.email))
-            e.email = 'Enter a valid email address';
+        const nameError = validatePersonName(admin.full_name, { label: 'Admin name' });
+        if (nameError) e.full_name = nameError;
+        const emailError = validateEmail(admin.email, { label: 'Admin email' });
+        if (emailError) e.email = emailError;
         const phoneError = getPhoneValidationError(admin.phone, {
             required: true,
             label: 'Admin phone',
@@ -173,6 +172,7 @@ const Admin_Register_AdminScale = ({ value, onChange, onNext, onPrev, adminEmail
                             <input
                                 type="text"
                                 placeholder="e.g. John Doe"
+                                maxLength={PERSON_NAME_MAX}
                                 value={admin.full_name || ''}
                                 onChange={(e) => setAdminField('full_name', e.target.value)}
                                 onBlur={() => touch('full_name')}

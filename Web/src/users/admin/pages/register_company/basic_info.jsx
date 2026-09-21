@@ -13,6 +13,12 @@ import {
     uploadCompanyDocument,
     removeCompanyDocument,
 } from '../../../../services/storageService';
+import {
+    COMPANY_NAME_MAX,
+    IDENTIFIER_MAX,
+    validateCompanyName,
+    validateIdentifier,
+} from '../../../../utils/companyRegistrationValidation';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -233,12 +239,19 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
     // ── Field validation ──
     const fieldErrors = useMemo(() => {
         const e = {};
-        if (!company.company_name?.trim())
-            e.company_name = 'Company name is required';
-        if (!company.company_registration_number?.trim())
-            e.company_registration_number = 'Registration number is required';
+        const nameError = validateCompanyName(company.company_name);
+        if (nameError) e.company_name = nameError;
+        const regError = validateIdentifier(company.company_registration_number, {
+            label: 'Registration number',
+        });
+        if (regError) e.company_registration_number = regError;
         if (!company.company_type?.trim())
             e.company_type = 'Company type is required';
+        const vatError = validateIdentifier(company.vat_number, {
+            required: false,
+            label: 'VAT number',
+        });
+        if (vatError) e.vat_number = vatError;
         if (!company.primary_business_activity?.trim())
             e.primary_business_activity = 'Primary business activity is required';
         return e;
@@ -257,6 +270,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
             company_name: true,
             company_registration_number: true,
             company_type: true,
+            vat_number: true,
             primary_business_activity: true,
         });
 
@@ -317,6 +331,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
                             <input
                                 type="text"
                                 placeholder="Legal trading name"
+                                maxLength={COMPANY_NAME_MAX}
                                 value={company.company_name || ''}
                                 onChange={(e) => setCompanyField('company_name', e.target.value)}
                                 onBlur={() => touch('company_name')}
@@ -336,6 +351,7 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
                             <input
                                 type="text"
                                 placeholder="e.g. 12345678"
+                                maxLength={IDENTIFIER_MAX}
                                 value={company.company_registration_number || ''}
                                 onChange={(e) => setCompanyField('company_registration_number', e.target.value)}
                                 onBlur={() => touch('company_registration_number')}
@@ -377,11 +393,14 @@ const Admin_Register_BasicInfo = ({ value, onChange, onNext, tempCompanyId }) =>
                             </label>
                             <input
                                 type="text"
-                                placeholder="GB 123 4567 89"
+                                placeholder="GB123456789"
+                                maxLength={IDENTIFIER_MAX}
                                 value={company.vat_number || ''}
                                 onChange={(e) => setCompanyField('vat_number', e.target.value)}
-                                className="w-full px-4 py-3 bg-white border border-gray-200 rounded-xl text-[14px] text-gray-900 placeholder:text-gray-400 focus:outline-none focus:ring-2 focus:ring-[#2f6b8f]/20 focus:border-[#2f6b8f] transition-all"
+                                onBlur={() => touch('vat_number')}
+                                className={inputClass('vat_number')}
                             />
+                            {fieldError('vat_number')}
                         </div>
 
                         {/* Primary Business Activity */}

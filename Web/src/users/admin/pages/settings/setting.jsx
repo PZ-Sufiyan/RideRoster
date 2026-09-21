@@ -8,6 +8,14 @@ import {
 } from '../../../../services/settingServices';
 import { getCompanyAdminById, getCompanyById, updateCompany } from '../../../../services/companyService';
 import { ShimmerBlock, LoadingStatus } from '../../../../utils/Shimmer';
+import {
+    ADDRESS_MAX,
+    COMPANY_NAME_MAX,
+    EMAIL_MAX,
+    validateAddress,
+    validateCompanyName,
+    validateEmail,
+} from '../../../../utils/companyRegistrationValidation';
 
 // ─── Reusable Toggle ─────────────────────────────────────────
 const Toggle = ({ checked, onChange }) => (
@@ -25,7 +33,7 @@ const Toggle = ({ checked, onChange }) => (
 );
 
 // ─── Reusable Input Field ─────────────────────────────────────
-const InputField = ({ label, value, onChange, type = 'text', placeholder = '', disabled = false }) => (
+const InputField = ({ label, value, onChange, type = 'text', placeholder = '', disabled = false, maxLength, error }) => (
     <div className="flex flex-col gap-1.5">
         {label && <label className="text-sm font-medium text-gray-700">{label}</label>}
         <input
@@ -34,8 +42,14 @@ const InputField = ({ label, value, onChange, type = 'text', placeholder = '', d
             onChange={onChange}
             placeholder={placeholder}
             disabled={disabled}
-            className="w-full px-3 py-2.5 border border-gray-200 rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:border-[#005580] focus:ring-1 focus:ring-[#005580] transition-colors bg-white disabled:bg-gray-50 disabled:text-gray-500"
+            maxLength={maxLength}
+            className={`w-full px-3 py-2.5 border rounded-lg text-sm text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-1 transition-colors bg-white disabled:bg-gray-50 disabled:text-gray-500 ${
+                error
+                    ? 'border-red-400 focus:border-red-400 focus:ring-red-400'
+                    : 'border-gray-200 focus:border-[#005580] focus:ring-[#005580]'
+            }`}
         />
+        {error ? <p className="text-xs text-red-600 font-medium">{error}</p> : null}
     </div>
 );
 
@@ -103,6 +117,7 @@ const AdminSettings = () => {
     const [companyName, setCompanyName] = useState('');
     const [contactEmail, setContactEmail] = useState('');
     const [companyAddr, setCompanyAddr] = useState('');
+    const [profileErrors, setProfileErrors] = useState({});
 
     // Notifications
     const [notifs, setNotifs] = useState({
@@ -169,10 +184,20 @@ const AdminSettings = () => {
             return;
         }
         const name = companyName.trim();
-        if (!name) {
-            pushToast('warning', 'Please enter a company name.');
+        const nameError = validateCompanyName(name);
+        const emailError = validateEmail(contactEmail);
+        const addressError = validateAddress(companyAddr.replace(/[\r\n]+/g, ' '), { label: 'Company address' });
+        const nextErrors = {
+            ...(nameError ? { companyName: nameError } : {}),
+            ...(emailError ? { contactEmail: emailError } : {}),
+            ...(addressError ? { companyAddr: addressError } : {}),
+        };
+        if (Object.keys(nextErrors).length) {
+            setProfileErrors(nextErrors);
+            pushToast('warning', Object.values(nextErrors)[0]);
             return;
         }
+        setProfileErrors({});
         setProfileSaving(true);
         try {
             await updateCompany(companyId, {
@@ -330,19 +355,34 @@ const AdminSettings = () => {
                                         <InputField
                                             label="Company Name"
                                             value={companyName}
-                                            onChange={(e) => setCompanyName(e.target.value)}
+                                            maxLength={COMPANY_NAME_MAX}
+                                            error={profileErrors.companyName}
+                                            onChange={(e) => {
+                                                setCompanyName(e.target.value);
+                                                setProfileErrors((prev) => ({ ...prev, companyName: undefined }));
+                                            }}
                                         />
                                         <InputField
                                             label="Contact Email"
                                             value={contactEmail}
-                                            onChange={(e) => setContactEmail(e.target.value)}
+                                            maxLength={EMAIL_MAX}
+                                            error={profileErrors.contactEmail}
+                                            onChange={(e) => {
+                                                setContactEmail(e.target.value);
+                                                setProfileErrors((prev) => ({ ...prev, contactEmail: undefined }));
+                                            }}
                                             type="email"
                                         />
                                     </div>
                                     <InputField
                                         label="Company Address"
                                         value={companyAddr}
-                                        onChange={(e) => setCompanyAddr(e.target.value)}
+                                        maxLength={ADDRESS_MAX}
+                                        error={profileErrors.companyAddr}
+                                        onChange={(e) => {
+                                            setCompanyAddr(e.target.value.replace(/[\r\n]+/g, ' ').slice(0, ADDRESS_MAX));
+                                            setProfileErrors((prev) => ({ ...prev, companyAddr: undefined }));
+                                        }}
                                     />
                                 </div>
 

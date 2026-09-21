@@ -19,6 +19,16 @@ import {
     uploadCompanyDocument,
     removeCompanyDocument,
 } from '../../../../services/storageService';
+import {
+    AUTHORITY_MAX,
+    IDENTIFIER_MAX,
+    todayIsoDate,
+    validateAuthorityName,
+    validateCoverageAmount,
+    validateExpiryDate,
+    validateIdentifier,
+    validateIssueDate,
+} from '../../../../utils/companyRegistrationValidation';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -273,13 +283,32 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
     // ── Validation ──
     const errors = useMemo(() => {
         const e = {};
-        // Company registration block
-        if (!company.coioe_registration_number?.trim())
-            e.coioe_registration_number = 'Registration number is required';
-        if (!company.coioe_issue_date?.trim())
-            e.coioe_issue_date = 'Issue date is required';
+        const coiNumberError = validateIdentifier(company.coioe_registration_number, {
+            label: 'Registration number',
+        });
+        if (coiNumberError) e.coioe_registration_number = coiNumberError;
+        const issueDateError = validateIssueDate(company.coioe_issue_date);
+        if (issueDateError) e.coioe_issue_date = issueDateError;
         if (!documents.certificate_of_incorporation)
             e.certificate_of_incorporation = 'Document upload required';
+        const policyError = validateIdentifier(company.cic_policy_number, {
+            required: false,
+            label: 'Policy number',
+        });
+        if (policyError) e.cic_policy_number = policyError;
+        const coverageError = validateCoverageAmount(company.cic_coverage_amount);
+        if (coverageError) e.cic_coverage_amount = coverageError;
+        const expiryError = validateExpiryDate(company.cic_expiry_date, {
+            label: 'Insurance expiry date',
+        });
+        if (expiryError) e.cic_expiry_date = expiryError;
+        const licenceError = validateIdentifier(company.operator_licence_number, {
+            required: false,
+            label: 'Licence number',
+        });
+        if (licenceError) e.operator_licence_number = licenceError;
+        const authorityError = validateAuthorityName(company.operator_licence_issuing_authority);
+        if (authorityError) e.operator_licence_issuing_authority = authorityError;
         return e;
     }, [company, documents]);
 
@@ -293,6 +322,11 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
             coioe_registration_number: true,
             coioe_issue_date: true,
             certificate_of_incorporation: true,
+            cic_policy_number: true,
+            cic_coverage_amount: true,
+            cic_expiry_date: true,
+            operator_licence_number: true,
+            operator_licence_issuing_authority: true,
         });
 
     const onContinue = () => {
@@ -399,6 +433,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                                 <input
                                     type="text"
                                     placeholder="e.g. UK-99281720"
+                                    maxLength={IDENTIFIER_MAX}
                                     value={company.coioe_registration_number || ''}
                                     onChange={(e) => setField('coioe_registration_number', e.target.value)}
                                     onBlur={() => touch('coioe_registration_number')}
@@ -413,12 +448,13 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                                 <div className="relative">
                                     <input
                                         type="date"
+                                        max={todayIsoDate()}
                                         value={company.coioe_issue_date || ''}
                                         onChange={(e) => setField('coioe_issue_date', e.target.value)}
                                         onBlur={() => touch('coioe_issue_date')}
                                         className={inputClass('coioe_issue_date')}
                                     />
-                                    <MdDateRange className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" size={18} />
+                    
                                 </div>
                                 {renderFieldError('coioe_issue_date')}
                             </div>
@@ -459,6 +495,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                                 <input
                                     type="text"
                                     placeholder="e.g. POL-882190"
+                                    maxLength={IDENTIFIER_MAX}
                                     value={company.cic_policy_number || ''}
                                     onChange={(e) => setField('cic_policy_number', e.target.value)}
                                     onBlur={() => touch('cic_policy_number')}
@@ -473,6 +510,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                                 <input
                                     type="text"
                                     placeholder="e.g. £5,000,000"
+                                    maxLength={20}
                                     value={company.cic_coverage_amount || ''}
                                     onChange={(e) => setField('cic_coverage_amount', e.target.value)}
                                     onBlur={() => touch('cic_coverage_amount')}
@@ -487,6 +525,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                                 <div className="relative">
                                     <input
                                         type="date"
+                                        min={todayIsoDate()}
                                         value={company.cic_expiry_date || ''}
                                         onChange={(e) => setField('cic_expiry_date', e.target.value)}
                                         onBlur={() => touch('cic_expiry_date')}
@@ -532,6 +571,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                                 <input
                                     type="text"
                                     placeholder="Enter licence ID"
+                                    maxLength={IDENTIFIER_MAX}
                                     value={company.operator_licence_number || ''}
                                     onChange={(e) => setField('operator_licence_number', e.target.value)}
                                     onBlur={() => touch('operator_licence_number')}
@@ -546,6 +586,7 @@ const Admin_Register_ComplianceDocs = ({ value, onChange, onNext, onPrev, tempCo
                                 <input
                                     type="text"
                                     placeholder="e.g. TfL / Local Council"
+                                    maxLength={AUTHORITY_MAX}
                                     value={company.operator_licence_issuing_authority || ''}
                                     onChange={(e) => setField('operator_licence_issuing_authority', e.target.value)}
                                     onBlur={() => touch('operator_licence_issuing_authority')}

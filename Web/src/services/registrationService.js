@@ -2,10 +2,25 @@ import {
   createCompany,
   createCompanyDocument,
   deleteCompany,
+  deleteCompanyDocument,
+  getCompanyAdminById,
+  getCompanyById,
+  updateCompany,
+  updateCompanyDocument,
   upsertCompanyAdmin,
 } from './companyService'
 import { uploadCompanyDocument, removeCompanyDocument } from './storageService'
 import { supabase } from '../lib/supabaseClient'
+import { assertCompanyRegistrationValid } from '../utils/companyRegistrationValidation'
+
+export const COMPANY_DOCUMENT_TYPES = [
+  'certificate_of_incorporation',
+  'operator_license',
+  'public_liability_insurance',
+  'commercial_insurance_certificate',
+  'vat_certificate',
+  'primary_admin_id',
+]
 
 function cleanString(v) {
   if (v === null || v === undefined) return ''
@@ -51,41 +66,56 @@ function isFileLike(v) {
   )
 }
 
+function toCompanyPayload(registrationData, status = 'pending') {
+  return {
+    company_name: cleanString(registrationData?.company?.company_name),
+    company_registration_number: cleanString(registrationData?.company?.company_registration_number),
+    company_type: cleanString(registrationData?.company?.company_type),
+
+    company_address: cleanString(registrationData?.company?.company_address),
+    company_operating_address: cleanString(registrationData?.company?.company_operating_address),
+    company_country: cleanString(registrationData?.company?.company_country || 'United Kingdom'),
+    company_email: cleanString(registrationData?.company?.company_email),
+    company_phone: cleanString(registrationData?.company?.company_phone),
+    company_website: cleanString(registrationData?.company?.company_website || ''),
+    company_preferred_language: cleanString(registrationData?.company?.company_preferred_language || ''),
+
+    vat_number: toNullableString(registrationData?.company?.vat_number),
+    primary_business_activity: cleanString(registrationData?.company?.primary_business_activity),
+    driver_estimate: toNullableInt(registrationData?.company?.driver_estimate),
+
+    operator_licence_number: toNullableString(registrationData?.company?.operator_licence_number),
+    operator_licence_issuing_authority: toNullableString(registrationData?.company?.operator_licence_issuing_authority),
+
+    coioe_registration_number: toNullableString(registrationData?.company?.coioe_registration_number),
+    coioe_issue_date: registrationData?.company?.coioe_issue_date || null,
+
+    cic_policy_number: toNullableString(registrationData?.company?.cic_policy_number),
+    cic_coverage_amount: toNullableString(registrationData?.company?.cic_coverage_amount),
+    cic_expiry_date: registrationData?.company?.cic_expiry_date || null,
+
+    status,
+  }
+}
+
+function mapCompanyWriteError(err) {
+  const code = err?.code || err?.cause?.code
+  const message = String(err?.message || '')
+  if (code === '23505' || /duplicate|unique/i.test(message)) {
+    return new Error('That company registration number is already in use.')
+  }
+  return err instanceof Error ? err : new Error(message || 'Could not save company details.')
+}
+
 export async function submitCompanyRegistration(registrationData) {
   const uploaded = []
   const newlyUploaded = []
   let createdCompany = null
 
   try {
-    const companyPayload = {
-      company_name: cleanString(registrationData?.company?.company_name),
-      company_registration_number: cleanString(registrationData?.company?.company_registration_number),
-      company_type: cleanString(registrationData?.company?.company_type),
+    assertCompanyRegistrationValid(registrationData)
 
-      company_address: cleanString(registrationData?.company?.company_address),
-      company_operating_address: cleanString(registrationData?.company?.company_operating_address),
-      company_country: cleanString(registrationData?.company?.company_country || 'United Kingdom'),
-      company_email: cleanString(registrationData?.company?.company_email),
-      company_phone: cleanString(registrationData?.company?.company_phone),
-      company_website: cleanString(registrationData?.company?.company_website || ''), // schema is NOT NULL
-      company_preferred_language: cleanString(registrationData?.company?.company_preferred_language || ''),
-
-      vat_number: toNullableString(registrationData?.company?.vat_number),
-      primary_business_activity: cleanString(registrationData?.company?.primary_business_activity),
-      driver_estimate: toNullableInt(registrationData?.company?.driver_estimate),
-
-      operator_licence_number: toNullableString(registrationData?.company?.operator_licence_number),
-      operator_licence_issuing_authority: toNullableString(registrationData?.company?.operator_licence_issuing_authority),
-
-      coioe_registration_number: toNullableString(registrationData?.company?.coioe_registration_number),
-      coioe_issue_date: registrationData?.company?.coioe_issue_date || null,
-
-      cic_policy_number: toNullableString(registrationData?.company?.cic_policy_number),
-      cic_coverage_amount: toNullableString(registrationData?.company?.cic_coverage_amount),
-      cic_expiry_date: registrationData?.company?.cic_expiry_date || null,
-
-      status: 'pending',
-    }
+    const companyPayload = toCompanyPayload(registrationData, 'pending')
 
     createdCompany = await createCompany(companyPayload)
 
@@ -164,3 +194,124 @@ export async function submitCompanyRegistration(registrationData) {
   }
 }
 
+function docMeta(doc) {
+  if (!isUploadedDocMeta(doc)) return null
+  return {
+    id: doc.id || null,
+    file_name: doc.file_name,
+    file_path: doc.file_path,
+    file_url: doc.file_url,
+    bucket: doc.bucket,
+  }
+}
+
+async function persistDocumentChange({ companyId, documentType, previous, next }) {
+  const prev = docMeta(previous)
+  const curr = docMeta(next)
+
+  if (!curr && !prev) return
+  if (curr && prev && curr.file_path === prev.file_path) return
+
+  if (curr && !prev) {
+    await createCompanyDocument({
+      company_id: companyId,
+      document_type: documentType,
+      file_name: curr.file_name,
+      file_path: curr.file_path,
+      file_url: curr.file_url,
+    })
+    return
+  }
+
+  if (curr && prev) {
+    if (prev.id) {
+      await updateCompanyDocument(prev.id, {
+        file_name: curr.file_name,
+        file_path: curr.file_path,
+        file_url: curr.file_url,
+      })
+    } else {
+      await createCompanyDocument({
+        company_id: companyId,
+        document_type: documentType,
+        file_name: curr.file_name,
+        file_path: curr.file_path,
+        file_url: curr.file_url,
+      })
+    }
+    if (prev.file_path && prev.file_path !== curr.file_path) {
+      try {
+        await removeCompanyDocument({ filePath: prev.file_path, bucket: prev.bucket })
+      } catch {
+        // ignore storage cleanup
+      }
+    }
+    return
+  }
+
+  if (!curr && prev?.id) {
+    await deleteCompanyDocument(prev.id)
+    if (prev.file_path) {
+      try {
+        await removeCompanyDocument({ filePath: prev.file_path, bucket: prev.bucket })
+      } catch {
+        // ignore storage cleanup
+      }
+    }
+  }
+}
+
+/**
+ * Update a rejected company application and send it back to Super Admin review.
+ */
+export async function resubmitCompanyRegistration(companyId, registrationData, originalDocuments = {}) {
+  assertCompanyRegistrationValid(registrationData)
+
+  const {
+    data: { user },
+    error: authErr,
+  } = await supabase.auth.getUser()
+  if (authErr || !user?.id) {
+    throw new Error('You must be signed in to resubmit company registration.')
+  }
+
+  const existing = await getCompanyById(companyId)
+  if (String(existing?.status || '').toLowerCase() !== 'rejected') {
+    throw new Error('Only a rejected application can be updated and resubmitted.')
+  }
+
+  const adminRow = await getCompanyAdminById(user.id)
+  if (adminRow?.company_id !== companyId) {
+    throw new Error('You can only resubmit your own company application.')
+  }
+
+  try {
+    await updateCompany(companyId, toCompanyPayload(registrationData, 'pending'))
+  } catch (err) {
+    throw mapCompanyWriteError(err)
+  }
+
+  await upsertCompanyAdmin({
+    id: user.id,
+    company_id: companyId,
+    full_name: cleanString(registrationData?.admin?.full_name),
+    email: cleanString(registrationData?.admin?.email),
+    phone: cleanString(registrationData?.admin?.phone),
+  })
+
+  const nextDocs = registrationData?.documents || {}
+  for (const documentType of COMPANY_DOCUMENT_TYPES) {
+    let next = nextDocs[documentType] || null
+    if (next && isFileLike(next) && !isUploadedDocMeta(next)) {
+      next = await uploadCompanyDocument({ companyId, documentType, file: next })
+    }
+    await persistDocumentChange({
+      companyId,
+      documentType,
+      previous: originalDocuments[documentType],
+      next,
+    })
+  }
+
+  return { companyId }
+}

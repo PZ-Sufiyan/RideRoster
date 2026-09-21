@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import {
     MdCheckCircle,
     MdCancel,
@@ -13,8 +13,10 @@ import {
     MdSend,
 } from 'react-icons/md';
 import { AiOutlineLoading3Quarters } from 'react-icons/ai';
+import { useNavigate } from 'react-router-dom';
 import { submitCompanyRegistration } from '../../../../services/registrationService';
 import { clearCompanyRegistrationDraft } from '../../../../services/registrationDraftService';
+import { getCompanyRegistrationErrors } from '../../../../utils/companyRegistrationValidation';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -181,24 +183,20 @@ const VerticalStepper = ({ currentStep }) => {
 // ─── Admin_Register_Review ────────────────────────────────────────────────────
 
 const Admin_Register_Review = ({ value, onPrev }) => {
+    const navigate = useNavigate();
     const [submitting, setSubmitting]   = useState(false);
     const [submitError, setSubmitError] = useState('');
-    const [submitted, setSubmitted]     = useState(false);
 
     const company   = value?.company   ?? {};
     const admin     = value?.admin     ?? {};
     const documents = value?.documents ?? {};
 
-    // ── Readiness checks ──
-    const missingRequiredDocs = REQUIRED_DOCS.filter((d) => !documents[d.key]);
-    const isReadyToSubmit = missingRequiredDocs.length === 0
-        && company.company_name
-        && company.company_registration_number
-        && admin.full_name
-        && admin.email
-        && company.driver_estimate !== null
-        && company.driver_estimate !== undefined
-        && Number.isFinite(Number(company.driver_estimate));
+    const fieldErrors = useMemo(
+        () => getCompanyRegistrationErrors({ company, admin, documents }),
+        [company, admin, documents],
+    );
+    const errorList = Object.values(fieldErrors);
+    const isReadyToSubmit = errorList.length === 0;
 
     // ── Submit handler ──
     // Replace the body of this function with your real API call
@@ -210,37 +208,13 @@ const Admin_Register_Review = ({ value, onPrev }) => {
         try {
             await submitCompanyRegistration(value);
             clearCompanyRegistrationDraft();
-            setSubmitted(true);
+            navigate('/portal/pending', { replace: true });
         } catch (err) {
             setSubmitError(err.message || 'Submission failed. Please try again.');
         } finally {
             setSubmitting(false);
         }
     };
-
-    // ── Success state ──
-    if (submitted) {
-        return (
-            <div className="max-w-xl mx-auto py-20 text-center space-y-6">
-                <div className="w-20 h-20 rounded-full bg-green-50 border-4 border-green-100 flex items-center justify-center mx-auto">
-                    <MdCheckCircle size={40} className="text-green-500" />
-                </div>
-                <div>
-                    <h2 className="text-[24px] font-bold text-[#1e293b]">Registration Submitted!</h2>
-                    <p className="text-[15px] text-gray-500 mt-2 leading-relaxed">
-                        Your company registration for{' '}
-                        <span className="font-bold text-[#1e293b]">{company.company_name}</span> has
-                        been submitted for review. You'll receive a confirmation email at{' '}
-                        <span className="font-bold text-[#1e293b]">{admin.email || company.company_email}</span>{' '}
-                        within 24–48 hours.
-                    </p>
-                </div>
-                <div className="inline-flex items-center gap-2 px-4 py-2 bg-blue-50 text-[#2f6b8f] rounded-xl text-[13px] font-bold">
-                    <MdInfo size={16} /> Reference: {Date.now().toString(36).toUpperCase()}
-                </div>
-            </div>
-        );
-    }
 
     // ── Render ──
     return (
@@ -260,7 +234,7 @@ const Admin_Register_Review = ({ value, onPrev }) => {
                     type="button"
                     onClick={handleSubmit}
                     disabled={!isReadyToSubmit || submitting}
-                    title={!isReadyToSubmit ? 'Complete all required fields and upload the required document first' : undefined}
+                    title={!isReadyToSubmit ? 'Fix the highlighted fields before submitting' : undefined}
                     className={[
                         'flex items-center gap-2 px-6 py-2.5 text-white rounded-xl text-[14px] font-bold transition-all shadow-sm',
                         isReadyToSubmit && !submitting ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed',
@@ -280,30 +254,11 @@ const Admin_Register_Review = ({ value, onPrev }) => {
                     <MdErrorOutline size={18} className="text-amber-500 shrink-0 mt-0.5" />
                     <div>
                         <p className="text-[13px] font-bold text-amber-700 mb-1">
-                            Cannot submit yet — the following are missing:
+                            Cannot submit yet — please fix the following:
                         </p>
                         <ul className="space-y-0.5">
-                            {!company.company_name && (
-                                <li className="text-[12px] text-amber-600">• Company name (Step 1)</li>
-                            )}
-                            {!company.company_registration_number && (
-                                <li className="text-[12px] text-amber-600">• Company registration number (Step 1)</li>
-                            )}
-                            {!admin.full_name && (
-                                <li className="text-[12px] text-amber-600">• Primary admin name (Step 3)</li>
-                            )}
-                            {!admin.email && (
-                                <li className="text-[12px] text-amber-600">• Primary admin email (Step 3)</li>
-                            )}
-                            {(
-                                company.driver_estimate === null
-                                || company.driver_estimate === undefined
-                                || !Number.isFinite(Number(company.driver_estimate))
-                            ) && (
-                                <li className="text-[12px] text-amber-600">• Fleet size / driver estimate (Step 3)</li>
-                            )}
-                            {missingRequiredDocs.map((d) => (
-                                <li key={d.key} className="text-[12px] text-amber-600">• {d.label} (Compliance)</li>
+                            {Object.entries(fieldErrors).map(([key, message]) => (
+                                <li key={key} className="text-[12px] text-amber-600">• {message}</li>
                             ))}
                         </ul>
                     </div>
@@ -469,7 +424,7 @@ const Admin_Register_Review = ({ value, onPrev }) => {
                                 type="button"
                                 onClick={handleSubmit}
                                 disabled={!isReadyToSubmit || submitting}
-                                title={!isReadyToSubmit ? 'Complete all required steps first' : undefined}
+                                title={!isReadyToSubmit ? 'Fix invalid or missing fields first' : undefined}
                                 className={[
                                     'flex items-center gap-2 px-6 py-2.5 text-white rounded-xl text-[14px] font-bold transition-all shadow-sm',
                                     isReadyToSubmit && !submitting ? 'hover:opacity-90' : 'opacity-50 cursor-not-allowed',

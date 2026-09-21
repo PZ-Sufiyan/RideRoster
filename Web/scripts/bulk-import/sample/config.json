@@ -1,0 +1,7 @@
+{
+  "company_id": "85ea09ec-9051-4126-a680-07e5aacbe5fc",
+  "dummy": false,
+  "note": "company_id is also written onto each Drivers.xlsx row.",
+  "drivers_excel": "Drivers.xlsx",
+  "documents_root": "documents/drivers"
+}

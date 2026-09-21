@@ -6,9 +6,10 @@ import {
     MdChevronLeft,
     MdChevronRight,
     MdCheckBoxOutlineBlank,
-    MdCheckBox
+    MdCheckBox,
+    MdKeyboardArrowDown
 } from 'react-icons/md';
-import { getAllCompanies, toShortCompanyId } from '../../../../services/companyService'
+import { getAllCompanies, toShortCompanyId, updateCompaniesStatusByIds } from '../../../../services/companyService'
 import { ShimmerBlock } from '../../../../utils/Shimmer';
 import { formatLocalDate } from '../../../../utils/dateTime';
 
@@ -18,6 +19,18 @@ const truncateText = (text, maxLength = 40) => {
     return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
 };
 
+const COMPANY_STATUSES = ['Pending', 'Approved', 'Rejected'];
+
+const STATUS_FILTERS = [
+    { value: 'All', label: 'All Statuses' },
+    ...COMPANY_STATUSES.map((status) => ({ value: status, label: status })),
+];
+
+const getActionStatuses = (currentStatus) =>
+    COMPANY_STATUSES.filter(
+        (status) => status.toLowerCase() !== (currentStatus || '').toLowerCase()
+    );
+
 const Companies = () => {
     // replaced hardcoded dummy -> fetch from backend
     const [companies, setCompanies] = useState([]);
@@ -25,7 +38,10 @@ const Companies = () => {
 
     const [selectedRows, setSelectedRows] = useState([]);
     const [searchQuery, setSearchQuery] = useState('');
+    const [statusFilter, setStatusFilter] = useState('All');
     const [activeActionId, setActiveActionId] = useState(null);
+    const [isProcessing, setIsProcessing] = useState(false);
+    const [actionError, setActionError] = useState('');
 
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
@@ -74,10 +90,15 @@ const Companies = () => {
 
     // Filter Logic
     const filteredCompanies = useMemo(() => {
-        return companies.filter(company =>
-            company.name.toLowerCase().includes(searchQuery.toLowerCase())
-        );
-    }, [companies, searchQuery]);
+        const query = searchQuery.toLowerCase();
+        return companies.filter((company) => {
+            const matchesSearch = company.name.toLowerCase().includes(query);
+            const matchesStatus =
+                statusFilter === 'All' ||
+                (company.status || '').toLowerCase() === statusFilter.toLowerCase();
+            return matchesSearch && matchesStatus;
+        });
+    }, [companies, searchQuery, statusFilter]);
 
     // Derived Pagination Values
     const totalItems = filteredCompanies.length;
@@ -86,7 +107,7 @@ const Companies = () => {
     // Reset page when filters change
     useEffect(() => {
         setCurrentPage(1);
-    }, [searchQuery]);
+    }, [searchQuery, statusFilter]);
 
     // Get Current Page Data
     const pagedCompanies = useMemo(() => {
@@ -109,20 +130,36 @@ const Companies = () => {
         );
     };
 
-    const handleStatusChange = (id, newStatus) => {
-        setCompanies(prev => prev.map(company =>
-            company.id === id ? { ...company, status: newStatus } : company
-        ));
-        setActiveActionId(null);
+    const handleStatusChange = async (id, newStatus) => {
+        try {
+            setIsProcessing(true);
+            setActionError('');
+            await updateCompaniesStatusByIds(id, newStatus.toLowerCase());
+            setCompanies((prev) => prev.map((company) =>
+                company.id === id ? { ...company, status: newStatus } : company
+            ));
+            setActiveActionId(null);
+        } catch (error) {
+            console.error('Error updating company status:', error);
+            setActionError('Failed to update company status. Please try again.');
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     const getStatusStyle = (status) => {
-        switch (status) {
-            case 'Active': return 'bg-green-100 text-green-700';
-            case 'Pending': return 'bg-yellow-50 text-yellow-700 border border-yellow-100';
-            case 'Rejected': return 'bg-red-100 text-red-700';
-            case 'Inactive': return 'bg-gray-100 text-gray-700';
-            default: return 'bg-gray-100 text-gray-700';
+        switch ((status || '').toLowerCase()) {
+            case 'active':
+            case 'approved':
+                return 'bg-green-100 text-green-700';
+            case 'pending':
+                return 'bg-yellow-50 text-yellow-700 border border-yellow-100';
+            case 'rejected':
+                return 'bg-red-100 text-red-700';
+            case 'inactive':
+                return 'bg-gray-100 text-gray-700';
+            default:
+                return 'bg-gray-100 text-gray-700';
         }
     };
 
@@ -136,12 +173,17 @@ const Companies = () => {
                     <p className="text-sm text-gray-500 mt-1">Manage and search all registered companies.</p>
                 </div>
             </div>
+            {actionError && (
+                <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700">
+                    {actionError}
+                </div>
+            )}
 
             <div
                 className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(6,81,237,0.1)] border border-gray-100 flex flex-col"
                 style={{ minHeight: '500px' }}
             >
-                <div className="p-4 border-b border-gray-100">
+                <div className="p-4 border-b border-gray-100 flex flex-col sm:flex-row gap-3 sm:items-center">
                     <div className="relative max-w-sm w-full sm:w-64">
                         <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                             <MdSearch className="h-5 w-5 text-gray-400" />
@@ -153,6 +195,23 @@ const Companies = () => {
                             onChange={(e) => setSearchQuery(e.target.value)}
                             className="block w-full pl-10 pr-3 py-2 border border-gray-200 rounded-lg text-sm placeholder-gray-400 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 bg-gray-50"
                         />
+                    </div>
+                    <div className="relative w-full sm:w-44">
+                        <select
+                            value={statusFilter}
+                            onChange={(e) => setStatusFilter(e.target.value)}
+                            aria-label="Filter companies by status"
+                            className="block w-full pl-3 pr-10 py-2 text-sm border border-gray-200 rounded-lg bg-gray-50 focus:outline-none focus:ring-1 focus:ring-blue-500 focus:border-blue-500 appearance-none text-gray-900"
+                        >
+                            {STATUS_FILTERS.map((option) => (
+                                <option key={option.value} value={option.value}>
+                                    {option.label}
+                                </option>
+                            ))}
+                        </select>
+                        <div className="absolute inset-y-0 right-0 pr-3 flex items-center pointer-events-none">
+                            <MdKeyboardArrowDown className="text-gray-400 w-4 h-4" />
+                        </div>
                     </div>
                 </div>
 
@@ -267,13 +326,14 @@ const Companies = () => {
                                                     >
                                                         View
                                                     </Link>
-                                                    {['Active', 'Inactive', 'Pending'].map(s => (
+                                                    {getActionStatuses(company.status).map((status) => (
                                                         <button
-                                                            key={s}
-                                                            onClick={() => handleStatusChange(company.id, s)}
-                                                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700"
+                                                            key={status}
+                                                            onClick={() => handleStatusChange(company.id, status)}
+                                                            disabled={isProcessing}
+                                                            className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-60"
                                                         >
-                                                            {s}
+                                                            {status}
                                                         </button>
                                                     ))}
                                                 </div>
@@ -286,7 +346,7 @@ const Companies = () => {
                                     <td colSpan="7" className="px-6 py-20 text-center text-gray-500">
                                         <div className="flex flex-col items-center gap-2">
                                             <span className="text-lg font-medium text-gray-900">No companies found</span>
-                                            <p className="text-sm">Try adjusting your search terms.</p>
+                                            <p className="text-sm">Try adjusting your search or status filter.</p>
                                         </div>
                                     </td>
                                 </tr>

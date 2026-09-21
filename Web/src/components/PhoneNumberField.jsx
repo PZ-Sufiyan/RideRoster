@@ -1,8 +1,20 @@
-import PhoneInput, { isValidPhoneNumber, parsePhoneNumber } from 'react-phone-number-input'
+import PhoneInput, { isPossiblePhoneNumber, isValidPhoneNumber, parsePhoneNumber } from 'react-phone-number-input'
 import 'react-phone-number-input/style.css'
 import './PhoneNumberField.css'
 
-export { isValidPhoneNumber }
+export { isPossiblePhoneNumber, isValidPhoneNumber }
+
+function isAcceptablePhoneNumber(value, defaultCountry = 'GB') {
+    const phone = String(value || '').trim()
+    if (!phone) return false
+    if (isPossiblePhoneNumber(phone)) return true
+    try {
+        const parsed = parsePhoneNumber(phone, defaultCountry)
+        return Boolean(parsed?.isPossible?.())
+    } catch {
+        return false
+    }
+}
 
 const VARIANT_UI = {
     default: {
@@ -34,10 +46,10 @@ const VARIANT_UI = {
 /**
  * Format/length/country-structure check only — does not send an OTP or prove ownership.
  */
-export function getPhoneValidationError(value, { required = false, label = 'Phone number' } = {}) {
+export function getPhoneValidationError(value, { required = false, label = 'Phone number', defaultCountry = 'GB' } = {}) {
     const phone = String(value || '').trim()
     if (!phone) return required ? `${label} is required.` : ''
-    if (!isValidPhoneNumber(phone)) {
+    if (!isAcceptablePhoneNumber(phone, defaultCountry)) {
         return `Enter a valid ${label.toLowerCase()} for the selected country.`
     }
     return ''
@@ -47,10 +59,15 @@ export function getPhoneValidationError(value, { required = false, label = 'Phon
 export function toE164Value(raw, defaultCountry = 'GB') {
     const value = String(raw || '').trim()
     if (!value) return ''
-    if (isValidPhoneNumber(value)) return value
+    if (isPossiblePhoneNumber(value)) {
+        try {
+            return parsePhoneNumber(value)?.number || value
+        } catch {
+            return value
+        }
+    }
     try {
         const parsed = parsePhoneNumber(value, defaultCountry)
-        if (parsed?.isValid?.()) return parsed.number
         if (parsed?.number) return parsed.number
     } catch {
         /* keep original so the user can correct it */
@@ -73,7 +90,7 @@ export default function PhoneNumberField({
     disabled = false,
 }) {
     const ui = VARIANT_UI[variant] || VARIANT_UI.default
-    const computedError = getPhoneValidationError(value, { required, label: label || 'Phone number' })
+    const computedError = getPhoneValidationError(value, { required, label: label || 'Phone number', defaultCountry })
     const error = errorText || computedError
     const visibleError = showError && error
 

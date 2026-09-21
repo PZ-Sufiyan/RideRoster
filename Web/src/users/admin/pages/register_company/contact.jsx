@@ -1,5 +1,4 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { getCountries } from 'libphonenumber-js';
 import {
     MdLocationOn,
     MdSearch,
@@ -13,26 +12,22 @@ import {
     MdKeyboardArrowDown,
 } from 'react-icons/md';
 import PhoneNumberField, { getPhoneValidationError } from '../../../../components/PhoneNumberField';
-
-// ─── Validators ───────────────────────────────────────────────────────────────
-
-const isValidEmail = (v) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v);
-const isValidUrl   = (v) => {
-    if (!v?.trim()) return true; // optional field
-    try { new URL(v); return true; } catch { return false; }
-};
+import {
+    ADDRESS_MAX,
+    EMAIL_MAX,
+    LANGUAGE_MAX,
+    WEBSITE_MAX,
+    getCountryNameOptions,
+    validateAddress,
+    validateCountry,
+    validateEmail,
+    validatePreferredLanguage,
+    validateWebsite,
+} from '../../../../utils/companyRegistrationValidation';
 
 const EMPTY_COMPANY = Object.freeze({});
 
-// ─── Country list via libphonenumber-js + Intl (full names only) ──────────────
-
-const buildCountryOptions = () => {
-    const display = new Intl.DisplayNames(['en'], { type: 'region' });
-    return getCountries()
-        .map((code) => display.of(code))
-        .filter(Boolean)
-        .sort((a, b) => a.localeCompare(b));
-};
+const normalizeAddress = (v) => String(v ?? '').replace(/[\r\n]+/g, ' ').slice(0, ADDRESS_MAX);
 
 // ─── Admin_Register_Contact ───────────────────────────────────────────────────
 
@@ -44,7 +39,7 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
     const countryRef = useRef(null);
 
     const company = useMemo(() => value?.company ?? EMPTY_COMPANY, [value?.company]);
-    const countryOptions = useMemo(() => buildCountryOptions(), []);
+    const countryOptions = useMemo(() => getCountryNameOptions(), []);
 
     const filteredCountries = useMemo(() => {
         const q = (company.company_country || '').trim().toLowerCase();
@@ -81,23 +76,27 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
     // ── Validation (derived) ──
     const errors = useMemo(() => {
         const e = {};
-        if (!company.company_address?.trim())
-            e.company_address = 'Registered office address is required';
-        if (!company.company_operating_address?.trim())
-            e.company_operating_address = 'Operating address is required';
-        if (!company.company_country?.trim())
-            e.company_country = 'Country is required';
+        const addressError = validateAddress(company.company_address, {
+            label: 'Registered office address',
+        });
+        if (addressError) e.company_address = addressError;
+        const operatingError = validateAddress(company.company_operating_address, {
+            label: 'Operating address',
+        });
+        if (operatingError) e.company_operating_address = operatingError;
+        const countryError = validateCountry(company.company_country);
+        if (countryError) e.company_country = countryError;
         const phoneError = getPhoneValidationError(company.company_phone, {
             required: true,
             label: 'Phone number',
         });
         if (phoneError) e.company_phone = phoneError;
-        if (!company.company_email?.trim())
-            e.company_email = 'Email address is required';
-        else if (!isValidEmail(company.company_email))
-            e.company_email = 'Enter a valid email address';
-        if (!isValidUrl(company.company_website))
-            e.company_website = 'Enter a valid URL (e.g. https://example.com)';
+        const emailError = validateEmail(company.company_email);
+        if (emailError) e.company_email = emailError;
+        const websiteError = validateWebsite(company.company_website);
+        if (websiteError) e.company_website = websiteError;
+        const languageError = validatePreferredLanguage(company.company_preferred_language);
+        if (languageError) e.company_preferred_language = languageError;
         return e;
     }, [company]);
 
@@ -114,6 +113,7 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
             company_phone: true,
             company_email: true,
             company_website: true,
+            company_preferred_language: true,
         });
 
     const onContinue = () => {
@@ -189,10 +189,11 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
                     <div className="relative">
                         <textarea
                             value={company.company_address || ''}
+                            maxLength={ADDRESS_MAX}
                             onChange={(e) => {
-                                setField('company_address', e.target.value);
-                                // Keep operating address mirrored while toggle is active
-                                if (sameAddress) setField('company_operating_address', e.target.value);
+                                const next = normalizeAddress(e.target.value);
+                                setField('company_address', next);
+                                if (sameAddress) setField('company_operating_address', next);
                             }}
                             onBlur={() => touch('company_address')}
                             placeholder="Street, City, County, Postcode"
@@ -225,7 +226,7 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
                             aria-expanded={countryOpen}
                             aria-autocomplete="list"
                             aria-controls="country-options"
-                            placeholder="Search or type a country (e.g. Pakistan)"
+                            placeholder="Search a country (e.g. United Kingdom)"
                             value={company.company_country || ''}
                             onChange={(e) => {
                                 setField('company_country', e.target.value);
@@ -258,7 +259,7 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
                             >
                                 {filteredCountries.length === 0 ? (
                                     <li className="px-4 py-3 text-[13px] text-gray-500">
-                                        No match — keep typing to use &ldquo;{company.company_country}&rdquo; as custom country
+                                        No matching country. Select a name from the list.
                                     </li>
                                 ) : (
                                     filteredCountries.map((name) => (
@@ -289,7 +290,7 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
                     </div>
                     {renderFieldError('company_country')}
                     <p className="text-[12px] text-gray-400 font-medium pt-0.5">
-                        Select from the list or type a full country name manually.
+                        Select a country from the list.
                     </p>
                 </div>
 
@@ -324,7 +325,8 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
                     </label>
                     <textarea
                         value={company.company_operating_address || ''}
-                        onChange={(e) => setField('company_operating_address', e.target.value)}
+                        maxLength={ADDRESS_MAX}
+                        onChange={(e) => setField('company_operating_address', normalizeAddress(e.target.value))}
                         onBlur={() => touch('company_operating_address')}
                         disabled={sameAddress}
                         placeholder="Street, City, County, Postcode"
@@ -372,6 +374,7 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
                             <input
                                 type="email"
                                 placeholder="admin@company.com"
+                                maxLength={EMAIL_MAX}
                                 value={company.company_email || ''}
                                 onChange={(e) => setField('company_email', e.target.value)}
                                 onBlur={() => touch('company_email')}
@@ -397,6 +400,7 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
                             <input
                                 type="url"
                                 placeholder="https://www.company.com"
+                                maxLength={WEBSITE_MAX}
                                 value={company.company_website || ''}
                                 onChange={(e) => setField('company_website', e.target.value)}
                                 onBlur={() => touch('company_website')}
@@ -415,10 +419,13 @@ const Admin_Register_Contact = ({ value, onChange, onNext, onPrev }) => {
                         <input
                             type="text"
                             placeholder="English (UK)"
+                            maxLength={LANGUAGE_MAX}
                             value={company.company_preferred_language || ''}
                             onChange={(e) => setField('company_preferred_language', e.target.value)}
+                            onBlur={() => touch('company_preferred_language')}
                             className={inputClass('company_preferred_language')}
                         />
+                        {renderFieldError('company_preferred_language')}
                     </div>
                 </div>
             </div>

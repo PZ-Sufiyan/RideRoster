@@ -1,45 +1,21 @@
 ﻿import React, { useEffect, useState } from 'react';
 import { Navigate, Outlet } from 'react-router-dom';
 import { supabase } from '../lib/supabaseClient';
+import {
+    adminPortalPathForAccess,
+    getCompanyAdminAccess,
+} from '../services/companyAccessService';
 
-/**
- * Prefer session from storage (immediate after sign-in). getUser() validates with the server
- * and can briefly fail right after navigation, which caused dashboard ↔ register redirect loops.
- */
-async function getAuthUser() {
-    const {
-        data: { session },
-    } = await supabase.auth.getSession();
-    if (session?.user) {
-        return session.user;
-    }
-    const {
-        data: { user },
-    } = await supabase.auth.getUser();
-    return user ?? null;
+function LoadingScreen() {
+    return (
+        <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-600 text-sm">
+            Loading…
+        </div>
+    );
 }
 
-async function fetchCompanyAdminLinkStatus() {
-    const user = await getAuthUser();
-    if (!user) {
-        return 'no-company';
-    }
-
-    const { data: row, error } = await supabase
-        .from('company_admins')
-        .select('company_id')
-        .eq('id', user.id)
-        .maybeSingle();
-
-    if (error || !row) {
-        return 'no-company';
-    }
-
-    return row.company_id ? 'linked' : 'no-company';
-}
-
-function useCompanyAdminLinkStatus() {
-    const [status, setStatus] = useState('loading');
+function useCompanyAdminAccess() {
+    const [access, setAccess] = useState('loading');
 
     useEffect(() => {
         let cancelled = false;
@@ -47,18 +23,23 @@ function useCompanyAdminLinkStatus() {
 
         const run = async () => {
             const id = ++latestRun;
-            const next = await fetchCompanyAdminLinkStatus();
+            const next = await getCompanyAdminAccess();
             if (cancelled || id !== latestRun) return;
-            setStatus(next);
+            setAccess(next.access);
         };
 
         run();
+
+        const onVisible = () => {
+            if (document.visibilityState === 'visible') run();
+        };
+        window.addEventListener('focus', run);
+        document.addEventListener('visibilitychange', onVisible);
 
         const {
             data: { subscription },
         } = supabase.auth.onAuthStateChange((event, session) => {
             if (cancelled) return;
-            // Re-check when auth hydrates or signs in (not TOKEN_REFRESHED — avoids races and spam).
             if (
                 (event === 'INITIAL_SESSION' || event === 'SIGNED_IN') &&
                 session?.user
@@ -70,50 +51,55 @@ function useCompanyAdminLinkStatus() {
         return () => {
             cancelled = true;
             subscription.unsubscribe();
+            window.removeEventListener('focus', run);
+            document.removeEventListener('visibilitychange', onVisible);
         };
     }, []);
 
-    return status;
+    return access;
 }
 
 /**
- * Allows dashboard routes only when company_admins.company_id is set for the logged-in admin.
+ * Dashboard routes: only when the linked company is approved.
+ * Pending companies stay on the in-review screen (rejected is blocked from the dashboard too).
  */
 export function RequireCompanyLinkedAdmin() {
-    const status = useCompanyAdminLinkStatus();
+    const access = useCompanyAdminAccess();
 
-    if (status === 'loading') {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-600 text-sm">
-                Loading…
-            </div>
-        );
-    }
-
-    if (status === 'no-company') {
-        return <Navigate to="/portal/register" replace />;
-    }
-
-    return <Outlet />;
+    if (access === 'loading') return <LoadingScreen />;
+    if (access === 'approved') return <Outlet />;
+    return <Navigate to={adminPortalPathForAccess(access)} replace />;
 }
 
 /**
- * Company registration: only for admins without a linked company; otherwise send to dashboard.
+ * Registration form: only for admins who have not submitted a company yet.
  */
 export function RedirectIfCompanyLinked() {
-    const status = useCompanyAdminLinkStatus();
+    const access = useCompanyAdminAccess();
 
-    if (status === 'loading') {
-        return (
-            <div className="min-h-screen flex items-center justify-center bg-gray-50 text-gray-600 text-sm">
-                Loading…
-            </div>
-        );
-    }
+    if (access === 'loading') return <LoadingScreen />;
+    if (access === 'no-company') return <Outlet />;
+    return <Navigate to={adminPortalPathForAccess(access)} replace />;
+}
 
-    if (status === 'linked') {
-        return <Navigate to="/portal/dashboard" replace />;
-    }
+/**
+ * In-review holding page: pending applications only.
+ */
+export function RequirePendingCompany() {
+    const access = useCompanyAdminAccess();
 
-    return <Outlet />;
+    if (access === 'loading') return <LoadingScreen />;
+    if (access === 'pending') return <Outlet />;
+    return <Navigate to={adminPortalPathForAccess(access)} replace />;
+}
+
+/**
+ * Rejected application: one-page edit + resubmit.
+ */
+export function RequireRejectedCompany() {
+    const access = useCompanyAdminAccess();
+
+    if (access === 'loading') return <LoadingScreen />;
+    if (access === 'rejected') return <Outlet />;
+    return <Navigate to={adminPortalPathForAccess(access)} replace />;
 }

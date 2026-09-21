@@ -1,0 +1,74 @@
+[
+  {
+    "status": "imported",
+    "excelRow": 2,
+    "registration": "AB12CDE",
+    "vehicleId": "a6d0761d-0a19-4238-a45f-d0548c410ad0",
+    "companyId": "85ea09ec-9051-4126-a680-07e5aacbe5fc",
+    "vehicleStatus": "active",
+    "bodyStyle": "Car - 4 seater",
+    "wheelchairAccessible": false,
+    "hasPhoto": true,
+    "documents": [
+      "v5_front",
+      "v5_inside",
+      "mot_certificate",
+      "taxi_license_plate",
+      "insurance_certificate"
+    ]
+  },
+  {
+    "status": "imported",
+    "excelRow": 3,
+    "registration": "FG34HIJ",
+    "vehicleId": "efd9772b-c120-4bdc-8eea-14a3f2cb8029",
+    "companyId": "85ea09ec-9051-4126-a680-07e5aacbe5fc",
+    "vehicleStatus": "active",
+    "bodyStyle": "People Carrier - 6 passenger",
+    "wheelchairAccessible": false,
+    "hasPhoto": true,
+    "documents": [
+      "v5_front",
+      "v5_inside",
+      "mot_certificate",
+      "taxi_license_plate",
+      "insurance_certificate"
+    ]
+  },
+  {
+    "status": "imported",
+    "excelRow": 4,
+    "registration": "KL56MNO",
+    "vehicleId": "241b0266-31ab-4a94-887e-25b1d8d2fb01",
+    "companyId": "85ea09ec-9051-4126-a680-07e5aacbe5fc",
+    "vehicleStatus": "active",
+    "bodyStyle": "Minibus - Wheelchair ramp",
+    "wheelchairAccessible": true,
+    "hasPhoto": true,
+    "documents": [
+      "v5_front",
+      "v5_inside",
+      "mot_certificate",
+      "taxi_license_plate",
+      "insurance_certificate"
+    ]
+  },
+  {
+    "status": "imported",
+    "excelRow": 5,
+    "registration": "PQ78RST",
+    "vehicleId": "c2769af3-645e-4702-99ac-8baba8efb461",
+    "companyId": "85ea09ec-9051-4126-a680-07e5aacbe5fc",
+    "vehicleStatus": "active",
+    "bodyStyle": "Hackney - Wheelchair",
+    "wheelchairAccessible": true,
+    "hasPhoto": true,
+    "documents": [
+      "v5_front",
+      "v5_inside",
+      "mot_certificate",
+      "taxi_license_plate",
+      "insurance_certificate"
+    ]
+  }
+]

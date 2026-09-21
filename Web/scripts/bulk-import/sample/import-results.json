@@ -1,0 +1,83 @@
+[
+  {
+    "status": "imported",
+    "excelRow": 2,
+    "email": "ahmed.khan@gmail.com",
+    "password": "Driver@101",
+    "driverId": "e8e6532c-21b9-4f55-b011-46eab0b49a6d",
+    "companyId": "85ea09ec-9051-4126-a680-07e5aacbe5fc",
+    "driverStatus": "approved",
+    "emailConfirmed": true,
+    "documents": [
+      "driving_license_front",
+      "driving_license_back",
+      "taxi_badge_front",
+      "taxi_badge_back",
+      "dbs_certificate_front",
+      "dbs_certificate_back",
+      "safeguarding_certificate"
+    ],
+    "warnings": []
+  },
+  {
+    "status": "imported",
+    "excelRow": 3,
+    "email": "fatima.ali@gmail.com",
+    "password": "Driver@102",
+    "driverId": "a06efe18-b9e3-4bee-baee-43572da975e1",
+    "companyId": "85ea09ec-9051-4126-a680-07e5aacbe5fc",
+    "driverStatus": "approved",
+    "emailConfirmed": true,
+    "documents": [
+      "driving_license_front",
+      "driving_license_back",
+      "taxi_badge_front",
+      "taxi_badge_back",
+      "dbs_certificate_front",
+      "dbs_certificate_back",
+      "safeguarding_certificate",
+      "passport"
+    ],
+    "warnings": []
+  },
+  {
+    "status": "imported",
+    "excelRow": 4,
+    "email": "james.wilson@gmail.com",
+    "password": "Driver@103",
+    "driverId": "982a177f-d629-4ee4-958d-b51deb0252af",
+    "companyId": "85ea09ec-9051-4126-a680-07e5aacbe5fc",
+    "driverStatus": "approved",
+    "emailConfirmed": true,
+    "documents": [
+      "driving_license_front",
+      "driving_license_back",
+      "taxi_badge_front",
+      "taxi_badge_back",
+      "dbs_certificate_front",
+      "dbs_certificate_back",
+      "safeguarding_certificate"
+    ],
+    "warnings": []
+  },
+  {
+    "status": "imported",
+    "excelRow": 5,
+    "email": "maria.santos@gmail.com",
+    "password": "Driver@104",
+    "driverId": "ecbec484-a11e-429a-9237-4b2187e5fbc9",
+    "companyId": "85ea09ec-9051-4126-a680-07e5aacbe5fc",
+    "driverStatus": "approved",
+    "emailConfirmed": true,
+    "documents": [
+      "driving_license_front",
+      "driving_license_back",
+      "taxi_badge_front",
+      "taxi_badge_back",
+      "dbs_certificate_front",
+      "dbs_certificate_back",
+      "safeguarding_certificate"
+    ],
+    "warnings": []
+  }
+]

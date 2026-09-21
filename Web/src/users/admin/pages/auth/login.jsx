@@ -14,6 +14,10 @@ import {
     mapLoginError,
     requireConfirmedEmailOrSignOut,
 } from '../../../../utils/authEmailGuards';
+import {
+    adminPortalPathForAccess,
+    getCompanyAdminAccess,
+} from '../../../../services/companyAccessService';
 import ForgotPasswordPanel from '../../../../components/ForgotPasswordPanel';
 
 const AdminLogin = () => {
@@ -64,25 +68,8 @@ const AdminLogin = () => {
             localStorage.setItem('isAuthenticated', 'true');
             localStorage.setItem('userRole', 'admin');
 
-            const { data: companyAdminRow, error: companyAdminError } = await supabase
-                .from('company_admins')
-                .select('company_id')
-                .eq('id', data.user.id)
-                .maybeSingle();
-
-            if (companyAdminError) {
-                await supabase.auth.signOut();
-                localStorage.removeItem('isAuthenticated');
-                localStorage.removeItem('userRole');
-                setLoginError(mapLoginError(companyAdminError));
-                return;
-            }
-
-            if (companyAdminRow?.company_id) {
-                navigate('/portal/dashboard', { replace: true });
-            } else {
-                navigate('/portal/register', { replace: true });
-            }
+            const { access } = await getCompanyAdminAccess();
+            navigate(adminPortalPathForAccess(access), { replace: true });
         } catch (err) {
             setLoginError(mapLoginError(err));
         } finally {

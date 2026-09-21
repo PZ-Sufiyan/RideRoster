@@ -51,7 +51,9 @@ import Admin_DriverReport from './users/admin/pages/reports/driver_report';
 import Admin_PAReport from './users/admin/pages/reports/pa_report';
 
 import RegistrationFlow from './users/admin/pages/register_company/registration_flow';
-import { RequireCompanyLinkedAdmin, RedirectIfCompanyLinked } from './components/AdminCompanyRouteGuards';
+import PendingApproval from './users/admin/pages/register_company/pending_approval';
+import RejectedResubmit from './users/admin/pages/register_company/rejected_resubmit';
+import { RequireCompanyLinkedAdmin, RedirectIfCompanyLinked, RequirePendingCompany, RequireRejectedCompany } from './components/AdminCompanyRouteGuards';
 
 import SubAdmin_Login from './users/subAdmin/pages/auth/login';
 import SubAdmin_Dashboard from './users/subAdmin/pages/dashboard/dashboard';
@@ -134,6 +136,12 @@ function App() {
           <Route element={<ProtectedRoute allowedRoles={['admin']} />}>
             <Route path="/portal/register" element={<RedirectIfCompanyLinked />}>
               <Route index element={<RegistrationFlow />} />
+            </Route>
+            <Route path="/portal/pending" element={<RequirePendingCompany />}>
+              <Route index element={<PendingApproval />} />
+            </Route>
+            <Route path="/portal/rejected" element={<RequireRejectedCompany />}>
+              <Route index element={<RejectedResubmit />} />
             </Route>
           </Route>
 

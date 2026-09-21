@@ -1,0 +1,127 @@
+[
+  {
+    "status": "imported",
+    "excelRow": 2,
+    "email": "oliver.wright@gmail.com",
+    "passengerId": "d6d5edcd-808e-4595-92c7-d18cc3e46f40",
+    "passengerStatus": "active",
+    "wheelchair": false,
+    "harness": false,
+    "extraLocations": [],
+    "coords": {
+      "primary": [
+        "53.4812829",
+        "-2.2472267"
+      ],
+      "educational": [
+        "53.4478989",
+        "-2.2121852"
+      ],
+      "extra": []
+    },
+    "scheduleDays": [
+      "mon",
+      "tue",
+      "wed",
+      "thu",
+      "fri"
+    ]
+  },
+  {
+    "status": "imported",
+    "excelRow": 3,
+    "email": "amelia.hughes@gmail.com",
+    "passengerId": "6ed964db-333c-41d1-9e47-0ddbc6b3fa3c",
+    "passengerStatus": "active",
+    "wheelchair": true,
+    "harness": false,
+    "extraLocations": [],
+    "coords": {
+      "primary": [
+        "52.4793751",
+        "-1.8976384"
+      ],
+      "educational": [
+        "52.4509341",
+        "-1.9258011"
+      ],
+      "extra": []
+    },
+    "scheduleDays": [
+      "mon",
+      "tue",
+      "wed",
+      "thu",
+      "fri"
+    ]
+  },
+  {
+    "status": "imported",
+    "excelRow": 4,
+    "email": "noah.patel@gmail.com",
+    "passengerId": "fb14cbf4-7aa0-40e3-8cfc-479d521b5315",
+    "passengerStatus": "active",
+    "wheelchair": false,
+    "harness": true,
+    "extraLocations": [],
+    "coords": {
+      "primary": [
+        "53.7984138",
+        "-1.5470586"
+      ],
+      "educational": [
+        "53.8305339",
+        "-1.5103536"
+      ],
+      "extra": []
+    },
+    "scheduleDays": [
+      "mon",
+      "wed",
+      "fri"
+    ]
+  },
+  {
+    "status": "imported",
+    "excelRow": 5,
+    "email": "isla.bennett@gmail.com",
+    "passengerId": "9e4bfca8-6bd6-48a8-84c7-9f8455d3d6e9",
+    "passengerStatus": "active",
+    "wheelchair": false,
+    "harness": false,
+    "extraLocations": [
+      "secondary_pickup",
+      "respite"
+    ],
+    "coords": {
+      "primary": [
+        "51.4505076",
+        "-2.5932304"
+      ],
+      "educational": [
+        "51.4578031",
+        "-2.6056574"
+      ],
+      "extra": [
+        {
+          "type": "secondary_pickup",
+          "lat": 51.4524989,
+          "lng": -2.5997766
+        },
+        {
+          "type": "respite",
+          "lat": 51.4969164,
+          "lng": -2.5914217
+        }
+      ]
+    },
+    "scheduleDays": [
+      "mon",
+      "tue",
+      "wed",
+      "thu",
+      "fri",
+      "sat"
+    ]
+  }
+]

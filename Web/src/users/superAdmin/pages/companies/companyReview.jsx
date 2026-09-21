@@ -133,7 +133,12 @@ const CompanyReview = () => {
 
         try {
             setIsStatusUpdating(true);
-            const updatedCompany = await updateCompany(company.id, { status: nextStatus });
+            const payload = { status: nextStatus };
+            const trimmedNote = note.trim();
+            if (modalAction === 'reject' && trimmedNote) {
+                payload.notes = trimmedNote;
+            }
+            const updatedCompany = await updateCompany(company.id, payload);
             setCompany(prev => ({ ...prev, ...updatedCompany }));
             closeModal();
         } catch (error) {

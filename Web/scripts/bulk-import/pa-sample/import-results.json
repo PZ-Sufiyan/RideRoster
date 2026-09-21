@@ -1,0 +1,42 @@
+[
+  {
+    "status": "skipped_exists",
+    "excelRow": 2,
+    "email": "aisha.khan@bulk-import.local",
+    "existing": {
+      "kind": "passenger_assistant",
+      "id": "36b9dc98-957c-4812-b501-6162d3920c36",
+      "status": "approve"
+    }
+  },
+  {
+    "status": "skipped_exists",
+    "excelRow": 3,
+    "email": "nora.ahmed@bulk-import.local",
+    "existing": {
+      "kind": "passenger_assistant",
+      "id": "13d282bc-6aa1-4c1a-8bc6-8e5067f3aa06",
+      "status": "approve"
+    }
+  },
+  {
+    "status": "skipped_exists",
+    "excelRow": 4,
+    "email": "tom.baker@bulk-import.local",
+    "existing": {
+      "kind": "passenger_assistant",
+      "id": "ae724431-aa46-489c-82a0-ad0c787a1274",
+      "status": "approve"
+    }
+  },
+  {
+    "status": "skipped_exists",
+    "excelRow": 5,
+    "email": "lucia.costa@bulk-import.local",
+    "existing": {
+      "kind": "passenger_assistant",
+      "id": "59671b0b-3f96-4905-96df-af80bd0a595b",
+      "status": "approve"
+    }
+  }
+]
