@@ -31,9 +31,8 @@ import 'services/sos_location_service.dart';
 import 'services/sync_engine.dart';
 import 'services/sync_scheduler.dart';
 import 'services/session_cleanup.dart';
-import 'users/auth/pages/login.dart';
-import 'users/driver/pages/dashboard/dashboard.dart';
-import 'users/PA/pages/dashboard/dashboard.dart';
+import 'users/auth/pages/auth_entry_gate.dart';
+import 'users/driver/pages/dashboard/dashboard.dart' show clearDriverDashboardSessionCaches;
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -404,30 +403,7 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
           }
         }
 
-        return const _AuthEntryPage();
-      },
-    );
-  }
-}
-
-class _AuthEntryPage extends StatelessWidget {
-  const _AuthEntryPage();
-
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<AuthProvider>(
-      builder: (_, auth, __) {
-        if (auth.status == AuthStatus.loading ||
-            auth.status == AuthStatus.idle) {
-          return const Scaffold(
-            body: Center(child: CircularProgressIndicator()),
-          );
-        }
-        if (auth.isAuthenticated) {
-          if (auth.isPassengerAssistant) return const PaDashboardPage();
-          return const DriverDashboardPage();
-        }
-        return const LoginPage();
+        return const AuthEntryGate();
       },
     );
   }

@@ -1,12 +1,11 @@
 import 'package:flutter/material.dart';
 import '../repositories/local_job_repository.dart';
+import '../users/auth/pages/auth_entry_gate.dart';
 import '../users/auth/pages/choose_account_type.dart';
 import '../users/auth/pages/delete_account.dart';
 import '../users/auth/pages/forgot_password.dart';
-import '../users/auth/pages/login.dart';
 import '../users/auth/pages/register.dart';
 import '../users/auth/pages/register_passenger_assistant.dart';
-import '../users/driver/pages/dashboard/dashboard.dart';
 import '../users/driver/pages/dashboard/vehicle_check_list.dart';
 import '../users/driver/pages/job/complete_job.dart';
 import '../users/driver/pages/job/job_detail.dart';
@@ -14,7 +13,6 @@ import '../users/driver/pages/job/pickup.dart';
 import '../users/driver/pages/job/pickup_que.dart';
 import '../users/driver/pages/job/requested_jobs.dart';
 import '../users/driver/pages/job/route_detail.dart';
-import '../users/PA/pages/dashboard/dashboard.dart';
 import '../users/PA/pages/profile/profile.dart';
 import '../users/PA/pages/profile/edit_profile.dart';
 import '../users/PA/pages/notification/notification.dart';
@@ -69,7 +67,7 @@ class AppRoutes {
   }) {
     switch (settings.name) {
       case login:
-        return MaterialPageRoute(builder: (_) => const LoginPage());
+        return MaterialPageRoute(builder: (_) => const AuthEntryGate());
 
       case forgotPassword:
         return MaterialPageRoute(builder: (_) => const ForgotPasswordPage());
@@ -86,7 +84,7 @@ class AppRoutes {
         );
 
       case driverDashboard:
-        return MaterialPageRoute(builder: (_) => const DriverDashboardPage());
+        return MaterialPageRoute(builder: (_) => const AuthEntryGate());
 
       case vehicleChecklist:
         return MaterialPageRoute(
@@ -144,7 +142,7 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const LeaveRequestFormPage());
 
       case paDashboard:
-        return MaterialPageRoute(builder: (_) => const PaDashboardPage());
+        return MaterialPageRoute(builder: (_) => const AuthEntryGate());
 
       case paProfile:
         return MaterialPageRoute(builder: (_) => const PaProfilePage());
@@ -179,7 +177,7 @@ class AppRoutes {
         return MaterialPageRoute(builder: (_) => const PaSOSPage());
 
       default:
-        return MaterialPageRoute(builder: (_) => const LoginPage());
+        return MaterialPageRoute(builder: (_) => const AuthEntryGate());
     }
   }
 }

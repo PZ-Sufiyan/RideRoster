@@ -11,6 +11,7 @@ import {
     MdAssessment,
     MdCheckCircle,
     MdPersonAdd,
+    MdDescription,
 } from 'react-icons/md';
 
 /** Static sidebar definitions (used by Sidebar). */
@@ -43,6 +44,7 @@ export const SIDEBAR_MENU_CONFIGS = {
             { name: 'Job Management', path: '/portal/jobs', icon: <MdWork size={20} /> },
             { name: 'Notifications', path: '/portal/notifications', icon: <MdNotifications size={20} /> },
             { name: 'Reports', path: '/portal/reports', icon: <MdAssessment size={20} /> },
+            { name: 'Terms & Conditions', path: '/portal/terms', icon: <MdDescription size={20} /> },
             { name: 'SOS Monitoring', path: '/portal/sos', icon: <MdSos size={20} /> },
         ],
         bottom: [{ name: 'Settings', path: '/portal/settings', icon: <MdSettings size={20} /> }],

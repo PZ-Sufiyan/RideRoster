@@ -10,6 +10,7 @@ import SuperAdmin_SystemLogs from './users/superAdmin/pages/systemlogs/systemlog
 import SuperAdmin_Settings from './users/superAdmin/pages/settings/settings';
 import SuperAdmin_Login from './users/superAdmin/pages/auth/login';
 import SuperAdmin_AddAdmin from './users/superAdmin/pages/add_admin/add_admin';
+import Admin_Terms from './users/admin/pages/terms/terms_and_conditions';
 
 import Admin_Login from './users/admin/pages/auth/login';
 import Admin_Dashboard from './users/admin/pages/dashboard/dashboard';
@@ -194,6 +195,7 @@ function App() {
                 <Route path="/portal/jobs/:id" element={<Admin_JobDetail />} />
                 <Route path="/portal/notifications" element={<Admin_Notifications />} />
                 <Route path="/portal/reports" element={<Admin_Report />} />
+                <Route path="/portal/terms" element={<Admin_Terms />} />
                 <Route path="/portal/reports/driver-performance" element={<Admin_DriverReport />} />
                 <Route path="/portal/reports/pa-attendance" element={<Admin_PAReport />} />
                 <Route path="/portal/sos" element={<Admin_SOSPage />} />

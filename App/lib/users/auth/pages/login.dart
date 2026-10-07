@@ -38,11 +38,7 @@ class _LoginPageState extends State<LoginPage> {
 
     if (!mounted) return;
     if (!success) return;
-
-    final route = auth.isPassengerAssistant
-        ? AppRoutes.paDashboard
-        : AppRoutes.driverDashboard;
-    Navigator.pushReplacementNamed(context, route);
+    // Dashboard is shown by [_AuthEntryPage] after Terms & Conditions are satisfied.
   }
 
   void _onForgotPassword() {
