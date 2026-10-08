@@ -19,7 +19,7 @@ export const SIDEBAR_MENU_CONFIGS = {
     superadmin: {
         items: [
             { name: 'Dashboard', path: '/platform/dashboard', icon: <MdDashboard size={20} /> },
-            { name: 'Companies', path: '/platform/companies/pending', icon: <MdBusiness size={20} /> },
+            { name: 'Companies', path: '/platform/companies', icon: <MdBusiness size={20} /> },
             { name: 'Add Admin', path: '/platform/add-admin', icon: <MdPersonAdd size={20} /> },
             { name: 'SOS Monitoring', path: '/platform/sos', icon: <MdSos size={20} /> },
             { name: 'System Logs', path: '/platform/logs', icon: <MdHistory size={20} /> },

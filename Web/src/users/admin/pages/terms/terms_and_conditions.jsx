@@ -14,6 +14,8 @@ import {
 import { supabase } from '../../../../lib/supabaseClient'
 import { formatLocalDate } from '../../../../utils/dateTime'
 
+const TERMS_TITLE = 'Terms & Conditions'
+
 const TermsAndConditionsAdmin = () => {
   const [loading, setLoading] = useState(true)
   const [summary, setSummary] = useState([])
@@ -21,7 +23,7 @@ const TermsAndConditionsAdmin = () => {
   const [versions, setVersions] = useState([])
   const [versionsLoading, setVersionsLoading] = useState(false)
   const [publishOpen, setPublishOpen] = useState(false)
-  const [title, setTitle] = useState('Terms & Conditions')
+  const [version, setVersion] = useState('')
   const [content, setContent] = useState('')
   const [publishing, setPublishing] = useState(false)
   const [toasts, setToasts] = useState([])
@@ -73,19 +75,32 @@ const TermsAndConditionsAdmin = () => {
     loadVersions(selectedAudience)
   }, [selectedAudience, loadVersions])
 
-  const latestVersionNumber = useMemo(() => {
-    if (!versions.length) return null
-    return versions[0]?.version ?? null
-  }, [versions])
+  const existingVersionLabels = useMemo(
+    () => new Set(versions.map((row) => String(row.version).trim())),
+    [versions],
+  )
 
   const openPublish = () => {
-    setTitle('Terms & Conditions')
+    setVersion('')
     setContent('')
     setPublishOpen(true)
   }
 
   const handlePublish = async () => {
     if (!selectedAudience) return
+    const trimmedVersion = version.trim()
+    if (!trimmedVersion) {
+      pushToast('error', 'Please enter a version (e.g. 1.1.0).')
+      return
+    }
+    if (existingVersionLabels.has(trimmedVersion)) {
+      pushToast(
+        'error',
+        `Version "${trimmedVersion}" already exists for this user type. Choose a different version.`,
+      )
+      return
+    }
+
     const trimmed = content.trim()
     if (!trimmed) {
       pushToast('error', 'Please enter the Terms & Conditions text.')
@@ -99,7 +114,7 @@ const TermsAndConditionsAdmin = () => {
       } = await supabase.auth.getUser()
       await publishTermsVersion({
         audience: selectedAudience,
-        title,
+        version: trimmedVersion,
         content: trimmed,
         createdByUserId: user?.id,
       })
@@ -138,8 +153,7 @@ const TermsAndConditionsAdmin = () => {
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">{audienceLabel}</h1>
             <p className="text-sm text-gray-500 mt-1">
-              Terms apply only to your company&apos;s {audienceLabel.toLowerCase()} staff.
-              Publishing creates version {(latestVersionNumber ?? 0) + 1}.
+              Terms apply only to your {audienceLabel.toLowerCase()} staff.
             </p>
           </div>
           <button
@@ -227,7 +241,7 @@ const TermsAndConditionsAdmin = () => {
             <div className="bg-white rounded-xl shadow-xl w-full max-w-2xl max-h-[90vh] flex flex-col">
               <div className="px-6 py-4 border-b border-gray-200">
                 <h2 className="text-lg font-semibold text-gray-900">
-                  Publish {audienceLabel} — v{(latestVersionNumber ?? 0) + 1}
+                  Publish new version — {audienceLabel}
                 </h2>
                 <p className="text-sm text-gray-500 mt-1">
                   Your company&apos;s drivers/PAs of this type who have not accepted this
@@ -241,10 +255,26 @@ const TermsAndConditionsAdmin = () => {
                   </label>
                   <input
                     type="text"
-                    value={title}
-                    onChange={(e) => setTitle(e.target.value)}
+                    value={TERMS_TITLE}
+                    readOnly
+                    aria-readonly="true"
+                    className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm bg-gray-50 text-gray-700 cursor-not-allowed"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1">
+                    Version
+                  </label>
+                  <input
+                    type="text"
+                    value={version}
+                    onChange={(e) => setVersion(e.target.value)}
+                    placeholder="e.g. 1.0.0 or 1.1.0"
                     className="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-[#3B8097] focus:border-[#3B8097]"
                   />
+                  <p className="text-xs text-gray-500 mt-1">
+                    Must be unique for this user type (not used before).
+                  </p>
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 mb-1">

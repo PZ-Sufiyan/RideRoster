@@ -2,7 +2,6 @@
 import DashboardLayout from './layouts/DashboardLayout';
 
 import SuperAdmin_Dashboard from './users/superAdmin/pages/dashboard/dashboard';
-import SuperAdmin_PendingCompanies from './users/superAdmin/pages/companies/pendingcompanies';
 import SuperAdmin_Companies from './users/superAdmin/pages/companies/companies';
 import SuperAdmin_CompanyReview from './users/superAdmin/pages/companies/companyReview';
 import SuperAdmin_SOSPage from './users/superAdmin/pages/sos/sos';
@@ -151,7 +150,6 @@ function App() {
             {/* Superadmin Group */}
             <Route element={<ProtectedRoute allowedRoles={['superadmin']} />}>
               <Route path="/platform/dashboard" element={<SuperAdmin_Dashboard />} />
-              <Route path="/platform/companies/pending" element={<SuperAdmin_PendingCompanies />} />
               <Route path="/platform/companies" element={<SuperAdmin_Companies />} />
               <Route path="/platform/companies/review/:id" element={<SuperAdmin_CompanyReview />} />
               <Route path="/platform/add-admin" element={<SuperAdmin_AddAdmin />} />

@@ -23,7 +23,7 @@ create table if not exists public.terms_and_conditions (
   id uuid primary key default gen_random_uuid(),
   company_id uuid not null references public.companies (id) on delete cascade,
   audience public.terms_audience not null,
-  version integer not null check (version > 0),
+  version text not null check (char_length(trim(version)) > 0),
   title text not null default 'Terms & Conditions',
   content text not null,
   published_at timestamptz null,
@@ -45,7 +45,7 @@ create table if not exists public.terms_acceptances (
   user_id uuid not null references auth.users (id) on delete cascade,
   company_id uuid not null references public.companies (id) on delete cascade,
   terms_id uuid not null references public.terms_and_conditions (id) on delete restrict,
-  terms_version integer not null,
+  terms_version text not null,
   audience public.terms_audience not null,
   accepted_at timestamptz not null default now(),
   constraint terms_acceptances_user_terms_key unique (user_id, terms_id)
@@ -149,7 +149,7 @@ as $$
   where t.company_id = p_company_id
     and t.audience = p_audience
     and t.published_at is not null
-  order by t.version desc
+  order by t.published_at desc nulls last, t.created_at desc
   limit 1;
 $$;
 
@@ -313,35 +313,39 @@ begin
 end;
 $$;
 
--- Company admin portal: next version for (company, audience).
-create or replace function public.next_terms_version(
-  p_company_id uuid,
-  p_audience public.terms_audience
-)
-returns integer
-language plpgsql
-security definer
-set search_path = public
-stable
-as $$
-begin
-  if not public.portal_company_admin_owns_company(p_company_id) then
-    raise exception 'not authorized to manage terms for this company';
-  end if;
-
-  return (
-    select coalesce(max(version), 0) + 1
-    from public.terms_and_conditions
-    where company_id = p_company_id
-      and audience = p_audience
-  );
-end;
-$$;
-
 grant execute on function public.get_required_terms_for_user() to authenticated;
 grant execute on function public.accept_required_terms(uuid) to authenticated;
 grant execute on function public.staff_has_accepted_required_terms(uuid) to authenticated;
-grant execute on function public.next_terms_version(uuid, public.terms_audience) to authenticated;
+
+-- ---------------------------------------------------------------------------
+-- Migration: integer auto-versions → manual version strings (existing DBs)
+-- ---------------------------------------------------------------------------
+do $$
+begin
+  if exists (
+    select 1
+    from information_schema.columns
+    where table_schema = 'public'
+      and table_name = 'terms_and_conditions'
+      and column_name = 'version'
+      and data_type = 'integer'
+  ) then
+    alter table public.terms_and_conditions
+      drop constraint if exists terms_and_conditions_version_check;
+
+    alter table public.terms_and_conditions
+      alter column version type text using version::text;
+
+    alter table public.terms_and_conditions
+      add constraint terms_and_conditions_version_check
+      check (char_length(trim(version)) > 0);
+
+    alter table public.terms_acceptances
+      alter column terms_version type text using terms_version::text;
+  end if;
+end $$;
+
+drop function if exists public.next_terms_version(uuid, public.terms_audience);
 
 -- ---------------------------------------------------------------------------
 -- RLS

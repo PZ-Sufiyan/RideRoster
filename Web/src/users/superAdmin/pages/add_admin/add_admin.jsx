@@ -132,7 +132,7 @@ const AddAdmin = () => {
             <div className="bg-white rounded-xl shadow-[0_2px_10px_-4px_rgba(0,0,0,0.05)] border border-gray-100 p-8">
                 <div className="mb-8">
                     <h2 className="text-lg font-bold text-gray-900">Admin Credentials</h2>
-                    <p className="text-sm text-gray-500 mt-1">Enter email and password to add a new admin.</p>
+                    <p className="text-sm text-gray-500 mt-1">Create a new Company Admin user by providing email and a password to the client.</p>
                 </div>
 
                 <form onSubmit={handleSubmit} className="max-w-2xl space-y-6">

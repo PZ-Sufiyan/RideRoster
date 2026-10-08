@@ -6,6 +6,8 @@ import { TERMS_AUDIENCE_LIST } from '../utils/termsAudiences'
 const TERMS_SELECT =
   'id, company_id, audience, version, title, content, published_at, created_at, updated_at, created_by'
 
+const TERMS_TITLE = 'Terms & Conditions'
+
 async function assertApprovedCompanyAdmin() {
   const access = await getCompanyAdminAccess()
   if (access.access !== 'approved' || !access.company?.id) {
@@ -30,7 +32,7 @@ export async function getTermsSummaryByAudience() {
     .eq('company_id', companyId)
     .not('published_at', 'is', null)
     .order('audience', { ascending: true })
-    .order('version', { ascending: false })
+    .order('published_at', { ascending: false, nullsFirst: false })
 
   if (error) throw error
 
@@ -55,7 +57,8 @@ export async function listTermsVersionsForAudience(audience) {
     .select(TERMS_SELECT)
     .eq('company_id', companyId)
     .eq('audience', audience)
-    .order('version', { ascending: false })
+    .order('published_at', { ascending: false, nullsFirst: false })
+    .order('created_at', { ascending: false })
 
   if (error) throw error
   return data || []
@@ -63,26 +66,35 @@ export async function listTermsVersionsForAudience(audience) {
 
 export async function publishTermsVersion({
   audience,
-  title,
+  version,
   content,
   createdByUserId,
 }) {
   const { companyId } = await assertApprovedCompanyAdmin()
+
+  const trimmedVersion = String(version || '').trim()
+  if (!trimmedVersion) {
+    throw new Error('Version is required.')
+  }
 
   const trimmedContent = String(content || '').trim()
   if (!trimmedContent) {
     throw new Error('Terms content is required.')
   }
 
-  const { data: nextVersion, error: versionErr } = await supabase.rpc(
-    'next_terms_version',
-    { p_company_id: companyId, p_audience: audience },
-  )
-  if (versionErr) throw versionErr
+  const { data: existing, error: dupErr } = await supabase
+    .from('terms_and_conditions')
+    .select('id')
+    .eq('company_id', companyId)
+    .eq('audience', audience)
+    .eq('version', trimmedVersion)
+    .maybeSingle()
 
-  const version = Number(nextVersion)
-  if (!Number.isFinite(version) || version < 1) {
-    throw new Error('Could not determine next version number.')
+  if (dupErr) throw dupErr
+  if (existing) {
+    throw new Error(
+      `Version "${trimmedVersion}" already exists for this user type. Choose a different version.`,
+    )
   }
 
   const now = toUtcIso()
@@ -91,8 +103,8 @@ export async function publishTermsVersion({
     .insert({
       company_id: companyId,
       audience,
-      version,
-      title: String(title || 'Terms & Conditions').trim() || 'Terms & Conditions',
+      version: trimmedVersion,
+      title: TERMS_TITLE,
       content: trimmedContent,
       published_at: now,
       updated_at: now,
@@ -101,6 +113,13 @@ export async function publishTermsVersion({
     .select(TERMS_SELECT)
     .single()
 
-  if (error) throw error
+  if (error) {
+    if (error.code === '23505') {
+      throw new Error(
+        `Version "${trimmedVersion}" already exists for this user type. Choose a different version.`,
+      )
+    }
+    throw error
+  }
   return data
 }

@@ -266,30 +266,6 @@ export const getCompanyAdminNamesByCompanyId = async (companyId) => {
 }
 
 /**
- * Get all pending companies and include admin full names for each company.
- * Returns companies with nested company_admins array (each item has full_name).
- * Also returns a flattened admin_full_names array on each company for convenience.
- */
-export const getPendingCompaniesWithAdminNames = async () => {
-  const { data, error } = await supabase
-    .from('companies')
-    .select(`
-      *,
-      company_admins(full_name)
-    `)
-    .eq('status', 'pending')
-    .order('created_at', { ascending: false })
-
-  if (error) throw error
-
-  // Add a convenience array of admin full names per company
-  return (data || []).map(c => ({
-    ...c,
-    admin_full_names: (c.company_admins || []).map(a => a.full_name)
-  }))
-}
-
-/**
  * Update status for one or many companies by id.
  * @param {string|string[]} companyIds company id or ids
  * @param {string} status next status value (e.g. approved/rejected)

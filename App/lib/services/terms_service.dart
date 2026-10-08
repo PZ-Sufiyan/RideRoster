@@ -4,7 +4,7 @@ import 'api_service.dart';
 
 class RequiredTermsPayload {
   final String termsId;
-  final int version;
+  final String version;
   final String title;
   final String content;
   final String? audience;
@@ -51,6 +51,19 @@ class TermsAcceptResult {
       TermsAcceptResult._(success: false, error: message);
 }
 
+/// Version labels are free-form strings (e.g. `1.1`, `1.1.0`) — never parse as [int].
+String termsVersionFromRpc(dynamic raw) {
+  if (raw == null) return '';
+  if (raw is String) return raw.trim();
+  if (raw is int) return raw.toString();
+  if (raw is num) {
+    final truncated = raw.truncate();
+    if (raw == truncated.toDouble()) return truncated.toString();
+    return raw.toString();
+  }
+  return raw.toString().trim();
+}
+
 class TermsService extends ApiService {
   SupabaseClient get _supabase => Supabase.instance.client;
 
@@ -76,12 +89,15 @@ class TermsService extends ApiService {
       }
 
       final termsId = map['terms_id']?.toString();
-      final version = map['version'];
+      final versionStr = termsVersionFromRpc(
+        map['version'] ?? map['latest_version'],
+      );
       final title = map['title']?.toString();
       final content = map['content']?.toString();
 
       if (termsId == null ||
           termsId.isEmpty ||
+          versionStr.isEmpty ||
           content == null ||
           content.isEmpty) {
         return TermsCheckResult.failure(
@@ -92,7 +108,7 @@ class TermsService extends ApiService {
       return TermsCheckResult.needsAcceptance(
         RequiredTermsPayload(
           termsId: termsId,
-          version: version is int ? version : int.tryParse('$version') ?? 0,
+          version: versionStr,
           title: (title == null || title.isEmpty)
               ? 'Terms & Conditions'
               : title,
