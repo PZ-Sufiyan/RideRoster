@@ -39,7 +39,9 @@ class AuthEntryGate extends StatelessWidget {
           );
         }
         if (auth.isAuthenticated) {
-          return const StaffTermsGate();
+          return StaffTermsGate(
+            blockingCheck: auth.requiresBlockingTermsCheck,
+          );
         }
         return const LoginPage();
       },

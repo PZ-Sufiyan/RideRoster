@@ -25,6 +25,9 @@ class AuthProvider extends ChangeNotifier {
   String? _userRole;
   String? _errorMessage;
   Future<void>? _logoutCleanup;
+  /// True only after a successful credential login in this app session.
+  /// Session restore uses background Terms & Conditions checks instead.
+  bool _requiresBlockingTermsCheck = false;
 
   AuthProvider() {
     restoreSession();
@@ -44,12 +47,14 @@ class AuthProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   bool get isLoading => _status == AuthStatus.loading;
   bool get isAuthenticated => _status == AuthStatus.authenticated;
+  bool get requiresBlockingTermsCheck => _requiresBlockingTermsCheck;
 
   // ---------------------------------------------------------------------------
   // Restore session
   // ---------------------------------------------------------------------------
   Future<void> restoreSession() async {
     await _awaitLogoutCleanup();
+    _requiresBlockingTermsCheck = false;
     _setStatus(AuthStatus.loading);
     final result = await _authService.restoreSession();
     if (result.success) {
@@ -95,6 +100,7 @@ class AuthProvider extends ChangeNotifier {
       _userEmail = result.email;
       _userRole = result.role;
       _errorMessage = null;
+      _requiresBlockingTermsCheck = true;
       _setStatus(AuthStatus.authenticated);
       unawaited(_completeAuthenticatedSetup());
       return true;
@@ -153,6 +159,7 @@ class AuthProvider extends ChangeNotifier {
     _userEmail = null;
     _userRole = null;
     _errorMessage = null;
+    _requiresBlockingTermsCheck = false;
     _setStatus(AuthStatus.unauthenticated);
 
     final cleanup = _runLogoutCleanup();
@@ -206,6 +213,11 @@ class AuthProvider extends ChangeNotifier {
     if (_status == AuthStatus.error) {
       _setStatus(AuthStatus.unauthenticated);
     }
+  }
+
+  /// Called after login-time Terms & Conditions are satisfied (or not required).
+  void markTermsCheckCompleted() {
+    _requiresBlockingTermsCheck = false;
   }
 
   void _setStatus(AuthStatus s) {

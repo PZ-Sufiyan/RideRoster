@@ -38,7 +38,7 @@ class _LoginPageState extends State<LoginPage> {
 
     if (!mounted) return;
     if (!success) return;
-    // Dashboard is shown by [_AuthEntryPage] after Terms & Conditions are satisfied.
+    // [AuthEntryGate] runs a blocking Terms & Conditions check after fresh login.
   }
 
   void _onForgotPassword() {

@@ -1,6 +1,16 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import 'api_service.dart';
+import 'connectivity_service.dart';
+
+/// How [TermsService.fetchRequiredTerms] behaves when the server is unreachable.
+enum TermsFetchPolicy {
+  /// Always call the API (fresh login flow).
+  requireNetwork,
+
+  /// Skip the check when offline — treat as no action needed (session restore).
+  skipWhenOffline,
+}
 
 class RequiredTermsPayload {
   final String termsId;
@@ -67,7 +77,14 @@ String termsVersionFromRpc(dynamic raw) {
 class TermsService extends ApiService {
   SupabaseClient get _supabase => Supabase.instance.client;
 
-  Future<TermsCheckResult> fetchRequiredTerms() async {
+  Future<TermsCheckResult> fetchRequiredTerms({
+    TermsFetchPolicy policy = TermsFetchPolicy.requireNetwork,
+  }) async {
+    if (policy == TermsFetchPolicy.skipWhenOffline &&
+        !ConnectivityService().canReachServer) {
+      return TermsCheckResult.notRequired();
+    }
+
     try {
       final raw = await _supabase.rpc('get_required_terms_for_user');
       if (raw == null) {
