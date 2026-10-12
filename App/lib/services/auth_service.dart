@@ -106,6 +106,47 @@ class AuthService extends ApiService {
     return full.isEmpty ? null : full;
   }
 
+  /// Outcome of a server-side account check.
+  ///
+  /// [unknown] exists so a flaky network can never be mistaken for a closed
+  /// account — a background verification must fail *open*, not sign the user out.
+  static const String accountActive = 'active';
+  static const String accountClosed = 'closed';
+  static const String accountUnknown = 'unknown';
+
+  /// Asks the server whether this account still exists and is not soft-deleted.
+  ///
+  /// Deliberately cheaper than [_rejectIfAccountClosed]: no second table read,
+  /// and the outcome is tri-state so callers can distinguish "closed" from
+  /// "could not tell".
+  Future<String> fetchAccountState({required User user, required String? role}) async {
+    final meta = user.appMetadata['account_deleted'];
+    if (meta == true || meta?.toString() == 'true') return accountClosed;
+
+    final table = role == 'driver'
+        ? 'drivers'
+        : role == 'passenger_assistant'
+            ? 'passenger_assistant'
+            : null;
+    if (table == null) return accountUnknown;
+    if (!ConnectivityService().canReachServer) return accountUnknown;
+
+    try {
+      final row = await _supabase
+          .from(table)
+          .select('status')
+          .eq('id', user.id)
+          .maybeSingle()
+          .timeout(_profileLookupTimeout);
+      if (row == null) return accountUnknown;
+      final status = row['status']?.toString().trim().toLowerCase();
+      if (status == 'deleted') return accountClosed;
+      return accountActive;
+    } catch (_) {
+      return accountUnknown;
+    }
+  }
+
   Future<String?> _rejectIfAccountClosed({
     required User user,
     required String? role,
@@ -1009,8 +1050,12 @@ class AuthService extends ApiService {
 
   /// Restore current auth session if one exists.
   ///
-  /// Uses auth metadata for the display name so cold start never waits on
-  /// Supabase. Call [refreshDisplayNameForSession] in the background when online.
+  /// Everything here reads from the already-restored session (in memory) or
+  /// from auth metadata. That is intentional: this call is what decides
+  /// "login screen or dashboard", so it must not wait on the network.
+  ///
+  /// The server-side account check moved to [fetchAccountState] and is run in
+  /// the background by [AuthProvider] once the dashboard is already up.
   Future<AuthResult> restoreSession() async {
     try {
       final session = _supabase.auth.currentSession;
@@ -1034,12 +1079,6 @@ class AuthService extends ApiService {
         );
       }
 
-      final closed = await _rejectIfAccountClosed(user: user, role: role);
-      if (closed != null) {
-        await _supabase.auth.signOut();
-        return AuthResult.failure(closed);
-      }
-
       return AuthResult.success(
         token: session.accessToken,
         userId: user.id,
@@ -1050,6 +1089,16 @@ class AuthService extends ApiService {
     } catch (_) {
       return AuthResult.failure('Could not restore session.');
     }
+  }
+
+  /// Server-side account check for an already-restored session.
+  ///
+  /// Returns [accountClosed] only when the server explicitly says so, so a
+  /// flaky connection can never log a valid driver out of a cold start.
+  Future<String> verifyRestoredAccountActive() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return accountActive; // already signed out elsewhere
+    return fetchAccountState(user: user, role: _extractRole(user));
   }
 
   /// Fetches the profile display name when online. Safe to call in background.

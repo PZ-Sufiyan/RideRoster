@@ -33,13 +33,27 @@ import 'services/sync_scheduler.dart';
 import 'services/session_cleanup.dart';
 import 'users/auth/pages/auth_entry_gate.dart';
 import 'users/driver/pages/dashboard/dashboard.dart' show clearDriverDashboardSessionCaches;
+import 'utils/startup_trace.dart';
 
+// Cold-start diagnostics: every line below is logged with the `RRTRACE` tag
+// (debug builds only, or force it with --dart-define=RR_TRACE=true). To read the
+// timeline of a real startup:
+//
+//     adb logcat -c && adb logcat | Select-String RRTRACE
+//
+// A healthy run for an already-remembered driver shows exactly one
+// `DriverDashboardPage.initState`, no `_AppRuntimeGuard → SPINNER`, and no
+// `dispose (UNMOUNTED)` for the dashboard.
 Future<void> main() async {
+  StartupTrace.mark('main() enter');
   WidgetsFlutterBinding.ensureInitialized();
+  StartupTrace.mark('binding ready');
 
-  await SystemChrome.setPreferredOrientations([
-    DeviceOrientation.portraitUp,
-  ]);
+  // NOTE: portrait lock is already enforced natively by
+  // android:screenOrientation="portrait" in AndroidManifest.xml. Re-applying it
+  // here used to add a platform-channel round trip *before the first frame*,
+  // which kept the native splash on screen for no benefit. It is applied on
+  // first frame instead (see [_applyOrientationLock]).
 
   // ── Supabase ──────────────────────────────────────────────────────────────
   const supabaseUrl = String.fromEnvironment(
@@ -62,7 +76,14 @@ Future<void> main() async {
     );
     return;
   }
+
+  // Restores the persisted session from shared_preferences synchronously enough
+  // that `supabase.auth.currentSession` is populated before runApp(). It does
+  // NOT await a network refresh (recoverSession() is fire-and-forget inside the
+  // package), so this is the one startup step that genuinely gates the UI:
+  // without it the app cannot know whether to show login or the dashboard.
   await Supabase.initialize(url: normalizedUrl, anonKey: normalizedAnonKey);
+  StartupTrace.mark('Supabase.initialize done (session restored from disk)');
 
   // ── Offline infrastructure ────────────────────────────────────────────────
   // Order matters: DB → repo → connectivity → sync engine → cache warm-up.
@@ -70,12 +91,7 @@ Future<void> main() async {
   final db = AppDatabase();
   final localRepo = LocalJobRepository(db);
   final cacheRepo = CacheRepository(db);
-
-  // Init connectivity — pass the same Supabase URL/key the client uses for probes.
-  await ConnectivityService().init(
-    probeBaseUrl: normalizedUrl,
-    probeAnonKey: normalizedAnonKey,
-  );
+  StartupTrace.mark('repos created');
 
   SyncEngine.init(localRepo);
   SyncScheduler.register(() => SyncEngine.instance.processQueue());
@@ -91,6 +107,18 @@ Future<void> main() async {
   });
 
   runApp(RideRosterApp(localRepo: localRepo, cacheRepo: cacheRepo));
+  StartupTrace.mark('runApp() returned');
+
+  // Connectivity is deliberately started AFTER runApp and NOT awaited: it is a
+  // platform-channel round trip that has nothing to do with which screen to
+  // show. Until it completes, ConnectivityService reports optimistically
+  // online, so no startup work is skipped and the offline banner never flashes.
+  unawaited(
+    ConnectivityService().init(
+      probeBaseUrl: normalizedUrl,
+      probeAnonKey: normalizedAnonKey,
+    ),
+  );
 
   FcmService().setOnMessageOpenedHandler(
     (message) => NavigationService.handlePushOpened(message.data),
@@ -98,8 +126,20 @@ Future<void> main() async {
 
   // Defer native notification / Firebase work until after the first frame.
   WidgetsBinding.instance.addPostFrameCallback((_) {
+    StartupTrace.mark('FIRST FRAME rendered');
+    unawaited(_applyOrientationLock());
     unawaited(_initDeviceServices());
   });
+}
+
+Future<void> _applyOrientationLock() async {
+  try {
+    await SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
+  } catch (error) {
+    debugPrint('Orientation lock failed: $error');
+  }
 }
 
 Future<void> _initDeviceServices() async {
@@ -233,23 +273,33 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
     with WidgetsBindingObserver {
   final LocationService _locationService = LocationService();
   final SosLocationService _sosLocationService = SosLocationService();
-  bool _locationReady = false;
 
-  /// False until the first permission probe finishes — avoids flashing the
-  /// "required" screen while we still don't know the real permission state.
-  bool _locationCheckComplete = false;
+  /// True once the server-side/OS permission probe has produced an answer.
+  ///
+  /// False means "not known yet", which must NOT block the dashboard: an
+  /// already-granted driver should never see a spinner while we ask Android a
+  /// question whose answer they already gave us.
+  bool _locationVerified = false;
+
+  /// True only once we have positively established that permission is denied.
+  bool _locationDenied = false;
+
+  /// True while the disclosure dialog / system prompt owns the screen.
   bool _isCheckingLocation = false;
   String? _lastAuthUserId;
   bool _locationCheckInFlight = false;
+  bool _probeInFlight = false;
 
   @override
   void initState() {
     super.initState();
+    StartupTrace.mark('_AppRuntimeGuard.initState');
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final auth = context.read<AuthProvider>();
       auth.addListener(_onAuthChanged);
+      StartupTrace.mark('_AppRuntimeGuard auth listener attached');
       _onAuthChanged();
     });
   }
@@ -266,6 +316,18 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
   void _onAuthChanged() {
     if (!mounted) return;
     final auth = context.read<AuthProvider>();
+    StartupTrace.mark(
+      '_AppRuntimeGuard._onAuthChanged',
+      'status=${auth.status} role=${auth.userRole}',
+    );
+
+    if (auth.isAuthenticated) {
+      // Side effects belong here (an event), never in build().
+      unawaited(_startSosTrackingIfAuthenticated());
+    } else {
+      unawaited(_stopSosTracking());
+    }
+
     if (auth.isAuthenticated && auth.isDriver) {
       unawaited(_enforceLocationRequirement());
       return;
@@ -273,8 +335,8 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
 
     if (!auth.isAuthenticated) {
       setState(() {
-        _locationReady = false;
-        _locationCheckComplete = false;
+        _locationVerified = false;
+        _locationDenied = false;
         _isCheckingLocation = false;
       });
     }
@@ -282,10 +344,13 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
+    StartupTrace.mark('lifecycle $state');
     if (state == AppLifecycleState.resumed) {
       final auth = context.read<AuthProvider>();
       if (auth.isAuthenticated && auth.isDriver) {
-        unawaited(_enforceLocationRequirement(showLoader: false));
+        // Cheap probe only — returning to the app must not re-run the whole
+        // permission flow over a dashboard the driver is already using.
+        unawaited(_probeLocationPermission());
       }
       _resumeSosTrackingIfAuthenticated();
       // Re-probe on foreground so banner updates quickly after app switch.
@@ -304,28 +369,84 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
     }
   }
 
+  /// Reads the OS permission without prompting.
+  ///
+  /// Used on resume: it can only ever *reveal* a problem, never interrupt the
+  /// driver with a dialog while they are mid-run.
+  Future<void> _probeLocationPermission() async {
+    if (!mounted) return;
+    if (_probeInFlight) return;
+    _probeInFlight = true;
+    try {
+      if (_locationCheckInFlight) return;
+      final granted = await _locationService
+          .ensurePermission(requestIfDenied: false)
+          .timeout(const Duration(seconds: 2), onTimeout: () => false);
+      if (!mounted) return;
+      if (granted) {
+        if (_locationVerified && !_locationDenied) return;
+        setState(() {
+          _locationVerified = true;
+          _locationDenied = false;
+        });
+        return;
+      }
+      // Not granted. If we never asked, ask now (disclosure + system prompt).
+      await _enforceLocationRequirement(showLoader: true);
+    } catch (_) {
+      // Unknown (e.g. timeout) — never downgrade a working dashboard to a
+      // blocking error screen because a probe failed.
+    } finally {
+      _probeInFlight = false;
+    }
+  }
+
+  /// Ensures location access for a driver, without gating the dashboard.
+  ///
+  /// The dashboard renders immediately. Only a *positive* denial replaces it,
+  /// and only after the disclosure dialog / system prompt have run — i.e. this
+  /// can never silently leave an unprovisioned driver on a non-functional
+  /// dashboard, but it also never delays an already-provisioned one.
+  ///
+  /// [showLoader] is true only for the explicit "Retry" flow from
+  /// [LocationRequiredPage] while the permission UI owns the screen.
   Future<void> _enforceLocationRequirement({bool showLoader = true}) async {
     if (!mounted) return;
     final auth = context.read<AuthProvider>();
     if (!auth.isAuthenticated || !auth.isDriver) return;
-    if (_locationCheckInFlight) return;
+    if (_locationCheckInFlight) {
+      StartupTrace.mark('_enforceLocationRequirement skipped (in flight)');
+      return;
+    }
 
     _locationCheckInFlight = true;
-    // Keep the loading screen for the whole permission flow (disclosure +
-    // system dialog). Never show LocationRequiredPage underneath those UI.
-    if (mounted &&
-        (showLoader || !_locationReady || !_locationCheckComplete)) {
-      setState(() => _isCheckingLocation = true);
-    }
+    StartupTrace.mark(
+      '_enforceLocationRequirement START',
+      'showLoader=$showLoader verified=$_locationVerified '
+          'denied=$_locationDenied ${StartupTrace.where()}',
+    );
+    final sw = Stopwatch()..start();
     try {
       var hasPermission = await _locationService
           .ensurePermission(requestIfDenied: false)
           .timeout(const Duration(seconds: 2), onTimeout: () => false);
+      StartupTrace.mark(
+        '_enforceLocationRequirement first probe',
+        'hasPermission=$hasPermission ${sw.elapsedMilliseconds}ms',
+      );
 
       if (!hasPermission && mounted) {
-        // No timeout here — user may take time on disclosure / system prompt.
+        // Disclosure dialog + system prompt. The dashboard stays mounted until
+        // this actually fails, so an already-granted driver sees nothing.
+        if (showLoader && mounted) {
+          setState(() => _isCheckingLocation = true);
+        }
         hasPermission = await _locationService.ensurePermission(
           context: context,
+        );
+        StartupTrace.mark(
+          '_enforceLocationRequirement after request',
+          'hasPermission=$hasPermission ${sw.elapsedMilliseconds}ms',
         );
       }
 
@@ -335,21 +456,31 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
         hasPermission = await _locationService
             .ensurePermission(requestIfDenied: false)
             .timeout(const Duration(seconds: 2), onTimeout: () => false);
+        StartupTrace.mark(
+          '_enforceLocationRequirement after 250ms re-check',
+          'hasPermission=$hasPermission ${sw.elapsedMilliseconds}ms',
+        );
       }
 
       if (!mounted) return;
       setState(() {
-        _locationReady = hasPermission;
-        _locationCheckComplete = true;
+        _locationVerified = true;
+        _locationDenied = !hasPermission;
         _isCheckingLocation = false;
       });
+      StartupTrace.mark(
+        '_enforceLocationRequirement DONE',
+        'granted=$hasPermission ${sw.elapsedMilliseconds}ms',
+      );
     } catch (_) {
+      // A probe failure is not a denial — leave the dashboard alone and let a
+      // later resume/lifecycle event try again.
       if (!mounted) return;
-      setState(() {
-        _locationReady = false;
-        _locationCheckComplete = true;
-        _isCheckingLocation = false;
-      });
+      setState(() => _isCheckingLocation = false);
+      StartupTrace.mark(
+        '_enforceLocationRequirement ERROR (treated as unknown)',
+        '${sw.elapsedMilliseconds}ms',
+      );
     } finally {
       _locationCheckInFlight = false;
     }
@@ -383,26 +514,33 @@ class _AppRuntimeGuardState extends State<_AppRuntimeGuard>
   Widget build(BuildContext context) {
     return Consumer<AuthProvider>(
       builder: (_, auth, __) {
-        if (auth.isAuthenticated) {
-          unawaited(_startSosTrackingIfAuthenticated());
-        } else {
-          unawaited(_stopSosTracking());
-        }
+        StartupTrace.mark(
+          '_AppRuntimeGuard.build',
+          'status=${auth.status} driver=${auth.isDriver} '
+              'verified=$_locationVerified denied=$_locationDenied '
+              'checking=$_isCheckingLocation',
+        );
+        // No side effects here — they live in _onAuthChanged / lifecycle
+        // callbacks so that a rebuild cannot re-trigger network work.
 
         if (auth.isAuthenticated && auth.isDriver) {
-          // Loading while checking / disclosure / system permission dialog.
-          if (!_locationCheckComplete || _isCheckingLocation) {
+          // Only while the disclosure dialog / system prompt is literally on
+          // screen, or when we have positively established a denial. An
+          // unknown/unverified permission state must never block the dashboard.
+          if (_isCheckingLocation) {
+            StartupTrace.mark('_AppRuntimeGuard → permission UI in progress');
             return const Scaffold(
               body: Center(child: CircularProgressIndicator()),
             );
           }
 
-          // Only after the user has finished the permission flow and denied.
-          if (!_locationReady) {
+          if (_locationVerified && _locationDenied) {
+            StartupTrace.mark('_AppRuntimeGuard → LocationRequiredPage');
             return LocationRequiredPage(onRetry: _enforceLocationRequirement);
           }
         }
 
+        StartupTrace.mark('_AppRuntimeGuard → AuthEntryGate');
         return const AuthEntryGate();
       },
     );

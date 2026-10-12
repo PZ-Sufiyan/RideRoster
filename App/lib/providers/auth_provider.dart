@@ -2,9 +2,11 @@ import 'dart:async';
 
 import 'package:flutter/foundation.dart';
 import '../services/auth_service.dart';
+import '../services/connectivity_service.dart';
 import '../services/fcm_service.dart';
 import '../services/realtime_service.dart';
 import '../services/session_cleanup.dart';
+import '../utils/startup_trace.dart';
 
 enum AuthStatus { idle, loading, authenticated, unauthenticated, error }
 
@@ -30,6 +32,7 @@ class AuthProvider extends ChangeNotifier {
   bool _requiresBlockingTermsCheck = false;
 
   AuthProvider() {
+    StartupTrace.mark('AuthProvider constructed → restoreSession()');
     restoreSession();
   }
 
@@ -53,10 +56,16 @@ class AuthProvider extends ChangeNotifier {
   // Restore session
   // ---------------------------------------------------------------------------
   Future<void> restoreSession() async {
+    StartupTrace.mark('AuthProvider.restoreSession START', StartupTrace.where());
+    final sw = Stopwatch()..start();
     await _awaitLogoutCleanup();
     _requiresBlockingTermsCheck = false;
     _setStatus(AuthStatus.loading);
     final result = await _authService.restoreSession();
+    StartupTrace.mark(
+      'AuthProvider.restoreSession authService done',
+      'success=${result.success} ${sw.elapsedMilliseconds}ms',
+    );
     if (result.success) {
       _token = result.token;
       _userId = result.userId;
@@ -65,6 +74,10 @@ class AuthProvider extends ChangeNotifier {
       _userRole = result.role;
       _errorMessage = null;
       _setStatus(AuthStatus.authenticated);
+      StartupTrace.mark(
+        'AuthProvider → authenticated (dashboard can mount)',
+        'role=$_userRole ${sw.elapsedMilliseconds}ms',
+      );
       // Realtime + FCM + profile name refresh must not block cold start offline.
       unawaited(_completeAuthenticatedSetup());
     } else {
@@ -75,6 +88,10 @@ class AuthProvider extends ChangeNotifier {
       _userRole = null;
       _errorMessage = null;
       _setStatus(AuthStatus.unauthenticated);
+      StartupTrace.mark(
+        'AuthProvider → unauthenticated',
+        '${sw.elapsedMilliseconds}ms',
+      );
     }
   }
 
@@ -233,9 +250,41 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _completeAuthenticatedSetup() async {
+    // Dashboard is already on screen by now — everything below is background.
+    await _verifyAccountStillActive();
     await _subscribeRealtime();
     await _registerPushTokenIfNeeded();
     await _refreshDisplayNameWhenOnline();
+  }
+
+  /// Server-side "is this account closed?" check.
+  ///
+  /// Runs *after* the dashboard is visible so a cold start never waits on it.
+  /// Fails open: only an explicit `closed` answer signs the user out, so a
+  /// flaky network cannot log a valid driver out at startup.
+  Future<void> _verifyAccountStillActive() async {
+    if (!isDriver && !isPassengerAssistant) return;
+    final userId = _userId;
+    if (userId == null || userId.isEmpty) return;
+    if (!ConnectivityService().canReachServer) {
+      StartupTrace.mark('account-active check skipped (offline)');
+      return;
+    }
+
+    final sw = Stopwatch()..start();
+    final state = await _authService.verifyRestoredAccountActive();
+    StartupTrace.mark(
+      'account-active check done',
+      'state=$state ${sw.elapsedMilliseconds}ms',
+    );
+    if (state != AuthService.accountClosed) return;
+    if (_userId != userId) return; // a different session took over meanwhile
+
+    // logout() already flips the whole tree to the login screen; set the
+    // message afterwards because logout() clears it.
+    await logout();
+    _errorMessage = 'This account is closed.';
+    notifyListeners();
   }
 
   Future<void> _refreshDisplayNameWhenOnline() async {

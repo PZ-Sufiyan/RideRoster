@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import '../config/supabase_config.dart';
+import '../utils/startup_trace.dart';
 
 /// Tracks whether the device can reach the Supabase project — not just link state.
 ///
@@ -39,8 +40,17 @@ class ConnectivityService {
   /// True when Wi‑Fi/mobile/ethernet link is up (may still be probing server).
   bool get hasNetworkLink => _hasLink;
 
+  /// True once [init] has finished its initial link probe.
+  ///
+  /// Before that the service reports optimistically online: cold start must not
+  /// make the app look offline (and skip server work) while the very first
+  /// platform-channel probe is still in flight.
+  bool get isInitialized => _initialized;
+  bool _initialized = false;
+
   /// The single truth the rest of the app uses.
   bool get canReachServer {
+    if (!_initialized) return _hasLink; // optimistic before the first probe
     if (!_hasLink) return false;
     if (_serverReachable) return true;
     final last = _lastSuccessAt;
@@ -66,6 +76,8 @@ class ConnectivityService {
     String? probeBaseUrl,
     String? probeAnonKey,
   }) async {
+    if (_initialized) return;
+    StartupTrace.mark('ConnectivityService.init START');
     if (probeBaseUrl != null && probeBaseUrl.trim().isNotEmpty) {
       _probeBaseUrl = probeBaseUrl.trim().replaceAll(RegExp(r'/+$'), '');
     }
@@ -74,12 +86,33 @@ class ConnectivityService {
     }
 
     final initial = await _connectivity.checkConnectivity();
+    StartupTrace.mark('ConnectivityService.checkConnectivity done');
     _hasLink = _resultsHaveLink(initial);
-    // Optimistic when a link exists — UI stays online until probes prove otherwise.
-    // Probe runs in the background so cold start never blocks on a dead connection.
-    _serverReachable = _hasLink;
+
+    // Cold start must not *claim* the server is reachable. `_hasLink` only means
+    // a network interface is up (Wi-Fi with no internet, captive portal, dead
+    // route) — it is not evidence that Supabase answers.
+    //
+    // This used to seed `_serverReachable = _hasLink` and then set
+    // `_lastEmittedOnline` to that optimistic value. The consequence was that a
+    // cold start which was already offline never produced an online→offline
+    // transition for anyone to observe: the initial probe failing only reached
+    // `_consecutiveFailures == 1`, which is deliberately below the threshold, so
+    // no event was emitted until a *second* probe failed a full
+    // `_onlineProbeInterval` later — and the offline banner stayed hidden for
+    // over a minute (or forever, if the app was closed first).
+    //
+    // Leaving this unknown until the first probe answers fixes that: the probe
+    // result is the first definitive state, and it is always emitted (see the
+    // null `_lastEmittedOnline` below) so the banner appears as soon as we know.
+    _serverReachable = false;
     _consecutiveFailures = 0;
-    _lastEmittedOnline = canReachServer;
+    _lastSuccessAt = null;
+    // null == "nothing announced yet", so the first probe result is reported to
+    // listeners even when it resolves to the same value we optimistically show
+    // while `_initialized` is still false.
+    _lastEmittedOnline = null;
+    _initialized = true;
 
     if (_hasLink) {
       unawaited(_runInitialProbe());
@@ -110,6 +143,10 @@ class ConnectivityService {
     });
 
     _restartPeriodicProbe();
+    StartupTrace.mark(
+      'ConnectivityService.init done',
+      'hasLink=$_hasLink serverReachable=$_serverReachable',
+    );
   }
 
   Future<void> _runInitialProbe() async {
@@ -210,10 +247,18 @@ class ConnectivityService {
   void _notifyIfChanged() {
     final next = canReachServer;
     final prev = _lastEmittedOnline;
-    if (prev != null && prev == next) return;
+    if (prev != null && prev == next) {
+      StartupTrace.mark('connectivity unchanged', 'canReachServer=$next');
+      return;
+    }
     _lastEmittedOnline = next;
+    StartupTrace.mark(
+      'connectivity CHANGED → onlineStream',
+      'prev=$prev next=$next',
+    );
     _onlineController.add(next);
     if (prev == false && next == true) {
+      StartupTrace.mark('connectivity → onReconnect fired');
       _reconnectController.add(null);
     }
     _restartPeriodicProbe();

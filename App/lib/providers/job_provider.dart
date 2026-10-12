@@ -14,6 +14,7 @@ import '../services/location_task.dart';
 import '../services/notification_service.dart';
 import '../utils/job_start_window.dart';
 import '../utils/session_schedule.dart';
+import '../utils/startup_trace.dart';
 
 /// Manages active job + session state for the driver flow.
 ///
@@ -57,22 +58,49 @@ class JobProvider extends ChangeNotifier {
   Timer? _deadlineTimer;
   bool _serverRefreshInFlight = false;
 
+  /// True when the first load has been started but has not committed yet.
+  ///
+  /// Both the dashboard's post-frame reload and the Supabase auth listener used
+  /// to be able to kick off the first load independently, which meant two
+  /// concurrent drift reads and two `jobDataEpoch` bumps — i.e. the dashboard
+  /// rendered its first frame twice. All triggers funnel through this now.
+  ///
+  /// It is also seeded in the constructor for a restored session, which is what
+  /// lets the very first dashboard frame render the skeleton instead of a
+  /// misleading "No active job assigned for today.".
+  bool _initialLoadRequested = false;
+
+  /// True while that first load is actually running.
+  bool _initialLoadInFlight = false;
+
   JobProvider({
     required LocalJobRepository localRepo,
     required CacheRepository cacheRepo,
   }) : _localRepo = localRepo,
        _cacheRepo = cacheRepo {
+    StartupTrace.mark('JobProvider constructed');
+    // A driver with a restored session is going to land on the dashboard, so
+    // treat that as "first load already requested". This makes the very first
+    // dashboard frame render the loading skeleton instead of a misleading
+    // "No active job assigned for today." that is replaced a frame later.
+    _initialLoadRequested = Supabase.instance.client.auth.currentUser != null;
     _listenToRealtime();
     _reconnectSub = ConnectivityService().onReconnect.listen((_) {
+      StartupTrace.mark('JobProvider.onReconnect → server refresh');
       _refreshFromServerInBackground();
     });
     _authSub = Supabase.instance.client.auth.onAuthStateChange.listen((event) {
       if (event.session?.user.id == null) return;
       if (!_hasLoadedOnce) {
+        StartupTrace.mark(
+          'JobProvider auth event → loadJob()',
+          'event=${event.event} ${StartupTrace.where()}',
+        );
         loadJob();
       }
     });
     _onlineSub = ConnectivityService().onlineStream.listen((online) {
+      StartupTrace.mark('JobProvider.onlineStream', 'online=$online');
       if (online) _refreshFromServerInBackground();
     });
   }
@@ -83,6 +111,12 @@ class JobProvider extends ChangeNotifier {
   bool get isLoading => _isLoading;
   String? get error => _error;
   bool get hasLoadedOnce => _hasLoadedOnce;
+
+  /// True while the first local read is still outstanding.
+  ///
+  /// The dashboard treats this as "show the skeleton", so a cold start does not
+  /// flash the empty-job state before the cached job arrives.
+  bool get isAwaitingFirstLoad => !_hasLoadedOnce && _initialLoadRequested;
   bool get checklistCompletedToday => _checklistCompletedToday;
   int get jobDataEpoch => _jobDataEpoch;
   int get activePickupIndex => _activePickupIndex;
@@ -218,6 +252,12 @@ class JobProvider extends ChangeNotifier {
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return;
 
+    StartupTrace.mark(
+      'JobProvider.loadJob()',
+      'silent=$silent hasLoadedOnce=$_hasLoadedOnce job=${_job != null} '
+          '${StartupTrace.where()}',
+    );
+
     final todayKey = _todayKey(DateTime.now());
     if (_lastLoadedDayKey != null && _lastLoadedDayKey != todayKey) {
       _job = null;
@@ -233,12 +273,33 @@ class JobProvider extends ChangeNotifier {
       notifyListeners();
     }
 
-    final blockUiWithLoading = !silent && _job == null && !_hasLoadedOnce;
-    if (blockUiWithLoading) {
+    // Collapse the startup burst: the dashboard's post-frame reload and the
+    // Supabase auth listener both fire while the first load is still running.
+    // The in-flight load already produces the same result, so running it again
+    // would only duplicate drift reads and bump jobDataEpoch twice.
+    if (!silent && _initialLoadInFlight && _job == null) {
+      StartupTrace.mark('JobProvider.loadJob coalesced (first load in flight)');
+      _initialLoadRequested = true;
+      return;
+    }
+
+    // Show the loading skeleton whenever the first load is still outstanding
+    // for a non-silent caller — including the window between provider
+    // construction and the first frame, when the app already knows a session
+    // exists. Without this the dashboard paints "No active job assigned for
+    // today." and replaces it a frame later.
+    final blockUiWithLoading = !_hasLoadedOnce && _job == null && !silent;
+    if (blockUiWithLoading && !_isLoading) {
+      // Raise the flag only when it is not already up, so repeated loadJob()
+      // calls cannot toggle the skeleton off and on again.
       _isLoading = true;
       _error = null;
       notifyListeners();
+      StartupTrace.mark('JobProvider → isLoading=true (shimmer shown)');
     }
+
+    _initialLoadRequested = true;
+    _initialLoadInFlight = true;
 
     try {
       final needsSessionRestore =
@@ -283,9 +344,14 @@ class JobProvider extends ChangeNotifier {
       if (blockUiWithLoading) _error = e.toString();
     } finally {
       if (blockUiWithLoading) _isLoading = false;
+      _initialLoadInFlight = false;
       _lastLoadedDayKey = todayKey;
       _hasLoadedOnce = true;
       _jobDataEpoch++;
+      StartupTrace.mark(
+        'JobProvider.loadJob local read done → notifyListeners',
+        'job=${_job != null} epoch=$_jobDataEpoch',
+      );
       notifyListeners();
       _syncDeadlineWatcher();
     }
@@ -304,12 +370,20 @@ class JobProvider extends ChangeNotifier {
   /// Pulls server truth into the cache, then silently re-reads local tables.
   /// Never blocks the first paint — call only after local data is on screen.
   Future<void> _refreshFromServerInBackground() async {
-    if (_serverRefreshInFlight) return;
-    if (!ConnectivityService().canReachServer) return;
+    if (_serverRefreshInFlight) {
+      StartupTrace.mark('JobProvider server refresh SKIPPED (already in flight)');
+      return;
+    }
+    if (!ConnectivityService().canReachServer) {
+      StartupTrace.mark('JobProvider server refresh SKIPPED (offline)');
+      return;
+    }
 
     final userId = Supabase.instance.client.auth.currentUser?.id;
     if (userId == null || userId.isEmpty) return;
 
+    StartupTrace.mark('JobProvider server refresh START');
+    final sw = Stopwatch()..start();
     _serverRefreshInFlight = true;
     try {
       await _cacheRepo.ensureFresh();
@@ -337,6 +411,10 @@ class JobProvider extends ChangeNotifier {
       // Local cache remains authoritative until the next reconnect.
     } finally {
       _serverRefreshInFlight = false;
+      StartupTrace.mark(
+        'JobProvider server refresh DONE',
+        '${sw.elapsedMilliseconds}ms',
+      );
     }
   }
 
@@ -799,6 +877,9 @@ class JobProvider extends ChangeNotifier {
     BackgroundLocationTask.stop();
     _job = null;
     _hasLoadedOnce = false;
+    _initialLoadRequested = false;
+    _initialLoadInFlight = false;
+    _isLoading = false;
     _lastLoadedDayKey = null;
     _checklistCompletedToday = false;
     _activePickupIndex = 0;

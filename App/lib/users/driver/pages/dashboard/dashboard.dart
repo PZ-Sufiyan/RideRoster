@@ -16,6 +16,7 @@ import '../../../../utils/app_colors.dart';
 import '../../../../utils/session_schedule.dart';
 import '../../../../utils/shimmer.dart';
 import '../../../../utils/size_confg.dart';
+import '../../../../utils/startup_trace.dart';
 import '../../../../widgets/notification_bell_button.dart';
 import '../../../../model/job_request_model.dart';
 import 'vehicle_check_list.dart';
@@ -48,14 +49,17 @@ class _DriverDashboardPageState extends State<DriverDashboardPage>
   @override
   void initState() {
     super.initState();
+    StartupTrace.mark('DriverDashboardPage.initState (mounted)');
     WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      StartupTrace.mark('DriverDashboardPage postFrame → _reload()');
       _reload();
     });
   }
 
   @override
   void dispose() {
+    StartupTrace.mark('DriverDashboardPage.dispose (UNMOUNTED)');
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
@@ -217,13 +221,9 @@ class _CurrentJobCard extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<JobProvider>(
       builder: (context, provider, _) {
-        if (provider.isLoading) {
-          return _CurrentJobCardShell(
-            child: const DashboardCurrentJobCardShimmer(),
-          );
-        }
-
+        // Error takes precedence so a first-load failure is still actionable.
         if (provider.error != null) {
+          StartupTrace.mark('_CurrentJobCard render → ERROR');
           return _CurrentJobCardShell(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -247,9 +247,26 @@ class _CurrentJobCard extends StatelessWidget {
           );
         }
 
+        // Show the skeleton while the first load is still outstanding. Falling
+        // through to the "no job" state first would paint one frame of
+        // "No active job assigned for today." before the real job appears.
+        if (provider.isLoading || provider.isAwaitingFirstLoad) {
+          StartupTrace.mark(
+            '_CurrentJobCard render → SHIMMER '
+            '(loading=${provider.isLoading} awaitingFirstLoad=${provider.isAwaitingFirstLoad})',
+          );
+          return _CurrentJobCardShell(
+            child: const DashboardCurrentJobCardShimmer(),
+          );
+        }
+
         final job = provider.job;
 
         if (job == null) {
+          StartupTrace.mark(
+            '_CurrentJobCard render → "No active job assigned" '
+            '(hasLoadedOnce=${provider.hasLoadedOnce})',
+          );
           return _CurrentJobCardShell(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -275,6 +292,7 @@ class _CurrentJobCard extends StatelessWidget {
         }
 
         final isDropoffPhase = job.isDropoffPhase;
+        StartupTrace.mark('_CurrentJobCard render → REAL JOB');
         final directionLabel = job.direction == 'outbound'
             ? 'Morning Run'
             : 'Evening Run';
@@ -636,23 +654,31 @@ class _StatsGridState extends State<_StatsGrid> {
     _statsService = DashboardStatsService(context.read<LocalJobRepository>());
     _jobProvider = context.read<JobProvider>();
     _lastSyncedJobDataEpoch = _jobProvider.jobDataEpoch;
+    StartupTrace.mark(
+      '_StatsGrid.initState',
+      'hasLoadedOnce=${_jobProvider.hasLoadedOnce} epoch=$_lastSyncedJobDataEpoch '
+          'cachedLoaded=$_cachedStatsLoaded',
+    );
     _onJobDataEpochChanged = () {
       final epoch = _jobProvider.jobDataEpoch;
       if (epoch == _lastSyncedJobDataEpoch) return;
       _lastSyncedJobDataEpoch = epoch;
       if (!mounted) return;
+      StartupTrace.mark('_StatsGrid epoch changed → _fetchStats', 'epoch=$epoch');
       _fetchStats(isBackground: _statsFirstLoadDone);
     };
     _jobProvider.addListener(_onJobDataEpochChanged);
     // Wait for JobProvider to warm the local cache before reading stats —
     // otherwise jobsToday shows 0 on fresh install until a later reload.
     if (_jobProvider.hasLoadedOnce) {
+      StartupTrace.mark('_StatsGrid initial _fetchStats (already loaded)');
       _fetchStats();
     }
   }
 
   @override
   void dispose() {
+    StartupTrace.mark('_StatsGrid.dispose (UNMOUNTED)');
     _jobProvider.removeListener(_onJobDataEpochChanged);
     super.dispose();
   }
@@ -839,33 +865,42 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
   int _lastSyncedJobDataEpoch = -1;
   StreamSubscription<void>? _reconnectSub;
   StreamSubscription<void>? _jobAssignmentPushSub;
+  bool _requestsFetchInFlight = false;
 
   @override
   void initState() {
     super.initState();
     _jobProvider = context.read<JobProvider>();
     _lastSyncedJobDataEpoch = _jobProvider.jobDataEpoch;
+    StartupTrace.mark('_JobRequestsSection.initState → _fetchRequests');
     _fetchRequests();
     _onJobDataEpochChanged = () {
       final epoch = _jobProvider.jobDataEpoch;
       if (epoch == _lastSyncedJobDataEpoch) return;
       _lastSyncedJobDataEpoch = epoch;
       if (!mounted) return;
+      StartupTrace.mark(
+        '_JobRequestsSection epoch changed → _fetchRequests',
+        'epoch=$epoch',
+      );
       _fetchRequests(isBackground: true);
     };
     _jobProvider.addListener(_onJobDataEpochChanged);
     _reconnectSub = ConnectivityService().onReconnect.listen((_) {
       if (!mounted) return;
+      StartupTrace.mark('_JobRequestsSection onReconnect → _fetchRequests');
       _fetchRequests(isBackground: _requestsFirstLoadDone);
     });
     _jobAssignmentPushSub = FcmService().onJobAssignmentPush.listen((_) {
       if (!mounted) return;
+      StartupTrace.mark('_JobRequestsSection onJobAssignmentPush → _fetchRequests');
       _fetchRequests(isBackground: _requestsFirstLoadDone);
     });
   }
 
   @override
   void dispose() {
+    StartupTrace.mark('_JobRequestsSection.dispose (UNMOUNTED)');
     _reconnectSub?.cancel();
     _jobAssignmentPushSub?.cancel();
     _jobProvider.removeListener(_onJobDataEpochChanged);
@@ -873,6 +908,22 @@ class _JobRequestsSectionState extends State<_JobRequestsSection> {
   }
 
   Future<void> _fetchRequests({bool isBackground = false}) async {
+    // The epoch listener, the reconnect stream and the push stream can all fire
+    // in the same startup window. One request at a time is enough — overlapping
+    // calls just produce identical results and redundant rebuilds.
+    if (_requestsFetchInFlight) {
+      StartupTrace.mark('_JobRequestsSection _fetchRequests coalesced');
+      return;
+    }
+    _requestsFetchInFlight = true;
+    try {
+      await _fetchRequestsInternal(isBackground: isBackground);
+    } finally {
+      _requestsFetchInFlight = false;
+    }
+  }
+
+  Future<void> _fetchRequestsInternal({required bool isBackground}) async {
     final driverId = context.read<AuthProvider>().userId;
     if (driverId == null || driverId.trim().isEmpty) {
       if (!mounted) return;

@@ -43,7 +43,12 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
     SizeConfig.init(context);
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: Consumer<DriverProfileProvider>(
+      // The body sits inside one SafeArea so the offline banner and the header
+      // below it share a single top inset. Without this the banner was drawn
+      // under the status bar, because _ProfileHeader has its own SafeArea and
+      // the banner had none.
+      body: SafeArea(
+        child: Consumer<DriverProfileProvider>(
         builder: (context, provider, _) {
           if (provider.isLoading && !provider.hasProfile) {
             return const _ProfileLoadingBody();
@@ -143,6 +148,7 @@ class _DriverProfilePageState extends State<DriverProfilePage> {
             ),
           );
         },
+        ),
       ),
     );
   }
@@ -399,9 +405,9 @@ class _ProfileHeaderShimmer extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: _ProfileColors.header,
-      child: SafeArea(
-        bottom: false,
-        child: Shimmer(
+      // No SafeArea: the page body applies the top inset once, for the banner
+      // and this header together.
+      child: Shimmer(
           child: Column(
             children: [
               Padding(
@@ -456,7 +462,6 @@ class _ProfileHeaderShimmer extends StatelessWidget {
             ],
           ),
         ),
-      ),
     );
   }
 }
@@ -553,9 +558,9 @@ class _ProfileHeader extends StatelessWidget {
     return Container(
       width: double.infinity,
       color: _ProfileColors.header,
-      child: SafeArea(
-        bottom: false,
-        child: Column(
+      // No SafeArea: the page body applies the top inset once, for the banner
+      // and this header together.
+      child: Column(
           children: [
             Padding(
               padding: EdgeInsets.symmetric(
@@ -682,7 +687,6 @@ class _ProfileHeader extends StatelessWidget {
             SizedBox(height: SizeConfig.r(24)),
           ],
         ),
-      ),
     );
   }
 }
