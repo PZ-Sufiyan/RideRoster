@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
 import {
     MdSearch,
@@ -31,8 +31,37 @@ const getActionStatuses = (currentStatus) =>
         (status) => status.toLowerCase() !== (currentStatus || '').toLowerCase()
     );
 
+// Pure helpers: no state needed, so they live outside the component
+const getInitials = (name = '') => {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length === 0) return '';
+    if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
+    return (parts[0][0] + parts[1][0]).toUpperCase();
+};
+
+const capitalizeStatus = (s) => {
+    if (!s) return '';
+    const v = s.toString();
+    return v.charAt(0).toUpperCase() + v.slice(1);
+};
+
+const getStatusStyle = (status) => {
+    switch ((status || '').toLowerCase()) {
+        case 'active':
+        case 'approved':
+            return 'bg-green-100 text-green-700';
+        case 'pending':
+            return 'bg-yellow-50 text-yellow-700 border border-yellow-100';
+        case 'rejected':
+            return 'bg-red-100 text-red-700';
+        case 'inactive':
+            return 'bg-gray-100 text-gray-700';
+        default:
+            return 'bg-gray-100 text-gray-700';
+    }
+};
+
 const Companies = () => {
-    // replaced hardcoded dummy -> fetch from backend
     const [companies, setCompanies] = useState([]);
     const [loading, setLoading] = useState(false);
 
@@ -43,6 +72,9 @@ const Companies = () => {
     const [isProcessing, setIsProcessing] = useState(false);
     const [actionError, setActionError] = useState('');
 
+    // Points at the actions <td> of the row whose menu is currently open
+    const actionMenuRef = useRef(null);
+
     // Pagination State
     const [currentPage, setCurrentPage] = useState(1);
     const itemsPerPage = 8;
@@ -50,9 +82,9 @@ const Companies = () => {
     // fetch on mount
     useEffect(() => {
         const load = async () => {
-            setLoading(true)
+            setLoading(true);
             try {
-                const data = await getAllCompanies()
+                const data = await getAllCompanies();
                 // map DB columns -> UI shape used in this component
                 const mapped = (data || []).map((c) => ({
                     id: c.id,
@@ -64,29 +96,37 @@ const Companies = () => {
                     location: c.company_address || '',
                     status: capitalizeStatus(c.status || ''),
                     dateJoined: formatLocalDate(c.created_at) || ''
-                }))
-                setCompanies(mapped)
+                }));
+                setCompanies(mapped);
             } catch (err) {
-                console.error('load companies', err)
+                console.error('load companies', err);
             } finally {
-                setLoading(false)
+                setLoading(false);
             }
-        }
-        load()
-    }, [])
+        };
+        load();
+    }, []);
 
-    // helpers
-    const getInitials = (name = '') => {
-        const parts = name.trim().split(/\s+/)
-        if (parts.length === 0) return ''
-        if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
-        return (parts[0][0] + parts[1][0]).toUpperCase()
-    }
-    const capitalizeStatus = (s) => {
-        if (!s) return ''
-        const v = s.toString()
-        return v.charAt(0).toUpperCase() + v.slice(1)
-    }
+    // Close the action menu on outside click or Escape
+    useEffect(() => {
+        if (activeActionId === null) return;
+
+        const handlePointerDown = (event) => {
+            if (actionMenuRef.current && !actionMenuRef.current.contains(event.target)) {
+                setActiveActionId(null);
+            }
+        };
+        const handleKeyDown = (event) => {
+            if (event.key === 'Escape') setActiveActionId(null);
+        };
+
+        document.addEventListener('mousedown', handlePointerDown);
+        document.addEventListener('keydown', handleKeyDown);
+        return () => {
+            document.removeEventListener('mousedown', handlePointerDown);
+            document.removeEventListener('keydown', handleKeyDown);
+        };
+    }, [activeActionId]);
 
     // Filter Logic
     const filteredCompanies = useMemo(() => {
@@ -104,9 +144,10 @@ const Companies = () => {
     const totalItems = filteredCompanies.length;
     const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
 
-    // Reset page when filters change
+    // Reset page (and close any open menu) when filters change
     useEffect(() => {
         setCurrentPage(1);
+        setActiveActionId(null);
     }, [searchQuery, statusFilter]);
 
     // Get Current Page Data
@@ -114,6 +155,12 @@ const Companies = () => {
         const startIndex = (currentPage - 1) * itemsPerPage;
         return filteredCompanies.slice(startIndex, startIndex + itemsPerPage);
     }, [filteredCompanies, currentPage, itemsPerPage]);
+
+    // Page change also closes the menu
+    const goToPage = (page) => {
+        setActiveActionId(null);
+        setCurrentPage(Math.min(Math.max(1, page), totalPages));
+    };
 
     // Selection Logic
     const toggleSelectAll = () => {
@@ -144,22 +191,6 @@ const Companies = () => {
             setActionError('Failed to update company status. Please try again.');
         } finally {
             setIsProcessing(false);
-        }
-    };
-
-    const getStatusStyle = (status) => {
-        switch ((status || '').toLowerCase()) {
-            case 'active':
-            case 'approved':
-                return 'bg-green-100 text-green-700';
-            case 'pending':
-                return 'bg-yellow-50 text-yellow-700 border border-yellow-100';
-            case 'rejected':
-                return 'bg-red-100 text-red-700';
-            case 'inactive':
-                return 'bg-gray-100 text-gray-700';
-            default:
-                return 'bg-gray-100 text-gray-700';
         }
     };
 
@@ -240,30 +271,34 @@ const Companies = () => {
                             {loading ? (
                                 shimmerRows.map((_, index) => (
                                     <tr key={`company-skeleton-${index}`}>
+                                        {/* checkbox */}
                                         <td className="px-6 py-4">
                                             <ShimmerBlock className="w-5 h-5 rounded" rounded="rounded" />
                                         </td>
-                                        <td className="px-6 py-4">
-                                            <ShimmerBlock className="h-3.5 w-24 rounded-md" />
-                                        </td>
+                                        {/* company (avatar + name) */}
                                         <td className="px-6 py-4">
                                             <div className="flex items-center gap-3">
                                                 <ShimmerBlock className="w-8 h-8 shrink-0" rounded="rounded-full" />
-                                                <ShimmerBlock className="h-3.5 w-36 rounded-md" />
+                                                <ShimmerBlock className="h-3.5 w-24 rounded-md" />
                                             </div>
                                         </td>
+                                        {/* contact */}
                                         <td className="px-6 py-4">
                                             <ShimmerBlock className="h-3.5 w-36 rounded-md" />
                                         </td>
+                                        {/* location */}
                                         <td className="px-6 py-4">
                                             <ShimmerBlock className="h-3.5 w-40 rounded-md" />
                                         </td>
+                                        {/* status */}
                                         <td className="px-6 py-4 text-center">
                                             <ShimmerBlock className="mx-auto h-6 w-20 rounded-full" rounded="rounded-full" />
                                         </td>
+                                        {/* date joined */}
                                         <td className="px-6 py-4">
                                             <ShimmerBlock className="h-3.5 w-24 rounded-md" />
                                         </td>
+                                        {/* actions */}
                                         <td className="px-6 py-4 text-center">
                                             <ShimmerBlock className="mx-auto h-8 w-8 rounded-lg" />
                                         </td>
@@ -310,17 +345,28 @@ const Companies = () => {
                                             </span>
                                         </td>
                                         <td className="px-6 py-4 text-gray-500 text-xs">{company.dateJoined}</td>
-                                        <td className="px-6 py-4 text-center relative">
+                                        <td
+                                            ref={activeActionId === company.id ? actionMenuRef : null}
+                                            className="px-6 py-4 text-center relative"
+                                        >
                                             <button
+                                                type="button"
                                                 onClick={() => setActiveActionId(activeActionId === company.id ? null : company.id)}
+                                                aria-haspopup="menu"
+                                                aria-expanded={activeActionId === company.id}
+                                                aria-label={`Actions for ${company.name}`}
                                                 className="p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded-full transition-colors"
                                             >
                                                 <MdMoreVert size={20} />
                                             </button>
                                             {activeActionId === company.id && (
-                                                <div className="absolute right-12 top-0 w-32 bg-white rounded-md shadow-xl border border-gray-100 z-50 py-1 overflow-hidden">
+                                                <div
+                                                    role="menu"
+                                                    className="absolute right-12 top-0 w-32 bg-white rounded-md shadow-xl border border-gray-100 z-50 py-1 overflow-hidden"
+                                                >
                                                     <Link
                                                         to={`/platform/companies/review/${toShortCompanyId(company.id)}`}
+                                                        role="menuitem"
                                                         className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700"
                                                         onClick={() => setActiveActionId(null)}
                                                     >
@@ -329,6 +375,8 @@ const Companies = () => {
                                                     {getActionStatuses(company.status).map((status) => (
                                                         <button
                                                             key={status}
+                                                            type="button"
+                                                            role="menuitem"
                                                             onClick={() => handleStatusChange(company.id, status)}
                                                             disabled={isProcessing}
                                                             className="block w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-blue-50 hover:text-blue-700 disabled:opacity-60"
@@ -364,7 +412,8 @@ const Companies = () => {
 
                     <div className="flex items-center gap-1.5">
                         <button
-                            onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
+                            type="button"
+                            onClick={() => goToPage(currentPage - 1)}
                             disabled={currentPage === 1 || totalItems === 0}
                             className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >
@@ -373,7 +422,8 @@ const Companies = () => {
                         {[...Array(totalPages)].map((_, i) => (
                             <button
                                 key={i}
-                                onClick={() => setCurrentPage(i + 1)}
+                                type="button"
+                                onClick={() => goToPage(i + 1)}
                                 className={`w-8 h-8 flex items-center justify-center rounded-lg text-xs font-bold transition-all ${currentPage === i + 1
                                     ? 'bg-[#E6F0F5] text-[#005580] border border-[#005580]'
                                     : 'border border-gray-200 hover:border-gray-400 text-gray-600'
@@ -383,7 +433,8 @@ const Companies = () => {
                             </button>
                         ))}
                         <button
-                            onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
+                            type="button"
+                            onClick={() => goToPage(currentPage + 1)}
                             disabled={currentPage === totalPages || totalItems === 0}
                             className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 text-gray-500 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
                         >

@@ -498,7 +498,7 @@ const Admin_Dashboard = () => {
                             className="w-full flex items-center justify-center gap-2 py-3.5 bg-[#004D6D] hover:bg-[#003c55] text-white rounded-xl font-bold transition-all transform active:scale-[0.98]"
                         >
                             <MdAdd size={22} />
-                            <span>Add Employee</span>
+                            <span>Add Driver</span>
                         </button>
                         <button
                             type="button"
