@@ -576,12 +576,14 @@ class JobService {
     required String direction,
     required String note,
   }) async {
+    final paId = await _fetchAssignedPaId(jobDbId);
     await _supabase.from('job_sessions').upsert({
       'job_id': jobDbId,
       'session_date': todayDate,
       'direction': direction,
       'status': 'skipped',
       'driver_id': userId,
+      if (paId != null) 'pa_id': paId,
       'note': note,
       'updated_at': UtcTime.nowIso(),
     }, onConflict: 'job_id,session_date,direction');
@@ -620,6 +622,7 @@ class JobService {
     final todayDate = _dateString(today);
     final weekday = _weekdayKey(today);
 
+    final paId = await _fetchAssignedPaId(jobDbId);
     final sessionResult = await _supabase
         .from('job_sessions')
         .upsert({
@@ -628,6 +631,7 @@ class JobService {
           'direction': direction,
           'status': 'active',
           'driver_id': userId,
+          if (paId != null) 'pa_id': paId,
           'started_at': UtcTime.nowIso(),
         }, onConflict: 'job_id,session_date,direction')
         .select('id')
@@ -882,6 +886,17 @@ class JobService {
     final last = (row['surname'] ?? '').toString().trim();
     final full = [first, last].where((x) => x.isNotEmpty).join(' ');
     return full.isEmpty ? 'Unassigned' : full;
+  }
+
+  Future<String?> _fetchAssignedPaId(String jobDbId) async {
+    final row = await _supabase
+        .from('jobs')
+        .select('assigned_pa_id')
+        .eq('id', jobDbId)
+        .maybeSingle();
+    final paId = row?['assigned_pa_id']?.toString().trim();
+    if (paId == null || paId.isEmpty) return null;
+    return paId;
   }
 
   // ── Status converters ─────────────────────────────────────────────────────

@@ -2,7 +2,6 @@
 import {
     HiOutlineDownload,
     HiOutlineFilter,
-    HiOutlineCalendar,
     HiSearch,
     HiChevronLeft,
     HiChevronRight,
@@ -27,6 +26,37 @@ import { ShimmerBlock } from '../../../../utils/Shimmer';
 
 const ITEMS_PER_PAGE = 8;
 
+function StaffTableSkeletonRows({ count = ITEMS_PER_PAGE }) {
+    return Array.from({ length: count }, (_, i) => (
+        <tr key={`skel-${i}`}>
+            <td className="px-4 py-5">
+                <div className="flex items-center gap-3">
+                    <ShimmerBlock className="w-10 h-10 rounded-full shrink-0" />
+                    <ShimmerBlock className="h-3.5 w-28 rounded" />
+                </div>
+            </td>
+            <td className="px-4 py-5">
+                <ShimmerBlock className="h-6 w-16 rounded-[12px]" />
+            </td>
+            <td className="px-4 py-5 text-center">
+                <ShimmerBlock className="h-3.5 w-8 rounded mx-auto" />
+            </td>
+            <td className="px-4 py-5 text-center">
+                <ShimmerBlock className="h-3.5 w-8 rounded mx-auto" />
+            </td>
+            <td className="px-4 py-5 text-center">
+                <ShimmerBlock className="h-3.5 w-8 rounded mx-auto" />
+            </td>
+            <td className="px-4 py-5 text-center">
+                <ShimmerBlock className="h-3.5 w-8 rounded mx-auto" />
+            </td>
+            <td className="px-4 py-5 text-center">
+                <ShimmerBlock className="h-6 w-14 rounded-[10px] mx-auto" />
+            </td>
+        </tr>
+    ));
+}
+
 const Report = () => {
     const navigate = useNavigate();
     const now = new Date();
@@ -42,9 +72,10 @@ const Report = () => {
     const {
         companyName,
         data: report,
+        roster,
         loading,
         error,
-    } = useAdminReport({ year, month, role: roleFilter });
+    } = useAdminReport({ year, month });
 
     useEffect(() => {
         setPage(1);
@@ -53,17 +84,40 @@ const Report = () => {
 
     const displayError = reportError || error;
 
+    const staffByRole = useMemo(() => {
+        const rows = report?.staff || [];
+        if (roleFilter === 'driver') return rows.filter((s) => s.role === 'Driver');
+        if (roleFilter === 'pa') return rows.filter((s) => s.role === 'PA');
+        return rows;
+    }, [report, roleFilter]);
+
     const filteredStaff = useMemo(() => {
         const q = search.trim().toLowerCase();
-        const rows = report?.staff || [];
-        if (!q) return rows;
-        return rows.filter(
+        if (!q) return staffByRole;
+        return staffByRole.filter(
             (s) =>
                 s.name.toLowerCase().includes(q) ||
                 s.role.toLowerCase().includes(q) ||
                 String(s.status || '').toLowerCase().includes(q),
         );
-    }, [report, search]);
+    }, [staffByRole, search]);
+
+    const topStaff = useMemo(() => {
+        return [...staffByRole]
+            .filter((s) => (s.completedSessions || 0) > 0 || (s.totalSessions || 0) > 0)
+            .sort(
+                (a, b) =>
+                    (b.completedSessions || 0) - (a.completedSessions || 0) ||
+                    (b.totalSessions || 0) - (a.totalSessions || 0),
+            )
+            .slice(0, 5)
+            .map((s) => ({
+                id: s.id,
+                name: s.name,
+                role: s.role,
+                value: s.completedSessions || s.totalSessions || 0,
+            }));
+    }, [staffByRole]);
 
     const totalPages = Math.max(1, Math.ceil(filteredStaff.length / ITEMS_PER_PAGE));
     const currentPage = Math.min(page, totalPages);
@@ -92,7 +146,11 @@ const Report = () => {
         try {
             downloadAdminMonthlyReportPdf({
                 companyName,
-                report,
+                report: {
+                    ...report,
+                    staff: filteredStaff,
+                    topStaffBySessions: topStaff,
+                },
             });
         } catch (e) {
             setReportError(e?.message || 'Could not generate PDF.');
@@ -101,34 +159,42 @@ const Report = () => {
         }
     };
 
+    const rosterDriversReady = roster?.totalDrivers != null;
+    const rosterPasReady = roster?.totalPas != null;
+
     const stats = [
         {
             title: 'Total Jobs',
             value: report?.stats?.totalJobs,
             icon: <HiOutlineChartBar className="text-blue-600" size={20} />,
             bgColor: 'bg-blue-50',
+            periodLoading: true,
         },
         {
             title: 'Total Drivers',
-            value: report?.stats?.totalDrivers,
+            value: roster?.totalDrivers,
             icon: <MdDirectionsCar className="text-blue-600" size={20} />,
             bgColor: 'bg-blue-50',
+            periodLoading: false,
+            ready: rosterDriversReady,
         },
         {
             title: 'Total PAs',
-            value: report?.stats?.totalPas,
+            value: roster?.totalPas,
             icon: <MdPeople className="text-green-600" size={20} />,
             bgColor: 'bg-green-50',
+            periodLoading: false,
+            ready: rosterPasReady,
         },
         {
             title: 'Total Sessions',
             value: report?.stats?.totalSessions,
             icon: <MdAssignment className="text-orange-600" size={20} />,
             bgColor: 'bg-orange-50',
+            periodLoading: true,
         },
     ];
 
-    const topStaff = report?.topStaffBySessions || [];
     const topMax = Math.max(1, ...topStaff.map((s) => s.value || 0));
     const weekBars = report?.morningVsEveningByWeek || [];
     const weekMax = Math.max(
@@ -136,12 +202,13 @@ const Report = () => {
         ...weekBars.flatMap((w) => [w.morning || 0, w.evening || 0]),
     );
 
-    const fmt = (n) =>
-        loading ? (
-            <ShimmerBlock className="h-8 w-16 rounded-md inline-block" />
-        ) : (
-            Number(n ?? 0).toLocaleString()
-        );
+    const fmtStat = (stat) => {
+        const showShimmer = stat.periodLoading ? loading : !stat.ready;
+        if (showShimmer) {
+            return <ShimmerBlock className="h-8 w-16 rounded-md inline-block" />;
+        }
+        return Number(stat.value ?? 0).toLocaleString();
+    };
 
     return (
         <div className="space-y-6 max-w-[1600px] mx-auto">
@@ -222,7 +289,7 @@ const Report = () => {
                                 </div>
                             </div>
                             <div className="text-[28px] font-bold text-gray-900 leading-none min-h-9 flex items-center">
-                                {fmt(stat.value)}
+                                {fmtStat(stat)}
                             </div>
                             <h3 className="text-gray-500 text-[13px] font-medium mt-1">{stat.title}</h3>
                         </div>
@@ -271,14 +338,8 @@ const Report = () => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {loading && (
-                                <tr>
-                                    <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">
-                                        Loading staff…
-                                    </td>
-                                </tr>
-                            )}
-                            {!loading && paginatedStaff.length === 0 && (
+                            {loading && <StaffTableSkeletonRows count={ITEMS_PER_PAGE} />}
+                            {!loading && filteredStaff.length === 0 && (
                                 <tr>
                                     <td colSpan={7} className="px-4 py-10 text-center text-sm text-gray-400">
                                         No staff found for this filter.
@@ -339,25 +400,27 @@ const Report = () => {
 
                 <div className="px-6 py-5 bg-gray-50/20 flex items-center justify-between border-t border-gray-50">
                     <span className="text-[12px] font-bold text-gray-400">
-                        {filteredStaff.length === 0
-                            ? '0 staff'
-                            : `Showing ${rangeStart}–${rangeEnd} of ${filteredStaff.length} staff`}
+                        {loading
+                            ? 'Loading staff…'
+                            : filteredStaff.length === 0
+                              ? '0 staff'
+                              : `Showing ${rangeStart}–${rangeEnd} of ${filteredStaff.length} staff`}
                     </span>
                     <div className="flex items-center gap-1.5">
                         <button
                             type="button"
-                            disabled={currentPage <= 1}
+                            disabled={loading || currentPage <= 1}
                             onClick={() => setPage((p) => Math.max(1, p - 1))}
                             className="w-9 h-9 flex items-center justify-center rounded-[10px] hover:bg-white text-gray-400 transition-colors disabled:opacity-40"
                         >
                             <HiChevronLeft size={18} />
                         </button>
                         <span className="px-3 text-[13px] font-bold text-gray-600">
-                            {currentPage} / {totalPages}
+                            {loading ? '— / —' : `${currentPage} / ${totalPages}`}
                         </span>
                         <button
                             type="button"
-                            disabled={currentPage >= totalPages}
+                            disabled={loading || currentPage >= totalPages}
                             onClick={() => setPage((p) => Math.min(totalPages, p + 1))}
                             className="w-9 h-9 flex items-center justify-center rounded-[10px] hover:bg-white text-gray-400 transition-colors disabled:opacity-40"
                         >
@@ -381,6 +444,17 @@ const Report = () => {
                         <p className="text-sm text-gray-400 py-16 text-center">No sessions in this month yet.</p>
                     )}
 
+                    {loading && topStaff.length === 0 && (
+                        <div className="h-72 flex items-end justify-between gap-4 px-4">
+                            {['h-24', 'h-40', 'h-32', 'h-48', 'h-36'].map((h, i) => (
+                                <div key={i} className="flex-1 flex flex-col items-center justify-end gap-3 h-full pb-2">
+                                    <ShimmerBlock className={`w-full max-w-[40px] ${h} rounded-t-[4px]`} />
+                                    <ShimmerBlock className="h-2.5 w-12 rounded" />
+                                </div>
+                            ))}
+                        </div>
+                    )}
+
                     {topStaff.length > 0 && (
                         <div className="h-72 flex items-end justify-between gap-4 px-4 relative">
                             <div className="absolute inset-0 top-0 bottom-14 flex flex-col justify-between pointer-events-none px-4">
@@ -389,7 +463,7 @@ const Report = () => {
                                 ))}
                             </div>
                             {topStaff.map((item) => (
-                                <div key={item.id} className="flex-1 flex flex-col items-center gap-3 relative z-10">
+                                <div key={`${item.role}-${item.id}`} className="flex-1 flex flex-col items-center gap-3 relative z-10">
                                     <div className="text-[10px] font-bold text-gray-400 mb-0.5">{item.value}</div>
                                     <div
                                         className="w-full max-w-[40px] rounded-t-[4px] bg-[#004D6D] transition-all hover:brightness-110 shadow-sm"
@@ -425,6 +499,26 @@ const Report = () => {
 
                     {weekBars.length === 0 && !loading && (
                         <p className="text-sm text-gray-400 py-12 text-center">No session data.</p>
+                    )}
+
+                    {loading && weekBars.length === 0 && (
+                        <div className="h-56 flex items-end justify-around gap-2 px-4">
+                            {[
+                                ['h-20', 'h-14'],
+                                ['h-28', 'h-20'],
+                                ['h-24', 'h-16'],
+                                ['h-32', 'h-24'],
+                                ['h-16', 'h-12'],
+                            ].map(([a, b], i) => (
+                                <div key={i} className="flex flex-col items-center gap-4 flex-1">
+                                    <div className="flex items-end gap-1.5 h-40 w-full justify-center">
+                                        <ShimmerBlock className={`w-8 ${a} rounded-t-[4px]`} />
+                                        <ShimmerBlock className={`w-8 ${b} rounded-t-[4px]`} />
+                                    </div>
+                                    <ShimmerBlock className="h-2.5 w-12 rounded" />
+                                </div>
+                            ))}
+                        </div>
                     )}
 
                     {weekBars.length > 0 && (
@@ -470,7 +564,7 @@ const Report = () => {
                         {loading ? 'Loading report…' : 'Report ready'}
                     </div>
                     <div className="text-[12px] text-gray-400 font-medium tracking-wide mt-0.5">
-                        {(report?.staff || []).length} staff
+                        {filteredStaff.length} staff
                         <span className="mx-1.5 opacity-30">•</span>
                         {Number(report?.stats?.totalSessions || 0).toLocaleString()} sessions
                         <span className="mx-1.5 opacity-30">•</span>

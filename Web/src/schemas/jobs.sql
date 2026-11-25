@@ -145,12 +145,14 @@ create table public.job_sessions (
   completed_at timestamp with time zone null,
   note text null,
   driver_id uuid null,
+  pa_id uuid null,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
   constraint job_sessions_pkey primary key (id),
   constraint uq_job_session unique (job_id, session_date, direction),
   constraint job_sessions_job_id_fkey foreign KEY (job_id) references jobs (id) on delete CASCADE,
   constraint job_sessions_driver_id_fkey foreign KEY (driver_id) references drivers (id) on delete set null,
+  constraint job_sessions_pa_id_fkey foreign KEY (pa_id) references passenger_assistant (id) on delete set null,
   constraint job_sessions_direction_check check (
     (
       direction = any (array['outbound'::text, 'inbound'::text])
@@ -175,6 +177,8 @@ create index IF not exists idx_job_sessions_job on public.job_sessions using btr
 create index IF not exists idx_job_sessions_date on public.job_sessions using btree (session_date, direction) TABLESPACE pg_default;
 
 create index IF not exists idx_job_sessions_driver on public.job_sessions using btree (driver_id) TABLESPACE pg_default;
+
+create index IF not exists idx_job_sessions_pa on public.job_sessions using btree (pa_id) TABLESPACE pg_default;
 -- =====================================================
 -- Job Session Passengers Table
 -- =====================================================

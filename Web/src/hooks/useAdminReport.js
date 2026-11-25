@@ -8,6 +8,7 @@ import { getAdminMonthlyReport } from '../services/adminReportService'
   companyId: string | null,
   companyName: string,
   data: object | null,
+  roster: { totalDrivers: number | null, totalPas: number | null },
   error: string | null,
   isFetching: boolean,
 }} */
@@ -16,6 +17,7 @@ let store = {
   companyId: null,
   companyName: '',
   data: null,
+  roster: { totalDrivers: null, totalPas: null },
   error: null,
   isFetching: false,
 }
@@ -36,17 +38,22 @@ function getSnapshot() {
   return store
 }
 
-function reportKey({ year, month, role }) {
-  return `${year}-${month}-${role || 'all'}`
+/** Month-only key — role is filtered in the UI from the full staff list. */
+function reportKey({ year, month }) {
+  return `${year}-${month}`
 }
 
-async function fetchAdminReport({ year, month, role = 'all', background = false } = {}) {
-  const key = reportKey({ year, month, role })
+async function fetchAdminReport({ year, month, background = false } = {}) {
+  const key = reportKey({ year, month })
   if (fetchPromise && fetchKey === key) return fetchPromise
+
+  const samePeriod = store.key === key && store.data !== null
 
   store = {
     ...store,
     isFetching: true,
+    // Keep roster across month changes; clear period payload until the new month arrives.
+    data: samePeriod ? store.data : null,
     ...(background ? {} : { error: null }),
   }
   emit()
@@ -69,9 +76,10 @@ async function fetchAdminReport({ year, month, role = 'all', background = false 
         throw Object.assign(new Error('No company linked to your account.'), { code: 'NO_COMPANY' })
       }
 
+      // Always load all roles; UI filters Driver / PA client-side.
       const [company, data] = await Promise.all([
         getCompanyById(companyId),
-        getAdminMonthlyReport(companyId, { year, month, role }),
+        getAdminMonthlyReport(companyId, { year, month, role: 'all' }),
       ])
 
       if (fetchKey !== runKey) return
@@ -81,6 +89,10 @@ async function fetchAdminReport({ year, month, role = 'all', background = false 
         companyId,
         companyName: company?.company_name || '',
         data,
+        roster: {
+          totalDrivers: data?.stats?.totalDrivers ?? null,
+          totalPas: data?.stats?.totalPas ?? null,
+        },
         error: null,
         isFetching: false,
       }
@@ -95,9 +107,10 @@ async function fetchAdminReport({ year, month, role = 'all', background = false 
       } else {
         store = {
           key,
-          companyId: null,
-          companyName: '',
+          companyId: store.companyId,
+          companyName: store.companyName,
           data: null,
+          roster: store.roster,
           error: msg,
           isFetching: false,
         }
@@ -121,6 +134,7 @@ export function clearAdminReportCache() {
     companyId: null,
     companyName: '',
     data: null,
+    roster: { totalDrivers: null, totalPas: null },
     error: null,
     isFetching: false,
   }
@@ -131,31 +145,31 @@ export function clearAdminReportCache() {
 
 /**
  * Stale-while-revalidate monthly report for the admin portal.
- * Reuses cache when the same month/role is opened again.
+ * Cached by month only; role filtering is done in the page.
  */
-export function useAdminReport({ year, month, role = 'all' }) {
+export function useAdminReport({ year, month }) {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot)
-  const key = reportKey({ year, month, role })
+  const key = reportKey({ year, month })
   const cacheHit = snapshot.key === key && snapshot.data !== null
 
   useEffect(() => {
     fetchAdminReport({
       year,
       month,
-      role,
       background: store.key === key && store.data !== null,
     })
-  }, [year, month, role, key])
+  }, [year, month, key])
 
   const reload = useCallback(
-    () => fetchAdminReport({ year, month, role, background: false }),
-    [year, month, role],
+    () => fetchAdminReport({ year, month, background: false }),
+    [year, month],
   )
 
   return {
-    companyId: cacheHit ? snapshot.companyId : null,
-    companyName: cacheHit ? snapshot.companyName : '',
+    companyId: cacheHit || snapshot.roster.totalDrivers != null ? snapshot.companyId : null,
+    companyName: cacheHit ? snapshot.companyName : snapshot.companyName || '',
     data: cacheHit ? snapshot.data : null,
+    roster: snapshot.roster,
     loading: !cacheHit && snapshot.error === null,
     refreshing: snapshot.isFetching && cacheHit,
     error: cacheHit || snapshot.key === key ? snapshot.error : null,

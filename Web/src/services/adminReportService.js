@@ -93,6 +93,7 @@ export async function getAdminMonthlyReport(companyId, { year, month, role = 'al
         direction,
         status,
         driver_id,
+        pa_id,
         job_id,
         jobs!inner ( id, company_id, assigned_pa_id, status )
       `,
@@ -186,7 +187,8 @@ export async function getAdminMonthlyReport(companyId, { year, month, role = 'al
       if (isCompleted) row.completedSessions += 1
     }
 
-    const paId = s.jobs?.assigned_pa_id
+    // Prefer stamped session.pa_id; fall back for legacy rows.
+    const paId = s.pa_id || s.jobs?.assigned_pa_id
     if (paId && byPa.has(paId)) {
       const row = byPa.get(paId)
       if (s.job_id) row.jobIds.add(s.job_id)

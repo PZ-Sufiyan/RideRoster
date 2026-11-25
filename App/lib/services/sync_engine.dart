@@ -175,11 +175,12 @@ class SyncEngine {
     final driverId = payload['driver_id'] as String;
     final startedAt = payload['started_at'] as String;
 
-    await _assertDriverStillAssigned(jobId: jobId, driverId: driverId);
+    final job = await _assertDriverStillAssigned(jobId: jobId, driverId: driverId);
+    final paId = _paIdFromJob(job);
 
     final existingSession = await _supabase
         .from('job_sessions')
-        .select('id, started_at')
+        .select('id, started_at, pa_id')
         .eq('job_id', jobId)
         .eq('session_date', sessionDate)
         .eq('direction', direction)
@@ -191,6 +192,12 @@ class SyncEngine {
       if (serverSessionId.isEmpty) {
         throw Exception('start_session: existing session has empty ID');
       }
+      // Soft backfill only — never overwrite a stamped PA.
+      await _backfillSessionPaIdIfMissing(
+        sessionId: serverSessionId,
+        existingPaId: existingSession['pa_id'],
+        paId: paId,
+      );
     } else {
       // Upsert session row — matches JobService.startSession behaviour
       final sessionResult = await _supabase
@@ -201,6 +208,7 @@ class SyncEngine {
             'direction': direction,
             'status': 'active',
             'driver_id': driverId,
+            if (paId != null) 'pa_id': paId,
             'started_at': startedAt,
           }, onConflict: 'job_id,session_date,direction')
           .select('id')
@@ -553,6 +561,9 @@ class SyncEngine {
         ? null
         : rawNote.trim();
 
+    // Soft backfill PA before complete — does not change status flow.
+    await _ensureSessionPaId(sessionId: serverSessionId);
+
     // Mirrors JobService.completeJob exactly
     await _supabase
         .from('job_session_passengers')
@@ -597,25 +608,52 @@ class SyncEngine {
       final direction = payload['direction'] as String;
       final driverId = payload['driver_id'] as String;
 
-      await _assertDriverStillAssigned(jobId: jobId, driverId: driverId);
+      final job = await _assertDriverStillAssigned(jobId: jobId, driverId: driverId);
+      final paId = _paIdFromJob(job);
 
-      final result = await _supabase
+      final existingSession = await _supabase
           .from('job_sessions')
-          .upsert({
-            'job_id': jobId,
-            'session_date': sessionDate,
-            'direction': direction,
-            'status': status,
-            'driver_id': driverId,
-            if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
-            'updated_at': UtcTime.nowIso(),
-          }, onConflict: 'job_id,session_date,direction')
-          .select('id')
-          .single();
+          .select('id, pa_id')
+          .eq('job_id', jobId)
+          .eq('session_date', sessionDate)
+          .eq('direction', direction)
+          .maybeSingle();
 
-      serverSessionId = (result['id'] ?? '').toString();
-      if (serverSessionId.isEmpty) {
-        throw Exception('session_status: server returned empty session ID');
+      if (existingSession != null) {
+        serverSessionId = (existingSession['id'] ?? '').toString();
+        if (serverSessionId.isEmpty) {
+          throw Exception('session_status: existing session has empty ID');
+        }
+        await _backfillSessionPaIdIfMissing(
+          sessionId: serverSessionId,
+          existingPaId: existingSession['pa_id'],
+          paId: paId,
+        );
+        await _supabase.from('job_sessions').update({
+          'status': status,
+          if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+          'updated_at': UtcTime.nowIso(),
+        }).eq('id', serverSessionId);
+      } else {
+        final result = await _supabase
+            .from('job_sessions')
+            .upsert({
+              'job_id': jobId,
+              'session_date': sessionDate,
+              'direction': direction,
+              'status': status,
+              'driver_id': driverId,
+              if (paId != null) 'pa_id': paId,
+              if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+              'updated_at': UtcTime.nowIso(),
+            }, onConflict: 'job_id,session_date,direction')
+            .select('id')
+            .single();
+
+        serverSessionId = (result['id'] ?? '').toString();
+        if (serverSessionId.isEmpty) {
+          throw Exception('session_status: server returned empty session ID');
+        }
       }
 
       sessionIdMap[localSessionId] = serverSessionId;
@@ -625,6 +663,8 @@ class SyncEngine {
       );
       return;
     }
+
+    await _ensureSessionPaId(sessionId: serverSessionId);
 
     await _supabase.from('job_sessions').update({
       'status': status,
@@ -689,13 +729,14 @@ class SyncEngine {
     await _local.patchChecklistServerId(localId: localId, serverId: serverId);
   }
 
-  Future<void> _assertDriverStillAssigned({
+  /// Returns the job row after validating the driver is still assigned.
+  Future<Map<String, dynamic>> _assertDriverStillAssigned({
     required String jobId,
     required String driverId,
   }) async {
     final row = await _supabase
         .from('jobs')
-        .select('assigned_driver_id, driver_approval_status')
+        .select('assigned_driver_id, driver_approval_status, assigned_pa_id')
         .eq('id', jobId)
         .maybeSingle();
 
@@ -710,6 +751,56 @@ class SyncEngine {
         'You are no longer assigned to this job.',
       );
     }
+    return row;
+  }
+
+  String? _paIdFromJob(Map<String, dynamic>? job) {
+    final raw = job?['assigned_pa_id']?.toString().trim();
+    if (raw == null || raw.isEmpty) return null;
+    return raw;
+  }
+
+  Future<void> _backfillSessionPaIdIfMissing({
+    required String sessionId,
+    required dynamic existingPaId,
+    required String? paId,
+  }) async {
+    if (paId == null || paId.isEmpty) return;
+    final current = existingPaId?.toString().trim();
+    if (current != null && current.isNotEmpty) return;
+    await _supabase.from('job_sessions').update({
+      'pa_id': paId,
+      'updated_at': UtcTime.nowIso(),
+    }).eq('id', sessionId);
+  }
+
+  /// Looks up job.assigned_pa_id and stamps session.pa_id only when still null.
+  Future<void> _ensureSessionPaId({required String sessionId}) async {
+    final session = await _supabase
+        .from('job_sessions')
+        .select('id, job_id, pa_id')
+        .eq('id', sessionId)
+        .maybeSingle();
+    if (session == null) return;
+
+    final existing = session['pa_id']?.toString().trim();
+    if (existing != null && existing.isNotEmpty) return;
+
+    final jobId = session['job_id']?.toString();
+    if (jobId == null || jobId.isEmpty) return;
+
+    final job = await _supabase
+        .from('jobs')
+        .select('assigned_pa_id')
+        .eq('id', jobId)
+        .maybeSingle();
+    final paId = _paIdFromJob(job);
+    if (paId == null) return;
+
+    await _supabase.from('job_sessions').update({
+      'pa_id': paId,
+      'updated_at': UtcTime.nowIso(),
+    }).eq('id', sessionId);
   }
 
   void dispose() {

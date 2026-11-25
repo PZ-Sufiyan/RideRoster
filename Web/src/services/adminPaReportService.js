@@ -51,8 +51,29 @@ function overlapsLeave(leave, start, end) {
   return ls <= end && le >= start
 }
 
+const SESSION_SELECT = `
+  id,
+  job_id,
+  session_date,
+  direction,
+  status,
+  started_at,
+  completed_at,
+  pa_id,
+  jobs!inner (
+    id,
+    company_id,
+    job_name,
+    client_school_name,
+    passenger_assistant_pay,
+    status,
+    assigned_pa_id
+  )
+`
+
 /**
- * PA monthly performance report from jobs.assigned_pa_id + sessions + leave.
+ * PA monthly performance report.
+ * Prefers job_sessions.pa_id history; falls back to jobs.assigned_pa_id for legacy rows.
  * @param {string} companyId
  * @param {string} paId
  * @param {{ year: number, month: number }} opts
@@ -67,7 +88,7 @@ export async function getAdminPaReport(companyId, paId, { year, month } = {}) {
   const { start, end } = monthDateRange(y, m)
   const periodLabel = monthLabel(y, m)
 
-  const [paRes, jobsRes, sessionsRes, leaveRes] = await Promise.all([
+  const [paRes, jobsRes, sessionsByPaRes, sessionsLegacyRes, leaveRes] = await Promise.all([
     supabase
       .from('passenger_assistant')
       .select('id, company_id, first_name, surname, status, fleet, phone, profile_picture_url')
@@ -83,28 +104,20 @@ export async function getAdminPaReport(companyId, paId, { year, month } = {}) {
       .eq('assigned_pa_id', paId)
       .neq('status', 'cancelled')
       .neq('status', 'canceled'),
+    // Historical: stamped at session time
     supabase
       .from('job_sessions')
-      .select(
-        `
-        id,
-        job_id,
-        session_date,
-        direction,
-        status,
-        started_at,
-        completed_at,
-        jobs!inner (
-          id,
-          company_id,
-          job_name,
-          client_school_name,
-          passenger_assistant_pay,
-          status,
-          assigned_pa_id
-        )
-      `,
-      )
+      .select(SESSION_SELECT)
+      .eq('pa_id', paId)
+      .eq('jobs.company_id', companyId)
+      .gte('session_date', start)
+      .lte('session_date', end)
+      .order('session_date', { ascending: false }),
+    // Legacy fallback: no pa_id yet, still on currently assigned job
+    supabase
+      .from('job_sessions')
+      .select(SESSION_SELECT)
+      .is('pa_id', null)
       .eq('jobs.assigned_pa_id', paId)
       .eq('jobs.company_id', companyId)
       .gte('session_date', start)
@@ -124,15 +137,23 @@ export async function getAdminPaReport(companyId, paId, { year, month } = {}) {
     throw err
   }
   if (jobsRes.error) throw jobsRes.error
-  if (sessionsRes.error) throw sessionsRes.error
+  if (sessionsByPaRes.error) throw sessionsByPaRes.error
+  if (sessionsLegacyRes.error) throw sessionsLegacyRes.error
 
   const pa = paRes.data
   const privatePa = isPrivateFleet(pa.fleet)
   const assignedJobs = jobsRes.data || []
-  const sessions = (sessionsRes.data || []).filter((s) => {
-    const js = String(s.jobs?.status || '').toLowerCase()
-    return js !== 'cancelled' && js !== 'canceled'
-  })
+
+  const sessionMap = new Map()
+  for (const s of [...(sessionsByPaRes.data || []), ...(sessionsLegacyRes.data || [])]) {
+    if (s?.id) sessionMap.set(s.id, s)
+  }
+  const sessions = [...sessionMap.values()]
+    .filter((s) => {
+      const js = String(s.jobs?.status || '').toLowerCase()
+      return js !== 'cancelled' && js !== 'canceled'
+    })
+    .sort((a, b) => String(b.session_date).localeCompare(String(a.session_date)))
   const leaves = leaveRes.error ? [] : leaveRes.data || []
 
   const jobIdsFromSessions = new Set(sessions.map((s) => s.job_id).filter(Boolean))
