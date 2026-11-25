@@ -9,6 +9,11 @@ import { clearSubAdminsListCache } from '../hooks/useSubAdminsList';
 import { clearLeaveRequestsListCache } from '../hooks/useLeaveRequestsList';
 import { clearJobsListCache } from '../hooks/useJobsList';
 import { clearNotificationsListCache } from '../hooks/useNotificationsList';
+import { clearAdminDashboardCache } from '../hooks/useAdminDashboard';
+import { clearAdminReportCache } from '../hooks/useAdminReport';
+import { clearAdminDriverReportCache } from '../hooks/useAdminDriverReport';
+import { clearAdminPaReportCache } from '../hooks/useAdminPaReport';
+import { clearCompanyAdminAccessCache } from '../services/companyAccessService';
 import { useSubAdminPermissions } from '../context/subAdminPermissionsContext';
 import { SIDEBAR_MENU_CONFIGS } from './sidebarMenuConfig';
 import {
@@ -179,6 +184,11 @@ const Sidebar = ({ isOpen, onClose }) => {
                                 clearLeaveRequestsListCache();
                                 clearJobsListCache();
                                 clearNotificationsListCache();
+                                clearAdminDashboardCache();
+                                clearAdminReportCache();
+                                clearAdminDriverReportCache();
+                                clearAdminPaReportCache();
+                                clearCompanyAdminAccessCache();
                                 await supabase.auth.signOut();
                                 localStorage.clear();
                                 navigate('/home');

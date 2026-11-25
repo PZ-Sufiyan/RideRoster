@@ -4,12 +4,6 @@ import autoTable from 'jspdf-autotable'
 const BRAND_RGB = [0, 77, 109]
 const MUTED_RGB = [100, 116, 139]
 
-function fmtPct(n) {
-  const v = Number(n) || 0
-  const sign = v > 0 ? '+' : ''
-  return `${sign}${v}%`
-}
-
 function sectionTitle(doc, y, title) {
   doc.setFont('helvetica', 'bold')
   doc.setFontSize(12)
@@ -53,25 +47,21 @@ export function buildAdminDashboardReportPdf({ companyName, data }) {
   y = sectionTitle(doc, y, 'Summary')
 
   const fleet = data?.fleetHeadline ?? 0
-  const fleetTrend = data?.fleetTrendPct
   const activeJobs = data?.activeJobsCount ?? 0
-  const jobsTrend = data?.jobsTrendPct
 
   doc.setFont('helvetica', 'normal')
   doc.setFontSize(10)
   doc.setTextColor(51, 65, 85)
   const summaryLines = [
-    `Total vehicles (fleet size): ${Number(fleet).toLocaleString()}`,
-    `Fleet trend vs last month: ${fmtPct(fleetTrend)}`,
+    `Total vehicles: ${Number(fleet).toLocaleString()}`,
     `Active jobs (non-draft, non-completed): ${Number(activeJobs).toLocaleString()}`,
-    `Active jobs trend vs last month: ${fmtPct(jobsTrend)}`,
   ]
   summaryLines.forEach((line, i) => {
     doc.text(line, margin, y + i * 6)
   })
   y += summaryLines.length * 6 + 8
 
-  y = sectionTitle(doc, y, 'Fleet distribution by job type')
+  y = sectionTitle(doc, y, 'Fleet distribution (company vs private)')
 
   const dist = data?.fleetDistribution || []
   const totalFleet = dist.reduce((s, x) => s + (x.count || 0), 0)
@@ -82,8 +72,8 @@ export function buildAdminDashboardReportPdf({ companyName, data }) {
 
   autoTable(doc, {
     startY: y,
-    head: [['Job type', 'Jobs', 'Share']],
-    body: fleetRows.length ? fleetRows : [['No published jobs yet', '—', '—']],
+    head: [['Fleet', 'Vehicles', 'Share']],
+    body: fleetRows.length ? fleetRows : [['No vehicles yet', '—', '—']],
     theme: 'striped',
     headStyles: { fillColor: BRAND_RGB, fontStyle: 'bold' },
     styles: { fontSize: 9, cellPadding: 3 },
@@ -97,13 +87,13 @@ export function buildAdminDashboardReportPdf({ companyName, data }) {
     y = margin
   }
 
-  y = sectionTitle(doc, y, 'Jobs created (last 6 months)')
+  y = sectionTitle(doc, y, 'Active jobs by month (last 6 months)')
 
   const monthRows = (data?.jobsByMonth || []).map((m) => [m.label || '—', String(m.count ?? 0)])
 
   autoTable(doc, {
     startY: y,
-    head: [['Month', 'Jobs created']],
+    head: [['Month', 'Active jobs']],
     body: monthRows.length ? monthRows : [['—', '0']],
     theme: 'striped',
     headStyles: { fillColor: BRAND_RGB, fontStyle: 'bold' },

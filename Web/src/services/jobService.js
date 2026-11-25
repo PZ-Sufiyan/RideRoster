@@ -19,6 +19,33 @@ import { isCompanyFleet, isPaApproved } from '../utils/fleet'
 
 export const JOB_DRAFT_STORAGE_KEY = 'rideRoster_adminJobDraft_v1'
 
+export const JOB_STATUS = {
+  UPCOMING: 'upcoming',
+  ACTIVE: 'active',
+  COMPLETED: 'completed',
+  CANCELLED: 'cancelled',
+}
+
+/** Date-based lifecycle status from semester window (UTC calendar date). */
+export function resolveJobLifecycleStatus(semesterStart, semesterEnd, todayYmd = new Date().toISOString().slice(0, 10)) {
+  const start = semesterStart ? String(semesterStart).slice(0, 10) : null
+  const end = semesterEnd ? String(semesterEnd).slice(0, 10) : null
+  if (start && end) {
+    if (todayYmd > end) return JOB_STATUS.COMPLETED
+    if (todayYmd >= start) return JOB_STATUS.ACTIVE
+    return JOB_STATUS.UPCOMING
+  }
+  if (end && todayYmd > end) return JOB_STATUS.COMPLETED
+  if (start && todayYmd >= start) return JOB_STATUS.ACTIVE
+  if (start) return JOB_STATUS.UPCOMING
+  return JOB_STATUS.ACTIVE
+}
+
+function isCancelledStatus(status) {
+  const s = String(status || '').trim().toLowerCase()
+  return s === 'cancelled' || s === 'canceled'
+}
+
 /** Normalise address strings so passengers sharing a location group together */
 export const normalizeAddressKey = (s) =>
   String(s || '')
@@ -357,7 +384,7 @@ export async function createJobFromDraft(companyId, draft) {
     evening_start_time:      toPgTime(step3.evening_start_time) || null,
     driver_pay:              parseOptionalMoney(step3.driver_pay),
     passenger_assistant_pay: parseOptionalMoney(step3.passenger_assistant_pay),
-    status:                  'draft',
+    status:                  resolveJobLifecycleStatus(step3.semester_start, step3.semester_end),
     assigned_driver_id:      null,
     assigned_pa_id:          null,
   }
@@ -776,8 +803,32 @@ export async function cancelJobById(jobId, companyId) {
 }
 
 export async function updateJobById(jobId, companyId, updates) {
+  const patch = { ...(updates || {}) }
+  const touchesSemester = Object.prototype.hasOwnProperty.call(patch, 'semester_start')
+    || Object.prototype.hasOwnProperty.call(patch, 'semester_end')
+  const forcesCancelled = isCancelledStatus(patch.status)
+
+  if (touchesSemester && !forcesCancelled) {
+    const { data: current, error: currentErr } = await supabase
+      .from('jobs')
+      .select('status, semester_start, semester_end')
+      .eq('id', jobId)
+      .eq('company_id', companyId)
+      .maybeSingle()
+    if (currentErr) throw currentErr
+    if (!isCancelledStatus(current?.status)) {
+      const start = Object.prototype.hasOwnProperty.call(patch, 'semester_start')
+        ? patch.semester_start
+        : current?.semester_start
+      const end = Object.prototype.hasOwnProperty.call(patch, 'semester_end')
+        ? patch.semester_end
+        : current?.semester_end
+      patch.status = resolveJobLifecycleStatus(start, end)
+    }
+  }
+
   const { data, error } = await supabase
-    .from('jobs').update({ ...updates, updated_at: new Date().toISOString() })
+    .from('jobs').update({ ...patch, updated_at: new Date().toISOString() })
     .eq('id', jobId).eq('company_id', companyId).select().single()
   if (error) throw error
   try {
@@ -1205,19 +1256,32 @@ export function formatJobDateTimeLabel(jobDate, pickupTime) {
 }
 
 export function deriveJobUiStatus(job) {
-  const s = (job.status || 'draft').toLowerCase()
-  if (s === 'cancelled') return { label: 'Cancelled', statusColor: 'bg-red-50 text-red-600 border-red-100' }
-
-  if (job.semester_start && job.semester_end) {
-    const today = new Date().toISOString().slice(0, 10)
-    if (today > job.semester_end)    return { label: 'Completed', statusColor: 'bg-gray-50 text-gray-600 border-gray-100' }
-    if (today >= job.semester_start) return { label: 'Active',    statusColor: 'bg-green-50 text-green-600 border-green-100' }
+  const s = String(job?.status || job?.statusRaw || '').trim().toLowerCase()
+  if (isCancelledStatus(s)) {
+    return { label: 'Cancelled', statusColor: 'bg-red-50 text-red-600 border-red-100' }
+  }
+  if (s === 'completed' || s === 'complete') {
+    return { label: 'Completed', statusColor: 'bg-gray-50 text-gray-600 border-gray-100' }
+  }
+  if (s === 'active') {
+    return { label: 'Active', statusColor: 'bg-green-50 text-green-600 border-green-100' }
+  }
+  if (s === 'upcoming') {
     return { label: 'Upcoming', statusColor: 'bg-blue-50 text-blue-600 border-blue-100' }
   }
 
-  if (!job.assigned_driver_id) return { label: 'Unassigned',  statusColor: 'bg-orange-50 text-orange-600 border-orange-100' }
-  if (s === 'active')          return { label: 'In Progress',  statusColor: 'bg-green-50 text-green-600 border-green-100' }
-  if (s === 'completed')       return { label: 'Completed',    statusColor: 'bg-gray-50 text-gray-600 border-gray-100' }
+  // Legacy rows (e.g. draft) until backfill / sync runs.
+  if (job?.semester_start && job?.semester_end) {
+    const today = new Date().toISOString().slice(0, 10)
+    if (today > String(job.semester_end).slice(0, 10)) {
+      return { label: 'Completed', statusColor: 'bg-gray-50 text-gray-600 border-gray-100' }
+    }
+    if (today >= String(job.semester_start).slice(0, 10)) {
+      return { label: 'Active', statusColor: 'bg-green-50 text-green-600 border-green-100' }
+    }
+    return { label: 'Upcoming', statusColor: 'bg-blue-50 text-blue-600 border-blue-100' }
+  }
+
   return { label: 'Upcoming', statusColor: 'bg-blue-50 text-blue-600 border-blue-100' }
 }
 
@@ -1230,17 +1294,11 @@ export function isJobCompleted(job) {
 
   const statusLabel = String(job.status || '').trim().toLowerCase()
   const rawStatus = String(job.statusRaw || '').trim().toLowerCase()
-  if (
-    statusLabel === 'cancelled' ||
-    statusLabel === 'canceled' ||
-    rawStatus === 'cancelled' ||
-    rawStatus === 'canceled'
-  ) {
-    return false
-  }
+  if (isCancelledStatus(statusLabel) || isCancelledStatus(rawStatus)) return false
   if (statusLabel === 'completed' || statusLabel === 'complete') return true
   if (rawStatus === 'completed' || rawStatus === 'complete') return true
 
+  // Keep semester fallback so completion-release notifications still fire if status sync lags.
   const semesterEnd = job.semester_end || job.semesterEnd
   if (semesterEnd) {
     const today = new Date().toISOString().slice(0, 10)
@@ -1276,6 +1334,7 @@ export async function releaseAssignedDriverIfJobCompleted(job) {
       assigned_driver_id: null,
       driver_approval_status: null,
       driver_counter_offer_pay: null,
+      status: JOB_STATUS.COMPLETED,
       updated_at: new Date().toISOString(),
     })
     .eq('id', job.id)
@@ -1287,7 +1346,7 @@ export async function releaseAssignedDriverIfJobCompleted(job) {
 
   try {
     await notifyJobCompletedDriverReleased({
-      job,
+      job: { ...job, status: JOB_STATUS.COMPLETED },
       driverId: previousDriverId,
     })
   } catch (notifyErr) {
@@ -1306,6 +1365,7 @@ export async function releaseAssignedPaIfJobCompleted(job) {
     .from('jobs')
     .update({
       assigned_pa_id: null,
+      status: JOB_STATUS.COMPLETED,
       updated_at: new Date().toISOString(),
     })
     .eq('id', job.id)
@@ -1317,7 +1377,7 @@ export async function releaseAssignedPaIfJobCompleted(job) {
 
   try {
     await notifyJobCompletedPaReleased({
-      job,
+      job: { ...job, status: JOB_STATUS.COMPLETED },
       paId: previousPaId,
     })
   } catch (notifyErr) {

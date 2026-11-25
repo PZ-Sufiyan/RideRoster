@@ -157,6 +157,8 @@ export async function runJobSchedulerTick(supabase) {
     .not('assigned_driver_id', 'is', null)
     .eq('driver_approval_status', 'accepted')
     .neq('status', 'cancelled')
+    .neq('status', 'canceled')
+    .neq('status', 'completed')
 
   if (error) throw error
 

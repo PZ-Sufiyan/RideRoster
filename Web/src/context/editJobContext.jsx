@@ -15,6 +15,7 @@ import {
     releaseAssignedDriverIfJobCompleted,
     releaseAssignedStaffIfJobCompleted,
     removeJobAssignedDriver,
+    resolveJobLifecycleStatus,
     timeInputFromDb,
     toPgTime,
     updateJobAssignedDriver,
@@ -384,6 +385,12 @@ export function EditJobProvider({ children }) {
         setSaveInProgress(true);
         try {
             // 1 ── Update jobs row (driver assignment handled separately below)
+            const currentStatus = String(bundle?.job?.status || '').trim().toLowerCase()
+            const isCancelled = currentStatus === 'cancelled' || currentStatus === 'canceled'
+            const nextStatus = isCancelled
+                ? currentStatus
+                : resolveJobLifecycleStatus(step3Draft.semesterStart, step3Draft.semesterEnd)
+
             const { error: jobErr } = await supabase
                 .from('jobs')
                 .update({
@@ -401,6 +408,7 @@ export function EditJobProvider({ children }) {
                     ...(driverChanged ? {} : { driver_pay: driverPay }),
                     passenger_assistant_pay: parseMoneyInput(step3Draft.passengerAssistantPay),
                     assigned_pa_id:          draftPaId     || null,
+                    status:                  nextStatus,
                     updated_at:              new Date().toISOString(),
                 })
                 .eq('id', jobId)
@@ -459,7 +467,7 @@ export function EditJobProvider({ children }) {
                     job_name: bundle?.job?.job_name,
                     client_school_name: step1Draft.clientName.trim(),
                     internal_job_id: step1Draft.internalId.trim() || bundle?.job?.internal_job_id || null,
-                    status: bundle?.job?.status,
+                    status: nextStatus,
                     semester_start: step3Draft.semesterStart,
                     semester_end: step3Draft.semesterEnd,
                     assigned_driver_id: draftDriverId || null,

@@ -1,393 +1,608 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
+    HiOutlineDownload,
     HiSearch,
-    HiFilter,
-    HiDotsVertical,
     HiChevronLeft,
     HiChevronRight,
-    HiOutlinePrinter,
-    HiOutlineDownload,
+    HiArrowLeft,
 } from 'react-icons/hi';
-import { MdFileDownload } from 'react-icons/md';
+import {
+    MdAnalytics,
+    MdDirectionsCar,
+    MdWbSunny,
+    MdNightsStay,
+    MdWarning,
+} from 'react-icons/md';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAdminPaReport } from '../../../../hooks/useAdminPaReport';
+import {
+    monthInputValue,
+    monthLabel,
+    parseMonthInput,
+} from '../../../../services/adminReportService';
+import { downloadAdminPaReportPdf } from '../../../../services/adminPaReportPdfService';
+import FleetBadge from '../../../../components/FleetBadge';
+import { ShimmerBlock } from '../../../../utils/Shimmer';
 
-/* ─────────────────────────────────────────────
-   Attendance Trend Line Chart (Last 6 Months)
-───────────────────────────────────────────── */
-const AttendanceTrendChart = () => {
-    // ~6 months: Aug-Dec, Jan — values represent attendance %
-    const months = ['Aug 2023', 'Sep 2023', 'Oct 2023', 'Nov 2023', 'Dec 2023', 'Jan 2024'];
-    const values = [44, 48, 43, 47, 45, 49]; // approx from screenshot
-    const W = 340, H = 90;
-    const yMin = 40, yMax = 52;
-    const toX = i => (i / (months.length - 1)) * W;
-    const toY = v => H - ((v - yMin) / (yMax - yMin)) * H;
-    const pts = values.map((v, i) => [toX(i), toY(v)]);
-    const linePath = pts.map((p, i) => `${i === 0 ? 'M' : 'L'} ${p[0]} ${p[1]}`).join(' ');
-    const areaPath = `M ${pts[0][0]} ${pts[0][1]} ${pts.map(p => `L ${p[0]} ${p[1]}`).join(' ')} L ${pts[pts.length - 1][0]} ${H} L ${pts[0][0]} ${H} Z`;
+const ITEMS_PER_PAGE = 10;
 
-    return (
-        <svg viewBox={`0 0 ${W} ${H + 22}`} className="w-full" style={{ height: 120 }}>
-            <defs>
-                <linearGradient id="paTrendGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#004D6D" stopOpacity="0.15" />
-                    <stop offset="100%" stopColor="#004D6D" stopOpacity="0" />
-                </linearGradient>
-            </defs>
-            {/* grid lines */}
-            {[42, 44, 46, 48, 50].map(v => (
-                <line key={v} x1={0} y1={toY(v)} x2={W} y2={toY(v)} stroke="#e5e7eb" strokeWidth="1" />
-            ))}
-            {/* y labels */}
-            {[42, 44, 46, 48, 50].map(v => (
-                <text key={v} x={-4} y={toY(v) + 3} textAnchor="end" fontSize="7" fill="#9ca3af">{v}</text>
-            ))}
-            {/* area */}
-            <path d={areaPath} fill="url(#paTrendGrad)" />
-            {/* line */}
-            <path d={linePath} fill="none" stroke="#004D6D" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            {/* dots */}
-            {pts.map(([x, y], i) => (
-                <circle key={i} cx={x} cy={y} r="3" fill="#fff" stroke="#004D6D" strokeWidth="1.5" />
-            ))}
-            {/* x labels */}
-            {months.map((m, i) => (
-                <text key={i} x={toX(i)} y={H + 14} textAnchor="middle" fontSize="7" fill="#9ca3af">{m}</text>
-            ))}
-        </svg>
-    );
-};
+function money(n) {
+    if (n == null || Number.isNaN(Number(n))) return '—';
+    return `£${Number(n).toFixed(2)}`;
+}
 
-/* ─────────────────────────────────────────────
-   Monthly Availability Comparison Bar Chart
-───────────────────────────────────────────── */
-const AvailabilityBarChart = () => {
-    const data = [
-        { label: 'Aug', value: 88, color: '#5b9bbf' },
-        { label: 'Sep', value: 92, color: '#5b9bbf' },
-        { label: 'Oct', value: 85, color: '#5b9bbf' },
-        { label: 'Nov', value: 90, color: '#5b9bbf' },
-        { label: 'Dec', value: 95, color: '#10b981' },
-        { label: 'Jan', value: 91, color: '#004D6D' },
-    ];
-    const W = 300, H = 90, barW = 30, gap = 18, startX = 18, yMax = 100;
+function statusClass(status) {
+    const s = String(status || '').toLowerCase();
+    if (s === 'completed') return 'bg-green-50 text-green-600';
+    if (s === 'skipped' || s === 'incomplete') return 'bg-orange-50 text-orange-600';
+    if (s === 'cancelled' || s === 'canceled') return 'bg-red-50 text-red-600';
+    if (s === 'active') return 'bg-blue-50 text-blue-600';
+    return 'bg-gray-50 text-gray-600';
+}
 
-    return (
-        <svg viewBox={`0 0 ${W} ${H + 22}`} className="w-full" style={{ height: 120 }}>
-            {/* grid lines */}
-            {[40, 60, 80, 100].map(v => (
-                <line key={v} x1={startX} y1={H - (v / yMax) * H} x2={W - 4} y2={H - (v / yMax) * H} stroke="#e5e7eb" strokeWidth="1" />
-            ))}
-            {/* y labels */}
-            {[40, 60, 80, 100].map(v => (
-                <text key={v} x={startX - 4} y={H - (v / yMax) * H + 3} textAnchor="end" fontSize="7" fill="#9ca3af">{v}</text>
-            ))}
-            {/* bars */}
-            {data.map((d, i) => {
-                const bh = (d.value / yMax) * H;
-                const x = startX + i * (barW + gap);
-                return (
-                    <g key={i}>
-                        <rect x={x} y={H - bh} width={barW} height={bh} fill={d.color} rx="3" />
-                        <text x={x + barW / 2} y={H + 14} textAnchor="middle" fontSize="7.5" fill="#6b7280">{d.label}</text>
-                    </g>
-                );
-            })}
-            <line x1={startX} y1={H} x2={W - 4} y2={H} stroke="#e5e7eb" strokeWidth="1" />
-        </svg>
-    );
-};
-
-/* ─────────────────────────────────────────────
-   Main Component
-───────────────────────────────────────────── */
 const PAReport = () => {
-    const [search, setSearch] = useState('');
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const paId = searchParams.get('id') || '';
 
-    const records = [
-        { date: 'Jan 31, 2024', route: 'Route C – Downtown Area',   jobs: 4, status: 'Present',  reason: '–',                    notes: 'All jobs on board'       },
-        { date: 'Jan 31, 2024', route: 'Route T – Overshire',       jobs: 3, status: 'Present',  reason: '–',                    notes: 'On time arrival'         },
-        { date: 'Jan 09, 2024', route: 'Route C – Downtown Area',   jobs: 4, status: 'Present',  reason: '–',                    notes: 'No issues raised'        },
-        { date: 'Jan 08, 2024', route: 'Route TR – Lonsdale',       jobs: 3, status: 'Present',  reason: '–',                    notes: '8 passengers assisted'   },
-        { date: 'Jan 07, 2024', route: 'Route C – Downtown Area',   jobs: 4, status: 'Present',  reason: '–',                    notes: 'Standard procedure'      },
-        { date: 'Jan 04, 2024', route: 'Route N – Occasions',       jobs: 0, status: 'Absent',   reason: 'PA was Emergency',     notes: 'Backup PA assigned'      },
-        { date: 'Jan 03, 2024', route: 'Route T2 – Doorstep',       jobs: 3, status: 'Present',  reason: '–',                    notes: 'Routine feedback'        },
-        { date: 'Jan 15, 2024', route: 'Route N – Occasions',       jobs: 0, status: 'Present',  reason: '–',                    notes: 'Standard assistance'     },
-        { date: 'Jan 16, 2024', route: 'Route A – Montmayor',       jobs: 3, status: 'Present',  reason: '–',                    notes: 'Brief performance'       },
-    ];
+    const now = new Date();
+    const [monthValue, setMonthValue] = useState(monthInputValue(now.getFullYear(), now.getMonth() + 1));
+    const [searchJobs, setSearchJobs] = useState('');
+    const [searchSessions, setSearchSessions] = useState('');
+    const [sessionPage, setSessionPage] = useState(1);
+    const [generating, setGenerating] = useState(false);
+    const [pdfError, setPdfError] = useState(null);
+
+    const { year, month } = useMemo(() => parseMonthInput(monthValue), [monthValue]);
+    const periodText = useMemo(() => `for ${monthLabel(year, month)}`, [year, month]);
+
+    const {
+        companyName,
+        pa,
+        data: report,
+        profileLoading,
+        loading,
+        error,
+    } = useAdminPaReport({
+        paId,
+        year,
+        month,
+    });
+
+    useEffect(() => {
+        setSessionPage(1);
+        setPdfError(null);
+    }, [paId, year, month]);
+
+    const stats = report?.stats;
+
+    const filteredJobs = useMemo(() => {
+        const rows = report?.jobsBreakdown || [];
+        const q = searchJobs.trim().toLowerCase();
+        if (!q) return rows;
+        return rows.filter(
+            (j) =>
+                String(j.jobName || '').toLowerCase().includes(q) ||
+                String(j.school || '').toLowerCase().includes(q),
+        );
+    }, [report, searchJobs]);
+
+    const filteredSessions = useMemo(() => {
+        const rows = report?.sessionHistory || [];
+        const q = searchSessions.trim().toLowerCase();
+        if (!q) return rows;
+        return rows.filter(
+            (s) =>
+                String(s.jobName || '').toLowerCase().includes(q) ||
+                String(s.direction || '').toLowerCase().includes(q) ||
+                String(s.status || '').toLowerCase().includes(q) ||
+                String(s.date || '').includes(q),
+        );
+    }, [report, searchSessions]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredSessions.length / ITEMS_PER_PAGE));
+    const currentPage = Math.min(sessionPage, totalPages);
+    const paginatedSessions = filteredSessions.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE,
+    );
+
+    const dailyTrend = report?.dailyTrend || [];
+    const activeDays = useMemo(
+        () => dailyTrend.filter((d) => (d.completed || 0) > 0),
+        [dailyTrend],
+    );
+    const dayMax = Math.max(1, ...activeDays.map((d) => d.completed || 0));
+    const dayTicks = useMemo(() => {
+        const max = dayMax;
+        if (max <= 1) return [1, 0];
+        if (max === 2) return [2, 1, 0];
+        return [max, Math.round(max / 2), 0];
+    }, [dayMax]);
+    const mv = report?.morningVsEvening || { morning: 0, evening: 0 };
+    const mvMax = Math.max(1, mv.morning || 0, mv.evening || 0);
+
+    const handlePdf = () => {
+        if (!report) {
+            setPdfError('Report data is not loaded yet.');
+            return;
+        }
+        setGenerating(true);
+        setPdfError(null);
+        try {
+            downloadAdminPaReportPdf({ companyName, report });
+        } catch (e) {
+            setPdfError(e?.message || 'Could not generate PDF.');
+        } finally {
+            setGenerating(false);
+        }
+    };
+
+    const fmt = (n) =>
+        loading ? <ShimmerBlock className="h-7 w-14 rounded-md inline-block" /> : Number(n ?? 0).toLocaleString();
+
+    const displayError = pdfError || error;
+
+    if (!paId) {
+        return (
+            <div className="space-y-4 max-w-[1400px] mx-auto">
+                <button
+                    type="button"
+                    onClick={() => navigate('/portal/reports')}
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-[#004D6D] hover:underline"
+                >
+                    <HiArrowLeft size={16} /> Back to reports
+                </button>
+                <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Open a passenger assistant from the staff table to view their performance report.
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-5 max-w-[1400px] mx-auto">
-
-            {/* ── Page Header ── */}
-            <div className="flex items-center justify-between">
-                <h1 className="text-[22px] font-bold text-gray-900">PA Attendance &amp; Availability Report</h1>
-                <div className="flex items-center gap-2">
-                    <button className="flex items-center gap-1.5 px-3.5 py-2 border border-gray-200 rounded-lg text-[12px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all">
-                        <HiOutlineDownload size={14} className="text-red-500" />
-                        Export PDF
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/portal/reports')}
+                        className="inline-flex items-center gap-2 text-sm font-semibold text-[#004D6D] hover:underline mb-2"
+                    >
+                        <HiArrowLeft size={16} /> Back to reports
                     </button>
-                    <button className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-semibold text-white bg-[#004D6D] hover:bg-[#003c55] transition-all">
-                        <MdFileDownload size={15} />
-                        Export Excel
-                    </button>
+                    <h1 className="text-[22px] font-bold text-gray-900">PA Performance Report</h1>
+                    <p className="text-[13px] text-gray-400 font-medium mt-0.5">Sessions and jobs {periodText}</p>
                 </div>
+                <button
+                    type="button"
+                    onClick={handlePdf}
+                    disabled={loading || generating || !report}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-semibold text-white bg-[#004D6D] hover:bg-[#003c55] transition-all disabled:opacity-60 disabled:pointer-events-none"
+                >
+                    <MdAnalytics size={15} />
+                    {generating ? 'Generating…' : 'Generate PDF'}
+                </button>
             </div>
 
-            {/* ── Report Filters ── */}
+            {displayError && (
+                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    {displayError}
+                </div>
+            )}
+
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                <h2 className="text-[13px] font-bold text-gray-900 mb-4">Report Filters</h2>
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    {/* Passenger Assistant */}
-                    <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-gray-600">Passenger Assistant</label>
-                        <div className="relative">
-                            <select className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D] bg-white pr-7">
-                                <option>All Passenger Assistants</option>
-                            </select>
-                            <HiChevronRight className="absolute right-2.5 top-2.5 text-gray-400 rotate-90 pointer-events-none" size={13} />
-                        </div>
-                    </div>
-
-                    {/* Month */}
-                    <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-gray-600">Month</label>
-                        <div className="relative">
-                            <select className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D] bg-white pr-7">
-                                <option>January 2024</option>
-                            </select>
-                            <HiChevronRight className="absolute right-2.5 top-2.5 text-gray-400 rotate-90 pointer-events-none" size={13} />
-                        </div>
-                    </div>
-
-                    {/* Active Filter */}
-                    <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-gray-600">Active Filter</label>
-                        <div className="relative">
-                            <select className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D] bg-white pr-7">
-                                <option>All Children</option>
-                            </select>
-                            <HiChevronRight className="absolute right-2.5 top-2.5 text-gray-400 rotate-90 pointer-events-none" size={13} />
-                        </div>
-                    </div>
-
-                    {/* Generate Button */}
-                    <div className="flex items-end">
-                        <button className="w-full flex items-center justify-center gap-2 py-2 bg-[#004D6D] text-white text-[12px] font-bold rounded-lg hover:bg-[#003c55] transition-all">
-                            {/* analytics icon */}
-                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
-                            </svg>
-                            Generate Report
-                        </button>
+                <div className="max-w-xs space-y-1">
+                    <label className="text-[11px] font-semibold text-gray-700">
+                        Month & Year <span className="text-red-500">*</span>
+                    </label>
+                    <div className="relative">
+                        <input
+                            type="month"
+                            value={monthValue}
+                            onChange={(e) => setMonthValue(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D] pr-9"
+                        />
                     </div>
                 </div>
             </div>
 
-            {/* ── 5 Metric Cards ── */}
-            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-                {/* Working Days */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.8">
-                            <rect x="3" y="4" width="18" height="18" rx="2" />
-                            <line x1="16" y1="2" x2="16" y2="6" />
-                            <line x1="8" y1="2" x2="8" y2="6" />
-                            <line x1="3" y1="10" x2="21" y2="10" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div className="text-[22px] font-bold text-gray-900 leading-none">22</div>
-                        <div className="text-[10px] text-gray-400 font-medium mt-0.5">Working Days</div>
-                    </div>
-                </div>
-
-                {/* Days Present */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-green-50 flex items-center justify-center shrink-0">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="1.8">
-                            <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
-                            <polyline points="22 4 12 14.01 9 11.01" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div className="text-[22px] font-bold text-gray-900 leading-none">20</div>
-                        <div className="text-[10px] text-gray-400 font-medium mt-0.5">Days Present</div>
-                    </div>
-                </div>
-
-                {/* Days Absent */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-red-50 flex items-center justify-center shrink-0">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.8">
-                            <circle cx="12" cy="12" r="10" />
-                            <line x1="15" y1="9" x2="9" y2="15" />
-                            <line x1="9" y1="9" x2="15" y2="15" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div className="text-[22px] font-bold text-gray-900 leading-none">1</div>
-                        <div className="text-[10px] text-gray-400 font-medium mt-0.5">Days Absent</div>
-                    </div>
-                </div>
-
-                {/* Late Starts */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-yellow-50 flex items-center justify-center shrink-0">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8">
-                            <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2" />
-                            <circle cx="12" cy="7" r="4" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div className="text-[22px] font-bold text-gray-900 leading-none">1</div>
-                        <div className="text-[10px] text-gray-400 font-medium mt-0.5">Late Starts</div>
-                    </div>
-                </div>
-
-                {/* Punctuality Rate */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4 flex items-center gap-3">
-                    <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center shrink-0">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="1.8">
-                            <line x1="19" y1="5" x2="5" y2="19" />
-                            <circle cx="6.5" cy="6.5" r="2.5" />
-                            <circle cx="17.5" cy="17.5" r="2.5" />
-                        </svg>
-                    </div>
-                    <div>
-                        <div className="text-[20px] font-bold text-gray-900 leading-none">90.9%</div>
-                        <div className="text-[10px] text-gray-400 font-medium mt-0.5">Punctuality Rate</div>
-                    </div>
-                </div>
-            </div>
-
-            {/* ── Charts Row ── */}
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Attendance Trend */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                    <h3 className="text-[13px] font-bold text-gray-900 mb-4">Attendance Trend (Last 6 Months)</h3>
-                    <AttendanceTrendChart />
-                </div>
-
-                {/* Monthly Availability Comparison */}
-                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                    <h3 className="text-[13px] font-bold text-gray-900 mb-4">Monthly Availability Comparison</h3>
-                    <AvailabilityBarChart />
-                </div>
-            </div>
-
-            {/* ── Detailed Attendance Records ── */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-                {/* Table header bar */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                    <h3 className="text-[14px] font-bold text-gray-900">Detailed Attendance Records</h3>
-                    <div className="flex items-center gap-2">
-                        <div className="relative">
-                            <HiSearch className="absolute left-3 top-2.5 text-gray-400" size={13} />
-                            <input
-                                type="text"
-                                placeholder="Search records..."
-                                value={search}
-                                onChange={e => setSearch(e.target.value)}
-                                className="pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D] w-44"
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
+                    <div className="flex items-center gap-4">
+                        {profileLoading ? (
+                            <ShimmerBlock className="w-16 h-16 rounded-full" />
+                        ) : (
+                            <img
+                                src={pa?.avatar}
+                                alt=""
+                                className="w-16 h-16 rounded-full object-cover border-2 border-gray-100"
                             />
+                        )}
+                        <div>
+                            <div className="text-[16px] font-bold text-gray-900">
+                                {profileLoading ? <ShimmerBlock className="h-5 w-40 rounded" /> : pa?.name}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                {!profileLoading && <FleetBadge fleet={pa?.fleet} entity="pa" />}
+                                <span className="inline-flex px-2.5 py-0.5 rounded-full bg-green-50 text-green-600 text-[10px] font-bold">
+                                    {profileLoading ? '—' : pa?.status}
+                                </span>
+                            </div>
+                            <div className="text-[11px] text-gray-400 mt-1.5 font-medium">
+                                {profileLoading ? '—' : pa?.phone || 'No phone on file'}
+                            </div>
                         </div>
-                        <button className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-600 hover:bg-gray-50 transition-all">
-                            <HiFilter size={12} />
-                            Filter
-                        </button>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                        <div className="text-center">
+                            <div className="text-[22px] font-bold text-gray-900 leading-none min-h-7 flex items-center justify-center">
+                                {fmt(stats?.jobsAssigned)}
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Jobs Assigned</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-[22px] font-bold text-gray-900 leading-none min-h-7 flex items-center justify-center">
+                                {fmt(stats?.totalSessions)}
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Total Sessions</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-[22px] font-bold text-gray-900 leading-none min-h-7 flex items-center justify-center">
+                                {fmt(stats?.completedSessions)}
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Completed</div>
+                        </div>
+                        <div className="text-center">
+                            <div className="text-[22px] font-bold text-green-500 leading-none min-h-7 flex items-center justify-center">
+                                {loading ? (
+                                    <ShimmerBlock className="h-7 w-14 rounded-md" />
+                                ) : (
+                                    `${Number(stats?.completionRate || 0)}%`
+                                )}
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Completion</div>
+                        </div>
                     </div>
                 </div>
+            </div>
 
-                {/* Table */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center mb-3 text-blue-600">
+                        <MdWbSunny size={18} />
+                    </div>
+                    <div className="text-[26px] font-bold text-gray-900 leading-none min-h-8 flex items-center">
+                        {fmt(stats?.morningCompleted)}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1 font-medium">Morning Completed</div>
+                    <div className="text-[11px] text-gray-400 mt-2 font-semibold">{periodText}</div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                    <div className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center mb-3 text-orange-500">
+                        <MdNightsStay size={18} />
+                    </div>
+                    <div className="text-[26px] font-bold text-gray-900 leading-none min-h-8 flex items-center">
+                        {fmt(stats?.eveningCompleted)}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1 font-medium">Evening Completed</div>
+                    <div className="text-[11px] text-gray-400 mt-2 font-semibold">{periodText}</div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                    <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center mb-3 text-red-500">
+                        <MdWarning size={18} />
+                    </div>
+                    <div className="text-[26px] font-bold text-gray-900 leading-none min-h-8 flex items-center">
+                        {fmt((stats?.skippedSessions || 0) + (stats?.incompleteSessions || 0))}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1 font-medium">Skipped / Incomplete</div>
+                    <div className="text-[11px] text-gray-400 mt-2 font-semibold">{periodText}</div>
+                </div>
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
+                    <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center mb-3 text-green-600">
+                        {profileLoading ? (
+                            <ShimmerBlock className="h-4 w-4 rounded" />
+                        ) : pa?.isPrivate ? (
+                            <MdAnalytics size={18} />
+                        ) : (
+                            <MdDirectionsCar size={18} />
+                        )}
+                    </div>
+                    <div className="text-[26px] font-bold text-gray-900 leading-none min-h-8 flex items-center">
+                        {loading || profileLoading ? (
+                            <ShimmerBlock className="h-7 w-16 rounded-md" />
+                        ) : pa?.isPrivate ? (
+                            money(stats?.estimatedPay)
+                        ) : (
+                            Number(stats?.leaveDays || 0).toLocaleString()
+                        )}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1 font-medium min-h-4">
+                        {profileLoading ? (
+                            <ShimmerBlock className="h-3 w-24 rounded" />
+                        ) : pa?.isPrivate ? (
+                            'Estimated Pay'
+                        ) : (
+                            'Leave Requests'
+                        )}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-2 font-semibold">{periodText}</div>
+                </div>
+            </div>
+
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                    <h3 className="text-[13px] font-bold text-gray-900 mb-1">Daily Completed Sessions</h3>
+                    <p className="text-[11px] text-gray-400 mb-4">
+                        {periodText}
+                        {!loading && activeDays.length > 0
+                            ? ` · ${activeDays.length} day${activeDays.length === 1 ? '' : 's'} with sessions`
+                            : ''}
+                    </p>
+                    {!loading && activeDays.length === 0 && (
+                        <p className="text-sm text-gray-400 py-10 text-center">No completed sessions this month.</p>
+                    )}
+                    {(loading || activeDays.length > 0) && (
+                        <div className="relative h-52 pl-7">
+                            <div className="absolute left-0 top-0 bottom-8 w-6 flex flex-col justify-between text-[10px] font-semibold text-gray-300 select-none">
+                                {dayTicks.map((t) => (
+                                    <span key={t}>{t}</span>
+                                ))}
+                            </div>
+                            <div className="absolute inset-0 left-7 bottom-8 flex flex-col justify-between pointer-events-none">
+                                {dayTicks.map((t) => (
+                                    <div key={`g-${t}`} className="border-b border-gray-100 w-full h-0" />
+                                ))}
+                            </div>
+                            <div className="relative h-[calc(100%-2rem)] flex items-end justify-center gap-3 px-2">
+                                {activeDays.map((d) => {
+                                    const pct = ((d.completed || 0) / dayMax) * 100;
+                                    const dayNum = String(d.date || '').slice(8, 10).replace(/^0/, '') || d.label;
+                                    return (
+                                        <div
+                                            key={d.date}
+                                            className="flex flex-col items-center justify-end h-full"
+                                            style={{ width: activeDays.length <= 4 ? 56 : 36 }}
+                                        >
+                                            <div className="text-[10px] font-bold text-gray-500 mb-1">
+                                                {d.completed}
+                                            </div>
+                                            <div
+                                                className="w-full rounded-t-md bg-[#004D6D] shadow-sm"
+                                                style={{
+                                                    height: `${pct}%`,
+                                                    minHeight: d.completed ? 10 : 0,
+                                                }}
+                                                title={`${d.date}: ${d.completed} completed`}
+                                            />
+                                            <div className="text-[10px] font-bold text-gray-400 mt-2 tabular-nums">
+                                                {dayNum}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                    <h3 className="text-[13px] font-bold text-gray-900 mb-1">Morning vs Evening</h3>
+                    <p className="text-[11px] text-gray-400 mb-6">Completed sessions {periodText}</p>
+                    <div className="flex items-end justify-center gap-10 h-44">
+                        <div className="flex flex-col items-center gap-2 w-20">
+                            <div className="text-[12px] font-bold text-gray-500">{mv.morning || 0}</div>
+                            <div
+                                className="w-14 bg-blue-500 rounded-t"
+                                style={{
+                                    height: `${((mv.morning || 0) / mvMax) * 140}px`,
+                                    minHeight: mv.morning ? 6 : 0,
+                                }}
+                            />
+                            <div className="text-[11px] font-bold text-gray-400">Morning</div>
+                        </div>
+                        <div className="flex flex-col items-center gap-2 w-20">
+                            <div className="text-[12px] font-bold text-gray-500">{mv.evening || 0}</div>
+                            <div
+                                className="w-14 bg-orange-500 rounded-t"
+                                style={{
+                                    height: `${((mv.evening || 0) / mvMax) * 140}px`,
+                                    minHeight: mv.evening ? 6 : 0,
+                                }}
+                            />
+                            <div className="text-[11px] font-bold text-gray-400">Evening</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 gap-3 flex-wrap">
+                    <div>
+                        <h3 className="text-[14px] font-bold text-gray-900">Jobs Breakdown</h3>
+                        <p className="text-[11px] text-gray-400 mt-0.5">Sessions by job {periodText}</p>
+                    </div>
+                    <div className="relative">
+                        <HiSearch className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                        <input
+                            type="text"
+                            placeholder="Search jobs..."
+                            value={searchJobs}
+                            onChange={(e) => setSearchJobs(e.target.value)}
+                            className="pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-[#004D6D] w-44"
+                        />
+                    </div>
+                </div>
                 <div className="overflow-x-auto">
-                    <table className="w-full text-left">
+                    <table className="w-full text-left text-[11px]">
                         <thead>
                             <tr className="border-b border-gray-50 text-gray-400 text-[10px] font-bold uppercase tracking-wide">
-                                <th className="px-5 py-3">Date</th>
-                                <th className="px-5 py-3">Assigned Route</th>
-                                <th className="px-5 py-3 text-center">Job Count</th>
-                                <th className="px-5 py-3">Status</th>
-                                <th className="px-5 py-3">Reason</th>
-                                <th className="px-5 py-3">Notes</th>
-                                <th className="px-5 py-3 text-center">Actions</th>
+                                <th className="px-5 py-3">Job</th>
+                                <th className="px-5 py-3 text-center">Sessions</th>
+                                <th className="px-5 py-3 text-center">Completed</th>
+                                <th className="px-5 py-3 text-center">Morning</th>
+                                <th className="px-5 py-3 text-center">Evening</th>
+                                {pa?.isPrivate && <th className="px-5 py-3 text-right">Pay</th>}
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {records.map((row, idx) => {
-                                const isAbsent = row.status === 'Absent';
-                                return (
-                                    <tr
-                                        key={idx}
-                                        className={`transition-colors ${isAbsent ? 'bg-red-50/60' : 'hover:bg-gray-50/40'}`}
-                                    >
-                                        <td className="px-5 py-3 text-[11px] text-gray-600 whitespace-nowrap">{row.date}</td>
-                                        <td className="px-5 py-3 text-[11px] text-gray-600 whitespace-nowrap">{row.route}</td>
-                                        <td className="px-5 py-3 text-[11px] text-gray-700 font-medium text-center">{row.jobs}</td>
-                                        <td className="px-5 py-3">
-                                            <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold ${isAbsent ? 'bg-red-100 text-red-600' : 'bg-green-100 text-green-600'}`}>
-                                                {isAbsent ? '● Absent' : '● Present'}
-                                            </span>
+                            {loading && (
+                                <tr>
+                                    <td colSpan={pa?.isPrivate ? 6 : 5} className="px-5 py-8 text-center text-gray-400">
+                                        Loading jobs…
+                                    </td>
+                                </tr>
+                            )}
+                            {!loading && filteredJobs.length === 0 && (
+                                <tr>
+                                    <td colSpan={pa?.isPrivate ? 6 : 5} className="px-5 py-8 text-center text-gray-400">
+                                        No jobs in this period.
+                                    </td>
+                                </tr>
+                            )}
+                            {!loading &&
+                                filteredJobs.map((j) => (
+                                    <tr key={j.jobId} className="hover:bg-gray-50/40">
+                                        <td className="px-5 py-3.5">
+                                            <div className="font-semibold text-gray-800">{j.jobName}</div>
+                                            <div className="text-gray-400 mt-0.5">{j.school}</div>
                                         </td>
-                                        <td className={`px-5 py-3 text-[11px] ${isAbsent ? 'text-red-500 font-semibold' : 'text-gray-400'}`}>
-                                            {row.reason}
-                                        </td>
-                                        <td className="px-5 py-3 text-[11px] text-gray-500">{row.notes}</td>
-                                        <td className="px-5 py-3 text-center">
-                                            <button className="w-6 h-6 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all mx-auto">
-                                                <HiDotsVertical size={14} />
-                                            </button>
-                                        </td>
+                                        <td className="px-5 py-3.5 text-center font-bold text-gray-900">{j.totalSessions}</td>
+                                        <td className="px-5 py-3.5 text-center text-gray-700">{j.completedSessions}</td>
+                                        <td className="px-5 py-3.5 text-center text-gray-500">{j.morningCompleted}</td>
+                                        <td className="px-5 py-3.5 text-center text-gray-500">{j.eveningCompleted}</td>
+                                        {pa?.isPrivate && (
+                                            <td className="px-5 py-3.5 text-right font-semibold text-gray-800">
+                                                {money(j.estimatedPay)}
+                                            </td>
+                                        )}
                                     </tr>
-                                );
-                            })}
+                                ))}
                         </tbody>
                     </table>
                 </div>
+            </div>
 
-                {/* Pagination */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 gap-3 flex-wrap">
+                    <div>
+                        <h3 className="text-[14px] font-bold text-gray-900">Session History</h3>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{periodText}</p>
+                    </div>
+                    <div className="relative">
+                        <HiSearch className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                        <input
+                            type="text"
+                            placeholder="Search sessions..."
+                            value={searchSessions}
+                            onChange={(e) => {
+                                setSearchSessions(e.target.value);
+                                setSessionPage(1);
+                            }}
+                            className="pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-[#004D6D] w-44"
+                        />
+                    </div>
+                </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[11px]">
+                        <thead>
+                            <tr className="border-b border-gray-50 text-gray-400 text-[10px] font-bold uppercase tracking-wide">
+                                <th className="px-5 py-3">Date</th>
+                                <th className="px-5 py-3">Job</th>
+                                <th className="px-5 py-3">Direction</th>
+                                <th className="px-5 py-3">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {loading && (
+                                <tr>
+                                    <td colSpan={4} className="px-5 py-8 text-center text-gray-400">
+                                        Loading sessions…
+                                    </td>
+                                </tr>
+                            )}
+                            {!loading && paginatedSessions.length === 0 && (
+                                <tr>
+                                    <td colSpan={4} className="px-5 py-8 text-center text-gray-400">
+                                        No sessions in this period.
+                                    </td>
+                                </tr>
+                            )}
+                            {!loading &&
+                                paginatedSessions.map((s) => (
+                                    <tr key={s.id} className="hover:bg-gray-50/40">
+                                        <td className="px-5 py-3.5 text-gray-600 whitespace-nowrap">{s.date}</td>
+                                        <td className="px-5 py-3.5">
+                                            <div className="font-medium text-gray-800">{s.jobName}</div>
+                                            <div className="text-gray-400 mt-0.5">{s.school}</div>
+                                        </td>
+                                        <td className="px-5 py-3.5 text-gray-600">{s.direction}</td>
+                                        <td className="px-5 py-3.5">
+                                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${statusClass(s.statusRaw)}`}>
+                                                {s.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
+                        </tbody>
+                    </table>
+                </div>
                 <div className="px-5 py-4 border-t border-gray-50 flex items-center justify-between">
-                    <span className="text-[11px] text-gray-400">Showing 1 to 10 of 22 records</span>
+                    <span className="text-[11px] text-gray-400">
+                        {filteredSessions.length === 0
+                            ? '0 sessions'
+                            : `Showing ${(currentPage - 1) * ITEMS_PER_PAGE + 1}–${Math.min(currentPage * ITEMS_PER_PAGE, filteredSessions.length)} of ${filteredSessions.length}`}
+                    </span>
                     <div className="flex items-center gap-1">
-                        <button className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 transition-colors">
-                            <HiChevronLeft size={14} />
+                        <button
+                            type="button"
+                            disabled={currentPage <= 1}
+                            onClick={() => setSessionPage((p) => Math.max(1, p - 1))}
+                            className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-40"
+                        >
+                            <HiChevronLeft size={15} />
                         </button>
-                        {[1, 2, 3].map(n => (
-                            <button
-                                key={n}
-                                className={`w-7 h-7 flex items-center justify-center rounded text-[11px] font-bold transition-colors ${n === 1 ? 'bg-[#004D6D] text-white' : 'text-gray-500 hover:bg-gray-100'}`}
-                            >
-                                {n}
-                            </button>
-                        ))}
-                        <button className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 transition-colors">
-                            <HiChevronRight size={14} />
+                        <span className="px-2 text-[11px] font-bold text-gray-600">
+                            {currentPage} / {totalPages}
+                        </span>
+                        <button
+                            type="button"
+                            disabled={currentPage >= totalPages}
+                            onClick={() => setSessionPage((p) => Math.min(totalPages, p + 1))}
+                            className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-40"
+                        >
+                            <HiChevronRight size={15} />
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* ── Export Report ── */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <div className="text-[13px] font-bold text-gray-900">Export Report</div>
-                    <div className="text-[11px] text-gray-400 mt-0.5">Download this report data to your preferred format.</div>
+                    <div className="text-[13px] font-bold text-gray-900">{loading ? 'Loading report…' : 'Report ready'}</div>
+                    <div className="text-[11px] text-gray-400 mt-0.5">
+                        {Number(stats?.totalSessions || 0).toLocaleString()} sessions
+                        <span className="mx-1.5 opacity-30">•</span>
+                        {monthLabel(year, month)}
+                        {pa?.isPrivate ? (
+                            <>
+                                <span className="mx-1.5 opacity-30">•</span>
+                                {money(stats?.estimatedPay)}
+                            </>
+                        ) : null}
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-[12px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all">
-                        <HiOutlinePrinter size={13} className="text-gray-500" />
-                        Print Report
-                    </button>
-                    <button className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-[12px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all">
-                        <HiOutlineDownload size={13} className="text-red-500" />
-                        Export as PDF
-                    </button>
-                    <button className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-semibold text-white bg-[#004D6D] hover:bg-[#003c55] transition-all">
-                        <MdFileDownload size={15} />
-                        Export as Excel
-                    </button>
-                </div>
+                <button
+                    type="button"
+                    onClick={handlePdf}
+                    disabled={loading || generating || !report}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-semibold text-white bg-[#004D6D] hover:bg-[#003c55] transition-all disabled:opacity-60 disabled:pointer-events-none"
+                >
+                    <HiOutlineDownload size={14} />
+                    {generating ? 'Generating…' : 'Export PDF'}
+                </button>
             </div>
-
         </div>
     );
 };

@@ -43,7 +43,11 @@ export async function getBlockingJobsForDriver(companyId, driverId) {
     .eq('assigned_driver_id', driverId)
     .order('created_at', { ascending: false })
   if (error) throw error
-  return (data || []).filter((j) => !isCancelledJobStatus(j.status))
+  return (data || []).filter((j) => {
+    if (isCancelledJobStatus(j.status)) return false
+    const s = String(j.status || '').trim().toLowerCase()
+    return s !== 'completed' && s !== 'complete'
+  })
 }
 
 function blockingJobMessage(jobs, actionLabel) {

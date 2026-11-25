@@ -360,9 +360,9 @@ const ActiveJobs = () => {
         if (statusFilter === 'all') return jobs;
         return jobs.filter((job) => {
             const normalized = String(job.status || '').trim().toLowerCase();
+            if (statusFilter === 'upcoming') return normalized === 'upcoming';
             if (statusFilter === 'active') return normalized === 'active';
             if (statusFilter === 'complete') return normalized === 'completed' || normalized === 'complete';
-            if (statusFilter === 'in-progress') return normalized === 'in progress' || normalized === 'in-progress';
             if (statusFilter === 'cancelled') return normalized === 'cancelled' || normalized === 'canceled';
             return true;
         });
@@ -455,9 +455,9 @@ const ActiveJobs = () => {
                             className="bg-white text-[13px] font-medium text-gray-700 outline-none border-none pr-2 cursor-pointer"
                         >
                             <option value="all">All Status</option>
+                            <option value="upcoming">Upcoming</option>
                             <option value="active">Active</option>
                             <option value="complete">Complete</option>
-                            <option value="in-progress">In Progress</option>
                             <option value="cancelled">Cancelled</option>
                         </select>
                     </div>

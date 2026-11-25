@@ -22,6 +22,8 @@ export function isCancelledJobStatus(status) {
 
 export function isActiveOrUpcomingJob(job, todayYmd) {
   if (!job || isCancelledJobStatus(job.status)) return false
+  const status = String(job.status || '').trim().toLowerCase()
+  if (status === 'completed' || status === 'complete') return false
   if (job.semester_end && String(job.semester_end).slice(0, 10) < todayYmd) return false
   return true
 }
@@ -33,6 +35,8 @@ export async function loadDriverJobsForRemoval(supabase, driverId, todayYmd) {
     .select('id, job_name, status, semester_start, semester_end, company_id, assigned_driver_id, internal_job_id, driver_approval_status')
     .eq('assigned_driver_id', driverId)
     .neq('status', 'cancelled')
+    .neq('status', 'canceled')
+    .neq('status', 'completed')
 
   if (error) throw error
   return (data || []).filter((job) => isActiveOrUpcomingJob(job, todayYmd))
@@ -371,6 +375,8 @@ export async function loadPaJobsForRemoval(supabase, paId, todayYmd) {
     .select('id, job_name, status, semester_start, semester_end, company_id, assigned_pa_id, internal_job_id, client_school_name')
     .eq('assigned_pa_id', paId)
     .neq('status', 'cancelled')
+    .neq('status', 'canceled')
+    .neq('status', 'completed')
 
   if (error) throw error
   return (data || []).filter((job) => isActiveOrUpcomingJob(job, todayYmd))

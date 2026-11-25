@@ -1,532 +1,610 @@
-import React, { useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
-    HiDotsVertical,
+    HiOutlineDownload,
+    HiOutlineCalendar,
     HiSearch,
-    HiFilter,
     HiChevronLeft,
     HiChevronRight,
-    HiOutlinePrinter,
-    HiOutlineDownload,
+    HiArrowLeft,
 } from 'react-icons/hi';
-import { MdFileDownload } from 'react-icons/md';
+import {
+    MdAnalytics,
+    MdDirectionsCar,
+    MdWbSunny,
+    MdNightsStay,
+    MdWarning,
+} from 'react-icons/md';
+import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useAdminDriverReport } from '../../../../hooks/useAdminDriverReport';
+import {
+    monthInputValue,
+    monthLabel,
+    parseMonthInput,
+} from '../../../../services/adminReportService';
+import { downloadAdminDriverReportPdf } from '../../../../services/adminDriverReportPdfService';
+import FleetBadge from '../../../../components/FleetBadge';
+import { ShimmerBlock } from '../../../../utils/Shimmer';
 
-/* ─────────────────────────────────────────────
-   Tiny inline SVG charts (no external lib)
-───────────────────────────────────────────── */
+const ITEMS_PER_PAGE = 10;
 
-/** Daily Job Completion Trend – line chart */
-const LineChart = () => {
-    // X positions: Jan1, Jan5, Jan10, Jan15, Jan20, Jan25, Jan31
-    const points = [
-        [0, 10],
-        [60, 12],
-        [130, 11],
-        [200, 17],
-        [270, 14],
-        [340, 18],
-        [400, 13],
-    ];
-    const w = 400;
-    const h = 100;
-    const xLabels = ['Jan 1', 'Jan 5', 'Jan 10', 'Jan 15', 'Jan 20', 'Jan 25', 'Jan 31'];
-    const yMax = 20;
-    const toSvg = ([x, y]) => `${x},${h - (y / yMax) * h}`;
-    const pathD = `M ${points.map(toSvg).join(' L ')}`;
-    const areaD = `M ${toSvg(points[0])} ${points.map(toSvg).join(' L ')} L ${points[points.length - 1][0]},${h} L ${points[0][0]},${h} Z`;
+function money(n) {
+    if (n == null || Number.isNaN(Number(n))) return '—';
+    return `£${Number(n).toFixed(2)}`;
+}
 
-    return (
-        <svg viewBox={`0 0 ${w} ${h + 20}`} className="w-full" style={{ height: 120 }}>
-            <defs>
-                <linearGradient id="drLineGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="#004D6D" stopOpacity="0.15" />
-                    <stop offset="100%" stopColor="#004D6D" stopOpacity="0" />
-                </linearGradient>
-            </defs>
-            {/* horizontal grid lines */}
-            {[5, 10, 15, 20].map(v => (
-                <line
-                    key={v}
-                    x1={0} y1={h - (v / yMax) * h}
-                    x2={w} y2={h - (v / yMax) * h}
-                    stroke="#e5e7eb" strokeWidth="1"
-                />
-            ))}
-            {/* y labels */}
-            {[5, 10, 15, 20].map(v => (
-                <text key={v} x={-6} y={h - (v / yMax) * h + 4} textAnchor="end" fontSize="8" fill="#9ca3af">{v}</text>
-            ))}
-            {/* x labels */}
-            {xLabels.map((label, i) => (
-                <text key={i} x={points[i][0]} y={h + 14} textAnchor="middle" fontSize="7" fill="#9ca3af">{label}</text>
-            ))}
-            {/* area */}
-            <path d={areaD} fill="url(#drLineGrad)" />
-            {/* line */}
-            <path d={pathD} fill="none" stroke="#004D6D" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-            {/* dots */}
-            {points.map(([x, y], i) => (
-                <circle key={i} cx={x} cy={h - (y / yMax) * h} r="3" fill="#fff" stroke="#004D6D" strokeWidth="1.5" />
-            ))}
-        </svg>
-    );
-};
+function statusClass(status) {
+    const s = String(status || '').toLowerCase();
+    if (s === 'completed') return 'bg-green-50 text-green-600';
+    if (s === 'skipped' || s === 'incomplete') return 'bg-orange-50 text-orange-600';
+    if (s === 'cancelled' || s === 'canceled') return 'bg-red-50 text-red-600';
+    if (s === 'active') return 'bg-blue-50 text-blue-600';
+    return 'bg-gray-50 text-gray-600';
+}
 
-/** Route-wise Job Distribution – bar chart */
-const BarChart = () => {
-    const data = [
-        { label: 'Route A', value: 165, color: '#004D6D' },
-        { label: 'Route B', value: 160, color: '#5b9bbf' },
-        { label: 'Route D', color: '#93c5d8', value: 130 },
-    ];
-    const max = 175;
-    const w = 280;
-    const h = 110;
-    const barW = 56;
-    const gap = 28;
-    const startX = 28;
-
-    return (
-        <svg viewBox={`0 0 ${w} ${h + 24}`} className="w-full" style={{ height: 140 }}>
-            {/* grid lines */}
-            {[50, 100, 150].map(v => (
-                <line key={v} x1={startX} y1={h - (v / max) * h} x2={w - 10} y2={h - (v / max) * h} stroke="#e5e7eb" strokeWidth="1" />
-            ))}
-            {/* y labels */}
-            {[50, 100, 150].map(v => (
-                <text key={v} x={startX - 4} y={h - (v / max) * h + 4} textAnchor="end" fontSize="7" fill="#9ca3af">{v}</text>
-            ))}
-            {/* bars */}
-            {data.map((d, i) => {
-                const bh = (d.value / max) * h;
-                const x = startX + i * (barW + gap);
-                return (
-                    <g key={i}>
-                        <rect x={x} y={h - bh} width={barW} height={bh} fill={d.color} rx="3" />
-                        <text x={x + barW / 2} y={h + 14} textAnchor="middle" fontSize="8" fill="#6b7280">{d.label}</text>
-                    </g>
-                );
-            })}
-            {/* baseline */}
-            <line x1={startX} y1={h} x2={w - 10} y2={h} stroke="#e5e7eb" strokeWidth="1" />
-        </svg>
-    );
-};
-
-/* ─────────────────────────────────────────────
-   Main component
-───────────────────────────────────────────── */
 const DriverReport = () => {
-    const [searchJobs, setSearchJobs] = useState('');
+    const navigate = useNavigate();
+    const [searchParams] = useSearchParams();
+    const driverId = searchParams.get('id') || '';
 
-    const jobHistory = [
-        { date: 'Jan 31, 2024', route: 'Route A – Downtown Express', passengers: 18, pickup: '07:15 AM', dropoff: '08:45 AM', status: 'Completed', remarks: 'On time' },
-        { date: 'Jan 31, 2024', route: 'Route A – Downtown Express', passengers: 16, pickup: '04:30 PM', dropoff: '06:00 PM', status: 'Completed', remarks: '5 min delay' },
-        { date: 'Jan 30, 2024', route: 'Route E – Suburban Line',    passengers: 22, pickup: '07:00 AM', dropoff: '08:30 AM', status: 'Completed', remarks: 'On time' },
-        { date: 'Jan 30, 2024', route: 'Route B – Suburban Line',    passengers: 20, pickup: '04:15 PM', dropoff: '05:45 PM', status: 'Completed', remarks: 'On time' },
-        { date: 'Jan 29, 2024', route: 'Route D – University Campus', passengers: 25, pickup: '08:45 AM', dropoff: '–',        status: 'Cancelled', remarks: 'Vehicle breakdown' },
-        { date: 'Jan 29, 2024', route: 'Route A – Downtown Express', passengers: 19, pickup: '07:00 AM', dropoff: '08:35 AM', status: 'Completed', remarks: '10 min delay' },
-        { date: 'Jan 29, 2024', route: 'Route A – Downtown Express', passengers: 17, pickup: '04:25 PM', dropoff: '05:50 PM', status: 'Completed', remarks: 'On time' },
-        { date: 'Jan 28, 2024', route: 'Route B – Suburban Line',    passengers: 21, pickup: '07:05 AM', dropoff: '08:35 AM', status: 'Completed', remarks: 'On time' },
-    ];
+    const now = new Date();
+    const [monthValue, setMonthValue] = useState(monthInputValue(now.getFullYear(), now.getMonth() + 1));
+    const [searchJobs, setSearchJobs] = useState('');
+    const [searchSessions, setSearchSessions] = useState('');
+    const [sessionPage, setSessionPage] = useState(1);
+    const [generating, setGenerating] = useState(false);
+    const [pdfError, setPdfError] = useState(null);
+
+    const { year, month } = useMemo(() => parseMonthInput(monthValue), [monthValue]);
+    const periodText = useMemo(() => `for ${monthLabel(year, month)}`, [year, month]);
+
+    const {
+        companyName,
+        driver,
+        data: report,
+        profileLoading,
+        loading,
+        error,
+    } = useAdminDriverReport({
+        driverId,
+        year,
+        month,
+    });
+
+    useEffect(() => {
+        setSessionPage(1);
+        setPdfError(null);
+    }, [driverId, year, month]);
+
+    const stats = report?.stats;
+
+    const filteredJobs = useMemo(() => {
+        const rows = report?.jobsBreakdown || [];
+        const q = searchJobs.trim().toLowerCase();
+        if (!q) return rows;
+        return rows.filter(
+            (j) =>
+                String(j.jobName || '').toLowerCase().includes(q) ||
+                String(j.school || '').toLowerCase().includes(q),
+        );
+    }, [report, searchJobs]);
+
+    const filteredSessions = useMemo(() => {
+        const rows = report?.sessionHistory || [];
+        const q = searchSessions.trim().toLowerCase();
+        if (!q) return rows;
+        return rows.filter(
+            (s) =>
+                String(s.jobName || '').toLowerCase().includes(q) ||
+                String(s.direction || '').toLowerCase().includes(q) ||
+                String(s.status || '').toLowerCase().includes(q) ||
+                String(s.date || '').includes(q),
+        );
+    }, [report, searchSessions]);
+
+    const totalPages = Math.max(1, Math.ceil(filteredSessions.length / ITEMS_PER_PAGE));
+    const currentPage = Math.min(sessionPage, totalPages);
+    const paginatedSessions = filteredSessions.slice(
+        (currentPage - 1) * ITEMS_PER_PAGE,
+        currentPage * ITEMS_PER_PAGE,
+    );
+
+    const dailyTrend = report?.dailyTrend || [];
+    const activeDays = useMemo(
+        () => dailyTrend.filter((d) => (d.completed || 0) > 0),
+        [dailyTrend],
+    );
+    const dayMax = Math.max(1, ...activeDays.map((d) => d.completed || 0));
+    const dayTicks = useMemo(() => {
+        const max = dayMax;
+        if (max <= 1) return [1, 0];
+        if (max === 2) return [2, 1, 0];
+        return [max, Math.round(max / 2), 0];
+    }, [dayMax]);
+    const mv = report?.morningVsEvening || { morning: 0, evening: 0 };
+    const mvMax = Math.max(1, mv.morning || 0, mv.evening || 0);
+
+    const handlePdf = () => {
+        if (!report) {
+            setPdfError('Report data is not loaded yet.');
+            return;
+        }
+        setGenerating(true);
+        setPdfError(null);
+        try {
+            downloadAdminDriverReportPdf({ companyName, report });
+        } catch (e) {
+            setPdfError(e?.message || 'Could not generate PDF.');
+        } finally {
+            setGenerating(false);
+        }
+    };
+
+    const fmt = (n) =>
+        loading ? <ShimmerBlock className="h-7 w-14 rounded-md inline-block" /> : Number(n ?? 0).toLocaleString();
+
+    const displayError = pdfError || error;
+
+    if (!driverId) {
+        return (
+            <div className="space-y-4 max-w-[1400px] mx-auto">
+                <button
+                    type="button"
+                    onClick={() => navigate('/portal/reports')}
+                    className="inline-flex items-center gap-2 text-sm font-semibold text-[#004D6D] hover:underline"
+                >
+                    <HiArrowLeft size={16} /> Back to reports
+                </button>
+                <div className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                    Open a driver from the staff table to view their performance report.
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="space-y-5 max-w-[1400px] mx-auto">
-
-            {/* ── Page Header ── */}
-            <div className="flex items-center justify-between">
-                <h1 className="text-[22px] font-bold text-gray-900">Driver Performance Report</h1>
-                <div className="flex items-center gap-2">
-                    <button className="flex items-center gap-1.5 px-3.5 py-2 border border-gray-200 rounded-lg text-[12px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all">
-                        <MdFileDownload size={15} className="text-gray-500" />
-                        Export Excel
+            <div className="flex flex-col md:flex-row md:items-center justify-between gap-3">
+                <div>
+                    <button
+                        type="button"
+                        onClick={() => navigate('/portal/reports')}
+                        className="inline-flex items-center gap-2 text-sm font-semibold text-[#004D6D] hover:underline mb-2"
+                    >
+                        <HiArrowLeft size={16} /> Back to reports
                     </button>
-                    <button className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-semibold text-white bg-[#004D6D] hover:bg-[#003c55] transition-all">
-                        <HiOutlineDownload size={15} />
-                        Export PDF
-                    </button>
+                    <h1 className="text-[22px] font-bold text-gray-900">Driver Performance Report</h1>
+                    <p className="text-[13px] text-gray-400 font-medium mt-0.5">Sessions and jobs {periodText}</p>
                 </div>
+                <button
+                    type="button"
+                    onClick={handlePdf}
+                    disabled={loading || generating || !report}
+                    className="flex items-center gap-1.5 px-3.5 py-2 rounded-lg text-[12px] font-semibold text-white bg-[#004D6D] hover:bg-[#003c55] transition-all disabled:opacity-60 disabled:pointer-events-none"
+                >
+                    <MdAnalytics size={15} />
+                    {generating ? 'Generating…' : 'Generate PDF'}
+                </button>
             </div>
 
-            {/* ── Report Filters ── */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                <h2 className="text-[14px] font-bold text-gray-900 mb-4">Report Filters</h2>
-
-                {/* Row 1 */}
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                    {/* Select Driver */}
-                    <div className="md:col-span-1 space-y-1">
-                        <label className="text-[11px] font-semibold text-gray-700">
-                            Select Driver <span className="text-red-500">*</span>
-                        </label>
-                        <div className="relative">
-                            <select className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D] bg-white pr-8">
-                                <option>Michael Rodriguez – DR-2847</option>
-                            </select>
-                            <HiChevronRight className="absolute right-2.5 top-2.5 text-gray-400 rotate-90" size={14} />
-                        </div>
-                    </div>
-
-                    {/* Start Date */}
-                    <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-gray-700">Start Date</label>
-                        <input
-                            type="date"
-                            defaultValue="2024-01-01"
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
-                        />
-                    </div>
-
-                    {/* End Date */}
-                    <div className="space-y-1">
-                        <label className="text-[11px] font-semibold text-gray-700">End Date</label>
-                        <input
-                            type="date"
-                            defaultValue="2024-01-31"
-                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D]"
-                        />
-                    </div>
-
-                    {/* Generate Report */}
-                    <div className="flex items-end">
-                        <button className="w-full py-2 bg-[#004D6D] text-white text-[12px] font-bold rounded-lg hover:bg-[#003c55] transition-all">
-                            Generate Report
-                        </button>
-                    </div>
+            {displayError && (
+                <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
+                    {displayError}
                 </div>
+            )}
 
-                {/* Row 2 – Filter by Route */}
-                <div className="mt-4 space-y-1">
-                    <label className="text-[11px] font-semibold text-gray-700">Filter by Route (Optional)</label>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
+                <div className="max-w-xs space-y-1">
+                    <label className="text-[11px] font-semibold text-gray-700">
+                        Month & Year <span className="text-red-500">*</span>
+                    </label>
                     <div className="relative">
-                        <select className="w-full appearance-none px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-500 focus:outline-none focus:ring-1 focus:ring-[#004D6D] bg-white pr-8">
-                            <option>All Routes</option>
-                            <option>Route A</option>
-                            <option>Route B</option>
-                            <option>Route D</option>
-                        </select>
-                        <HiChevronRight className="absolute right-2.5 top-2.5 text-gray-400 rotate-90" size={14} />
+                        <input
+                            type="month"
+                            value={monthValue}
+                            onChange={(e) => setMonthValue(e.target.value)}
+                            className="w-full px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D] pr-9"
+                        />
                     </div>
                 </div>
             </div>
 
-            {/* ── Driver Profile Card ── */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-                    {/* Left: avatar + info */}
+                <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-5">
                     <div className="flex items-center gap-4">
-                        <div className="relative shrink-0">
+                        {profileLoading ? (
+                            <ShimmerBlock className="w-16 h-16 rounded-full" />
+                        ) : (
                             <img
-                                src="https://i.pravatar.cc/150?u=DR-2847"
-                                alt="Michael Rodriguez"
+                                src={driver?.avatar}
+                                alt=""
                                 className="w-16 h-16 rounded-full object-cover border-2 border-gray-100"
                             />
-                            {/* green online dot */}
-                            <span className="absolute bottom-0.5 right-0.5 w-3.5 h-3.5 bg-green-500 border-2 border-white rounded-full"></span>
-                        </div>
+                        )}
                         <div>
-                            <div className="text-[16px] font-bold text-gray-900">Michael Rodriguez</div>
-                            <div className="flex items-center gap-3 mt-1 flex-wrap">
-                                <span className="flex items-center gap-1 text-[11px] text-gray-500">
-                                    {/* ID card icon */}
-                                    <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="text-gray-400">
-                                        <rect x="2" y="5" width="16" height="10" rx="2" stroke="currentColor" strokeWidth="1.5" />
-                                        <circle cx="7" cy="10" r="2" stroke="currentColor" strokeWidth="1.5" />
-                                        <path d="M11 8h4M11 12h3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                                    </svg>
-                                    Driver ID: DR-2847
-                                </span>
-                                <span className="flex items-center gap-1 text-[11px] text-gray-500">
-                                    {/* route icon */}
-                                    <svg width="12" height="12" viewBox="0 0 20 20" fill="none" className="text-gray-400">
-                                        <path d="M4 4h12M4 10h12M4 16h12" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                                    </svg>
-                                    Routes: A, B, D
+                            <div className="text-[16px] font-bold text-gray-900">
+                                {profileLoading ? <ShimmerBlock className="h-5 w-40 rounded" /> : driver?.name}
+                            </div>
+                            <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                                {!profileLoading && <FleetBadge fleet={driver?.fleet} />}
+                                <span className="inline-flex px-2.5 py-0.5 rounded-full bg-green-50 text-green-600 text-[10px] font-bold">
+                                    {profileLoading ? '—' : driver?.status}
                                 </span>
                             </div>
-                            <div className="mt-2">
-                                <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-green-50 text-green-600 text-[10px] font-bold">
-                                    <span className="w-1.5 h-1.5 rounded-full bg-green-500 inline-block"></span>
-                                    Active
-                                </span>
+                            <div className="text-[11px] text-gray-400 mt-1.5 font-medium">
+                                {profileLoading ? '—' : driver?.vehicleLabel || 'No vehicle assigned'}
+                                {!profileLoading && driver?.licenseNo ? ` · License ${driver.licenseNo}` : ''}
                             </div>
                         </div>
                     </div>
 
-                    {/* Right: summary stats */}
-                    <div className="flex items-center gap-8 md:gap-12">
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
                         <div className="text-center">
-                            <div className="text-[22px] font-bold text-gray-900 leading-none">487</div>
-                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Total Jobs</div>
+                            <div className="text-[22px] font-bold text-gray-900 leading-none min-h-7 flex items-center justify-center">
+                                {fmt(stats?.jobsAssigned)}
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Jobs Assigned</div>
                         </div>
                         <div className="text-center">
-                            <div className="text-[22px] font-bold text-gray-900 leading-none">31</div>
-                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Active Days</div>
+                            <div className="text-[22px] font-bold text-gray-900 leading-none min-h-7 flex items-center justify-center">
+                                {fmt(stats?.totalSessions)}
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Total Sessions</div>
                         </div>
                         <div className="text-center">
-                            <div className="text-[22px] font-bold text-gray-900 leading-none">15.7</div>
-                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Avg Jobs/Day</div>
+                            <div className="text-[22px] font-bold text-gray-900 leading-none min-h-7 flex items-center justify-center">
+                                {fmt(stats?.completedSessions)}
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Completed</div>
                         </div>
                         <div className="text-center">
-                            <div className="text-[22px] font-bold text-green-500 leading-none">96.8%</div>
-                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Attendance</div>
+                            <div className="text-[22px] font-bold text-green-500 leading-none min-h-7 flex items-center justify-center">
+                                {loading ? (
+                                    <ShimmerBlock className="h-7 w-14 rounded-md" />
+                                ) : (
+                                    `${Number(stats?.completionRate || 0)}%`
+                                )}
+                            </div>
+                            <div className="text-[10px] text-gray-400 mt-1 font-medium">Completion</div>
                         </div>
                     </div>
                 </div>
             </div>
 
-            {/* ── 4 Metric Cards ── */}
             <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                {/* Morning Trips */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <div className="flex items-start justify-between mb-3">
-                        <div className="w-9 h-9 rounded-lg bg-gray-50 flex items-center justify-center">
-                            {/* gear icon */}
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="1.8">
-                                <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
-                            </svg>
-                        </div>
-                        <span className="text-[10px] font-bold text-green-500">+12.5%</span>
+                    <div className="w-9 h-9 rounded-lg bg-blue-50 flex items-center justify-center mb-3 text-blue-600">
+                        <MdWbSunny size={18} />
                     </div>
-                    <div className="text-[26px] font-bold text-gray-900 leading-none">243</div>
-                    <div className="text-[11px] text-gray-400 mt-1 font-medium">Morning Trips Completed</div>
+                    <div className="text-[26px] font-bold text-gray-900 leading-none min-h-8 flex items-center">
+                        {fmt(stats?.morningCompleted)}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1 font-medium">Morning Completed</div>
+                    <div className="text-[11px] text-gray-400 mt-2 font-semibold">{periodText}</div>
                 </div>
-
-                {/* Return Trips */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <div className="flex items-start justify-between mb-3">
-                        <div className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center">
-                            {/* moon icon */}
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8">
-                                <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-                            </svg>
-                        </div>
-                        <span className="text-[10px] font-bold text-green-500">+3.3%</span>
+                    <div className="w-9 h-9 rounded-lg bg-orange-50 flex items-center justify-center mb-3 text-orange-500">
+                        <MdNightsStay size={18} />
                     </div>
-                    <div className="text-[26px] font-bold text-gray-900 leading-none">244</div>
-                    <div className="text-[11px] text-gray-400 mt-1 font-medium">Return Trips Completed</div>
+                    <div className="text-[26px] font-bold text-gray-900 leading-none min-h-8 flex items-center">
+                        {fmt(stats?.eveningCompleted)}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1 font-medium">Evening Completed</div>
+                    <div className="text-[11px] text-gray-400 mt-2 font-semibold">{periodText}</div>
                 </div>
-
-                {/* Missed / Cancelled */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <div className="flex items-start justify-between mb-3">
-                        <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center">
-                            {/* x-circle icon */}
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#ef4444" strokeWidth="1.8">
-                                <circle cx="12" cy="12" r="10" /><line x1="15" y1="9" x2="9" y2="15" /><line x1="9" y1="9" x2="15" y2="15" />
-                            </svg>
-                        </div>
-                        <span className="text-[10px] font-bold text-red-500">-3.2%</span>
+                    <div className="w-9 h-9 rounded-lg bg-red-50 flex items-center justify-center mb-3 text-red-500">
+                        <MdWarning size={18} />
                     </div>
-                    <div className="text-[26px] font-bold text-gray-900 leading-none">7</div>
-                    <div className="text-[11px] text-gray-400 mt-1 font-medium">Missed / Cancelled Jobs</div>
+                    <div className="text-[26px] font-bold text-gray-900 leading-none min-h-8 flex items-center">
+                        {fmt((stats?.skippedSessions || 0) + (stats?.incompleteSessions || 0))}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1 font-medium">Skipped / Incomplete</div>
+                    <div className="text-[11px] text-gray-400 mt-2 font-semibold">{periodText}</div>
                 </div>
-
-                {/* On-Time Performance */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-4">
-                    <div className="flex items-start justify-between mb-3">
-                        <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center">
-                            {/* clock icon */}
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="1.8">
-                                <circle cx="12" cy="12" r="10" /><polyline points="12 6 12 12 16 14" />
-                            </svg>
-                        </div>
-                        <span className="text-[10px] font-bold text-green-500">+5.1%</span>
+                    <div className="w-9 h-9 rounded-lg bg-green-50 flex items-center justify-center mb-3 text-green-600">
+                        {profileLoading ? (
+                            <ShimmerBlock className="h-4 w-4 rounded" />
+                        ) : driver?.isPrivate ? (
+                            <MdAnalytics size={18} />
+                        ) : (
+                            <MdDirectionsCar size={18} />
+                        )}
                     </div>
-                    <div className="text-[26px] font-bold text-gray-900 leading-none">94.2%</div>
-                    <div className="text-[11px] text-gray-400 mt-1 font-medium">On-Time Performance</div>
+                    <div className="text-[26px] font-bold text-gray-900 leading-none min-h-8 flex items-center">
+                        {loading || profileLoading ? (
+                            <ShimmerBlock className="h-7 w-16 rounded-md" />
+                        ) : driver?.isPrivate ? (
+                            money(stats?.estimatedPay)
+                        ) : (
+                            Number(stats?.leaveDays || 0).toLocaleString()
+                        )}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-1 font-medium min-h-4">
+                        {profileLoading ? (
+                            <ShimmerBlock className="h-3 w-24 rounded" />
+                        ) : driver?.isPrivate ? (
+                            'Estimated Pay'
+                        ) : (
+                            'Leave Requests'
+                        )}
+                    </div>
+                    <div className="text-[11px] text-gray-400 mt-2 font-semibold">{periodText}</div>
                 </div>
             </div>
 
-            {/* ── Charts Row ── */}
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                {/* Daily Job Completion Trend */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                    <h3 className="text-[13px] font-bold text-gray-900 mb-4">Daily Job Completion Trend</h3>
-                    <LineChart />
+                    <h3 className="text-[13px] font-bold text-gray-900 mb-1">Daily Completed Sessions</h3>
+                    <p className="text-[11px] text-gray-400 mb-4">
+                        {periodText}
+                        {!loading && activeDays.length > 0
+                            ? ` · ${activeDays.length} day${activeDays.length === 1 ? '' : 's'} with sessions`
+                            : ''}
+                    </p>
+                    {!loading && activeDays.length === 0 && (
+                        <p className="text-sm text-gray-400 py-10 text-center">No completed sessions this month.</p>
+                    )}
+                    {(loading || activeDays.length > 0) && (
+                        <div className="relative h-52 pl-7">
+                            <div className="absolute left-0 top-0 bottom-8 w-6 flex flex-col justify-between text-[10px] font-semibold text-gray-300 select-none">
+                                {dayTicks.map((t) => (
+                                    <span key={t}>{t}</span>
+                                ))}
+                            </div>
+                            <div className="absolute inset-0 left-7 bottom-8 flex flex-col justify-between pointer-events-none">
+                                {dayTicks.map((t) => (
+                                    <div key={`g-${t}`} className="border-b border-gray-100 w-full h-0" />
+                                ))}
+                            </div>
+                            <div className="relative h-[calc(100%-2rem)] flex items-end justify-center gap-3 px-2">
+                                {activeDays.map((d) => {
+                                    const pct = ((d.completed || 0) / dayMax) * 100;
+                                    const dayNum = String(d.date || '').slice(8, 10).replace(/^0/, '') || d.label;
+                                    return (
+                                        <div
+                                            key={d.date}
+                                            className="flex flex-col items-center justify-end h-full"
+                                            style={{ width: activeDays.length <= 4 ? 56 : 36 }}
+                                        >
+                                            <div className="text-[10px] font-bold text-gray-500 mb-1">
+                                                {d.completed}
+                                            </div>
+                                            <div
+                                                className="w-full rounded-t-md bg-[#004D6D] shadow-sm"
+                                                style={{
+                                                    height: `${pct}%`,
+                                                    minHeight: d.completed ? 10 : 0,
+                                                }}
+                                                title={`${d.date}: ${d.completed} completed`}
+                                            />
+                                            <div className="text-[10px] font-bold text-gray-400 mt-2 tabular-nums">
+                                                {dayNum}
+                                            </div>
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    )}
                 </div>
 
-                {/* Route-wise Job Distribution */}
                 <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                    <h3 className="text-[13px] font-bold text-gray-900 mb-4">Route-wise Job Distribution</h3>
-                    <BarChart />
+                    <h3 className="text-[13px] font-bold text-gray-900 mb-1">Morning vs Evening</h3>
+                    <p className="text-[11px] text-gray-400 mb-6">Completed sessions {periodText}</p>
+                    <div className="flex items-end justify-center gap-10 h-44">
+                        <div className="flex flex-col items-center gap-2 w-20">
+                            <div className="text-[12px] font-bold text-gray-500">{mv.morning || 0}</div>
+                            <div
+                                className="w-14 bg-blue-500 rounded-t"
+                                style={{
+                                    height: `${((mv.morning || 0) / mvMax) * 140}px`,
+                                    minHeight: mv.morning ? 6 : 0,
+                                }}
+                            />
+                            <div className="text-[11px] font-bold text-gray-400">Morning</div>
+                        </div>
+                        <div className="flex flex-col items-center gap-2 w-20">
+                            <div className="text-[12px] font-bold text-gray-500">{mv.evening || 0}</div>
+                            <div
+                                className="w-14 bg-orange-500 rounded-t"
+                                style={{
+                                    height: `${((mv.evening || 0) / mvMax) * 140}px`,
+                                    minHeight: mv.evening ? 6 : 0,
+                                }}
+                            />
+                            <div className="text-[11px] font-bold text-gray-400">Evening</div>
+                        </div>
+                    </div>
                 </div>
             </div>
 
-            {/* ── Job History Table ── */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100">
-                {/* Table header */}
-                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100">
-                    <h3 className="text-[14px] font-bold text-gray-900">Job History</h3>
-                    <div className="flex items-center gap-2">
-                        <div className="relative">
-                            <HiSearch className="absolute left-3 top-2.5 text-gray-400" size={14} />
-                            <input
-                                type="text"
-                                placeholder="Search jobs..."
-                                value={searchJobs}
-                                onChange={e => setSearchJobs(e.target.value)}
-                                className="pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-700 focus:outline-none focus:ring-1 focus:ring-[#004D6D] w-44"
-                            />
-                        </div>
-                        <button className="flex items-center gap-1.5 px-3 py-2 border border-gray-200 rounded-lg text-[12px] text-gray-600 hover:bg-gray-50 transition-all">
-                            <HiFilter size={13} />
-                            Filter
-                        </button>
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 gap-3 flex-wrap">
+                    <div>
+                        <h3 className="text-[14px] font-bold text-gray-900">Jobs Breakdown</h3>
+                        <p className="text-[11px] text-gray-400 mt-0.5">Sessions by job {periodText}</p>
+                    </div>
+                    <div className="relative">
+                        <HiSearch className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                        <input
+                            type="text"
+                            placeholder="Search jobs..."
+                            value={searchJobs}
+                            onChange={(e) => setSearchJobs(e.target.value)}
+                            className="pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-[#004D6D] w-44"
+                        />
                     </div>
                 </div>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-left text-[11px]">
+                        <thead>
+                            <tr className="border-b border-gray-50 text-gray-400 text-[10px] font-bold uppercase tracking-wide">
+                                <th className="px-5 py-3">Job</th>
+                                <th className="px-5 py-3 text-center">Sessions</th>
+                                <th className="px-5 py-3 text-center">Completed</th>
+                                <th className="px-5 py-3 text-center">Morning</th>
+                                <th className="px-5 py-3 text-center">Evening</th>
+                                {driver?.isPrivate && <th className="px-5 py-3 text-right">Pay</th>}
+                            </tr>
+                        </thead>
+                        <tbody className="divide-y divide-gray-50">
+                            {loading && (
+                                <tr>
+                                    <td colSpan={driver?.isPrivate ? 6 : 5} className="px-5 py-8 text-center text-gray-400">
+                                        Loading jobs…
+                                    </td>
+                                </tr>
+                            )}
+                            {!loading && filteredJobs.length === 0 && (
+                                <tr>
+                                    <td colSpan={driver?.isPrivate ? 6 : 5} className="px-5 py-8 text-center text-gray-400">
+                                        No jobs in this period.
+                                    </td>
+                                </tr>
+                            )}
+                            {!loading &&
+                                filteredJobs.map((j) => (
+                                    <tr key={j.jobId} className="hover:bg-gray-50/40">
+                                        <td className="px-5 py-3.5">
+                                            <div className="font-semibold text-gray-800">{j.jobName}</div>
+                                            <div className="text-gray-400 mt-0.5">{j.school}</div>
+                                        </td>
+                                        <td className="px-5 py-3.5 text-center font-bold text-gray-900">{j.totalSessions}</td>
+                                        <td className="px-5 py-3.5 text-center text-gray-700">{j.completedSessions}</td>
+                                        <td className="px-5 py-3.5 text-center text-gray-500">{j.morningCompleted}</td>
+                                        <td className="px-5 py-3.5 text-center text-gray-500">{j.eveningCompleted}</td>
+                                        {driver?.isPrivate && (
+                                            <td className="px-5 py-3.5 text-right font-semibold text-gray-800">
+                                                {money(j.estimatedPay)}
+                                            </td>
+                                        )}
+                                    </tr>
+                                ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
 
-                {/* Table */}
+            <div className="bg-white rounded-xl shadow-sm border border-gray-100 overflow-hidden">
+                <div className="flex items-center justify-between px-5 py-4 border-b border-gray-100 gap-3 flex-wrap">
+                    <div>
+                        <h3 className="text-[14px] font-bold text-gray-900">Session History</h3>
+                        <p className="text-[11px] text-gray-400 mt-0.5">{periodText}</p>
+                    </div>
+                    <div className="relative">
+                        <HiSearch className="absolute left-3 top-2.5 text-gray-400" size={14} />
+                        <input
+                            type="text"
+                            placeholder="Search sessions..."
+                            value={searchSessions}
+                            onChange={(e) => {
+                                setSearchSessions(e.target.value);
+                                setSessionPage(1);
+                            }}
+                            className="pl-8 pr-3 py-2 border border-gray-200 rounded-lg text-[12px] focus:outline-none focus:ring-1 focus:ring-[#004D6D] w-44"
+                        />
+                    </div>
+                </div>
                 <div className="overflow-x-auto">
                     <table className="w-full text-left text-[11px]">
                         <thead>
                             <tr className="border-b border-gray-50 text-gray-400 text-[10px] font-bold uppercase tracking-wide">
                                 <th className="px-5 py-3">Date</th>
-                                <th className="px-5 py-3">Route Name</th>
-                                <th className="px-5 py-3 text-center">Passengers</th>
-                                <th className="px-5 py-3">Pickup Time</th>
-                                <th className="px-5 py-3">Drop-off Time</th>
+                                <th className="px-5 py-3">Job</th>
+                                <th className="px-5 py-3">Direction</th>
                                 <th className="px-5 py-3">Status</th>
-                                <th className="px-5 py-3">Remarks</th>
-                                <th className="px-5 py-3 text-center">Actions</th>
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-gray-50">
-                            {jobHistory.map((job, idx) => (
-                                <tr key={idx} className="hover:bg-gray-50/40 transition-colors">
-                                    <td className="px-5 py-3.5 text-gray-600 whitespace-nowrap">{job.date}</td>
-                                    <td className="px-5 py-3.5 text-gray-700 font-medium whitespace-nowrap">{job.route}</td>
-                                    <td className="px-5 py-3.5 text-gray-600 text-center">{job.passengers}</td>
-                                    <td className="px-5 py-3.5 text-gray-600 whitespace-nowrap">{job.pickup}</td>
-                                    <td className="px-5 py-3.5 text-gray-600 whitespace-nowrap">{job.dropoff}</td>
-                                    <td className="px-5 py-3.5">
-                                        <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${job.status === 'Completed' ? 'text-green-600' : 'text-red-500'}`}>
-                                            {job.status}
-                                        </span>
-                                    </td>
-                                    <td className="px-5 py-3.5 text-gray-500">{job.remarks}</td>
-                                    <td className="px-5 py-3.5 text-center">
-                                        <button className="w-7 h-7 flex items-center justify-center text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-full transition-all mx-auto">
-                                            <HiDotsVertical size={15} />
-                                        </button>
+                            {loading && (
+                                <tr>
+                                    <td colSpan={4} className="px-5 py-8 text-center text-gray-400">
+                                        Loading sessions…
                                     </td>
                                 </tr>
-                            ))}
+                            )}
+                            {!loading && paginatedSessions.length === 0 && (
+                                <tr>
+                                    <td colSpan={4} className="px-5 py-8 text-center text-gray-400">
+                                        No sessions in this period.
+                                    </td>
+                                </tr>
+                            )}
+                            {!loading &&
+                                paginatedSessions.map((s) => (
+                                    <tr key={s.id} className="hover:bg-gray-50/40">
+                                        <td className="px-5 py-3.5 text-gray-600 whitespace-nowrap">{s.date}</td>
+                                        <td className="px-5 py-3.5">
+                                            <div className="font-medium text-gray-800">{s.jobName}</div>
+                                            <div className="text-gray-400 mt-0.5">{s.school}</div>
+                                        </td>
+                                        <td className="px-5 py-3.5 text-gray-600">{s.direction}</td>
+                                        <td className="px-5 py-3.5">
+                                            <span className={`inline-flex px-2 py-0.5 rounded text-[10px] font-bold ${statusClass(s.statusRaw)}`}>
+                                                {s.status}
+                                            </span>
+                                        </td>
+                                    </tr>
+                                ))}
                         </tbody>
                     </table>
                 </div>
-
-                {/* Pagination */}
                 <div className="px-5 py-4 border-t border-gray-50 flex items-center justify-between">
-                    <span className="text-[11px] text-gray-400">Showing 1 to 8 of 487 entries</span>
+                    <span className="text-[11px] text-gray-400">
+                        {filteredSessions.length === 0
+                            ? '0 sessions'
+                            : `Showing ${(currentPage - 1) * ITEMS_PER_PAGE + 1}–${Math.min(currentPage * ITEMS_PER_PAGE, filteredSessions.length)} of ${filteredSessions.length}`}
+                    </span>
                     <div className="flex items-center gap-1">
-                        <button className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 transition-colors">
+                        <button
+                            type="button"
+                            disabled={currentPage <= 1}
+                            onClick={() => setSessionPage((p) => Math.max(1, p - 1))}
+                            className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-40"
+                        >
                             <HiChevronLeft size={15} />
                         </button>
-                        {[1, 2, 3].map(n => (
-                            <button
-                                key={n}
-                                className={`w-7 h-7 flex items-center justify-center rounded text-[11px] font-bold transition-colors ${n === 1 ? 'bg-[#004D6D] text-white' : 'text-gray-500 hover:bg-gray-100'}`}
-                            >
-                                {n}
-                            </button>
-                        ))}
-                        <span className="px-1 text-gray-300 text-[11px] font-bold">...</span>
-                        <button className="w-7 h-7 flex items-center justify-center rounded text-[11px] font-bold text-gray-500 hover:bg-gray-100 transition-colors">61</button>
-                        <button className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 transition-colors">
+                        <span className="px-2 text-[11px] font-bold text-gray-600">
+                            {currentPage} / {totalPages}
+                        </span>
+                        <button
+                            type="button"
+                            disabled={currentPage >= totalPages}
+                            onClick={() => setSessionPage((p) => Math.min(totalPages, p + 1))}
+                            className="w-7 h-7 flex items-center justify-center rounded text-gray-400 hover:bg-gray-100 disabled:opacity-40"
+                        >
                             <HiChevronRight size={15} />
                         </button>
                     </div>
                 </div>
             </div>
 
-            {/* ── Attendance & Availability Summary ── */}
-            <div className="bg-white rounded-xl shadow-sm border border-gray-100 p-5">
-                <h3 className="text-[14px] font-bold text-gray-900 mb-4">Attendance &amp; Availability Summary</h3>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-6">
-                    {/* Working Days */}
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center shrink-0">
-                            {/* calendar icon */}
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" strokeWidth="1.8">
-                                <rect x="3" y="4" width="18" height="18" rx="2" /><line x1="16" y1="2" x2="16" y2="6" /><line x1="8" y1="2" x2="8" y2="6" /><line x1="3" y1="10" x2="21" y2="10" />
-                            </svg>
-                        </div>
-                        <div>
-                            <div className="text-[20px] font-bold text-gray-900 leading-none">31</div>
-                            <div className="text-[10px] text-gray-400 font-medium mt-0.5">Working Days</div>
-                            <div className="text-[10px] text-green-500 font-bold mt-0.5">100% Present</div>
-                        </div>
-                    </div>
-
-                    {/* Leaves Taken */}
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-yellow-50 flex items-center justify-center shrink-0">
-                            {/* umbrella / beach icon */}
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" strokeWidth="1.8">
-                                <path d="M23 12a11.05 11.05 0 0 0-22 0zm-5 7a3 3 0 0 1-6 0v-7" />
-                            </svg>
-                        </div>
-                        <div>
-                            <div className="text-[20px] font-bold text-gray-900 leading-none">0</div>
-                            <div className="text-[10px] text-gray-400 font-medium mt-0.5">Leaves Taken</div>
-                            <div className="text-[10px] text-gray-400 font-medium mt-0.5">0 days off</div>
-                        </div>
-                    </div>
-
-                    {/* Late Starts */}
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-orange-50 flex items-center justify-center shrink-0">
-                            {/* refresh / late icon */}
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#f97316" strokeWidth="1.8">
-                                <polyline points="1 4 1 10 7 10" /><path d="M3.51 15a9 9 0 1 0 .49-3.54" />
-                            </svg>
-                        </div>
-                        <div>
-                            <div className="text-[20px] font-bold text-gray-900 leading-none">2</div>
-                            <div className="text-[10px] text-gray-400 font-medium mt-0.5">Late Starts</div>
-                            <div className="text-[10px] text-orange-400 font-bold mt-0.5">Avg 8 min late</div>
-                        </div>
-                    </div>
-
-                    {/* Early Finishes */}
-                    <div className="flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-purple-50 flex items-center justify-center shrink-0">
-                            {/* fast-forward icon */}
-                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" strokeWidth="1.8">
-                                <polygon points="13 19 22 12 13 5 13 19" /><polygon points="2 19 11 12 2 5 2 19" />
-                            </svg>
-                        </div>
-                        <div>
-                            <div className="text-[20px] font-bold text-gray-900 leading-none">1</div>
-                            <div className="text-[10px] text-gray-400 font-medium mt-0.5">Early Finishes</div>
-                            <div className="text-[10px] text-gray-400 font-medium mt-0.5">15 min early</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-            {/* ── Export & Actions ── */}
             <div className="bg-white rounded-xl shadow-sm border border-gray-100 px-5 py-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
                 <div>
-                    <div className="text-[13px] font-bold text-gray-900">Export &amp; Actions</div>
-                    <div className="text-[11px] text-gray-400 mt-0.5">Download this report in various formats or print for records.</div>
+                    <div className="text-[13px] font-bold text-gray-900">{loading ? 'Loading report…' : 'Report ready'}</div>
+                    <div className="text-[11px] text-gray-400 mt-0.5">
+                        {Number(stats?.totalSessions || 0).toLocaleString()} sessions
+                        <span className="mx-1.5 opacity-30">•</span>
+                        {monthLabel(year, month)}
+                        {driver?.isPrivate ? (
+                            <>
+                                <span className="mx-1.5 opacity-30">•</span>
+                                {money(stats?.estimatedPay)}
+                            </>
+                        ) : null}
+                    </div>
                 </div>
-                <div className="flex items-center gap-2">
-                    <button className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-[12px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all">
-                        <HiOutlinePrinter size={14} className="text-gray-500" />
-                        Print Report
-                    </button>
-                    <button className="flex items-center gap-1.5 px-4 py-2 border border-gray-200 rounded-lg text-[12px] font-semibold text-gray-700 bg-white hover:bg-gray-50 transition-all">
-                        <MdFileDownload size={15} className="text-green-500" />
-                        Export Excel
-                    </button>
-                    <button className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-semibold text-white bg-[#004D6D] hover:bg-[#003c55] transition-all">
-                        <HiOutlineDownload size={14} />
-                        Export PDF
-                    </button>
-                </div>
+                <button
+                    type="button"
+                    onClick={handlePdf}
+                    disabled={loading || generating || !report}
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-[12px] font-semibold text-white bg-[#004D6D] hover:bg-[#003c55] transition-all disabled:opacity-60 disabled:pointer-events-none"
+                >
+                    <HiOutlineDownload size={14} />
+                    {generating ? 'Generating…' : 'Export PDF'}
+                </button>
             </div>
-
         </div>
     );
 };

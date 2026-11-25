@@ -1,4 +1,4 @@
-﻿import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { HiOutlineClipboardList } from 'react-icons/hi';
 import {
     MdDirectionsCar,
@@ -11,9 +11,8 @@ import {
     MdDescription
 } from 'react-icons/md';
 import { useNavigate } from 'react-router-dom';
-import { supabase } from '../../../../lib/supabaseClient';
-import { getCompanyAdminById, getCompanyById } from '../../../../services/companyService';
-import { getAdminCompanyDashboard } from '../../../../services/dashboardService';
+import { useAdminDashboard } from '../../../../hooks/useAdminDashboard';
+import { getCompanyById } from '../../../../services/companyService';
 import { downloadAdminDashboardReportPdf } from '../../../../services/dashboardReportPdfService';
 import { ShimmerBlock } from '../../../../utils/Shimmer';
 
@@ -38,86 +37,37 @@ function buildDonutSegments(items) {
 
 const Admin_Dashboard = () => {
     const navigate = useNavigate();
-    const [loading, setLoading] = useState(true);
-    const [error, setError] = useState(null);
-    const [data, setData] = useState(null);
+    const { companyId, data, loading, error } = useAdminDashboard();
+    const [reportError, setReportError] = useState(null);
     const [reportGenerating, setReportGenerating] = useState(false);
     const [hoveredLinePointIdx, setHoveredLinePointIdx] = useState(null);
     const lineSvgRef = useRef(null);
 
-    const load = useCallback(async () => {
-        setError(null);
-        const {
-            data: { session },
-        } = await supabase.auth.getSession();
-        const uid = session?.user?.id;
-        if (!uid) {
-            setError('Not authenticated.');
-            setLoading(false);
-            return;
-        }
-        const admin = await getCompanyAdminById(uid);
-        const companyId = admin?.company_id;
-        if (!companyId) {
-            setError('No company linked to your account.');
-            setLoading(false);
-            return;
-        }
-        const dash = await getAdminCompanyDashboard(companyId);
-        setData(dash);
-    }, []);
-
     const handleGenerateReport = useCallback(async () => {
         if (!data) {
-            setError('Dashboard data is not loaded yet.');
+            setReportError('Dashboard data is not loaded yet.');
+            return;
+        }
+        if (!companyId) {
+            setReportError('No company linked to your account.');
             return;
         }
         setReportGenerating(true);
-        setError(null);
+        setReportError(null);
         try {
-            const {
-                data: { session },
-            } = await supabase.auth.getSession();
-            const uid = session?.user?.id;
-            if (!uid) {
-                setError('Not authenticated.');
-                return;
-            }
-            const admin = await getCompanyAdminById(uid);
-            const companyId = admin?.company_id;
-            if (!companyId) {
-                setError('No company linked to your account.');
-                return;
-            }
             const company = await getCompanyById(companyId);
             downloadAdminDashboardReportPdf({
                 companyName: company?.company_name,
                 data,
             });
         } catch (e) {
-            setError(e?.message || 'Could not generate report.');
+            setReportError(e?.message || 'Could not generate report.');
         } finally {
             setReportGenerating(false);
         }
-    }, [data]);
+    }, [companyId, data]);
 
-    useEffect(() => {
-        let cancelled = false;
-        (async () => {
-            setLoading(true);
-            try {
-                await load();
-                if (!cancelled) setError(null);
-            } catch (e) {
-                if (!cancelled) setError(e?.message || 'Could not load dashboard.');
-            } finally {
-                if (!cancelled) setLoading(false);
-            }
-        })();
-        return () => {
-            cancelled = true;
-        };
-    }, [load]);
+    const displayError = reportError || error;
 
     const fleetLegend = useMemo(() => {
         if (!data?.fleetDistribution?.length) return [];
@@ -194,28 +144,11 @@ const Admin_Dashboard = () => {
             Number(n ?? 0).toLocaleString()
         );
 
-    const trendBlock = (pct) => {
-        if (loading) {
-            return <ShimmerBlock className="h-4 w-28 rounded-md" />;
-        }
-        const n = Number(pct) || 0;
-        const cls = n >= 0 ? 'text-green-500' : 'text-red-500';
-        return (
-            <div className="text-sm font-medium">
-                <span className={cls}>
-                    {n > 0 ? '+' : ''}
-                    {n}%
-                </span>
-                <span className="text-gray-400 ml-1 font-normal">vs last month</span>
-            </div>
-        );
-    };
-
     return (
         <div className="space-y-6">
-            {error && (
+            {displayError && (
                 <div className="rounded-xl border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-800">
-                    {error}
+                    {displayError}
                 </div>
             )}
             {/* Top Grid Area */}
@@ -225,34 +158,28 @@ const Admin_Dashboard = () => {
                 <div className="lg:col-span-6 flex flex-col gap-6">
                     {/* Summary Cards */}
                     <div className="grid grid-cols-2 gap-4">
-                        <div className="bg-white p-5 rounded-[20px] shadow-sm border border-gray-50 flex flex-col justify-between h-[160px]">
-                            <div>
-                                <h3 className="text-gray-500 text-sm font-medium">Total Vehicles</h3>
-                                <div className="flex items-center justify-between mt-2">
-                                    <span className="text-[28px] font-bold text-gray-900 flex items-center min-h-9">
-                                        {fmtInt(data?.fleetHeadline)}
-                                    </span>
-                                    <div className="w-10 h-10 rounded-[12px] bg-blue-50 flex items-center justify-center text-blue-600">
-                                        <MdDirectionsCar size={22} />
-                                    </div>
+                        <div className="bg-white p-5 rounded-[20px] shadow-sm border border-gray-50 flex flex-col justify-center h-[140px]">
+                            <h3 className="text-gray-500 text-sm font-medium">Total Vehicles</h3>
+                            <div className="flex items-center justify-between mt-3">
+                                <span className="text-[28px] font-bold text-gray-900 flex items-center min-h-9">
+                                    {fmtInt(data?.fleetHeadline)}
+                                </span>
+                                <div className="w-10 h-10 rounded-[12px] bg-blue-50 flex items-center justify-center text-blue-600">
+                                    <MdDirectionsCar size={22} />
                                 </div>
                             </div>
-                            {trendBlock(data?.fleetTrendPct)}
                         </div>
 
-                        <div className="bg-white p-5 rounded-[20px] shadow-sm border border-gray-50 flex flex-col justify-between h-[160px]">
-                            <div>
-                                <h3 className="text-gray-500 text-sm font-medium">Active Jobs</h3>
-                                <div className="flex items-center justify-between mt-2">
-                                    <span className="text-[28px] font-bold text-gray-900 flex items-center min-h-9">
-                                        {fmtInt(data?.activeJobsCount)}
-                                    </span>
-                                    <div className="w-10 h-10 rounded-[12px] bg-green-50 flex items-center justify-center text-green-600">
-                                        <HiOutlineClipboardList size={22} />
-                                    </div>
+                        <div className="bg-white p-5 rounded-[20px] shadow-sm border border-gray-50 flex flex-col justify-center h-[140px]">
+                            <h3 className="text-gray-500 text-sm font-medium">Active Jobs</h3>
+                            <div className="flex items-center justify-between mt-3">
+                                <span className="text-[28px] font-bold text-gray-900 flex items-center min-h-9">
+                                    {fmtInt(data?.activeJobsCount)}
+                                </span>
+                                <div className="w-10 h-10 rounded-[12px] bg-green-50 flex items-center justify-center text-green-600">
+                                    <HiOutlineClipboardList size={22} />
                                 </div>
                             </div>
-                            {trendBlock(data?.jobsTrendPct)}
                         </div>
                     </div>
 
@@ -302,14 +229,17 @@ const Admin_Dashboard = () => {
                         <div className="grid grid-cols-2 gap-y-3 mt-4 px-2">
                             {fleetLegend.length === 0 && !loading && (
                                 <p className="text-sm text-gray-500 col-span-2">
-                                    No job types yet — published jobs will appear here.
+                                    No vehicles yet — company and private fleet will appear here.
                                 </p>
                             )}
                             {fleetLegend.map((item) => (
                                 <div key={item.label} className="flex items-center gap-2">
                                     <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: item.color }} />
                                     <span className="text-sm text-gray-600">{item.label}</span>
-                                    <span className="text-sm font-semibold text-gray-800 ml-auto mr-4">{item.pct}%</span>
+                                    <span className="text-sm font-semibold text-gray-800 ml-auto mr-4">
+                                        {item.count}
+                                        <span className="text-gray-400 font-normal ml-1">({item.pct}%)</span>
+                                    </span>
                                 </div>
                             ))}
                         </div>
@@ -319,7 +249,10 @@ const Admin_Dashboard = () => {
                 {/* Right Side: Large Line Chart */}
                 <div className="lg:col-span-6 bg-white p-8 rounded-[20px] shadow-sm border border-gray-50 flex flex-col">
                     <div className="flex items-center justify-between mb-8">
-                        <h3 className="text-[17px] font-bold text-gray-900">Active Jobs</h3>
+                        <div>
+                            <h3 className="text-[17px] font-bold text-gray-900">Active Jobs</h3>
+                            <p className="text-xs text-gray-400 mt-1">Jobs active by month · last 6 months</p>
+                        </div>
                         <button type="button" className="text-gray-400 hover:text-gray-600" aria-label="Chart options">
                             <MdMoreVert size={20} />
                         </button>
@@ -341,6 +274,12 @@ const Admin_Dashboard = () => {
                                     <div key={i} className="border-b border-gray-100 w-full h-0"></div>
                                 ))}
                             </div>
+
+                            {!loading && linePointObjs.length > 0 && linePointObjs.every((p) => (p.count || 0) === 0) && (
+                                <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                                    <p className="text-sm text-gray-400">No active jobs in the last 6 months.</p>
+                                </div>
+                            )}
 
                             {/* SVG Chart Content */}
                             <svg
@@ -407,22 +346,22 @@ const Admin_Dashboard = () => {
                                                     strokeWidth="1"
                                                 />
                                                 <rect
-                                                    x={Math.max(6, Math.min(500 - 86, hoveredLinePoint.x - 40))}
-                                                    y={Math.max(6, hoveredLinePoint.y - 40)}
-                                                    width="80"
-                                                    height="22"
+                                                    x={Math.max(6, Math.min(500 - 100, hoveredLinePoint.x - 48))}
+                                                    y={Math.max(6, hoveredLinePoint.y - 44)}
+                                                    width="96"
+                                                    height="28"
                                                     rx="6"
                                                     fill="#111827"
                                                     opacity="0.92"
                                                 />
                                                 <text
-                                                    x={Math.max(6, Math.min(500 - 86, hoveredLinePoint.x - 40)) + 40}
-                                                    y={Math.max(6, hoveredLinePoint.y - 40) + 15}
+                                                    x={Math.max(6, Math.min(500 - 100, hoveredLinePoint.x - 48)) + 48}
+                                                    y={Math.max(6, hoveredLinePoint.y - 44) + 18}
                                                     textAnchor="middle"
                                                     fontSize="11"
                                                     fill="#fff"
                                                 >
-                                                    {Number(hoveredLinePoint.count ?? 0).toLocaleString()}
+                                                    {hoveredLinePoint.label}: {Number(hoveredLinePoint.count ?? 0).toLocaleString()}
                                                 </text>
                                             </g>
                                         )}
@@ -451,7 +390,9 @@ const Admin_Dashboard = () => {
                             <p className="text-sm text-gray-400">Loading activity…</p>
                         )}
                         {!loading && (!data?.recentActivities || data.recentActivities.length === 0) && (
-                            <p className="text-sm text-gray-500">No recent activity yet.</p>
+                            <p className="text-sm text-gray-500">
+                                No job events yet — assignments and removals by admins will show here.
+                            </p>
                         )}
                         {!loading &&
                             (data?.recentActivities || []).map((act) => {

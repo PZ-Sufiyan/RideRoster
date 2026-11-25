@@ -13,12 +13,49 @@ export function isJobCompleted(job) {
   const status = String(job.status || '').trim().toLowerCase()
   if (status === 'completed' || status === 'complete') return true
 
+  // Semester fallback keeps completion-release notifications working if status sync lags.
   const semesterEnd = job.semester_end
   if (semesterEnd) {
     const today = new Date().toISOString().slice(0, 10)
     if (today > String(semesterEnd).slice(0, 10)) return true
   }
   return false
+}
+
+/** Keep jobs.status aligned with semester window (cancelled rows untouched). */
+export async function syncJobLifecycleStatuses(supabase) {
+  const nowIso = new Date().toISOString()
+  const today = nowIso.slice(0, 10)
+
+  const completedRes = await supabase
+    .from('jobs')
+    .update({ status: 'completed', updated_at: nowIso })
+    .lt('semester_end', today)
+    .neq('status', 'cancelled')
+    .neq('status', 'canceled')
+    .neq('status', 'completed')
+  if (completedRes.error) throw completedRes.error
+
+  const activeRes = await supabase
+    .from('jobs')
+    .update({ status: 'active', updated_at: nowIso })
+    .lte('semester_start', today)
+    .gte('semester_end', today)
+    .neq('status', 'cancelled')
+    .neq('status', 'canceled')
+    .neq('status', 'active')
+  if (activeRes.error) throw activeRes.error
+
+  const upcomingRes = await supabase
+    .from('jobs')
+    .update({ status: 'upcoming', updated_at: nowIso })
+    .gt('semester_start', today)
+    .neq('status', 'cancelled')
+    .neq('status', 'canceled')
+    .neq('status', 'upcoming')
+  if (upcomingRes.error) throw upcomingRes.error
+
+  return { today }
 }
 
 function formatDriverName(driver) {
@@ -245,6 +282,7 @@ export async function releaseAssignedDriverIfJobCompleted(supabase, job) {
       assigned_driver_id: null,
       driver_approval_status: null,
       driver_counter_offer_pay: null,
+      status: 'completed',
       updated_at: new Date().toISOString(),
     })
     .eq('id', job.id)
@@ -257,7 +295,7 @@ export async function releaseAssignedDriverIfJobCompleted(supabase, job) {
 
   try {
     await notifyJobCompletedDriverReleased(supabase, {
-      job,
+      job: { ...job, status: 'completed' },
       driverId: previousDriverId,
     })
   } catch (notifyErr) {
@@ -279,6 +317,7 @@ export async function releaseAssignedPaIfJobCompleted(supabase, job) {
     .from('jobs')
     .update({
       assigned_pa_id: null,
+      status: 'completed',
       updated_at: new Date().toISOString(),
     })
     .eq('id', job.id)
@@ -291,7 +330,7 @@ export async function releaseAssignedPaIfJobCompleted(supabase, job) {
 
   try {
     await notifyJobCompletedPaReleased(supabase, {
-      job,
+      job: { ...job, status: 'completed' },
       paId: previousPaId,
     })
   } catch (notifyErr) {
@@ -305,6 +344,8 @@ export async function releaseAssignedPaIfJobCompleted(supabase, job) {
 }
 
 export async function runJobCompletionReleaseTick(supabase) {
+  await syncJobLifecycleStatuses(supabase)
+
   const { data: jobs, error } = await supabase
     .from('jobs')
     .select(
@@ -312,6 +353,7 @@ export async function runJobCompletionReleaseTick(supabase) {
     )
     .or('assigned_driver_id.not.is.null,assigned_pa_id.not.is.null')
     .neq('status', 'cancelled')
+    .neq('status', 'canceled')
 
   if (error) throw error
 

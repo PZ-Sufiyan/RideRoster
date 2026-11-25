@@ -9,7 +9,7 @@ create table public.jobs (
   internal_job_id text null,
   driver_pay numeric(10, 2) null,
   passenger_assistant_pay numeric(10, 2) null,
-  status text not null default 'draft'::text,
+  status text not null default 'upcoming'::text,
   created_at timestamp with time zone not null default now(),
   updated_at timestamp with time zone not null default now(),
   driver_approval_status text null,
